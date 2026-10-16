@@ -48,7 +48,7 @@ pip install senpy-linter
 ### Вариант 2. Из исходников (режим разработки)
 
 ```bash
-git clone https://github.com/your-username/senpy.git
+git clone https://github.com/Xilleet/senpy.git
 cd senpy
 pip install -e .
 ```

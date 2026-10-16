@@ -48,7 +48,7 @@ pip install senpy-linter
 ### Option 2: From Source (Development Mode)
 
 ```bash
-git clone https://github.com/your-username/senpy.git
+git clone https://github.com/Xilleet/senpy.git
 cd senpy
 pip install -e .
 ```
