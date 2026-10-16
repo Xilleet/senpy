@@ -1,3 +1,5 @@
+[English](README.md) | [Русский](README.ru.md)
+
 # Senpy (`senpy-linter`)
 
 <p align="center">
@@ -6,6 +8,10 @@
   <img src="https://img.shields.io/badge/Speed-77k%20lines%20in%200.3s-brightgreen" alt="77k lines in 0.3s">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
   <img src="https://img.shields.io/badge/Code%20Style-Ruff-000000.svg" alt="Ruff">
+</p>
+
+<p align="center">
+  <a href="README.md"><b>English</b></a> | <a href="README.ru.md"><b>Русский</b></a>
 </p>
 
 <p align="center">
