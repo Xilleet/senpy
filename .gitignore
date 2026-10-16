@@ -1,0 +1,31 @@
+# 1. Байткод и кэш Python (уберет __pycache__)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 2. Виртуальное окружение
+venv/
+.venv/
+env/
+
+# 3. Служебные файлы сборки пакета (уберет *.egg-info)
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+
+# 4. Байткод Ren'Py (чтобы тесты не мусорили скомпилированными файлами)
+*.rpyc
+*.rpyb
+*.rpymc
+saves/
+
+# 5. Настройки редактора VS Code
+.vscode/
+.idea/
+
+# 6. Мусор операционной системы
+Thumbs.db
+desktop.ini
+.DS_Store

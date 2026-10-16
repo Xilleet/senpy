@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "senpy-linter"
+version = "0.1.0"
+description = "Fast semantic linter for Ren'Py"
+authors = [{ name = "Your Name" }]
+requires-python = ">=3.9"
+dependencies = [
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+senpy = "senpy.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["senpy*"]
