@@ -1,0 +1,55 @@
+{
+  "publisher": "Xilleet",
+"repository": {
+  "type": "git",
+  "url": "https://github.com/Xilleet/senpy"
+},
+  "name": "senpy-vscode",
+  "displayName": "senpy-vscode",
+  "description": "Notice me, Senpy! Fast semantic Ren'Py linter with LSP support",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:renpy",
+    "workspaceContains:**/*.rpy"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "renpy",
+        "aliases": ["Ren'Py", "renpy"],
+        "extensions": [".rpy", ".rpym"]
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "node esbuild.js --production",
+    "compile": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
+    "esbuild": "^0.28.1",
+    "eslint": "^10.5.0",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.1"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^10.1.2"
+  }
+}

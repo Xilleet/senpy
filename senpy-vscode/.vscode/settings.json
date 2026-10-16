@@ -1,0 +1,22 @@
+{
+    "files.exclude": {
+        "out": false,
+        "dist": false,
+        "**/*.rpyc": true,
+        "**/*.rpa": true,
+        "**/*.rpymc": true,
+        "**/cache/": true
+    },
+
+    "files.associations": {
+        "*.rpy": "renpy",
+        "*.rpym": "renpy"
+    },
+
+    "search.exclude": {
+        "out": true,
+        "dist": true
+    },
+
+    "js/ts.tsc.autoDetect": "off"
+}

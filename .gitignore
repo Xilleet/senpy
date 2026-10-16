@@ -1,31 +1,68 @@
-# 1. Байткод и кэш Python (уберет __pycache__)
+# 1. Байткод и кэш Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
+dist/
+build/
 
 # 2. Виртуальное окружение
 venv/
 .venv/
 env/
 
-# 3. Служебные файлы сборки пакета (уберет *.egg-info)
-*.egg-info/
-dist/
-build/
-eggs/
-.eggs/
+# 3. Node.js (для senpy-vscode)
+node_modules/
+senpy-vscode/node_modules/
+senpy-vscode/out/
+senpy-vscode/dist/
+*.log
 
-# 4. Байткод Ren'Py (чтобы тесты не мусорили скомпилированными файлами)
+# 4. Байткод Ren'Py и тестовые сейвы
 *.rpyc
 *.rpyb
 *.rpymc
 saves/
 
-# 5. Настройки редактора VS Code
-.vscode/
-.idea/
+# 5. Тестовый мусор
+report.json
+test_game/
 
-# 6. Мусор операционной системы
+# 6. Мусор ОС
 Thumbs.db
 desktop.ini
 .DS_Store
+
+node_modules/
+out/
+*.vsix
+senpy/update_reqs.bat
+
+# Пакеты и сборка VS Code
+*.vsix
+senpy-vscode/out/
+senpy-vscode/dist/
+senpy-vscode/node_modules/
+
+# Логи и временные файлы
+*.log
+senpy_debug.log
+report.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# VS Code Extension
+senpy-vscode/node_modules/
+senpy-vscode/out/
+*.vsix
+
+# Ren'Py test saves
+*.rpyc
+saves/

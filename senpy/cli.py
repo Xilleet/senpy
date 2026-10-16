@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import ctypes
+import json
 import os
 import shutil
 import subprocess
@@ -26,19 +28,43 @@ console = Console()
 SENPY_CACHE_DIR = os.path.expanduser("~/.senpy/tools/unrpyc")
 UNRPYC_GITHUB_ZIP = "https://github.com/CensoredUsername/unrpyc/archive/refs/heads/master.zip"
 
+def _is_russian_os() -> bool:
+    """Определяет, русский ли интерфейс у ОС пользователя."""
+    if "ru" in os.environ.get("LANG", "").lower():
+        return True
+    if os.name == "nt":
+        # Ловим конкретные ошибки доступа к системным библиотекам
+        with contextlib.suppress(AttributeError, OSError):
+            # 1049 (0x0419) — это код русского языка в Windows
+            return ctypes.windll.kernel32.GetUserDefaultUILanguage() == 1049
+    return False
+
+IS_RU = _is_russian_os()
+
 TSUNDERE_FLAVORS = {
-    "RPY101": "(¬_¬ ) «Бака! Ты используешь переменную в диалоге, но даже не объявил её! О чем ты вообще думал?!»",
-    "RPY102": "(╬ Ò﹏Ó) «Ты делаешь += к переменной, которой НЕТ! Это же чистый NameError при запуске, идиот!»",
-    "RPY103": "( ﾟдﾟ) «Ты вставил в условие if переменную из воздуха! Игра вылетит, бестолочь!»",
-    "RPY104": "(>_< ) «Создал переменную на лету без default?! Сохранения у игроков сломаются после патча, дурак!»",
-    "RPY201": "(╯°□°)╯︵ ┻━┻ «Ты меняешь переменную ПРЯМО ВНУТРИ ЭКРАНА?! Экраны так не работают, тупица!»",
-    "RPY202": "(눈_눈) «Экран читает переменную без default! В главном меню игра сразу рухнет, гений!»",
-    "RPY301": "(；￣Д￣) «Открыл тег и забыл закрыть?! Весь дальнейший текст игры поплывет, глаза б мои не смотрели!»",
-    "RPY302": "( ﾟдﾟ) «Прыжок на метку, которой ВООБЩЕ НЕТ?! Куда ты собрался прыгать, в пустоту?!»",
-    "RPY303": "(￣︿￣) «Написал метку и ни разу на нее не сослался... Забыл про нее, да? Мертвый код!»",
-    "RPY304": "(｀ε´ ) «Что это за цвет такой?! Ты даже в hex-кодах умудрился опечататься!»",
-    "RPY401": "(눈_눈) «В одном пункте меню ты переменную дал, а во втором забыл?! Выберут второй — и игра крашнется!»",
-    "RPY501": "(￣︿￣) «Музыка не найдена! В этой сцене будет гробовая тишина, глупый!»",
+    "RPY101": "(¬_¬ ) «Бака! Ты используешь переменную в диалоге, но даже не объявил её! О чем ты вообще думал?!»" if IS_RU else "(¬_¬ ) «B-Baka! You used a variable in dialogue without declaring it! What were you thinking?!»",
+    "RPY102": "(╬ Ò﹏Ó) «Ты делаешь += к переменной, которой НЕТ! Это же чистый NameError при запуске, идиот!»" if IS_RU else "(╬ Ò﹏Ó) «You're doing += to a variable that DOESN'T EXIST! That's a guaranteed NameError, idiot!»",
+    "RPY103": "( ﾟдﾟ) «Ты вставил в условие if переменную из воздуха! Игра вылетит, бестолочь!»" if IS_RU else "( ﾟдﾟ) «You put a phantom variable in an if-condition! The game will crash, dummy!»",
+    "RPY104": "(>_< ) «Создал переменную на лету без default?! Сохранения у игроков сломаются после патча, дурак!»" if IS_RU else "(>_< ) «Created a variable on the fly without a default?! You'll break player save files on the next patch, fool!»",
+    "RPY201": "(╯°□°)╯︵ ┻━┻ «Ты меняешь переменную ПРЯМО ВНУТРИ ЭКРАНА?! Экраны так не работают, тупица!»" if IS_RU else "(╯°□°)╯︵ ┻━┻ «Mutating variables DIRECTLY INSIDE A SCREEN?! Screens don't work like that, dummy!»",
+    "RPY202": "(눈_눈) «Экран читает переменную без default! В главном меню игра сразу рухнет, гений!»" if IS_RU else "(눈_눈) «A screen is reading a variable without a default! It's going to crash right in the main menu, genius!»",
+    "RPY301": "(；￣Д￣) «Открыл тег и забыл закрыть?! Весь дальнейший текст игры поплывет, глаза б мои не смотрели!»" if IS_RU else "(；￣Д￣) «Opened a text tag and forgot to close it?! The whole game's text is going to bleed, I can't even look at it!»",
+    "RPY302": "( ﾟдﾟ) «Прыжок на метку, которой ВООБЩЕ НЕТ?! Куда ты собрался прыгать, в пустоту?!»" if IS_RU else "( ﾟдﾟ) «Jumping to a label that DOES NOT EXIST?! Where are you jumping to, the void?!»",
+    "RPY303": "(￣︿￣) «Написал метку и ни разу на нее не сослался... Забыл про нее, да? Мертвый код!»" if IS_RU else "(￣︿￣) «Wrote a label and never referenced it... You just forgot about it, didn't you? Dead code!»",
+    "RPY304": "(｀ε´ ) «Что это за цвет такой?! Ты даже в hex-кодах умудрился опечататься!»" if IS_RU else "(｀ε´ ) «What kind of color is that?! You even managed to make a typo in hex codes!»",
+    "RPY401": "(눈_눈) «В одном пункте меню ты переменную дал, а во втором забыл?! Выберут второй — и игра крашнется!»" if IS_RU else "(눈_눈) «You defined a variable in one menu choice but forgot it in another?! They pick the second one and it crashes!»",
+    "RPY501": "(￣︿￣) «Музыка не найдена! В этой сцене будет гробовая тишина, глупый!»" if IS_RU else "(￣︿￣) «Music file not found! There will be dead silence in this scene, stupid!»",
+}
+
+TSUNDERE_UI = {
+    "intro": "П-подумаешь! Сканирую твою директорию: {path}... Н-не то чтобы мне был интересен твой сценарий, бака!" if IS_RU else "H-Hmph! Scanning your directory: {path}... I-It's not like I'm interested in your script, baka!",
+    "clean_title": "Н-не то чтобы мне нравился твой сценарий... но сюжетных дыр и крашей я не нашла, бака!" if IS_RU else "I-It's not like I like your script... but I didn't find any plot holes or crashes, baka!",
+    "clean_sub": "Проверено {lines:,} строк за {elapsed:.3f}с. Д-доволен?!" if IS_RU else "Checked {lines:,} lines in {elapsed:.3f}s. A-Are you happy now?!",
+    "summary": "Твои позорные ошибки" if IS_RU else "Your shameful mistakes",
+    "fixed": "Я... я закрыла за тобой {count} открытых тегов! Н-но не думай, что ты мне нравишься, идиот!" if IS_RU else "I... I closed {count} open tags for you! B-But don't think I like you or anything, idiot!",
+    "fixable": "Там есть {count} тегов, которые я могла бы починить за тебя через --fix... если вежливо попросишь, бака!" if IS_RU else "There are {count} tags I could fix for you with --fix... if you ask nicely, baka!",
+    "errors": "Найдено {summary_str}! Иди и исправляй, я не буду играть в такую сломанную новеллу! ({elapsed:.3f}s)" if IS_RU else "Found {summary_str}! Go fix them, I'm not playing such a broken novel! ({elapsed:.3f}s)",
+    "warnings": "Найдено {summary_str}... Жить можно, но я за тобой слежу, бака! ({elapsed:.3f}s)" if IS_RU else "Found {summary_str}... It's playable, but I'm watching you, baka! ({elapsed:.3f}s)",
 }
 
 SEVERITY_STYLES = {
@@ -51,8 +77,11 @@ SEVERITY_STYLES = {
 def load_config(project_path: str) -> dict:
     candidates = [
         os.path.join(project_path, "senpy.toml"),
+        os.path.join(project_path, "pyproject.toml"),
         os.path.join(os.path.dirname(project_path), "senpy.toml"),
+        os.path.join(os.path.dirname(project_path), "pyproject.toml"),
         os.path.join(os.getcwd(), "senpy.toml"),
+        os.path.join(os.getcwd(), "pyproject.toml"),
     ]
     for c in candidates:
         if os.path.isfile(c):
@@ -179,7 +208,7 @@ def main():
         prog="senpy",
         description="Notice me, Senpy! Fast semantic linter for Ren'Py."
     )
-    parser.add_argument("path", help="Path to the Ren'Py project (game directory)")
+    parser.add_argument("path", nargs="?", default=".", help="Path to the Ren'Py project (game directory)")
     parser.add_argument(
         "--tsundere",
         action="store_true",
@@ -194,6 +223,12 @@ def main():
         "--errors-only",
         action="store_true",
         help="Show only critical ERRORs, hiding WARNINGs and INFO notices"
+    )
+    parser.add_argument(
+        "--output-format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format: 'text' (default) or 'json' for VS Code/LSP integration"
     )
     parser.add_argument(
         "--ignore",
@@ -216,8 +251,17 @@ def main():
         "--unrpyc",
         help="Custom path to unrpyc.py or unrpyc executable"
     )
+    parser.add_argument(
+        "--lsp",
+        action="store_true",
+        help="Run Senpy as a Language Server (LSP) for editors like VS Code/Neovim"
+    )
 
     args = parser.parse_args()
+    if args.lsp:
+        from senpy.server import start_lsp
+        start_lsp()
+        sys.exit(0)
 
     config = load_config(args.path)
 
@@ -257,13 +301,13 @@ def main():
                 else:
                     extra_rpy_files = decompile_to_sandbox(orphaned_rpyc, unrpyc_cmd, temp_sandbox)
 
-        if is_tsundere:
-            console.print(
-                f"[bold magenta](¬_¬ ) «П-подумаешь! Сканирую твою директорию: {args.path}... "
-                "Н-не то чтобы мне был интересен твой сценарий, бака!»[/bold magenta]\n"
-            )
-        else:
-            console.print(f"[bold cyan]Scanning directory:[/bold cyan] {args.path}...\n")
+        if args.output_format != "json":
+            if is_tsundere:
+                console.print(
+                    f"[bold magenta](¬_¬ ) «{TSUNDERE_UI['intro'].format(path=args.path)}»[/bold magenta]\n"
+                )
+            else:
+                console.print(f"[bold cyan]Scanning directory:[/bold cyan] {args.path}...\n")
 
         start_time = time.perf_counter()
         analyzer = SenpyAnalyzer(args.path, extra_files=extra_rpy_files, fix=args.fix)
@@ -275,14 +319,48 @@ def main():
             e for e in result.diagnostics
             if e.code not in ignored_codes and (not args.errors_only or e.severity == "ERROR")
         ]
+        # --- ВЫВОД В ФОРМАТЕ JSON ДЛЯ VS CODE ---
+        if args.output_format == "json":
+            json_output = []
+            for err in active_diagnostics:
+                # Очищаем строку от переносов \n
+                line_str = err.line_content.rstrip("\r\n")
+                
+                # Считаем отступ слева, чтобы не подчеркивать пустоту
+                indent_str = line_str[:len(line_str) - len(line_str.lstrip())]
+                
+                # КРИТИЧЕСКИЙ ФИКС ДЛЯ VS CODE (UTF-16 Code Units)
+                start_col = len(indent_str.encode("utf-16-le")) // 2
+                end_col = len(line_str.encode("utf-16-le")) // 2
 
+                json_output.append({
+                    "file": err.file_path,
+                    "line": err.line_number,
+                    "col": start_col,
+                    "end_col": end_col,
+                    "code": err.code,
+                    "severity": err.severity.lower(),
+                    "message": err.message
+                })
+            
+            output_data = {
+                "diagnostics": json_output,
+                "summary": {
+                    "total_lines": result.total_lines,
+                    "fixed": result.fixed_count,
+                    "time_sec": round(elapsed, 3)
+                }
+            }
+            print(json.dumps(output_data, indent=2))
+            error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
+            sys.exit(1 if error_count > 0 else 0)
+        # ----------------------------------------
         # 0 ПРОБЛЕМ
         if not active_diagnostics:
             if is_tsundere:
                 console.print(
-                    "[bold magenta](⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄) «Н-не то чтобы мне нравился твой сценарий... "
-                    "но сюжетных дыр и крашей я не нашла, бака!»[/bold magenta]\n"
-                    f"[dim]Проверено {result.total_lines:,} строк за {elapsed:.3f}с. Д-доволен?![/dim]"
+                    f"[bold magenta](⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄) «{TSUNDERE_UI['clean_title']}»[/bold magenta]\n"
+                    f"[dim]{TSUNDERE_UI['clean_sub'].format(lines=result.total_lines, elapsed=elapsed)}[/dim]"
                 )
             else:
                 msg = f"[bold green]✔ All clean![/bold green] Scanned [bold]{result.total_lines:,}[/bold] lines across [bold]{result.file_count}[/bold] file(s) in [cyan]{elapsed:.3f}s[/cyan]."
@@ -316,7 +394,7 @@ def main():
 
         # СВОДНАЯ ТАБЛИЦА С УРОВНЯМИ СТРОГОСТИ
         counts = Counter((e.code, e.severity) for e in active_diagnostics)
-        table = Table(title="Diagnostics Summary" if not is_tsundere else "Твои позорные ошибки", border_style="dim")
+        table = Table(title="Diagnostics Summary" if not is_tsundere else TSUNDERE_UI['summary'], border_style="dim")
         table.add_column("Rule", style="bold cyan")
         table.add_column("Severity", justify="center")
         table.add_column("Count", justify="right", style="bold white")
@@ -329,12 +407,12 @@ def main():
 
         if result.fixed_count > 0:
             if is_tsundere:
-                console.print(f"\n[bold magenta](//∇//) «Я... я закрыла за тобой {result.fixed_count} открытых тегов! Н-но не думай, что ты мне нравишься, идиот!»[/bold magenta]")
+                console.print(f"\n[bold magenta](//∇//) «{TSUNDERE_UI['fixed'].format(count=result.fixed_count)}»[/bold magenta]")
             else:
                 console.print(f"\n[bold green]✔ Automatically fixed {result.fixed_count} error(s)![/bold green]")
         elif result.fixable_count > 0 and not args.fix:
             if is_tsundere:
-                console.print(f"\n[dim magenta][*] Там есть {result.fixable_count} тегов, которые я могла бы починить за тебя через --fix... если вежливо попросишь, бака![/dim magenta]")
+                console.print(f"\n[dim magenta][*] {TSUNDERE_UI['fixable'].format(count=result.fixable_count)}[/dim magenta]")
             else:
                 console.print(f"\n[dim][*] {result.fixable_count} fixable with the --fix option[/dim]")
 
@@ -355,9 +433,9 @@ def main():
 
         if is_tsundere:
             if error_count > 0:
-                console.print(f"\n[bold magenta](╬ Ò﹏Ó) Найдено {summary_str}! Иди и исправляй, я не буду играть в такую сломанную новеллу![/bold magenta] ({elapsed:.3f}s)")
+                console.print(f"\n[bold magenta](╬ Ò﹏Ó) {TSUNDERE_UI['errors'].format(summary_str=summary_str, elapsed=elapsed)}[/bold magenta]")
             else:
-                console.print(f"\n[bold magenta](¬_¬ ) Найдено {summary_str}... Жить можно, но я за тобой слежу, бака![/bold magenta] ({elapsed:.3f}s)")
+                console.print(f"\n[bold magenta](¬_¬ ) {TSUNDERE_UI['warnings'].format(summary_str=summary_str, elapsed=elapsed)}[/bold magenta]")
         else:
             status_icon = "[bold red]✖[/bold red]" if error_count > 0 else "[bold yellow]⚠[/bold yellow]"
             console.print(
