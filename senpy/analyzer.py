@@ -35,23 +35,23 @@ class AnalysisResult:
 
 # Градация правил (Severity levels)
 RULE_SEVERITY = {
-    "RPY101": "ERROR",  # Опечатка в [var] -> падение с KeyError
-    "RPY102": "ERROR",  # += до default -> NameError при входе
-    "RPY103": "ERROR",  # if var: без объявления -> NameError при входе
+    "RPY101": "ERROR",    # Опечатка в [var] -> падение с KeyError
+    "RPY102": "ERROR",    # += до default -> NameError при входе
+    "RPY103": "ERROR",    # if var: без объявления -> NameError при входе
     "RPY104": "WARNING",  # $ var = 1 без default -> риск для сохранений/патчей
-    "RPY105": "ERROR",  # Мутация define-константы -> ломает откат и сейвы
+    "RPY105": "ERROR",    # Мутация define-константы -> ломает откат и сейвы
     "RPY106": "WARNING",  # Использование import random вместо renpy.random (ломает откат)
     "RPY201": "WARNING",  # Мутация внутри screen -> ломает откат и нагружает UI
     "RPY202": "WARNING",  # Переменная в screen без default -> риск падения в меню
     "RPY203": "WARNING",  # Кнопка без action -> некликабельный UI
-    "RPY301": "ERROR",  # Незакрытый тег диалога -> ломает стили/шрифт
-    "RPY302": "ERROR",  # Прыжок на несуществующую метку -> ScriptError
-    "RPY303": "INFO",  # Мертвая метка (эвристика, может быть динамический роутер)
-    "RPY304": "ERROR",  # Невалидный hex-цвет -> падение движка рендера
+    "RPY301": "ERROR",    # Незакрытый тег диалога -> ломает стили/шрифт
+    "RPY302": "ERROR",    # Прыжок на несуществующую метку -> ScriptError
+    "RPY303": "INFO",     # Мертвая метка (эвристика, может быть динамический роутер)
+    "RPY304": "ERROR",    # Невалидный hex-цвет -> падение движка рендера
     "RPY306": "WARNING",  # call метки без return в конце -> сюжет утекает дальше
     "RPY401": "WARNING",  # Развилка menu: переменная объявлена не везде
     "RPY402": "WARNING",  # Пустой выбор в menu -> сквозной провал сюжета
-    "RPY501": "ERROR",  # Отсутствует аудиофайл
+    "RPY501": "ERROR",    # Отсутствует аудиофайл
     "RPY504": "WARNING",  # Дубликат объявления image
 }
 
@@ -252,7 +252,6 @@ class SenpyAnalyzer:
 
     def _collect_symbols(self, file_path: str):
         try:
-            # Если файл прямо сейчас редактируется в VS Code — берем его из памяти!
             if file_path in self.in_memory_files:
                 lines = self.in_memory_files[file_path].splitlines(keepends=True)
             else:
@@ -376,7 +375,7 @@ class SenpyAnalyzer:
             return start, max(start + 1, end)
 
         start = len(line_clean[:idx].encode("utf-16-le")) // 2
-        end = len(line_clean[: idx + len(sub)].encode("utf-16-le")) // 2
+        end = len(line_clean[:idx + len(sub)].encode("utf-16-le")) // 2
         return start, end
 
     def _parse_noqa(self, line: str) -> tuple[bool, set[str] | None]:
@@ -415,7 +414,6 @@ class SenpyAnalyzer:
 
     def _analyze_file(self, file_path: str):
         try:
-            # Если файл прямо сейчас редактируется в VS Code — берем его из памяти!
             if file_path in self.in_memory_files:
                 lines = self.in_memory_files[file_path].splitlines(keepends=True)
             else:
@@ -497,7 +495,7 @@ class SenpyAnalyzer:
 
                     m_btn = RE_BUTTON_LINE.match(stripped)
                     if (
-                        (m_btn := RE_BUTTON_LINE.match(stripped))
+                        m_btn
                         and not stripped.endswith(":")
                         and not re.search(r"\baction\b", stripped)
                     ):
@@ -548,7 +546,6 @@ class SenpyAnalyzer:
                     if cmd_type == "jump":
                         branch_uninitialized.clear()
                     elif cmd_type == "call":
-                        # Если цель существует, но в ней нигде нет команды return
                         if target_label in self.declared_labels and target_label not in self.labels_with_return:
                             self._add_diagnostic(
                                 Diagnostic(

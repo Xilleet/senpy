@@ -43,8 +43,9 @@ Senpy works in two parts: the core analyzer (installed via pip) and the VS Code 
 
 ### 1. Install the Core Linter
 
-Open your terminal and install the package from 
-PyPI:
+=======
+Open your terminal and install the package from PyPI:
+
 ```bash
 pip install senpy-linter
 ```

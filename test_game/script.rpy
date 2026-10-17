@@ -80,11 +80,3 @@ label forgotten_secret_draft:
     jump missing_secret_room
     "Привет [ghost_character], добро пожаловать в {b}подвал!"
     "Этот кусок сценарист написал и забыл подключить к сюжету."
-
-label test_both:
-    jump completely_non_existent_label_xyz
-
-play music "audio/lost_ghost_theme.ogg"
-
-label sub_scene:
-    "Здесь сценарист забыл написать return..."
