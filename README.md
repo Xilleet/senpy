@@ -50,11 +50,13 @@ pip install senpy-linter
 
 ### 2. Install the VS Code Extension
 
+```text
 Go to the Releases page of this repository.
 Download the latest senpy-vscode-X.X.X.vsix file.
 Open VS Code, go to the Extensions tab (Ctrl+Shift+X).
 Click the ... (Views and More Actions) menu at the top right of the Extensions panel.
 Select Install from VSIX... and choose the downloaded file.
+```
 
 ## Usage
 
