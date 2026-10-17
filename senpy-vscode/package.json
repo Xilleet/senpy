@@ -26,7 +26,17 @@
         "aliases": ["Ren'Py", "renpy"],
         "extensions": [".rpy", ".rpym"]
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Senpy",
+      "properties": {
+        "senpy.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to senpy executable (e.g. C:/Python311/Scripts/senpy.exe or /usr/local/bin/senpy)"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "node esbuild.js --production",

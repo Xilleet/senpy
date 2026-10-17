@@ -1,17 +1,30 @@
-default friend_name = "Дима"
-
 init python:
     # Функции из init python теперь автоматически регистрируются в памяти линтера
     def calculate_bonus(x):
         return x * 2
 
+    import random   # RPY106
+
+image bg room = "room_day.png"
+image bg room = "room_night.png"   # RPY504
+
+default friend_name = "Дима"
+
+# НОВОЕ: объявляем константу через define:
+define max_hp = 100
+
 label start:
     "Добро пожаловать в игру!"
 
+    # 1. НОВОЕ (RPY105): попытка изменить define через +=:
+    $ max_hp += 10
+
     # Проверяем многострочный блок:
     python:
-        unregistered_var = 100       
-        magic_points += 5            
+        unregistered_var = 100       # RPY104: переменная без default
+        magic_points += 5            # RPY102: += до default
+
+    call sub_scene   # RPY306
 
 default player_gold = 100
 
@@ -23,6 +36,9 @@ screen shop():
     # 2. Обращение к переменной, которой нет в default (RPY202):
     if special_discount_active: 
         text "Скидка активна!"
+
+    # 3. НОВОЕ (RPY203): Кнопка без действия (action):
+    textbutton "Купить меч"
 
 label bad_end:
     "Это тупиковая концовка, и линтер на нее НЕ ругается!"
@@ -45,7 +61,10 @@ label test_flow:
         "Идти в темноте":
             "Вы идете наощупь."
 
-    # Обе ветки сошлись сюда:
+        # 1. НОВОЕ (RPY402): Пункт меню объявлен, а кода под ним нет!
+        "Сдаться и лечь спать":
+
+    # Обе ветки сошлись сюда (RPY401):
     if has_torch:
         "Свет факела разгоняет тьму."
 
@@ -66,3 +85,6 @@ label test_both:
     jump completely_non_existent_label_xyz
 
 play music "audio/lost_ghost_theme.ogg"
+
+label sub_scene:
+    "Здесь сценарист забыл написать return..."

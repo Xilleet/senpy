@@ -1,51 +1,92 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
-import { LanguageClient, LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node';
+import * as cp from 'child_process';
+import {
+    LanguageClient,
+    LanguageClientOptions,
+    ServerOptions
+} from 'vscode-languageclient/node';
 
-let client: LanguageClient;
+let client: LanguageClient | undefined;
 
-export function activate(context: vscode.ExtensionContext) {
-    // 1. Ищем senpy: сначала проверяем venv в воркспейсе, если нет — берем системный 'senpy'
-    let command = 'senpy';
-    
-    const folders = vscode.workspace.workspaceFolders;
-    if (folders && folders.length > 0) {
-        const root = folders[0].uri.fsPath;
-        const venvSenpyWin = path.join(root, 'venv', 'Scripts', 'senpy.exe');
-        const dotVenvSenpyWin = path.join(root, '.venv', 'Scripts', 'senpy.exe');
-        
-        if (fs.existsSync(venvSenpyWin)) {
-            command = venvSenpyWin;
-        } else if (fs.existsSync(dotVenvSenpyWin)) {
-            command = dotVenvSenpyWin;
-        }
+/**
+ * Проверяет, откликается ли команда/бинарник в системе.
+ */
+function checkCommandExists(command: string): Promise<boolean> {
+    return new Promise((resolve) => {
+        // Пробуем запустить команду с ключом --help
+        cp.exec(`"${command}" --help`, (error) => {
+            // Если ошибки нет — бинарник доступен и работает
+            resolve(!error);
+        });
+    });
+}
+
+export async function activate(context: vscode.ExtensionContext) {
+    // 1. Получаем путь из настроек пользователя
+    const config = vscode.workspace.getConfiguration('senpy');
+    let executable = config.get<string>('executablePath')?.trim();
+
+    // Если в настройках пусто — используем системную команду по умолчанию
+    if (!executable) {
+        executable = 'senpy';
     }
 
-    // 2. Настройки сервера
+    // 2. Проверяем, существует ли и доступен ли senpy
+    const isAvailable = await checkCommandExists(executable);
+
+    if (!isAvailable) {
+        // Показываем красивое модальное/всплывающее уведомление с кнопками действий
+        const choice = await vscode.window.showErrorMessage(
+            "Notice me! Ядро Senpy не найдено в PATH. Установи его через pip или укажи путь в настройках.",
+            "Install via pip",
+            "Specify Path",
+            "Open Documentation"
+        );
+
+        if (choice === "Install via pip") {
+            // Создаем терминал прямо в VS Code и запускаем pip install
+            const terminal = vscode.window.createTerminal("Senpy Installer");
+            terminal.show();
+            terminal.sendText("pip install -U senpy-linter");
+        } else if (choice === "Specify Path") {
+            // Открываем настройки VS Code точно на нашей опции
+            vscode.commands.executeCommand('workbench.action.openSettings', 'senpy.executablePath');
+        } else if (choice === "Open Documentation") {
+            // Открываем браузер со ссылкой на твой GitHub
+            vscode.env.openExternal(vscode.Uri.parse("https://github.com/Xilleet/senpy"));
+        }
+
+        // Прерываем активацию LSP, пока пользователь не поставит пакет
+        return;
+    }
+
+    // 3. Если всё в порядке — настраиваем и стартуем LSP сервер
     const serverOptions: ServerOptions = {
-        command: command,
-        args: ['--lsp'],
+        command: executable,
+        args: ['--lsp']
     };
 
-    // 3. Селектор файлов Ren'Py
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [
-            { scheme: 'file', language: 'renpy' },
-            { scheme: 'file', pattern: '**/*.rpy' }
-        ],
+        documentSelector: [{ scheme: 'file', language: 'renpy' }],
+        synchronize: {
+            fileEvents: vscode.workspace.createFileSystemWatcher('**/*.rpy')
+        }
     };
 
     client = new LanguageClient(
-        'senpyLsp',
+        'senpyServer',
         'Senpy Language Server',
         serverOptions,
         clientOptions
     );
 
-    client.start();
+    // Запускаем сервер
+    await client.start();
 }
 
 export function deactivate(): Thenable<void> | undefined {
-    return client ? client.stop() : undefined;
+    if (!client) {
+        return undefined;
+    }
+    return client.stop();
 }
