@@ -50,7 +50,7 @@ pip install senpy-linter
 ## Установка расширения для VS Code
 
 ```text
-Перейдите на страницу Releases в этом репозитории.
+Перейдите на страницу [Releases](https://github.com/Xilleet/senpy/releases) в этом репозитории.
 Скачайте свежий файл senpy-vscode-X.X.X.vsix.
 Откройте VS Code, перейдите на вкладку Расширения (Ctrl+Shift+X).
 Нажмите на иконку ... (Дополнительно) в правом верхнем углу панели расширений.
