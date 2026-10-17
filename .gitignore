@@ -66,3 +66,4 @@ senpy-vscode/out/
 # Ren'Py test saves
 *.rpyc
 saves/
+senpy-vscode/reinstall.bat

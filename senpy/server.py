@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from urllib.parse import unquote, urlparse
 
 from lsprotocol import types as lsp
@@ -37,34 +38,38 @@ def _get_workspace_root(ls: LanguageServer, fallback_file_path: str) -> str:
         return ls.workspace.root_path
     return os.path.dirname(fallback_file_path)
 
+# Запоминаем файлы, для которых мы слали ошибки, чтобы очищать их при исправлении
+_previously_diagnosed_uris: set[str] = set()
 
-def run_diagnostics(ls: LanguageServer, trigger_uri: str):
-    """Запускает SenpyAnalyzer и рассылает ошибки по всем файлам проекта."""
+def run_diagnostics(ls: LanguageServer, trigger_uri: str, in_memory: dict[str, str] | None = None):
+    global _previously_diagnosed_uris
     file_path = _uri_to_path(trigger_uri)
     project_root = _get_workspace_root(ls, file_path)
 
-    analyzer = SenpyAnalyzer(project_root)
+    # Передаем буфер памяти в анализатор
+    analyzer = SenpyAnalyzer(project_root, in_memory_files=in_memory)
     result = analyzer.run()
 
     files_diags: dict[str, list[lsp.Diagnostic]] = {}
 
+    severity_map = {
+        "ERROR": lsp.DiagnosticSeverity.Error,
+        "WARNING": lsp.DiagnosticSeverity.Warning,
+        "INFO": lsp.DiagnosticSeverity.Information,
+    }
+
     for diag in result.diagnostics:
         diag_uri = _path_to_uri(diag.file_path)
-        
-        line_str = diag.line_content.rstrip("\r\n")
-        indent_len = len(line_str) - len(line_str.lstrip())
         line_idx = max(0, diag.line_number - 1)
-        
-        severity_map = {
-            "ERROR": lsp.DiagnosticSeverity.Error,
-            "WARNING": lsp.DiagnosticSeverity.Warning,
-            "INFO": lsp.DiagnosticSeverity.Information,
-        }
+
+        # Если анализатор вычислил точные колонки — берем их, иначе фоллбэк
+        start_char = diag.col if diag.end_col > diag.col else 0
+        end_char = diag.end_col if diag.end_col > diag.col else len(diag.line_content)
 
         lsp_diag = lsp.Diagnostic(
             range=lsp.Range(
-                start=lsp.Position(line=line_idx, character=indent_len),
-                end=lsp.Position(line=line_idx, character=len(line_str)),
+                start=lsp.Position(line=line_idx, character=start_char),
+                end=lsp.Position(line=line_idx, character=end_char),
             ),
             message=f"[{diag.code}] {diag.message}",
             severity=severity_map.get(diag.severity, lsp.DiagnosticSeverity.Warning),
@@ -74,17 +79,21 @@ def run_diagnostics(ls: LanguageServer, trigger_uri: str):
 
         files_diags.setdefault(diag_uri, []).append(lsp_diag)
 
-    # Публикация для pygls 2.x
-    current_file_diags = files_diags.get(trigger_uri, [])
-    ls.text_document_publish_diagnostics(
-        lsp.PublishDiagnosticsParams(uri=trigger_uri, diagnostics=current_file_diags)
-    )
-
+    # Публикуем актуальные ошибки
+    current_uris = set(files_diags.keys())
     for uri, diags in files_diags.items():
-        if uri != trigger_uri:
-            ls.text_document_publish_diagnostics(
-                lsp.PublishDiagnosticsParams(uri=uri, diagnostics=diags)
-            )
+        ls.text_document_publish_diagnostics(
+            lsp.PublishDiagnosticsParams(uri=uri, diagnostics=diags)
+        )
+
+    # Очищаем файлы, где ошибки были исправлены (посылаем пустой массив [])
+    cleared_uris = _previously_diagnosed_uris - current_uris
+    for uri in cleared_uris:
+        ls.text_document_publish_diagnostics(
+            lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[])
+        )
+
+    _previously_diagnosed_uris = current_uris
 
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
@@ -99,6 +108,32 @@ def did_save(ls: LanguageServer, params: lsp.DidSaveTextDocumentParams):
     """Срабатывает в реальном времени по Ctrl+S."""
     if params.text_document.uri.endswith(".rpy"):
         run_diagnostics(ls, params.text_document.uri)
+
+_debounce_timer: threading.Timer | None = None
+
+
+def _trigger_delayed_diagnostics(ls: LanguageServer, uri: str):
+    """Запускает диагностику с задержкой 300мс (дебаунс)."""
+    global _debounce_timer
+    if _debounce_timer is not None:
+        _debounce_timer.cancel()
+
+    # Берем живой несохраненный текст прямо из редактора
+    doc = ls.workspace.get_text_document(uri)
+    file_path = _uri_to_path(uri)
+    in_memory = {file_path: doc.source} if doc else None
+
+    # Запускаем через 300 мс после последнего нажатия клавиши
+    _debounce_timer = threading.Timer(0.3, run_diagnostics, args=[ls, uri, in_memory])
+    _debounce_timer.daemon = True
+    _debounce_timer.start()
+
+
+@server.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
+def did_change(ls: LanguageServer, params: lsp.DidChangeTextDocumentParams):
+    """Срабатывает прямо на лету при каждом ударе по клавишам!"""
+    if params.text_document.uri.endswith(".rpy"):
+        _trigger_delayed_diagnostics(ls, params.text_document.uri)
 
 
 def start_lsp():

@@ -323,21 +323,11 @@ def main():
         if args.output_format == "json":
             json_output = []
             for err in active_diagnostics:
-                # Очищаем строку от переносов \n
-                line_str = err.line_content.rstrip("\r\n")
-                
-                # Считаем отступ слева, чтобы не подчеркивать пустоту
-                indent_str = line_str[:len(line_str) - len(line_str.lstrip())]
-                
-                # КРИТИЧЕСКИЙ ФИКС ДЛЯ VS CODE (UTF-16 Code Units)
-                start_col = len(indent_str.encode("utf-16-le")) // 2
-                end_col = len(line_str.encode("utf-16-le")) // 2
-
                 json_output.append({
                     "file": err.file_path,
                     "line": err.line_number,
-                    "col": start_col,
-                    "end_col": end_col,
+                    "col": err.col,
+                    "end_col": err.end_col,
                     "code": err.code,
                     "severity": err.severity.lower(),
                     "message": err.message

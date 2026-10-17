@@ -20,6 +20,8 @@ class Diagnostic:
     code: str
     message: str
     severity: str = "ERROR"  # "ERROR", "WARNING", "INFO"
+    col: int = 0
+    end_col: int = 0
 
 
 @dataclass
@@ -90,10 +92,11 @@ RE_NOQA = re.compile(
 
 
 class SenpyAnalyzer:
-    def __init__(self, project_path: str, extra_files: list[str] | None = None, fix: bool = False):
+    def __init__(self, project_path: str, extra_files: list[str] | None = None, fix: bool = False, in_memory_files: dict[str, str] | None = None):
         self.project_path = project_path
         self.extra_files = extra_files or []
         self.fix = fix
+        self.in_memory_files =  in_memory_files or {}
         self.user_symbols: set[str] = set()
         self.declared_symbols: set[str] = set(BUILTIN_SYMBOLS)
         self.declared_labels: dict[str, tuple[str, int, str]] = {}
@@ -173,8 +176,12 @@ class SenpyAnalyzer:
 
     def _collect_symbols(self, file_path: str):
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
+            # Если файл прямо сейчас редактируется в VS Code — берем его из памяти!
+            if file_path in self.in_memory_files:
+                lines = self.in_memory_files[file_path].splitlines(keepends=True)
+            else:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
 
             idx = 0
             while idx < len(lines):
@@ -251,6 +258,27 @@ class SenpyAnalyzer:
                 break
         return idx, block
 
+    @staticmethod
+    def _get_utf16_range(line: str, sub: str | None = None) -> tuple[int, int]:
+        """Считает точные координаты слова в стандарте UTF-16 для VS Code/LSP."""
+        line_clean = line.rstrip("\r\n")
+        if not sub:
+            indent = len(line_clean) - len(line_clean.lstrip())
+            start = len(line_clean[:indent].encode("utf-16-le")) // 2
+            end = len(line_clean.encode("utf-16-le")) // 2
+            return start, max(start + 1, end)
+
+        idx = line_clean.find(sub)
+        if idx == -1:
+            indent = len(line_clean) - len(line_clean.lstrip())
+            start = len(line_clean[:indent].encode("utf-16-le")) // 2
+            end = len(line_clean.encode("utf-16-le")) // 2
+            return start, max(start + 1, end)
+
+        start = len(line_clean[:idx].encode("utf-16-le")) // 2
+        end = len(line_clean[:idx + len(sub)].encode("utf-16-le")) // 2
+        return start, end
+
     def _parse_noqa(self, line: str) -> tuple[bool, set[str] | None]:
         m = RE_NOQA.search(line)
         if not m:
@@ -283,8 +311,12 @@ class SenpyAnalyzer:
 
     def _analyze_file(self, file_path: str):
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
+            # Если файл прямо сейчас редактируется в VS Code — берем его из памяти!
+            if file_path in self.in_memory_files:
+                lines = self.in_memory_files[file_path].splitlines(keepends=True)
+            else:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
 
             self.total_lines += len(lines)
             file_modified = False
@@ -364,13 +396,16 @@ class SenpyAnalyzer:
                     self.referenced_labels.add(target_label)
                     if target_label not in self.declared_labels:
                         hint = self._suggest_similar_label(target_label)
+                        start_c, end_c = self._get_utf16_range(raw_line, target_label)
                         self._add_diagnostic(
                             Diagnostic(
                                 file_path=file_path,
                                 line_number=idx + 1,
                                 line_content=stripped,
                                 code="RPY302",
-                                message=f"{cmd_type.capitalize()} to non-existent label '{target_label}'{hint}. Causes ScriptError."
+                                message=f"{cmd_type.capitalize()} to non-existent label '{target_label}'{hint}. Causes ScriptError.",
+                                col=start_c,
+                                end_col=end_c
                             ),
                             noqa_map
                         )
@@ -457,16 +492,20 @@ class SenpyAnalyzer:
             for var in RE_INTERPOLATION.findall(inner_content):
                 if var not in self.declared_symbols and var not in extra_symbols:
                     hint = self._suggest_similar_symbol(var)
+                    start_c, end_c = self._get_utf16_range(raw_line, f"[{var}]")
                     self._add_diagnostic(
                         Diagnostic(
                             file_path=file_path,
                             line_number=line_idx,
                             line_content=raw_line.strip(),
                             code="RPY101",
-                            message=f"Variable '[{var}]' is not declared via 'default' or 'define'{hint}."
+                            message=f"Variable '[{var}]' is not declared via 'default' or 'define'{hint}.",
+                            col=start_c,
+                            end_col=end_c,
                         ),
                         noqa_map
                     )
+
 
             stack: list[str] = []
             for t_match in RE_TAG.finditer(inner_content):
@@ -777,6 +816,7 @@ class SenpyAnalyzer:
                     var_name = node.id
                     if var_name not in self.declared_symbols and var_name not in screen_local_symbols:
                         hint = self._suggest_similar_symbol(var_name)
+                        start_c, end_c = self._get_utf16_range(line_content, var_name)
                         if screen_name:
                             self._add_diagnostic(
                                 Diagnostic(
@@ -787,7 +827,9 @@ class SenpyAnalyzer:
                                     message=(
                                         f"Screen '{screen_name}' accesses undeclared variable '{var_name}'{hint}. "
                                         "Screens can be evaluated in the main menu or before game start, causing a crash."
-                                    )
+                                    ),
+                                    col=start_c,
+                                    end_col=end_c
                                 ),
                                 noqa_map
                             )
@@ -798,7 +840,9 @@ class SenpyAnalyzer:
                                     line_number=line_idx,
                                     line_content=line_content,
                                     code="RPY103",
-                                    message=f"Undeclared variable '{var_name}' in condition{hint}. Evaluating this condition will crash with NameError."
+                                    message=f"Undeclared variable '{var_name}' in condition{hint}. Evaluating this condition will crash with NameError.",
+                                    col=start_c,
+                                    end_col=end_c
                                 ),
                                 noqa_map
                             )

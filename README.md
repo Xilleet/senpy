@@ -39,18 +39,23 @@ The standard built-in `renpy lint` only checks for basic syntax and broken label
 
 ## Installation
 
-### Option 1: From PyPI
+Senpy works in two parts: the core analyzer (installed via pip) and the VS Code extension.
 
+### 1. Install the Core Linter
+
+Open your terminal and install the package from PyPI:
 ```bash
 pip install senpy-linter
 ```
 
-### Option 2: From Source (Development Mode)
+### 2. Install the VS Code Extension
 
-```bash
-git clone https://github.com/Xilleet/senpy.git
-cd senpy
-pip install -e .
+```text
+Go to the [Releases](https://github.com/Xilleet/senpy/releases) page of this repository.
+Download the latest senpy-vscode-X.X.X.vsix file.
+Open VS Code, go to the Extensions tab (Ctrl+Shift+X).
+Click the ... (Views and More Actions) menu at the top right of the Extensions panel.
+Select Install from VSIX... and choose the downloaded file.
 ```
 
 ## Usage
