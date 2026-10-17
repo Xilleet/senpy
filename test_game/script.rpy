@@ -29,10 +29,10 @@ label bad_end:
 
 label chapter_two:
     # 1. Незакрытый тег {b} (RPY301):
-    "Внимание: {b}опасная зона!{/b}"  
+    "Внимание: {b}опасная зона!"  
 
     # 2. Прыжок с опечаткой в имени метки (RPY302):
-    jump bad_edd    
+    jump bad_edd 
 
 $ player_gold -= 10 
 
@@ -58,4 +58,11 @@ label test_new_rules:
 
 # 3. Мертвая метка (на нее нигде во всей игре нет jump/call):
 label forgotten_secret_draft:
+    jump missing_secret_room
+    "Привет [ghost_character], добро пожаловать в {b}подвал!"
     "Этот кусок сценарист написал и забыл подключить к сюжету."
+
+label test_both:
+    jump completely_non_existent_label_xyz
+
+play music "audio/lost_ghost_theme.ogg"

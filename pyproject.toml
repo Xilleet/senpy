@@ -17,4 +17,5 @@ dependencies = [
 senpy = "senpy.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["senpy*"]
+include = ["senpy"]
+exclude = ["senpy-vscode", "senpy-vscode.*", "test_game"]
