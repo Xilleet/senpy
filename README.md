@@ -27,7 +27,7 @@ The standard built-in `renpy lint` only checks for basic syntax and broken label
 
 **Senpy** bridges this gap:
 
-* **Blazingly Fast:** Analyzes **77,000+ lines across 50 files in ~0.3 seconds** *(tested on DDLC: Blue Skies, warm SSD cache)*.
+* **Blazingly Fast:** Analyzes **77,000+ lines across 50 files in ~3 seconds** *(tested on DDLC: Blue Skies, warm SSD cache)*.
 * **Intra-Menu Flow Analysis:** Traces `menu:` choices to catch variables defined in one branch but missing in another.
 * **Save Game Protection:** Enforces state management rules, warning about variables assigned without a top-level `default`.
 * **Screen Safety Guard:** Prevents dangerous state mutations inside reactive screens that cause lag, redraw loops, and broken rollbacks.
@@ -45,9 +45,7 @@ Senpy works in two parts: the core analyzer (installed via pip) and the VS Code 
 
 ### 1. Install the Core Linter
 
-=======
 Open your terminal and install the package from PyPI:
-
 ```bash
 pip install senpy-linter
 ```
