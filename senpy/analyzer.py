@@ -35,31 +35,31 @@ class AnalysisResult:
     fixable_count: int = 0
 
 
-# Градация правил (Severity levels)
+# Градация правил
 RULE_SEVERITY = {
     "RPY101": "ERROR",    # Опечатка в [var] -> падение с KeyError
     "RPY102": "ERROR",    # += до default -> NameError при входе
     "RPY103": "ERROR",    # if var: без объявления -> NameError при входе
     "RPY104": "WARNING",  # $ var = 1 без default -> риск для сохранений/патчей
     "RPY105": "ERROR",    # Мутация define-константы -> ломает откат и сейвы
-    "RPY106": "WARNING",  # Использование import random / mutable set
-    "RPY201": "WARNING",  # Мутация внутри screen -> ломает откат и нагружает UI
-    "RPY202": "WARNING",  # Переменная в screen без default -> риск падения в меню
-    "RPY203": "WARNING",  # Кнопка без action -> некликабельный UI
-    "RPY204": "ERROR",    # Вызов или показ несуществующего экрана -> ScriptError
-    "RPY205": "WARNING",  # Тяжелые циклы for/while внутри экрана -> тормоза UI
-    "RPY301": "ERROR",    # Незакрытый тег диалога -> ломает стили/шрифт
-    "RPY302": "ERROR",    # Прыжок на несуществующую метку -> ScriptError
-    "RPY303": "INFO",     # Мертвая метка (эвристика, может быть динамический роутер)
-    "RPY304": "ERROR",    # Невалидный hex-цвет -> падение движка рендера
-    "RPY305": "ERROR",    # Неэкранированные кавычки внутри диалога
-    "RPY306": "WARNING",  # call метки без return в конце -> сюжет утекает дальше
+    "RPY106": "WARNING",  # Использование random в игровом процессе
+    "RPY201": "WARNING",  # Глобальная мутация внутри screen -> ломает откат
+    "RPY202": "WARNING",  # Переменная в screen без default
+    "RPY203": "WARNING",  # Кнопка без action
+    "RPY204": "ERROR",    # Несуществующий экран -> ScriptError
+    "RPY205": "WARNING",  # Циклы for/while внутри экрана
+    "RPY301": "ERROR",    # Незакрытый тег диалога
+    "RPY302": "ERROR",    # Прыжок на несуществующую метку
+    "RPY303": "INFO",     # Метка без статических ссылок (возможен динамический роутер)
+    "RPY304": "ERROR",    # Невалидный hex-цвет
+    "RPY305": "ERROR",    # Неэкранированные кавычки в диалоге
+    "RPY306": "WARNING",  # Поток исполнения call не гарантирует возврат
     "RPY401": "WARNING",  # Развилка menu: переменная объявлена не везде
-    "RPY402": "WARNING",  # Пустой выбор в menu -> сквозной провал сюжета
-    "RPY403": "WARNING",  # Заведомо ложное или мертвое условие
+    "RPY402": "WARNING",  # Пустой выбор в menu
+    "RPY403": "WARNING",  # Заведомо ложное условие
     "RPY501": "ERROR",    # Отсутствует аудиофайл
-    "RPY502": "WARNING",  # Спрайт, поза или фон не найдены в ассетах
-    "RPY504": "WARNING",  # Дубликат объявления image
+    "RPY502": "WARNING",  # Спрайт не найден в ассетах
+    "RPY504": "WARNING",  # Повторное объявление/переопределение image
 }
 
 BUILTIN_SCREENS = {
@@ -77,6 +77,12 @@ BUILTIN_SYMBOLS = {
     "persistent",
     "renpy",
     "gui",
+    "layout",
+    "store",
+    "ui",
+    "im",
+    "Action",
+    "Preferences",
     "main_menu",
     "_return",
     "_in_replay",
@@ -107,6 +113,7 @@ SYSTEM_LABELS = {
     "quit",
     "after_warp",
     "hide_windows",
+    "warningscreen",
 }
 
 SELF_CLOSING_TAGS = {"w", "p", "nw", "fast", "space", "vspace"}
@@ -121,11 +128,11 @@ NAMED_COLORS = {
 
 RE_DEFAULT = re.compile(r"^\s*default\s+([a-zA-Z_][a-zA-Z0-9_]*)")
 RE_DEFINE = re.compile(r"^\s*define\s+([a-zA-Z_][a-zA-Z0-9_]*)")
-RE_IMAGE_DEF = re.compile(r"^\s*image\s+([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)\s*[:=]")
+RE_IMAGE_DEF = re.compile(r"^\s*image\s+([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)\s*(?:=|:)(.*)")
 RE_RETURN = re.compile(r"^\s*return\b")
-RE_LABEL = re.compile(r"^\s*label\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(.*\))?\s*:")
+RE_LABEL = re.compile(r"^\s*label\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\((.*?)\))?\s*:")
 RE_JUMP_CALL = re.compile(
-    r"^\s*(jump|call)\s+(?!screen\b|expression\b)([a-zA-Z_][a-zA-Z0-9_]*)"
+    r"^\s*(jump|call)\s+(?!screen\b)([a-zA-Z_][a-zA-Z0-9_]*|\bexpression\b)"
 )
 RE_PLAY_AUDIO = re.compile(
     r"^\s*play\s+(?:music|sound|voice|audio)\s+[\"']([^\"']+)[\"']", re.IGNORECASE
@@ -148,13 +155,24 @@ RE_STRING_MATCH = re.compile(
     r'("([^"\\]*(?:\\.[^"\\]*)*)")|(\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
 )
 
+# Строгий матчинг диалоговой реплики для исключения выражений экранов
+RE_DIALOGUE_LINE = re.compile(
+    r'^\s*(?:([a-zA-Z_][a-zA-Z0-9_]*)\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')\s*$'
+)
+
 RE_NOQA = re.compile(
     r"#\s*(?:noqa|senpy:\s*ignore)(?:\[([a-zA-Z0-9_,\s]+)\]|:\s*([a-zA-Z0-9_,\s]+))?",
     re.IGNORECASE,
 )
 
+# Имена локальных/служебных переменных в UI и циклах, не являющихся глобальным состоянием
+SCREEN_LOCAL_IGNORE = {
+    "start", "end", "cols", "slot", "i", "idx", "item", "page",
+    "original", "fixed1", "fixed2", "fixed3", "currentTrack", "lastPlayed"
+}
+
+
 def _infer_default_value(val_node: ast.AST | None) -> str:
-    """Умно определяет стартовое значение для default по типу выражения."""
     if val_node is None:
         return "False"
     if isinstance(val_node, ast.Constant):
@@ -179,6 +197,7 @@ def _infer_default_value(val_node: ast.AST | None) -> str:
             return "{}"
     return "False"
 
+
 class SenpyAnalyzer:
     def __init__(
         self,
@@ -197,12 +216,15 @@ class SenpyAnalyzer:
         self.user_symbols: set[str] = set()
         self.declared_symbols: set[str] = set(BUILTIN_SYMBOLS)
         self.defined_constants: set[str] = set()
+        self.declared_characters: set[str] = set()
         self.declared_labels: dict[str, tuple[str, int, str]] = {}
         self.declared_screens: dict[str, tuple[str, int]] = {}
         self.valid_images: set[str] = set(BUILTIN_COLORS)
         self.labels_with_return: set[str] = set()
-        self.declared_images: dict[str, tuple[str, int]] = {}
+        self.label_outgoing_jumps: dict[str, set[str]] = {}
+        self.declared_images: dict[str, tuple[str, int, str]] = {}
         self.referenced_labels: set[str] = set()
+        self.has_dynamic_jumps: bool = False
         self.known_assets: set[str] = set()
         self.diagnostics: list[Diagnostic] = []
         self.missing_defaults: dict[str, str] = {}
@@ -232,10 +254,14 @@ class SenpyAnalyzer:
         self.referenced_labels.clear()
         self.valid_images = set(BUILTIN_COLORS)
         self.labels_with_return.clear()
+        self.label_outgoing_jumps.clear()
         self.declared_images.clear()
+        self.has_dynamic_jumps = False
         self.total_lines = 0
         self.fixed_count = 0
         self.fixable_count = 0
+        self.defined_constants.clear()
+        self.declared_characters.clear()
 
         self._index_assets()
         rpy_files = self._get_rpy_files() + self.extra_files
@@ -319,6 +345,8 @@ class SenpyAnalyzer:
                     lines = f.readlines()
 
             idx = 0
+            current_label: str | None = None
+
             while idx < len(lines):
                 line = lines[idx]
                 clean = line.split("#")[0].strip()
@@ -340,6 +368,10 @@ class SenpyAnalyzer:
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
                     self.defined_constants.add(var)
+
+                    if "Character" in clean or "DynamicCharacter" in clean:
+                        self.declared_characters.add(var)
+
                     idx += 1
                     continue
 
@@ -351,47 +383,63 @@ class SenpyAnalyzer:
                 m_label = RE_LABEL.match(clean)
                 if m_label:
                     label_name = m_label.group(1)
+                    current_label = label_name
                     self.declared_labels[label_name] = (file_path, idx + 1, clean)
-                    
-                    param_match = re.search(r"\((.*?)\)", clean)
-                    if param_match:
-                        raw_params = param_match.group(1)
+                    self.label_outgoing_jumps[label_name] = set()
+
+                    raw_params = m_label.group(2)
+                    if raw_params:
                         for p in raw_params.split(","):
                             p_clean = p.split("=")[0].strip()
                             if p_clean and p_clean.isidentifier():
                                 self.declared_symbols.add(p_clean)
 
-                    check_idx = idx + 1
-                    while check_idx < len(lines):
-                        check_line = lines[check_idx].split("#")[0].strip()
-                        if RE_LABEL.match(check_line):
-                            break
-                        if RE_RETURN.match(check_line):
-                            self.labels_with_return.add(label_name)
-                            break
-                        check_idx += 1
-
                     idx += 1
                     continue
+
+                if current_label:
+                    if RE_RETURN.match(clean):
+                        self.labels_with_return.add(current_label)
+                    m_jump_in_label = re.match(r"^\s*jump\s+([a-zA-Z_][a-zA-Z0-9_]*)", clean)
+                    if m_jump_in_label:
+                        self.label_outgoing_jumps[current_label].add(m_jump_in_label.group(1))
 
                 m_img = RE_IMAGE_DEF.match(clean)
                 if m_img:
                     img_name = m_img.group(1).strip()
+                    img_body = m_img.group(2).strip()
+
                     if img_name in self.declared_images:
-                        prev_file, prev_line = self.declared_images[img_name]
+                        prev_file, prev_line, prev_body = self.declared_images[img_name]
+                        is_exact_dup = (img_body == prev_body)
+                        msg = (
+                            f"Duplicate image declaration '{img_name}'. Identical to declaration at {os.path.basename(prev_file)}:{prev_line}."
+                            if is_exact_dup else
+                            f"Image '{img_name}' is redefined (override). Previously declared at {os.path.basename(prev_file)}:{prev_line}."
+                        )
                         self.diagnostics.append(
                             Diagnostic(
                                 file_path=file_path,
                                 line_number=idx + 1,
                                 line_content=clean,
                                 code="RPY504",
-                                message=f"Duplicate image declaration '{img_name}'. Previously declared in {os.path.basename(prev_file)}:{prev_line}."
+                                message=msg,
+                                severity="WARNING" if not is_exact_dup else "INFO",
                             )
                         )
-                    else:
-                        self.declared_images[img_name] = (file_path, idx + 1)
+                    self.declared_images[img_name] = (file_path, idx + 1, img_body)
                     idx += 1
                     continue
+
+                # Регистрация динамических переходов
+                if "renpy.call(" in clean or "renpy.jump(" in clean or "call expression" in clean or "jump expression" in clean:
+                    self.has_dynamic_jumps = True
+
+                # Сбор упоминаний меток внутри строк Python
+                for str_match in re.finditer(r'["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']', clean):
+                    candidate = str_match.group(1)
+                    if candidate.isidentifier():
+                        self.referenced_labels.add(candidate)
 
                 m_init = RE_INIT_PYTHON_START.match(line)
                 if m_init:
@@ -408,10 +456,8 @@ class SenpyAnalyzer:
         code = textwrap.dedent("".join(code_lines))
         with contextlib.suppress(SyntaxError):
             tree = ast.parse(code)
-            for node in tree.body:
-                if isinstance(
-                    node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-                ):
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                     self.user_symbols.add(node.name)
                     self.declared_symbols.add(node.name)
                 elif isinstance(node, ast.Assign):
@@ -419,6 +465,9 @@ class SenpyAnalyzer:
                         if isinstance(target, ast.Name):
                             self.user_symbols.add(target.id)
                             self.declared_symbols.add(target.id)
+                elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    if node.value.isidentifier():
+                        self.referenced_labels.add(node.value)
 
     def _consume_block(self, lines: list[str], start_idx: int, header_indent: int) -> tuple[int, list[str]]:
         block = []
@@ -493,13 +542,20 @@ class SenpyAnalyzer:
             return f" (did you mean '{matches[0]}' ?)"
         return ""
 
-    def _suggest_similar_label(self, unknown_label: str) -> str:
-        matches = difflib.get_close_matches(
-            unknown_label, list(self.declared_labels.keys()), n=1, cutoff=0.6
-        )
-        if matches:
-            return f" (did you mean '{matches[0]}' ?)"
-        return ""
+    def _can_reach_return(self, label_name: str, visited: set[str] | None = None) -> bool:
+        """Рекурсивно проверяет, может ли поток выполнения метки достичь return."""
+        if label_name in self.labels_with_return:
+            return True
+        if visited is None:
+            visited = set()
+        if label_name in visited:
+            return False
+        visited.add(label_name)
+
+        for target in self.label_outgoing_jumps.get(label_name, set()):
+            if self._can_reach_return(target, visited):
+                return True
+        return False
 
     def _analyze_file(self, file_path: str):
         try:
@@ -523,6 +579,7 @@ class SenpyAnalyzer:
             current_screen: str | None = None
             current_screen_indent = 0
             screen_local_symbols: set[str] = set()
+            in_label_context: bool = False
             branch_uninitialized: dict[str, tuple[str, str]] = {}
 
             while idx < len(lines):
@@ -539,9 +596,6 @@ class SenpyAnalyzer:
                 if m_init:
                     indent = len(m_init.group(1))
                     next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
-                    if block_lines:
-                        code = textwrap.dedent("".join(block_lines))
-                        self._check_python_ast(code, file_path, start_line=idx + 2, noqa_map=noqa_map, lines=lines)
                     idx = next_idx
                     continue
 
@@ -552,12 +606,14 @@ class SenpyAnalyzer:
                 m_label = RE_LABEL.match(clean)
                 if m_label:
                     branch_uninitialized.clear()
+                    in_label_context = True
 
                 m_screen = RE_SCREEN_START.match(raw_line)
                 if m_screen:
                     current_screen = m_screen.group(2)
                     current_screen_indent = len(m_screen.group(1))
                     screen_local_symbols.clear()
+                    in_label_context = False
                     params_str = m_screen.group(3)
                     if params_str:
                         for p in params_str.split(","):
@@ -591,9 +647,9 @@ class SenpyAnalyzer:
                                     code="RPY203",
                                     message=f"{btn_word.capitalize()} is missing an 'action' argument and will not respond to clicks.",
                                     col=start_c,
-                                    end_col=end_c
+                                    end_col=end_c,
                                 ),
-                                noqa_map
+                                noqa_map,
                             )
 
                 m_menu = RE_MENU_START.match(raw_line)
@@ -627,12 +683,12 @@ class SenpyAnalyzer:
                                 code="RPY204",
                                 message=f"Screen '{screen_target}' is not declared in project{hint}. Causes runtime ScriptError.",
                                 col=start_c,
-                                end_col=end_c
+                                end_col=end_c,
                             ),
-                            noqa_map
+                            noqa_map,
                         )
 
-                # RPY502: Проверка спрайтов и фонов в show / scene
+                # RPY502: Проверка спрайтов и фонов
                 m_show = RE_SHOW_SCENE.match(stripped)
                 if m_show and current_screen is None:
                     raw_tokens = m_show.group(2).split()
@@ -647,16 +703,14 @@ class SenpyAnalyzer:
                         base_tag = img_tokens[0]
                         all_valid = self.valid_images.union(self.declared_images.keys())
 
-                        # В Ren'Py "show sayori at t42" легален, если базовый персонаж существует
                         is_single_tag_manipulation = len(img_tokens) == 1 and m_show.group(1) == "show"
                         has_base = any(img.startswith(base_tag + " ") or img == base_tag for img in all_valid)
 
                         if is_single_tag_manipulation and has_base:
-                            pass  # Это просто перемещение или скрытие уже показанного персонажа
+                            pass
                         elif full_img_tag not in all_valid and full_img_tag not in BUILTIN_COLORS:
                             matches = difflib.get_close_matches(full_img_tag, list(all_valid), n=1, cutoff=0.6)
                             hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
-
                             start_c, end_c = self._get_utf16_range(raw_line, full_img_tag)
                             msg = f"Sprite or background '{full_img_tag}' not found in assets or 'image' definitions{hint}."
                             if has_base and not hint:
@@ -673,48 +727,52 @@ class SenpyAnalyzer:
                                     col=start_c,
                                     end_col=end_c,
                                     fix_title=f"Change to '{best_sprite}'" if best_sprite else None,
-                                    fix_replacement=best_sprite
+                                    fix_replacement=best_sprite,
                                 ),
-                                noqa_map
+                                noqa_map,
                             )
 
                 m_jump = RE_JUMP_CALL.match(stripped)
                 if m_jump:
                     cmd_type, target_label = m_jump.group(1), m_jump.group(2)
-                    self.referenced_labels.add(target_label)
-                    if target_label not in self.declared_labels:
-                        matches = difflib.get_close_matches(target_label, list(self.declared_labels.keys()), n=1, cutoff=0.6)
-                        best_match = matches[0] if matches else None
-                        hint = f" (did you mean '{best_match}' ?)" if best_match else ""
-                        start_c, end_c = self._get_utf16_range(raw_line, target_label)
-                        self._add_diagnostic(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=idx + 1,
-                                line_content=stripped,
-                                code="RPY302",
-                                message=f"{cmd_type.capitalize()} to non-existent label '{target_label}'{hint}. Causes ScriptError.",
-                                col=start_c,
-                                end_col=end_c,
-                                fix_title=f"Change to '{best_match}'" if best_match else None,
-                                fix_replacement=best_match
-                            ),
-                            noqa_map
-                        )
-                    if cmd_type == "jump":
-                        branch_uninitialized.clear()
-                    elif cmd_type == "call":
-                        if target_label in self.declared_labels and target_label not in self.labels_with_return:
+                    if target_label == "expression":
+                        self.has_dynamic_jumps = True
+                    else:
+                        self.referenced_labels.add(target_label)
+                        if target_label not in self.declared_labels:
+                            matches = difflib.get_close_matches(target_label, list(self.declared_labels.keys()), n=1, cutoff=0.6)
+                            best_match = matches[0] if matches else None
+                            hint = f" (did you mean '{best_match}' ?)" if best_match else ""
+                            start_c, end_c = self._get_utf16_range(raw_line, target_label)
                             self._add_diagnostic(
                                 Diagnostic(
                                     file_path=file_path,
                                     line_number=idx + 1,
                                     line_content=stripped,
-                                    code="RPY306",
-                                    message=f"Called label '{target_label}' does not contain a 'return' statement. Control flow will accidentally fall through to subsequent labels."
+                                    code="RPY302",
+                                    message=f"{cmd_type.capitalize()} to non-existent label '{target_label}'{hint}. Causes ScriptError.",
+                                    col=start_c,
+                                    end_col=end_c,
+                                    fix_title=f"Change to '{best_match}'" if best_match else None,
+                                    fix_replacement=best_match,
                                 ),
-                                noqa_map
+                                noqa_map,
                             )
+                        if cmd_type == "jump":
+                            branch_uninitialized.clear()
+                        elif cmd_type == "call":
+                            # RPY306: CFG проверка достижимости возврата
+                            if target_label in self.declared_labels and not self._can_reach_return(target_label):
+                                self._add_diagnostic(
+                                    Diagnostic(
+                                        file_path=file_path,
+                                        line_number=idx + 1,
+                                        line_content=stripped,
+                                        code="RPY306",
+                                        message=f"Static analysis could not find a 'return' path from called label '{target_label}'. Verify that control flow returns correctly.",
+                                    ),
+                                    noqa_map,
+                                )
                     idx += 1
                     continue
 
@@ -733,26 +791,27 @@ class SenpyAnalyzer:
                                 code="RPY501",
                                 message=f"Audio file '{raw_audio_str}' not found in project or .rpa archives.",
                                 col=start_c,
-                                end_col=end_c
+                                end_col=end_c,
                             ),
-                            noqa_map
+                            noqa_map,
                         )
 
-                # RPY305: Проверка кавычек
-                if not stripped.startswith(("#", "$", "image", "default", "define", "init", "Text(", "Composite(", "textbutton", "imagebutton", "action ", "add ", "Play(", "if ", "elif ", "text ")):
-                    if not re.search(r'\baction\b|\bPlay\(|\bImageDissolve\(', stripped):
-                        if not re.search(r'["\'],\s*["\']', stripped) and not stripped.endswith(","):
-                            if re.search(r'(?<!\\)"[^"]*(?<!\\)"\s+[a-zA-Z0-9_а-яА-ЯёЁ]+.*(?<!\\)"', stripped):
-                                self._add_diagnostic(
-                                    Diagnostic(
-                                        file_path=file_path,
-                                        line_number=idx + 1,
-                                        line_content=stripped,
-                                        code="RPY305",
-                                        message="Unescaped quotes inside dialogue text. Use '\\\"' instead of '\"' to avoid syntax errors."
-                                    ),
-                                    noqa_map
-                                )
+                # RPY305: Проверка неэкранированных кавычек ТОЛЬКО в диалогах сценария
+                if in_label_context and current_screen is None:
+                    if RE_DIALOGUE_LINE.match(stripped):
+                        # Проверяем незаэкранированные внутренние двойные кавычки
+                        inner_quote_match = re.search(r'(?<!\\)"[^"\\]*(?<!\\)"\s+[a-zA-Z0-9_а-яА-ЯёЁ]+.*(?<!\\)"', stripped)
+                        if inner_quote_match:
+                            self._add_diagnostic(
+                                Diagnostic(
+                                    file_path=file_path,
+                                    line_number=idx + 1,
+                                    line_content=stripped,
+                                    code="RPY305",
+                                    message="Unescaped quotes inside dialogue text. Use '\\\"' instead of '\"' to avoid syntax errors.",
+                                ),
+                                noqa_map,
+                            )
 
                 new_line, modified = self._check_and_fix_quoted_strings(
                     file_path, idx + 1, raw_line, screen_local_symbols, noqa_map
@@ -774,8 +833,9 @@ class SenpyAnalyzer:
                             idx + 1,
                             stripped,
                             current_screen,
+                            screen_local_symbols,
                             noqa_map,
-                            lines=lines
+                            lines=lines,
                         )
                     else:
                         self._check_python_ast(
@@ -798,8 +858,9 @@ class SenpyAnalyzer:
                                 idx + 2,
                                 stripped,
                                 current_screen,
+                                screen_local_symbols,
                                 noqa_map,
-                                lines=lines
+                                lines=lines,
                             )
                         else:
                             self._check_python_ast(
@@ -893,9 +954,9 @@ class SenpyAnalyzer:
                                     code="RPY304",
                                     message=f"Malformed hex color '{color_val}' in {{color}} tag.",
                                     col=start_c,
-                                    end_col=end_c
+                                    end_col=end_c,
                                 ),
-                                noqa_map
+                                noqa_map,
                             )
                     elif color_val not in NAMED_COLORS:
                         self._add_diagnostic(
@@ -970,9 +1031,9 @@ class SenpyAnalyzer:
                             col=start_c,
                             end_col=end_c,
                             fix_title=f"Auto-close tag(s) with '{closing_tags}'",
-                            fix_replacement=closing_tags
+                            fix_replacement=closing_tags,
                         ),
-                        noqa_map
+                        noqa_map,
                     )
 
         return reconstructed_line, modified
@@ -980,19 +1041,25 @@ class SenpyAnalyzer:
     def _check_unreachable_labels(self):
         for label_name, (file_path, line_idx, content) in self.declared_labels.items():
             clean_name = label_name.strip().lower()
-            if clean_name.startswith("_") or clean_name in SYSTEM_LABELS or clean_name in ("start", "splashscreen", "after_load", "quit", "before_main_menu", "warningscreen"):
+            if clean_name.startswith("_") or clean_name in SYSTEM_LABELS:
                 continue
             if label_name not in self.referenced_labels:
+                msg = f"No static references found to label '{label_name}'."
+                if self.has_dynamic_jumps:
+                    msg += " Project uses dynamic routing, verify target reaches."
+                else:
+                    msg += " Verify if it is dead code or invoked dynamically."
+
                 start_c, end_c = self._get_utf16_range(content, label_name)
                 diag = Diagnostic(
                     file_path=file_path,
                     line_number=line_idx,
                     line_content=content,
                     code="RPY303",
-                    message=f"Label '{label_name}' is declared but never jumped to or called. It might be unreachable dead code or dynamic router target.",
+                    message=msg,
                     severity="INFO",
                     col=start_c,
-                    end_col=end_c
+                    end_col=end_c,
                 )
                 self.diagnostics.append(diag)
 
@@ -1021,9 +1088,9 @@ class SenpyAnalyzer:
                         code="RPY402",
                         message=f"Menu choice '{choice_dict['title']}' has no statements inside and will immediately fall through.",
                         col=start_c,
-                        end_col=end_c
+                        end_col=end_c,
                     ),
-                    noqa_map
+                    noqa_map,
                 )
 
         while idx < len(lines):
@@ -1168,7 +1235,17 @@ class SenpyAnalyzer:
                         noqa_map,
                     )
 
-    def _check_screen_mutation(self, py_code: str, file_path: str, line_idx: int, line_content: str, screen_name: str, noqa_map: dict, lines: list[str] | None = None):
+    def _check_screen_mutation(
+        self,
+        py_code: str,
+        file_path: str,
+        line_idx: int,
+        line_content: str,
+        screen_name: str,
+        screen_local_symbols: set[str],
+        noqa_map: dict,
+        lines: list[str] | None = None,
+    ):
         with contextlib.suppress(SyntaxError):
             tree = ast.parse(py_code)
             for node in ast.walk(tree):
@@ -1185,23 +1262,32 @@ class SenpyAnalyzer:
                             code="RPY205",
                             message=(
                                 f"Imperative '{loop_type}' loop inside screen '{screen_name}'. "
-                                "Python loops inside screens severely hurt UI prediction performance. "
+                                "Python loops inside screens hurt UI prediction performance. "
                                 "Use screen-level declarative 'for' loops instead."
                             ),
                             col=start_c,
-                            end_col=end_c
+                            end_col=end_c,
                         ),
-                        noqa_map
+                        noqa_map,
                     )
                     break
 
                 if isinstance(node, (ast.Assign, ast.AugAssign)):
                     target_name = "variable"
                     target_node = node.target if isinstance(node, ast.AugAssign) else (node.targets[0] if node.targets else None)
+                    is_attr = False
                     if isinstance(target_node, ast.Name):
                         target_name = target_node.id
+                        screen_local_symbols.add(target_name)
                     elif isinstance(target_node, ast.Attribute):
-                        target_name = ast.unparse(target_node) 
+                        target_name = ast.unparse(target_node)
+                        is_attr = True
+
+                    # Игнорируем стили и локальные UI-расчёты
+                    if is_attr and target_name.startswith("style."):
+                        continue
+                    if target_name in SCREEN_LOCAL_IGNORE or target_name in screen_local_symbols:
+                        continue
 
                     raw_l = lines[line_idx - 1] if lines and 0 <= line_idx - 1 < len(lines) else line_content
                     start_c, end_c = self._get_utf16_range(raw_l, target_name)
@@ -1214,13 +1300,12 @@ class SenpyAnalyzer:
                             code="RPY201",
                             message=(
                                 f"Direct state mutation '{target_name}' inside screen '{screen_name}'. "
-                                "Screens are evaluated predictively and continuously! "
-                                "Use screen Actions (e.g., SetVariable, Function) instead."
+                                "Screens are evaluated predictively. Use screen Actions instead."
                             ),
                             col=start_c,
-                            end_col=end_c
+                            end_col=end_c,
                         ),
-                        noqa_map
+                        noqa_map,
                     )
                     break
 
@@ -1240,13 +1325,13 @@ class SenpyAnalyzer:
                                     line_number=real_line,
                                     line_content=raw_l.strip(),
                                     code="RPY106",
-                                    message="Do not use standard 'import random'! It breaks Ren'Py rollback and save-game determinism. Use 'renpy.random' instead.",
+                                    message="Standard 'random' used during gameplay. Rollback and saves may become non-deterministic; prefer 'renpy.random'.",
                                     col=start_c,
                                     end_col=end_c,
                                     fix_title="Replace with 'from renpy import random'",
-                                    fix_replacement="from renpy import random"
+                                    fix_replacement="from renpy import random",
                                 ),
-                                noqa_map
+                                noqa_map,
                             )
                 elif isinstance(node, ast.ImportFrom) and node.module == "random":
                     real_line = start_line + getattr(node, "lineno", 1) - 1
@@ -1258,11 +1343,11 @@ class SenpyAnalyzer:
                             line_number=real_line,
                             line_content=raw_l.strip(),
                             code="RPY106",
-                            message="Do not import from 'random'! It breaks Ren'Py rollback and save-game determinism. Use 'renpy.random' instead.",
+                            message="Standard 'random' used during gameplay. Rollback and saves may become non-deterministic; prefer 'renpy.random'.",
                             col=start_c,
-                            end_col=end_c
+                            end_col=end_c,
                         ),
-                        noqa_map
+                        noqa_map,
                     )
 
                 elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
@@ -1274,18 +1359,19 @@ class SenpyAnalyzer:
                     start_c, end_c = self._get_utf16_range(raw_l, var_name)
 
                     if var_name in self.defined_constants:
-                        self._add_diagnostic(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=real_line,
-                                line_content=raw_l.strip(),
-                                code="RPY105",
-                                message=f"Constant '{var_name}' was declared with 'define', but modified via '+='. Use 'default' for mutable variables.",
-                                col=start_c,
-                                end_col=end_c
-                            ),
-                            noqa_map
-                        )
+                        if var_name not in self.declared_characters:
+                            self._add_diagnostic(
+                                Diagnostic(
+                                    file_path=file_path,
+                                    line_number=real_line,
+                                    line_content=raw_l.strip(),
+                                    code="RPY105",
+                                    message=f"Constant '{var_name}' was declared with 'define', but modified via '+='. Use 'default' for mutable variables.",
+                                    col=start_c,
+                                    end_col=end_c,
+                                ),
+                                noqa_map,
+                            )
                     elif var_name not in self.declared_symbols:
                         hint = self._suggest_similar_symbol(var_name)
                         self._add_diagnostic(
@@ -1296,9 +1382,9 @@ class SenpyAnalyzer:
                                 code="RPY102",
                                 message=f"Augmented assignment to '{var_name}' before declaration via 'default'{hint}. Causes runtime NameError.",
                                 col=start_c,
-                                end_col=end_c
+                                end_col=end_c,
                             ),
-                            noqa_map
+                            noqa_map,
                         )
 
                 elif isinstance(node, ast.Assign):
@@ -1322,11 +1408,11 @@ class SenpyAnalyzer:
                                     line_number=real_line,
                                     line_content=raw_l.strip(),
                                     code="RPY106",
-                                    message="Do not use Python's mutable 'set'! Ren'Py rollback does not track standard sets and will corrupt saves. Use a list '[]' or 'renpy.revertable_set()' instead.",
+                                    message="Mutable 'set' used in story flow. Ren'Py rollback does not track standard sets. Prefer list '[]' or 'renpy.revertable_set()'.",
                                     col=start_c,
-                                    end_col=end_c
+                                    end_col=end_c,
                                 ),
-                                noqa_map
+                                noqa_map,
                             )
                         if isinstance(target, ast.Name):
                             self._verify_assign_target(target.id, file_path, real_line, noqa_map, raw_line=raw_l, val_node=node.value)
@@ -1336,7 +1422,7 @@ class SenpyAnalyzer:
                                     self._verify_assign_target(elt.id, file_path, real_line, noqa_map, raw_line=raw_l, val_node=node.value)
 
     def _verify_assign_target(self, var_name: str, file_path: str, line_idx: int, noqa_map: dict, raw_line: str = "", val_node: ast.AST | None = None):
-        if var_name.startswith("_"):
+        if var_name.startswith("_") or var_name in self.declared_characters:
             return
 
         start_c, end_c = self._get_utf16_range(raw_line, var_name) if raw_line else (0, 0)
@@ -1353,9 +1439,9 @@ class SenpyAnalyzer:
                         "Ren'Py expects 'default' for variables that change, otherwise rollback and saves will corrupt."
                     ),
                     col=start_c,
-                    end_col=end_c
+                    end_col=end_c,
                 ),
-                noqa_map
+                noqa_map,
             )
             return
 
@@ -1372,13 +1458,13 @@ class SenpyAnalyzer:
                         "This will break save games and cause NameError on other story branches."
                     ),
                     col=start_c,
-                    end_col=end_c
+                    end_col=end_c,
                 ),
-                noqa_map
+                noqa_map,
             )
             self.declared_symbols.add(var_name)
         if var_name not in self.missing_defaults:
-                self.missing_defaults[var_name] = _infer_default_value(val_node)
+            self.missing_defaults[var_name] = _infer_default_value(val_node)
 
     def _check_condition(
         self,
@@ -1401,7 +1487,7 @@ class SenpyAnalyzer:
                         code="RPY403",
                         message=f"Condition '{expr}' is always False. This block will never execute.",
                     ),
-                    noqa_map
+                    noqa_map,
                 )
             elif isinstance(cond_tree.body, ast.BoolOp) and isinstance(cond_tree.body.op, ast.And):
                 names = {n.id for n in cond_tree.body.values if isinstance(n, ast.Name)}
@@ -1420,13 +1506,13 @@ class SenpyAnalyzer:
                             code="RPY403",
                             message=f"Condition contains mutually exclusive contradiction: '{var_c} and not {var_c}'. Always evaluates to False.",
                         ),
-                        noqa_map
+                        noqa_map,
                     )
             tree = ast.parse(expr, mode="eval")
             for node in ast.walk(tree):
                 if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                     var_name = node.id
-                    if var_name.startswith("_"):
+                    if var_name.startswith("_") or var_name in SCREEN_LOCAL_IGNORE:
                         continue
                     if var_name not in self.declared_symbols and var_name not in screen_local_symbols:
                         hint = self._suggest_similar_symbol(var_name)
@@ -1462,11 +1548,9 @@ class SenpyAnalyzer:
                             )
 
     def generate_defaults_file(self) -> tuple[str, int]:
-        """Генерирует файл senpy_defaults.rpy со всеми найденными переменными."""
         if not self.missing_defaults:
             return "", 0
 
-        # Если в проекте есть папка game/, сохраняем прямо в неё
         game_dir = os.path.join(self.project_path, "game")
         out_dir = game_dir if os.path.isdir(game_dir) else self.project_path
         out_file = os.path.join(out_dir, "senpy_defaults.rpy")
