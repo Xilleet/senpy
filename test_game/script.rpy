@@ -50,7 +50,7 @@ label bad_end:
 
 label chapter_two:
     # 1. Незакрытый тег {b} (RPY301):
-    "Внимание: {b}опасная зона!"  
+    "Внимание: {b}опасная зона!"
 
     # 2. Прыжок с опечаткой в имени метки (RPY302):
     jump bad_edd 
@@ -85,3 +85,12 @@ label forgotten_secret_draft:
     jump missing_secret_room
     "Привет [ghost_character], добро пожаловать в {b}подвал!"
     "Этот кусок сценарист написал и забыл подключить к сюжету."
+
+# 1. RPY106: Опасный mutable set в стейте:
+    $ bad_inventory = set()
+
+    # 2. RPY204: Вызов несуществующего экрана:
+    call screen non_existent_shop_menu
+
+    # 3. RPY502: Опечатка в спрайте (попытка показать спрайт, которого нет):
+    show sayori 99z_crazy_pose

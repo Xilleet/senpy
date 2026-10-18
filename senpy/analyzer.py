@@ -22,6 +22,8 @@ class Diagnostic:
     severity: str = "ERROR"  # "ERROR", "WARNING", "INFO"
     col: int = 0
     end_col: int = 0
+    fix_title: str | None = None
+    fix_replacement: str | None = None
 
 
 @dataclass
@@ -40,10 +42,11 @@ RULE_SEVERITY = {
     "RPY103": "ERROR",    # if var: без объявления -> NameError при входе
     "RPY104": "WARNING",  # $ var = 1 без default -> риск для сохранений/патчей
     "RPY105": "ERROR",    # Мутация define-константы -> ломает откат и сейвы
-    "RPY106": "WARNING",  # Использование import random вместо renpy.random (ломает откат)
+    "RPY106": "WARNING",  # Использование import random / mutable set
     "RPY201": "WARNING",  # Мутация внутри screen -> ломает откат и нагружает UI
     "RPY202": "WARNING",  # Переменная в screen без default -> риск падения в меню
     "RPY203": "WARNING",  # Кнопка без action -> некликабельный UI
+    "RPY204": "ERROR",    # Вызов или показ несуществующего экрана -> ScriptError
     "RPY205": "WARNING",  # Тяжелые циклы for/while внутри экрана -> тормоза UI
     "RPY301": "ERROR",    # Незакрытый тег диалога -> ломает стили/шрифт
     "RPY302": "ERROR",    # Прыжок на несуществующую метку -> ScriptError
@@ -55,8 +58,19 @@ RULE_SEVERITY = {
     "RPY402": "WARNING",  # Пустой выбор в menu -> сквозной провал сюжета
     "RPY403": "WARNING",  # Заведомо ложное или мертвое условие
     "RPY501": "ERROR",    # Отсутствует аудиофайл
+    "RPY502": "WARNING",  # Спрайт, поза или фон не найдены в ассетах
     "RPY504": "WARNING",  # Дубликат объявления image
 }
+
+BUILTIN_SCREENS = {
+    "say", "choice", "nvl", "main_menu", "navigation", "file_slots",
+    "save", "load", "preferences", "confirm", "history", "help",
+    "keyboard_help", "mouse_help", "gamepad_help", "input", "notify",
+    "quick_menu", "dialog", "ctc"
+}
+
+BUILTIN_COLORS = {"black", "white", "trueblack", "none"}
+CLAUSE_KEYWORDS = {"at", "as", "with", "zorder", "behind", "onlayer"}
 
 BUILTIN_SYMBOLS = {
     "config",
@@ -67,6 +81,8 @@ BUILTIN_SYMBOLS = {
     "_return",
     "_in_replay",
     "_window_during_functions",
+    "_history_list",
+    "_restart",
     "name",
     "player",
     "theme",
@@ -75,6 +91,11 @@ BUILTIN_SYMBOLS = {
     "what",
     "prefix_",
     *dir(builtins),
+}
+
+IGNORED_DIRS = {
+    ".git", ".svn", ".hg", "node_modules", ".venv", "venv", "env",
+    "__pycache__", ".idea", ".vscode", "build", "dist", "out"
 }
 
 SYSTEM_LABELS = {
@@ -90,37 +111,12 @@ SYSTEM_LABELS = {
 
 SELF_CLOSING_TAGS = {"w", "p", "nw", "fast", "space", "vspace"}
 PAIR_TAGS = {
-    "b",
-    "i",
-    "u",
-    "s",
-    "plain",
-    "color",
-    "size",
-    "font",
-    "alpha",
-    "cps",
-    "k",
-    "a",
+    "b", "i", "u", "s", "plain", "color", "size", "font", "alpha", "cps", "k", "a"
 }
 
 NAMED_COLORS = {
-    "black",
-    "white",
-    "red",
-    "green",
-    "blue",
-    "yellow",
-    "cyan",
-    "magenta",
-    "gray",
-    "grey",
-    "orange",
-    "purple",
-    "brown",
-    "pink",
-    "lime",
-    "navy",
+    "black", "white", "red", "green", "blue", "yellow", "cyan", "magenta",
+    "gray", "grey", "orange", "purple", "brown", "pink", "lime", "navy"
 }
 
 RE_DEFAULT = re.compile(r"^\s*default\s+([a-zA-Z_][a-zA-Z0-9_]*)")
@@ -141,6 +137,8 @@ RE_INIT_PYTHON_START = re.compile(r"^(\s*)init(?:\s+-?\d+)?\s+python(?:\s+early)
 RE_SCREEN_START = re.compile(
     r"^(\s*)screen\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\((.*?)\))?\s*:"
 )
+RE_SCREEN_CALL = re.compile(r"^\s*(?:show\s+screen|call\s+screen|use)\s+([a-zA-Z_][a-zA-Z0-9_]*)")
+RE_SHOW_SCENE = re.compile(r"^\s*(show|scene)\s+(?!expression\b|screen\b)([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)")
 RE_BUTTON_LINE = re.compile(r"^\s*(textbutton|imagebutton)\b")
 RE_FOR_LOOP = re.compile(r"^\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+")
 RE_MENU_START = re.compile(r"^(\s*)menu(?:\s+[a-zA-Z0-9_]+)?\s*:")
@@ -167,11 +165,16 @@ class SenpyAnalyzer:
         self.project_path = project_path
         self.extra_files = extra_files or []
         self.fix = fix
-        self.in_memory_files = in_memory_files or {}
+        self.in_memory_files = {
+            os.path.normcase(os.path.abspath(k)): v
+            for k, v in (in_memory_files or {}).items()
+        }
         self.user_symbols: set[str] = set()
         self.declared_symbols: set[str] = set(BUILTIN_SYMBOLS)
         self.defined_constants: set[str] = set()
         self.declared_labels: dict[str, tuple[str, int, str]] = {}
+        self.declared_screens: dict[str, tuple[str, int]] = {}
+        self.valid_images: set[str] = set(BUILTIN_COLORS)
         self.labels_with_return: set[str] = set()
         self.declared_images: dict[str, tuple[str, int]] = {}
         self.referenced_labels: set[str] = set()
@@ -194,6 +197,19 @@ class SenpyAnalyzer:
         return orphans
 
     def run(self) -> AnalysisResult:
+        self.diagnostics.clear()
+        self.user_symbols.clear()
+        self.declared_symbols = set(BUILTIN_SYMBOLS)
+        self.declared_labels.clear()
+        self.declared_screens.clear()
+        self.referenced_labels.clear()
+        self.valid_images = set(BUILTIN_COLORS)
+        self.labels_with_return.clear()
+        self.declared_images.clear()
+        self.total_lines = 0
+        self.fixed_count = 0
+        self.fixable_count = 0
+
         self._index_assets()
         rpy_files = self._get_rpy_files() + self.extra_files
 
@@ -214,7 +230,8 @@ class SenpyAnalyzer:
         )
 
     def _index_assets(self):
-        for root, _, filenames in os.walk(self.project_path):
+        for root, dirs, filenames in os.walk(self.project_path):
+            dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
             for f in filenames:
                 full_path = os.path.join(root, f)
                 rel_path = (
@@ -227,6 +244,16 @@ class SenpyAnalyzer:
 
                 if f.lower().endswith(".rpa"):
                     self._read_rpa_index(full_path)
+
+        for asset in self.known_assets:
+            base, ext = os.path.splitext(asset)
+            if ext.lower() in (".png", ".webp", ".jpg", ".jpeg"):
+                clean_name = base.replace("\\", "/")
+                if clean_name.startswith("images/"):
+                    clean_name = clean_name[7:]
+                tokenized = clean_name.replace("/", " ").replace("_", " ")
+                self.valid_images.add(tokenized)
+                self.valid_images.add(os.path.basename(clean_name))
 
     def _read_rpa_index(self, rpa_path: str):
         with (
@@ -248,7 +275,8 @@ class SenpyAnalyzer:
 
     def _get_rpy_files(self) -> list[str]:
         files: list[str] = []
-        for root, _, filenames in os.walk(self.project_path):
+        for root, dirs, filenames in os.walk(self.project_path):
+            dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
             for f in filenames:
                 if f.endswith(".rpy"):
                     files.append(os.path.join(root, f))
@@ -256,8 +284,9 @@ class SenpyAnalyzer:
 
     def _collect_symbols(self, file_path: str):
         try:
-            if file_path in self.in_memory_files:
-                lines = self.in_memory_files[file_path].splitlines(keepends=True)
+            norm_path = os.path.normcase(os.path.abspath(file_path))
+            if norm_path in self.in_memory_files:
+                lines = self.in_memory_files[norm_path].splitlines(keepends=True)
             else:
                 with open(file_path, "r", encoding="utf-8") as f:
                     lines = f.readlines()
@@ -287,12 +316,16 @@ class SenpyAnalyzer:
                     idx += 1
                     continue
 
+                m_screen_def = RE_SCREEN_START.match(line)
+                if m_screen_def:
+                    s_name = m_screen_def.group(2)
+                    self.declared_screens[s_name] = (file_path, idx + 1)
+
                 m_label = RE_LABEL.match(clean)
                 if m_label:
                     label_name = m_label.group(1)
                     self.declared_labels[label_name] = (file_path, idx + 1, clean)
                     
-                    # Извлекаем параметры метки (например, label my_label(arg1, arg2=True):)
                     param_match = re.search(r"\((.*?)\)", clean)
                     if param_match:
                         raw_params = param_match.group(1)
@@ -301,7 +334,6 @@ class SenpyAnalyzer:
                             if p_clean and p_clean.isidentifier():
                                 self.declared_symbols.add(p_clean)
 
-                    # Заглядываем вперед до следующего label, чтобы узнать, есть ли return
                     check_idx = idx + 1
                     while check_idx < len(lines):
                         check_line = lines[check_idx].split("#")[0].strip()
@@ -373,8 +405,6 @@ class SenpyAnalyzer:
                 continue
 
             current_indent = len(line) - len(line.lstrip(" "))
-
-            # Если комментарий имеет отступ меньше или равный заголовку блока — он не наш!
             if stripped.startswith("#") and current_indent <= header_indent:
                 break
 
@@ -384,7 +414,6 @@ class SenpyAnalyzer:
             else:
                 break
 
-        # Срезаем пустые строки с конца, чтобы не захватывать лишнее
         while block and not block[-1].strip():
             block.pop()
             idx -= 1
@@ -393,7 +422,6 @@ class SenpyAnalyzer:
 
     @staticmethod
     def _get_utf16_range(line: str, sub: str | None = None) -> tuple[int, int]:
-        """Считает точные координаты слова в стандарте UTF-16 для VS Code/LSP."""
         line_clean = line.rstrip("\r\n")
         if not sub:
             indent = len(line_clean) - len(line_clean.lstrip())
@@ -448,8 +476,9 @@ class SenpyAnalyzer:
 
     def _analyze_file(self, file_path: str):
         try:
-            if file_path in self.in_memory_files:
-                lines = self.in_memory_files[file_path].splitlines(keepends=True)
+            norm_path = os.path.normcase(os.path.abspath(file_path))
+            if norm_path in self.in_memory_files:
+                lines = self.in_memory_files[norm_path].splitlines(keepends=True)
             else:
                 with open(file_path, "r", encoding="utf-8") as f:
                     lines = f.readlines()
@@ -554,12 +583,77 @@ class SenpyAnalyzer:
                     idx = next_idx
                     continue
 
+                # RPY204: Проверка вызова экранов
+                m_scr = RE_SCREEN_CALL.match(stripped)
+                if m_scr:
+                    screen_target = m_scr.group(1)
+                    if screen_target not in self.declared_screens and screen_target not in BUILTIN_SCREENS:
+                        all_screens = list(self.declared_screens.keys()) + list(BUILTIN_SCREENS)
+                        matches = difflib.get_close_matches(screen_target, all_screens, n=1, cutoff=0.6)
+                        hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
+                        start_c, end_c = self._get_utf16_range(raw_line, screen_target)
+                        self._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=idx + 1,
+                                line_content=stripped,
+                                code="RPY204",
+                                message=f"Screen '{screen_target}' is not declared in project{hint}. Causes runtime ScriptError.",
+                                col=start_c,
+                                end_col=end_c
+                            ),
+                            noqa_map
+                        )
+
+                # RPY502: Проверка спрайтов и фонов в show / scene
+                m_show = RE_SHOW_SCENE.match(stripped)
+                if m_show and current_screen is None:
+                    raw_tokens = m_show.group(2).split()
+                    img_tokens = []
+                    for t in raw_tokens:
+                        if t in CLAUSE_KEYWORDS or t.endswith(":"):
+                            break
+                        img_tokens.append(t)
+
+                    if img_tokens:
+                        full_img_tag = " ".join(img_tokens)
+                        base_tag = img_tokens[0]
+                        all_valid = self.valid_images.union(self.declared_images.keys())
+
+                        if full_img_tag not in all_valid and full_img_tag not in BUILTIN_COLORS:
+                            has_base = any(img.startswith(base_tag + " ") or img == base_tag for img in all_valid)
+                            matches = difflib.get_close_matches(full_img_tag, list(all_valid), n=1, cutoff=0.6)
+                            hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
+
+                            start_c, end_c = self._get_utf16_range(raw_line, full_img_tag)
+                            msg = f"Sprite or background '{full_img_tag}' not found in assets or 'image' definitions{hint}."
+                            if has_base and not hint:
+                                msg += f" Base character '{base_tag}' exists, but attribute is missing."
+
+                            best_sprite = matches[0] if matches else None
+                            self._add_diagnostic(
+                                Diagnostic(
+                                    file_path=file_path,
+                                    line_number=idx + 1,
+                                    line_content=stripped,
+                                    code="RPY502",
+                                    message=msg,
+                                    col=start_c,
+                                    end_col=end_c,
+                                    fix_title=f"Change to '{best_sprite}'" if best_sprite else None,
+                                    fix_replacement=best_sprite
+                                ),
+                                noqa_map
+                            )
+
                 m_jump = RE_JUMP_CALL.match(stripped)
                 if m_jump:
                     cmd_type, target_label = m_jump.group(1), m_jump.group(2)
                     self.referenced_labels.add(target_label)
                     if target_label not in self.declared_labels:
-                        hint = self._suggest_similar_label(target_label)
+                        matches = difflib.get_close_matches(target_label, list(self.declared_labels.keys()), n=1, cutoff=0.6)
+                        best_match = matches[0] if matches else None
+                        hint = f" (did you mean '{best_match}' ?)" if best_match else ""
                         start_c, end_c = self._get_utf16_range(raw_line, target_label)
                         self._add_diagnostic(
                             Diagnostic(
@@ -570,8 +664,10 @@ class SenpyAnalyzer:
                                 message=f"{cmd_type.capitalize()} to non-existent label '{target_label}'{hint}. Causes ScriptError.",
                                 col=start_c,
                                 end_col=end_c,
+                                fix_title=f"Change to '{best_match}'" if best_match else None,
+                                fix_replacement=best_match
                             ),
-                            noqa_map,
+                            noqa_map
                         )
                     if cmd_type == "jump":
                         branch_uninitialized.clear()
@@ -610,9 +706,8 @@ class SenpyAnalyzer:
                             noqa_map
                         )
 
-                # RPY305: Проверка на неэкранированные кавычки только в реальных репликах диалога
+                # RPY305: Проверка кавычек
                 if not stripped.startswith(("#", "$", "image", "default", "define", "init", "Text(", "Composite(", "textbutton", "imagebutton", "action ", "add ", "Play(")):
-                    # Игнорируем строки, если в них вызываются функции или это вызовы экранов
                     if not re.search(r'\baction\b|\bPlay\(|\bImageDissolve\(', stripped):
                         if not re.search(r'["\'],\s*["\']', stripped) and not stripped.endswith(","):
                             if re.search(r'(?<!\\)"[^"]*(?<!\\)"\s+[a-zA-Z0-9_а-яА-ЯёЁ]+.*(?<!\\)"', stripped):
@@ -831,6 +926,8 @@ class SenpyAnalyzer:
                     unclosed = ", ".join(f"'{{{t}}}'" for t in stack)
                     first_unclosed_tag = f"{{{stack[0]}}}"
                     start_c, end_c = self._get_utf16_range(raw_line, first_unclosed_tag)
+                    closing_tags = "".join(f"{{/{t}}}" for t in reversed(stack))
+
                     self._add_diagnostic(
                         Diagnostic(
                             file_path=file_path,
@@ -839,7 +936,9 @@ class SenpyAnalyzer:
                             code="RPY301",
                             message=f"Unclosed text tag(s) in dialogue: {unclosed}.",
                             col=start_c,
-                            end_col=end_c
+                            end_col=end_c,
+                            fix_title=f"Auto-close tag(s) with '{closing_tags}'",
+                            fix_replacement=closing_tags
                         ),
                         noqa_map
                     )
@@ -849,7 +948,6 @@ class SenpyAnalyzer:
     def _check_unreachable_labels(self):
         for label_name, (file_path, line_idx, content) in self.declared_labels.items():
             clean_name = label_name.strip().lower()
-            # Игнорируем приватные метки с _ и системные точки входа Ren'Py
             if clean_name.startswith("_") or clean_name in SYSTEM_LABELS or clean_name in ("start", "splashscreen", "after_load", "quit", "before_main_menu", "warningscreen"):
                 continue
             if label_name not in self.referenced_labels:
@@ -1042,7 +1140,6 @@ class SenpyAnalyzer:
         with contextlib.suppress(SyntaxError):
             tree = ast.parse(py_code)
             for node in ast.walk(tree):
-                # RPY205: Циклы внутри экранов
                 if isinstance(node, (ast.For, ast.While)):
                     loop_type = type(node).__name__.lower()
                     real_line = line_idx + getattr(node, "lineno", 1) - 1
@@ -1099,13 +1196,12 @@ class SenpyAnalyzer:
         with contextlib.suppress(SyntaxError):
             tree = ast.parse(py_code)
             for node in tree.body:
-                # RPY106: Проверка на import random
                 if isinstance(node, ast.Import):
                     for alias in node.names:
                         if alias.name == "random":
                             real_line = start_line + getattr(node, "lineno", 1) - 1
                             raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else "import random"
-                            start_c, end_c = self._get_utf16_range(raw_l, "random")
+                            start_c, end_c = self._get_utf16_range(raw_l, "import random")
                             self._add_diagnostic(
                                 Diagnostic(
                                     file_path=file_path,
@@ -1114,7 +1210,9 @@ class SenpyAnalyzer:
                                     code="RPY106",
                                     message="Do not use standard 'import random'! It breaks Ren'Py rollback and save-game determinism. Use 'renpy.random' instead.",
                                     col=start_c,
-                                    end_col=end_c
+                                    end_col=end_c,
+                                    fix_title="Replace with 'from renpy import random'",
+                                    fix_replacement="from renpy import random"
                                 ),
                                 noqa_map
                             )
@@ -1135,7 +1233,6 @@ class SenpyAnalyzer:
                         noqa_map
                     )
 
-                # RPY102 / RPY105: Проверка на +=
                 elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
                     var_name = node.target.id
                     real_line = start_line + getattr(node, "lineno", 1) - 1
@@ -1172,14 +1269,33 @@ class SenpyAnalyzer:
                             noqa_map
                         )
 
-                # RPY104 / RPY105: Проверка на прямое присваивание =
                 elif isinstance(node, ast.Assign):
                     real_line = start_line + getattr(node, "lineno", 1) - 1
                     raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
-                    # Если строка пустая или это однострочник $, берем правильную строчку
                     if not raw_l.strip() and lines and 0 <= start_line - 1 < len(lines):
                         raw_l = lines[start_line - 1]
                     for target in node.targets:
+                        is_set = False
+                        if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == "set":
+                            is_set = True
+                        elif isinstance(node.value, (ast.Set, ast.SetComp)):
+                            is_set = True
+
+                        if is_set:
+                            sub_str = "set" if "set" in raw_l else "{"
+                            start_c, end_c = self._get_utf16_range(raw_l, sub_str)
+                            self._add_diagnostic(
+                                Diagnostic(
+                                    file_path=file_path,
+                                    line_number=real_line,
+                                    line_content=raw_l.strip(),
+                                    code="RPY106",
+                                    message="Do not use Python's mutable 'set'! Ren'Py rollback does not track standard sets and will corrupt saves. Use a list '[]' or 'renpy.revertable_set()' instead.",
+                                    col=start_c,
+                                    end_col=end_c
+                                ),
+                                noqa_map
+                            )
                         if isinstance(target, ast.Name):
                             self._verify_assign_target(target.id, file_path, real_line, noqa_map, raw_line=raw_l)
                         elif isinstance(target, (ast.Tuple, ast.List)):
@@ -1241,7 +1357,6 @@ class SenpyAnalyzer:
         noqa_map: dict,
     ):
         with contextlib.suppress(SyntaxError):
-            # RPY403: Проверка на заведомо ложные/константные условия
             cond_tree = ast.parse(expr, mode="eval")
             if isinstance(cond_tree.body, ast.Constant) and not bool(cond_tree.body.value):
                 self._add_diagnostic(
@@ -1277,7 +1392,6 @@ class SenpyAnalyzer:
             for node in ast.walk(tree):
                 if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                     var_name = node.id
-                    # Переменные движка с _ (например _restart, _history_list) не требуют default
                     if var_name.startswith("_"):
                         continue
                     if var_name not in self.declared_symbols and var_name not in screen_local_symbols:
@@ -1312,21 +1426,3 @@ class SenpyAnalyzer:
                                 ),
                                 noqa_map,
                             )
-
-            # RPY205: Циклы внутри экранов
-                if isinstance(node, (ast.For, ast.While)):
-                    self._add_diagnostic(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=line_idx,
-                            line_content=line_content,
-                            code="RPY205",
-                            message=(
-                                f"Imperative '{type(node).__name__.lower()}' loop inside screen '{screen_name}'. "
-                                "Python loops inside screens severely hurt UI prediction performance. "
-                                "Use screen-level declarative 'for' loops instead."
-                            )
-                        ),
-                        noqa_map
-                    )
-                    break
