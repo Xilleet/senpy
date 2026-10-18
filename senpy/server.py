@@ -62,9 +62,16 @@ def run_diagnostics(ls: LanguageServer, trigger_uri: str, in_memory: dict[str, s
         diag_uri = _path_to_uri(diag.file_path)
         line_idx = max(0, diag.line_number - 1)
 
-        # Если анализатор вычислил точные колонки — берем их, иначе фоллбэк
-        start_char = diag.col if diag.end_col > diag.col else 0
-        end_char = diag.end_col if diag.end_col > diag.col else len(diag.line_content)
+        # Если точные координаты заданы — берем их
+        if diag.end_col > diag.col:
+            start_char = diag.col
+            end_char = diag.end_col
+        else:
+            # Умный фоллбэк: отрезаем пробелы отступа, чтобы линия не висела в пустоте
+            raw_text = diag.line_content
+            indent = len(raw_text) - len(raw_text.lstrip())
+            start_char = indent
+            end_char = max(indent + 1, len(raw_text.rstrip()))
 
         lsp_diag = lsp.Diagnostic(
             range=lsp.Range(

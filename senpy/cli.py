@@ -51,6 +51,9 @@ TSUNDERE_FLAVORS = {
     "RPY306": "(；￣Д￣) «Ты сделал call на метку, но забыл поставить return! Сюжет провалится дальше в чужие сцены!»" if IS_RU else "(；￣Д￣) «You called a label without a return statement! The story will bleed into unrelated scenes!»",
     "RPY504": "(눈_눈) «Ты объявил одну и ту же картинку дважды! Одна молча сотрет другую, гений!»" if IS_RU else "(눈_눈) «You declared the exact same image twice! One will silently overwrite the other, genius!»",
     "RPY203": "(눈_눈) «Кнопка без действия action?! И на что игрок нажимать будет, на пустоту?!»" if IS_RU else "(눈_눈) «A button without an action?! What is the player supposed to click on, thin air?!»",
+    "RPY205": "(╯°□°)╯︵ ┻━┻ «Ты впихнул Python-цикл for/while прямо в экран?! UI будет лагать как не в себя, дурак!»" if IS_RU else "(╯°□°)╯︵ ┻━┻ «A Python for/while loop inside a screen?! The UI is going to lag horribly, fool!»",
+    "RPY305": "(｀ε´ ) «Ты забыл экранировать кавычки внутри реплики! Поставь слэш \\\", иначе игра просто упадет!»" if IS_RU else "(｀ε´ ) «Unescaped quotes inside dialogue! Escape them with \\\", otherwise the game crashes!»",
+    "RPY403": "(￣︿￣) «Условие всегда False! Этот кусок сюжета вообще НИКОГДА не выполнится, гений!»" if IS_RU else "(￣︿￣) «Condition is always False! This branch will NEVER execute, genius!»",
     "RPY402": "(；￣Д￣) «Ты создал пункт в меню, но внутри пусто?! Сюжет просто провалится вниз, бестолочь!»" if IS_RU else "(；￣Д￣) «You made a menu choice but left it completely empty?! The story will just fall through, dummy!»",
     "RPY201": "(╯°□°)╯︵ ┻━┻ «Ты меняешь переменную ПРЯМО ВНУТРИ ЭКРАНА?! Экраны так не работают, тупица!»" if IS_RU else "(╯°□°)╯︵ ┻━┻ «Mutating variables DIRECTLY INSIDE A SCREEN?! Screens don't work like that, dummy!»",
     "RPY202": "(눈_눈) «Экран читает переменную без default! В главном меню игра сразу рухнет, гений!»" if IS_RU else "(눈_눈) «A screen is reading a variable without a default! It's going to crash right in the main menu, genius!»",
@@ -232,9 +235,15 @@ def main():
     )
     parser.add_argument(
         "--output-format",
+        "--format",
+        dest="output_format",
         choices=["text", "json"],
         default="text",
-        help="Output format: 'text' (default) or 'json' for VS Code/LSP integration"
+        help="Output format: 'text' (default) or 'json' for CI/LSP"
+    )
+    parser.add_argument(
+        "--output-file",
+        help="Save report to a specific file (e.g. report.json or report.txt)"
     )
     parser.add_argument(
         "--ignore",
@@ -347,7 +356,13 @@ def main():
                     "time_sec": round(elapsed, 3)
                 }
             }
-            print(json.dumps(output_data, indent=2))
+            json_str = json.dumps(output_data, indent=2, ensure_ascii=False)
+            if args.output_file:
+                with open(args.output_file, "w", encoding="utf-8") as f:
+                    f.write(json_str)
+                console.print(f"[bold green]✔ Report saved to {args.output_file}[/bold green]")
+            else:
+                print(json_str)
             error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
             sys.exit(1 if error_count > 0 else 0)
         # ----------------------------------------

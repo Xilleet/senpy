@@ -33,11 +33,16 @@ screen shop():
     # 1. Прямая мутация переменной прямо в теле экрана (RPY201):
     $ player_gold -= 10 
 
-    # 2. Обращение к переменной, которой нет в default (RPY202):
+    # 2. RPY205: Тяжелый императивный Python-цикл внутри экрана:
+    python:
+        for i in range(10):
+            pass
+
+    # 3. Обращение к переменной, которой нет в default (RPY202):
     if special_discount_active: 
         text "Скидка активна!"
 
-    # 3. НОВОЕ (RPY203): Кнопка без действия (action):
+    # 4. Кнопка без действия (RPY203):
     textbutton "Купить меч"
 
 label bad_end:
