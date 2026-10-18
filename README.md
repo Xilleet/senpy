@@ -34,6 +34,8 @@ The standard built-in `renpy lint` only checks for basic syntax and broken label
 * **Zero-Footprint `.rpyc` Sandbox:** Automatically decompiles compiled `.rpyc` files into an ephemeral temporary sandbox without cluttering your game folder.
 * **Safe Auto-Fixing (`--fix`):** Automatically patches deterministic syntax oversights like unclosed text tags.
 * **Tsundere Mode (`--tsundere`):** Provides colorful, anime-style diagnostic feedback for your visual novel.
+* **VS Code / Cursor Integration:** Full LSP support with real-time diagnostics, exact underline ranges, and **Quick Fixes** (`Ctrl+.`) for typos and unclosed text tags.
+* **Save-File Protector:** Automatically generates `senpy_defaults.rpy` for all undeclared variables to prevent `NameError` crashes on old saves.
 
 ---
 
@@ -77,24 +79,20 @@ senpy "path/to/game" --decompile
 
 # Limit the number of displayed error cards
 senpy "path/to/game" --max-errors 30
+
+# Generate 'senpy_defaults.rpy' to automatically protect save files
+senpy "path/to/game" --generate-defaults
+
+# Show detailed documentation and examples for a specific rule
+senpy --rule RPY104
+
+# List all available rules
+senpy --rules
 ```
 
 ## Diagnostics & Rules Reference
 
-| Code | Category | Severity | Description |
-|---|---|---|---|
-| `RPY101` | Variables | 🔴 Error | Variable in text interpolation `[var]` is not declared via `default` or `define` (features fuzzy “did you mean?” suggestions). |
-| `RPY102` | Python | 💥 Critical | Augmented assignment (`$ var += 1`) before declaration via `default` (guaranteed runtime `NameError`). |
-| `RPY103` | Logic | 💥 Critical | Undeclared variable evaluated in an `if` / `elif` condition. |
-| `RPY104` | State | ⚠️ Warning | Variable dynamically created via `$` without a top-level `default` (breaks save/load compatibility across patches). |
-| `RPY201` | Screens | 💥 Critical | Direct state mutation inside a screen (causes lag, prediction loops, and breaks rollback). |
-| `RPY202` | Screens | 🔴 Error | Screen accesses variable without a default (causes crash in the main menu or before game start). |
-| `RPY301` | Dialogue | ⚠️ Warning | Unclosed or mismatched text tags (`{b}`, `{color}`, `{size}`) in dialogue. Fixable via `--fix`. |
-| `RPY302` | Story | 💥 Critical | Jump or call to a non-existent label (causes `ScriptError`). |
-| `RPY303` | Dead Code | ℹ️ Notice | Label is declared but never jumped to or called anywhere in the project. |
-| `RPY304` | Formatting | 🔴 Error | Malformed hex color (e.g. `{#12345}`) or unknown color name in a `{color}` tag. |
-| `RPY401` | Flow Graph | 💥 Critical | Variable is defined only in specific `menu:` choices but missing in others (crashes when the player takes an uninitialized path). |
-| `RPY501` | Assets | 🔴 Error | Audio file referenced by `play music` or `play sound` is not found on disk or inside `.rpa` archives. |
+*For detailed explanations and code examples, see the full **[Rules Documentation](https://github.com/Xilleet/senpy/blob/main/RULES.md)***.
 
 ## Examples in Action
 

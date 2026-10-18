@@ -1,4 +1,4 @@
-# Senpy Rules Reference
+# Senpy Rules
 
 Comprehensive guide to all semantic rules implemented in the **Senpy** Ren'Py linter.
 
