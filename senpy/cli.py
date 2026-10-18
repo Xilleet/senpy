@@ -76,6 +76,7 @@ TSUNDERE_UI = {
     "fixable": "Там есть {count} ошибок, которые я могла бы починить за тебя через --fix... если вежливо попросишь, бака!" if IS_RU else "There are {count} tags I could fix for you with --fix... if you ask nicely, baka!",
     "errors": "Найдено {summary_str}! Иди и исправляй, я не буду играть в такую сломанную новеллу! ({elapsed:.3f}s)" if IS_RU else "Found {summary_str}! Go fix them, I'm not playing such a broken novel! ({elapsed:.3f}s)",
     "warnings": "Найдено {summary_str}... Жить можно, но я за тобой слежу, бака! ({elapsed:.3f}s)" if IS_RU else "Found {summary_str}... It's playable, but I'm watching you, baka! ({elapsed:.3f}s)",
+    "defaults_generated": "Я... я сгенерировала за тебя файл {path} с {count} переменными! Т-только не думай, что мне не всё равно на твои сохранения, бака!" if IS_RU else "I... I generated {path} with {count} variables for you! D-Don't think I care about your save files, baka!",
 }
 
 SEVERITY_STYLES = {
@@ -231,6 +232,11 @@ def main():
         help="Automatically fix safe errors (e.g. unclosed text tags RPY301)"
     )
     parser.add_argument(
+        "--generate-defaults",
+        action="store_true",
+        help="Automatically generate 'senpy_defaults.rpy' containing 'default' declarations for all RPY104 variables."
+    )
+    parser.add_argument(
         "--errors-only",
         action="store_true",
         help="Show only critical ERRORs, hiding WARNINGs and INFO notices"
@@ -330,6 +336,17 @@ def main():
         analyzer = SenpyAnalyzer(args.path, extra_files=extra_rpy_files, fix=args.fix)
         result = analyzer.run()
         elapsed = time.perf_counter() - start_time
+        # Генерация файла senpy_defaults.rpy
+        if args.generate_defaults:
+            out_file, gen_count = analyzer.generate_defaults_file()
+            if gen_count > 0:
+                if is_tsundere:
+                    console.print(f"\n[bold magenta](//∇//) «{TSUNDERE_UI['defaults_generated'].format(path=out_file, count=gen_count)}»[/bold magenta]\n")
+                else:
+                    console.print(f"\n[bold green]✔ Successfully generated [bold]{out_file}[/bold] with [bold]{gen_count}[/bold] default declaration(s)![/bold green]\n")
+            else:
+                console.print("\n[bold green]✔ All variables are already properly declared via 'default'![/bold green]\n")
+            sys.exit(0)
 
         # Фильтруем ошибки по кодам из --ignore и --errors-only
         active_diagnostics = [

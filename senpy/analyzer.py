@@ -121,7 +121,7 @@ NAMED_COLORS = {
 
 RE_DEFAULT = re.compile(r"^\s*default\s+([a-zA-Z_][a-zA-Z0-9_]*)")
 RE_DEFINE = re.compile(r"^\s*define\s+([a-zA-Z_][a-zA-Z0-9_]*)")
-RE_IMAGE_DEF = re.compile(r"^\s*image\s+([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)\s*=")
+RE_IMAGE_DEF = re.compile(r"^\s*image\s+([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)\s*[:=]")
 RE_RETURN = re.compile(r"^\s*return\b")
 RE_LABEL = re.compile(r"^\s*label\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(.*\))?\s*:")
 RE_JUMP_CALL = re.compile(
@@ -153,6 +153,31 @@ RE_NOQA = re.compile(
     re.IGNORECASE,
 )
 
+def _infer_default_value(val_node: ast.AST | None) -> str:
+    """Умно определяет стартовое значение для default по типу выражения."""
+    if val_node is None:
+        return "False"
+    if isinstance(val_node, ast.Constant):
+        if isinstance(val_node.value, bool):
+            return "False"
+        elif isinstance(val_node.value, (int, float)):
+            return "0"
+        elif isinstance(val_node.value, str):
+            return '""'
+        elif val_node.value is None:
+            return "None"
+    elif isinstance(val_node, (ast.List, ast.ListComp)):
+        return "[]"
+    elif isinstance(val_node, (ast.Dict, ast.DictComp)):
+        return "{}"
+    elif isinstance(val_node, (ast.Set, ast.SetComp)):
+        return "[]"
+    elif isinstance(val_node, ast.Call) and isinstance(val_node.func, ast.Name):
+        if val_node.func.id in ("list", "set"):
+            return "[]"
+        elif val_node.func.id == "dict":
+            return "{}"
+    return "False"
 
 class SenpyAnalyzer:
     def __init__(
@@ -180,6 +205,7 @@ class SenpyAnalyzer:
         self.referenced_labels: set[str] = set()
         self.known_assets: set[str] = set()
         self.diagnostics: list[Diagnostic] = []
+        self.missing_defaults: dict[str, str] = {}
         self.total_lines: int = 0
         self.fixed_count: int = 0
         self.fixable_count: int = 0
@@ -197,6 +223,7 @@ class SenpyAnalyzer:
         return orphans
 
     def run(self) -> AnalysisResult:
+        self.missing_defaults.clear()
         self.diagnostics.clear()
         self.user_symbols.clear()
         self.declared_symbols = set(BUILTIN_SYMBOLS)
@@ -620,8 +647,13 @@ class SenpyAnalyzer:
                         base_tag = img_tokens[0]
                         all_valid = self.valid_images.union(self.declared_images.keys())
 
-                        if full_img_tag not in all_valid and full_img_tag not in BUILTIN_COLORS:
-                            has_base = any(img.startswith(base_tag + " ") or img == base_tag for img in all_valid)
+                        # В Ren'Py "show sayori at t42" легален, если базовый персонаж существует
+                        is_single_tag_manipulation = len(img_tokens) == 1 and m_show.group(1) == "show"
+                        has_base = any(img.startswith(base_tag + " ") or img == base_tag for img in all_valid)
+
+                        if is_single_tag_manipulation and has_base:
+                            pass  # Это просто перемещение или скрытие уже показанного персонажа
+                        elif full_img_tag not in all_valid and full_img_tag not in BUILTIN_COLORS:
                             matches = difflib.get_close_matches(full_img_tag, list(all_valid), n=1, cutoff=0.6)
                             hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
 
@@ -707,7 +739,7 @@ class SenpyAnalyzer:
                         )
 
                 # RPY305: Проверка кавычек
-                if not stripped.startswith(("#", "$", "image", "default", "define", "init", "Text(", "Composite(", "textbutton", "imagebutton", "action ", "add ", "Play(")):
+                if not stripped.startswith(("#", "$", "image", "default", "define", "init", "Text(", "Composite(", "textbutton", "imagebutton", "action ", "add ", "Play(", "if ", "elif ", "text ")):
                     if not re.search(r'\baction\b|\bPlay\(|\bImageDissolve\(', stripped):
                         if not re.search(r'["\'],\s*["\']', stripped) and not stripped.endswith(","):
                             if re.search(r'(?<!\\)"[^"]*(?<!\\)"\s+[a-zA-Z0-9_а-яА-ЯёЁ]+.*(?<!\\)"', stripped):
@@ -1297,13 +1329,13 @@ class SenpyAnalyzer:
                                 noqa_map
                             )
                         if isinstance(target, ast.Name):
-                            self._verify_assign_target(target.id, file_path, real_line, noqa_map, raw_line=raw_l)
+                            self._verify_assign_target(target.id, file_path, real_line, noqa_map, raw_line=raw_l, val_node=node.value)
                         elif isinstance(target, (ast.Tuple, ast.List)):
                             for elt in target.elts:
                                 if isinstance(elt, ast.Name):
-                                    self._verify_assign_target(elt.id, file_path, real_line, noqa_map, raw_line=raw_l)
+                                    self._verify_assign_target(elt.id, file_path, real_line, noqa_map, raw_line=raw_l, val_node=node.value)
 
-    def _verify_assign_target(self, var_name: str, file_path: str, line_idx: int, noqa_map: dict, raw_line: str = ""):
+    def _verify_assign_target(self, var_name: str, file_path: str, line_idx: int, noqa_map: dict, raw_line: str = "", val_node: ast.AST | None = None):
         if var_name.startswith("_"):
             return
 
@@ -1345,6 +1377,8 @@ class SenpyAnalyzer:
                 noqa_map
             )
             self.declared_symbols.add(var_name)
+        if var_name not in self.missing_defaults:
+                self.missing_defaults[var_name] = _infer_default_value(val_node)
 
     def _check_condition(
         self,
@@ -1426,3 +1460,27 @@ class SenpyAnalyzer:
                                 ),
                                 noqa_map,
                             )
+
+    def generate_defaults_file(self) -> tuple[str, int]:
+        """Генерирует файл senpy_defaults.rpy со всеми найденными переменными."""
+        if not self.missing_defaults:
+            return "", 0
+
+        # Если в проекте есть папка game/, сохраняем прямо в неё
+        game_dir = os.path.join(self.project_path, "game")
+        out_dir = game_dir if os.path.isdir(game_dir) else self.project_path
+        out_file = os.path.join(out_dir, "senpy_defaults.rpy")
+
+        lines = [
+            "## -----------------------------------------------------------------------------\n",
+            "## Automatically generated by Senpy Linter to protect save files and rollback.\n",
+            "## -----------------------------------------------------------------------------\n\n",
+        ]
+
+        for var, val in sorted(self.missing_defaults.items()):
+            lines.append(f"default {var} = {val}\n")
+
+        with open(out_file, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+
+        return out_file, len(self.missing_defaults)
