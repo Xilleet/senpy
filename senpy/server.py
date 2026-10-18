@@ -79,6 +79,9 @@ def run_diagnostics(ls: LanguageServer, trigger_uri: str, in_memory: dict[str, s
             severity=severity_map.get(diag.severity, lsp.DiagnosticSeverity.Warning),
             source="senpy",
             code=diag.code,
+            code_description=lsp.CodeDescription(
+                href=f"https://github.com/Xilleet/senpy/blob/main/RULES.md#{diag.code.lower()}"
+            ),
         )
 
         files_diags.setdefault(diag_uri, []).append(lsp_diag)

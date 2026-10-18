@@ -220,6 +220,16 @@ def main():
         prog="senpy",
         description="Notice me, Senpy! Fast semantic linter for Ren'Py."
     )
+    parser.add_argument(
+        "--rule",
+        metavar="CODE",
+        help="Show detailed explanation and code examples for a specific rule (e.g. --rule RPY104)"
+    )
+    parser.add_argument(
+        "--rules",
+        action="store_true",
+        help="List all available Senpy rules and their descriptions"
+    )
     parser.add_argument("path", nargs="?", default=".", help="Path to the Ren'Py project (game directory)")
     parser.add_argument(
         "--tsundere",
@@ -281,9 +291,17 @@ def main():
     )
 
     args = parser.parse_args()
-    if args.lsp:
+    if args.lsp:        
         from senpy.server import start_lsp
         start_lsp()
+        sys.exit(0)
+        
+    if args.rules or args.rule:
+        from senpy.rules_info import show_rule_detail, show_rules_table
+        if args.rule:
+            show_rule_detail(args.rule.upper())
+        else:
+            show_rules_table()
         sys.exit(0)
 
     config = load_config(args.path)
