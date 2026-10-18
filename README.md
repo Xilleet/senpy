@@ -150,23 +150,27 @@ Screens are evaluated predictively and continuously! Use screen Actions (e.g. Se
 
 **Tsundere Mode (--tsundere)**
 ```bash
-senpy path/to/game --tsundere
+senpy "path/to/game" --generate-defaults --tsundere
 ```
 
 ```text
-(¬_¬ ) «П-подумаешь! Сканирую твою директорию: game/... Н-не то чтобы мне был интересен твой сценарий, бака!»
+(¬_¬ ) «H-Hmph! Scanning your directory: game/... I-It's not like I'm interested in your script, baka!»
 
-┌────────────────────────────────────────────────────────────────────────┐
-│ game/gallery.rpy:81                                                    │
-│   81 │ $ start = gallery_page * maxperpage                             │
-│                                                                        │
-│   (╯°□°)╯︵ ┻━┻ «Ты меняешь переменную ПРЯМО ВНУТРИ ЭКРАНА?!            │
-│   Экраны так не работают, тупица!»                                     │
-│   [WARNING] RPY201: Direct state mutation 'start' inside screen.       │
-└────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ game/gallery.rpy:81                                                                                         │
+│   81 │ $ start = gallery_page * maxperpage                                                                  │
+│                                                                                                             │
+│   (╯°□°)╯︵ ┻━┻ «Mutating variables DIRECTLY INSIDE A SCREEN?! Screens don't work like that, dummy!»         │
+│   [WARNING] RPY201: Direct state mutation 'start' inside screen 'gallery'. Screens are evaluated            │
+│ predictively and continuously! Use screen Actions (e.g., SetVariable, Function) instead.                    │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
-(⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄) «Я... я закрыла за тобой 3 открытых тега через --fix! Н-но не думай, что ты мне нравишься!»
+(//∇//) «I... I generated .\senpy_defaults.rpy with 122 variables for you! D-Don't think I care about your save files, baka!»
+
+(¬_¬ ) Found 1 warning(s)... It's playable, but I'm watching you, baka! (0.142s)
 ```
+
+*Note: The specific output format depends on the implementation and version of Senpy.*
 
 ## Configuration (`senpy.toml`)
 
