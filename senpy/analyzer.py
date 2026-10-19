@@ -393,7 +393,7 @@ class SenpyAnalyzer:
         for root, dirs, filenames in os.walk(self.project_path):
             dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
             for f in filenames:
-                if f.endswith(".rpy"):
+                if f.endswith((".rpy", "_ren.py")):
                     files.append(os.path.join(root, f))
         return files
 
@@ -405,6 +405,10 @@ class SenpyAnalyzer:
             else:
                 with open(file_path, "r", encoding="utf-8") as f:
                     lines = f.readlines()
+
+            if file_path.endswith("_ren.py"):
+                self._collect_from_python_block(lines)
+                return
 
             idx = 0
             current_label: str | None = None
@@ -624,8 +628,12 @@ class SenpyAnalyzer:
             else:
                 with open(file_path, "r", encoding="utf-8") as f:
                     lines = f.readlines()
+            if file_path.endswith("_ren.py"):
+                return
 
             self.total_lines += len(lines)
+            if file_path.endswith("_ren.py"):
+                return
             file_modified = False
 
             noqa_map: dict[int, set[str] | None] = {}

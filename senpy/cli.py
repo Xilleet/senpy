@@ -3,9 +3,9 @@ from __future__ import annotations
 import argparse
 import contextlib
 import ctypes
-import faulthandler
 import json
 import os
+import pickle
 import shutil
 import subprocess
 import sys
@@ -14,6 +14,7 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
+import zlib
 from collections import Counter
 
 import tomllib
@@ -29,16 +30,16 @@ console = Console()
 SENPY_CACHE_DIR = os.path.expanduser("~/.senpy/tools/unrpyc")
 UNRPYC_GITHUB_ZIP = "https://github.com/CensoredUsername/unrpyc/archive/refs/heads/master.zip"
 
+
 def _is_russian_os() -> bool:
     """Определяет, русский ли интерфейс у ОС пользователя."""
     if "ru" in os.environ.get("LANG", "").lower():
         return True
     if os.name == "nt":
-        # Ловим конкретные ошибки доступа к системным библиотекам
         with contextlib.suppress(AttributeError, OSError):
-            # 1049 (0x0419) — это код русского языка в Windows
             return ctypes.windll.kernel32.GetUserDefaultUILanguage() == 1049
     return False
+
 
 IS_RU = _is_russian_os()
 
@@ -191,15 +192,54 @@ def find_unrpyc_executable(custom_path: str | None, project_path: str | None, au
     return None
 
 
+def extract_scripts_from_rpa(rpa_path: str, temp_dir: str) -> list[str]:
+    """Быстро вытаскивает ТОЛЬКО .rpyc и .rpy файлы из архива .rpa без сторонних утилит."""
+    extracted = []
+    with contextlib.suppress(Exception), open(rpa_path, "rb") as f:
+        header = f.read(50)
+        parts = header.split()
+        if not parts or not parts[0].startswith((b"RPA-3.0", b"RPA-2.0")):
+            return []
+
+        offset = int(parts[1], 16)
+        key = int(parts[2], 16) if len(parts) > 2 and parts[0].startswith(b"RPA-3.0") else 0
+
+        f.seek(offset)
+        raw_index = zlib.decompress(f.read())
+        index = pickle.loads(raw_index)
+
+        for filename, segments in index.items():
+            clean_name = filename.replace("\\", "/")
+            base_fn = os.path.basename(clean_name)
+
+            if base_fn.endswith((".rpyc", ".rpy")):
+                file_bytes = b""
+                for seg in segments:
+                    seg_offset = seg[0] ^ key
+                    seg_len = seg[1] ^ key
+                    prefix = seg[2] if len(seg) > 2 else b""
+                    f.seek(seg_offset)
+                    file_bytes += prefix + f.read(seg_len - len(prefix))
+
+                dest = os.path.join(temp_dir, clean_name)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "wb") as out:
+                    out.write(file_bytes)
+                extracted.append(dest)
+
+    return extracted
+
+
 def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: str) -> list[str]:
     total = len(orphans)
 
-    # 1. Живой счётчик подготовки (копирование файлов в песочницу)
+    # 1. Этап подготовки: копируем файлы в песочницу (только если они не там)
     temp_rpyc_files = []
     for i, f in enumerate(orphans, 1):
         base_name = os.path.basename(f)
         dest = os.path.join(temp_dir, base_name)
-        shutil.copy2(f, dest)
+        if os.path.exists(f) and os.path.normcase(os.path.abspath(f)) != os.path.normcase(os.path.abspath(dest)):
+            shutil.copy2(f, dest)
         temp_rpyc_files.append(dest)
         msg = f"\r[Подготовка] {i}/{total} ({base_name[:25]})"
         print(msg.ljust(75), end="", flush=True)
@@ -207,7 +247,7 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: st
 
     cmd = unrpyc_cmd + ["-c"] + temp_rpyc_files
 
-    # 2. Живой счётчик работы самого декомпилятора
+    # 2. Этап декомпиляции: читаем вывод процесса со счётчиком
     done = 0
     try:
         process = subprocess.Popen(
@@ -222,21 +262,17 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: st
             for line in process.stdout:
                 if "decompil" in line.lower():
                     done = min(total, done + 1)
-                    # Ищем среди слов название файла .rpyc или .rpy
                     curr_file = ""
                     for part in line.split():
-                        # Добавили точку в strip, чтобы срезать "..." на конце слова:
                         clean_part = part.strip("\"'()[],:;.")
                         if clean_part.endswith((".rpyc", ".rpy")):
                             curr_file = os.path.basename(clean_part)
                             break
-
-                    # "готово" пишем только если реально дошли до конца:
                     if not curr_file:
                         curr_file = "готово" if done == total else "..."
-
                     msg = f"\r[Декомпиляция] {done}/{total} ({curr_file[:25]})"
-                    print(msg.ljust(75), end="", flush=True)    
+                    print(msg.ljust(75), end="", flush=True)
+        process.wait()
         print()
     except Exception as e:
         console.print(f"[bold red]Ошибка декомпиляции:[/bold red] {e}")
@@ -331,13 +367,12 @@ def main():
         help="Run Senpy as a Language Server (LSP) for editors like VS Code/Neovim"
     )
 
-
     args = parser.parse_args()
-    if args.lsp:        
+    if args.lsp:
         from senpy.server import start_lsp
         start_lsp()
         sys.exit(0)
-        
+
     if args.rules or args.rule:
         from senpy.rules_info import show_rule_detail, show_rules_table
         if args.rule:
@@ -357,10 +392,29 @@ def main():
     max_errors = args.max_errors or config.get("max_errors", 50)
     auto_decompile = args.decompile or config.get("decompile", False)
 
-    orphaned_rpyc = SenpyAnalyzer.find_orphaned_rpyc(args.path)
     extra_rpy_files = []
 
+    # ЕДИНСТВЕННАЯ временная песочница на всё время анализа
     with tempfile.TemporaryDirectory() as temp_sandbox:
+        orphaned_rpyc = SenpyAnalyzer.find_orphaned_rpyc(args.path)
+
+        # 1. Если скриптов нет на диске, ищем их внутри .rpa
+        has_rpy_on_disk = any(f.endswith(".rpy") for _, _, files in os.walk(args.path) for f in files)
+        if not orphaned_rpyc and not has_rpy_on_disk:
+            rpa_files = [
+                os.path.join(root, f)
+                for root, _, files in os.walk(args.path)
+                for f in files if f.lower().endswith(".rpa")
+            ]
+            if rpa_files:
+                console.print(f"[bold yellow]Скриптов на диске нет, но найдено {len(rpa_files)} архив(ов) .rpa.[/bold yellow]")
+                for rpa in rpa_files:
+                    found_in_rpa = extract_scripts_from_rpa(rpa, temp_sandbox)
+                    if found_in_rpa:
+                        console.print(f"[bold green]✔ Извлечено {len(found_in_rpa)} скриптов из {os.path.basename(rpa)}[/bold green]")
+                        orphaned_rpyc.extend(found_in_rpa)
+
+        # 2. Если есть скомпилированные скрипты — декомпилируем в песочницу
         if orphaned_rpyc:
             should_decompile = auto_decompile
 
@@ -394,15 +448,9 @@ def main():
 
         start_time = time.perf_counter()
         analyzer = SenpyAnalyzer(args.path, extra_files=extra_rpy_files, fix=args.fix)
-
-        # Если скрипт зависнет на одной строке дольше 15 сек — сам выведет стек вызовов в консоль!
-        # faulthandler.dump_traceback_later(15, repeat=True)
-        try:
-            result = analyzer.run()
-        finally:
-            pass # faulthandler.cancel_dump_traceback_later()
-
+        result = analyzer.run()
         elapsed = time.perf_counter() - start_time
+
         # Генерация файла senpy_defaults.rpy
         if args.generate_defaults:
             out_file, gen_count = analyzer.generate_defaults_file()
@@ -426,6 +474,7 @@ def main():
             and (not args.errors_only or e.severity == "ERROR")
             and (args.info or e.severity != "INFO")
         ]
+
         # --- ВЫВОД В ФОРМАТЕ JSON ДЛЯ VS CODE ---
         if args.output_format == "json":
             json_output = []
@@ -439,7 +488,7 @@ def main():
                     "severity": err.severity.lower(),
                     "message": err.message
                 })
-            
+
             output_data = {
                 "diagnostics": json_output,
                 "summary": {
@@ -457,7 +506,7 @@ def main():
                 print(json_str)
             error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
             sys.exit(1 if error_count > 0 else 0)
-        # ----------------------------------------
+
         # 0 ПРОБЛЕМ
         if not active_diagnostics:
             if is_tsundere:
@@ -487,7 +536,6 @@ def main():
             text.append(f"  [{err.severity}] {err.code}: ", style=badge_style)
             text.append(f"{err.message}", style="bright_white")
 
-            # В цундере рамка под цвет настроения, иначе по severity
             panel_border = "magenta dim" if is_tsundere else border_style
             console.print(Panel(text, border_style=panel_border, expand=False))
 
@@ -553,7 +601,6 @@ def main():
                 f"in [cyan]{elapsed:.3f}s[/cyan]."
             )
 
-        # Выходим с кодом 1 ТОЛЬКО если есть критические ERROR!
         sys.exit(1 if error_count > 0 else 0)
 
 
