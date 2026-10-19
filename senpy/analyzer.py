@@ -259,6 +259,7 @@ class SenpyAnalyzer:
         self.total_lines: int = 0
         self.fixed_count: int = 0
         self.fixable_count: int = 0
+        self._fuzzy_img_cache: dict[str, str | None] = {}
 
     @staticmethod
     def find_orphaned_rpyc(project_path: str) -> list[str]:
@@ -275,6 +276,7 @@ class SenpyAnalyzer:
     def run(self) -> AnalysisResult:
         self.missing_defaults.clear()
         self.diagnostics.clear()
+        self._fuzzy_img_cache.clear()
         self.user_symbols.clear()
         self.declared_symbols = set(BUILTIN_SYMBOLS)
         self.declared_labels.clear()
@@ -293,11 +295,21 @@ class SenpyAnalyzer:
         self._index_assets()
         rpy_files = self._get_rpy_files() + self.extra_files
 
-        for file_path in rpy_files:
-            self._collect_symbols(file_path)
+        total_files = len(rpy_files)
 
-        for file_path in rpy_files:
+        for i, file_path in enumerate(rpy_files, 1):
+            fname = os.path.basename(file_path)
+            msg = f"\r[1/2] Сбор символов: {i}/{total_files} ({fname[:25]})"
+            print(msg.ljust(75), end="", flush=True)
+            self._collect_symbols(file_path)
+        print()
+
+        for i, file_path in enumerate(rpy_files, 1):
+            fname = os.path.basename(file_path)
+            msg = f"\r[2/2] Анализ правил: {i}/{total_files} ({fname[:25]})"
+            print(msg.ljust(75), end="", flush=True)
             self._analyze_file(file_path)
+        print()
 
         self._check_unreachable_labels()
 
@@ -756,14 +768,29 @@ class SenpyAnalyzer:
                         if is_single_tag_manipulation and has_base:
                             pass
                         elif full_img_tag not in all_valid and full_img_tag not in BUILTIN_COLORS:
-                            matches = difflib.get_close_matches(full_img_tag, list(all_valid), n=1, cutoff=0.6)
-                            hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
+                            # 1. Если уже искали этот спрайт раньше — берём из кэша мгновенно
+                            if full_img_tag in self._fuzzy_img_cache:
+                                best_sprite = self._fuzzy_img_cache[full_img_tag]
+                            else:
+                                # 2. Ищем похожие только среди спрайтов этой же девочки/слоя (base_tag)
+                                candidates = [img for img in all_valid if img.startswith(base_tag + " ")]
+                                
+                                # Если имя девочки тоже с опечаткой — ищем среди похожих персонажей
+                                if not candidates:
+                                    all_tags = {img.split()[0] for img in all_valid}
+                                    matched_tags = difflib.get_close_matches(base_tag, list(all_tags), n=1, cutoff=0.7)
+                                    if matched_tags:
+                                        candidates = [img for img in all_valid if img.startswith(matched_tags[0] + " ")]
+
+                                matches = difflib.get_close_matches(full_img_tag, candidates, n=1, cutoff=0.6) if candidates else []
+                                best_sprite = matches[0] if matches else None
+                                self._fuzzy_img_cache[full_img_tag] = best_sprite
+
+                            hint = f" (did you mean '{best_sprite}' ?)" if best_sprite else ""
                             start_c, end_c = self._get_utf16_range(raw_line, full_img_tag)
                             msg = f"Sprite or background '{full_img_tag}' not found in assets or 'image' definitions{hint}."
                             if has_base and not hint:
                                 msg += f" Base character '{base_tag}' exists, but attribute is missing."
-
-                            best_sprite = matches[0] if matches else None
                             self._add_diagnostic(
                                 Diagnostic(
                                     file_path=file_path,

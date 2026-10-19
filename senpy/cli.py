@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import ctypes
+import faulthandler
 import json
 import os
 import shutil
@@ -191,20 +192,54 @@ def find_unrpyc_executable(custom_path: str | None, project_path: str | None, au
 
 
 def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: str) -> list[str]:
-    console.print(f"[bold cyan]Decompiling {len(orphans)} file(s) into temporary sandbox...[/bold cyan]")
+    total = len(orphans)
 
+    # 1. Живой счётчик подготовки (копирование файлов в песочницу)
     temp_rpyc_files = []
-    for f in orphans:
+    for i, f in enumerate(orphans, 1):
         base_name = os.path.basename(f)
         dest = os.path.join(temp_dir, base_name)
         shutil.copy2(f, dest)
         temp_rpyc_files.append(dest)
+        msg = f"\r[Подготовка] {i}/{total} ({base_name[:25]})"
+        print(msg.ljust(75), end="", flush=True)
+    print()
 
     cmd = unrpyc_cmd + ["-c"] + temp_rpyc_files
+
+    # 2. Живой счётчик работы самого декомпилятора
+    done = 0
     try:
-        subprocess.run(cmd, capture_output=True, check=True)
-    except subprocess.CalledProcessError as e:
-        console.print(f"[bold red]Decompilation warning:[/bold red] {e}")
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if process.stdout:
+            for line in process.stdout:
+                if "decompil" in line.lower():
+                    done = min(total, done + 1)
+                    # Ищем среди слов название файла .rpyc или .rpy
+                    curr_file = ""
+                    for part in line.split():
+                        # Добавили точку в strip, чтобы срезать "..." на конце слова:
+                        clean_part = part.strip("\"'()[],:;.")
+                        if clean_part.endswith((".rpyc", ".rpy")):
+                            curr_file = os.path.basename(clean_part)
+                            break
+
+                    # "готово" пишем только если реально дошли до конца:
+                    if not curr_file:
+                        curr_file = "готово" if done == total else "..."
+
+                    msg = f"\r[Декомпиляция] {done}/{total} ({curr_file[:25]})"
+                    print(msg.ljust(75), end="", flush=True)    
+        print()
+    except Exception as e:
+        console.print(f"[bold red]Ошибка декомпиляции:[/bold red] {e}")
 
     decompiled_rpy = []
     for root, _, files in os.walk(temp_dir):
@@ -212,7 +247,7 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: st
             if file.endswith(".rpy"):
                 decompiled_rpy.append(os.path.join(root, file))
 
-    console.print(f"[bold green]✔ Successfully decompiled {len(decompiled_rpy)} file(s) to sandbox![/bold green]\n")
+    console.print(f"[bold green]✔ Успешно декомпилировано {len(decompiled_rpy)} файл(ов) в песочницу![/bold green]\n")
     return decompiled_rpy
 
 
@@ -359,7 +394,14 @@ def main():
 
         start_time = time.perf_counter()
         analyzer = SenpyAnalyzer(args.path, extra_files=extra_rpy_files, fix=args.fix)
-        result = analyzer.run()
+
+        # Если скрипт зависнет на одной строке дольше 15 сек — сам выведет стек вызовов в консоль!
+        # faulthandler.dump_traceback_later(15, repeat=True)
+        try:
+            result = analyzer.run()
+        finally:
+            pass # faulthandler.cancel_dump_traceback_later()
+
         elapsed = time.perf_counter() - start_time
         # Генерация файла senpy_defaults.rpy
         if args.generate_defaults:
