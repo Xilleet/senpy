@@ -1,45 +1,121 @@
+# =============================================================================
+# SENPY CONFIGURATION FILE (senpy.toml)
+# Universal semantic linter configuration for Ren'Py projects.
+# =============================================================================
+
 [tool.senpy]
+
 # -----------------------------------------------------------------------------
-# НАСТРОЙКИ СКАНИРОВАНИЯ
+# 1. SCANNING & EXECUTION / НАСТРОЙКИ СКАНИРОВАНИЯ
 # -----------------------------------------------------------------------------
 
-# Автоматически декомпилировать скомпилированные .rpyc во временную песочницу
-# без лишних подтверждений в консоли (рекомендуется true)
+# [EN] Automatically decompile orphaned .rpyc files into a sandbox without asking.
+# [RU] Автоматически декомпилировать одиночные .rpyc в песочницу без лишних вопросов.
 decompile = true
 
-# Максимальное количество ошибок для отрисовки в терминале (по умолчанию 50)
+# [EN] Limit terminal error cards output (default: 50).
+# [RU] Максимальное количество подробных карточек ошибок в терминале (по умолч.: 50).
 max_errors = 50
 
-# Пользовательский путь к unrpyc (раскомментируйте, если хотите зафиксировать путь)
-# unrpyc_path = "D:/tools/unrpyc.py"
+# [EN] Show informational notices (e.g. unreferenced labels) in terminal.
+# [RU] Выводить информационные сообщения (например, метки RPY303) в консоль.
+info = false
+
+# [EN] Show only critical ERRORs, suppressing WARNINGs and INFO notices.
+# [RU] Показывать только критические ошибки ERROR, скрывая предупреждения.
+errors_only = false
+
+# [EN] Enable Tsundere character UI output mode.
+# [RU] Включить цундере-режим вывода интерфейса.
+tsundere = false
+
+# [EN] Custom path to unrpyc script or binary (leave commented if using auto-detect/cache).
+# [RU] Путь к unrpyc.py (раскомментируйте, если хотите зафиксировать конкретную версию).
+# unrpyc_path = "tools/unrpyc.py"
+
+# [EN] Suppress warnings when an image definition is intentionally overridden by a mod asset.
+# [RU] Разрешить намеренные переопределения изображений ресурсами мода (RPY504).
+# allow_image_overrides = true
 
 
 # -----------------------------------------------------------------------------
-# ИГНОРИРОВАНИЕ ПРАВИЛ
+# 2. RULE SUPPRESSION / ИГНОРИРОВАНИЕ ПРАВИЛ
 # -----------------------------------------------------------------------------
-# Добавьте сюда коды правил, которые не актуальны для вашего стиля разработки.
+
+# [EN] List of diagnostic codes to completely ignore across the whole project.
+# [RU] Список кодов ошибок, которые нужно полностью игнорировать во всём проекте.
 ignore = [
-    # "RPY104",  # Отключить предупреждения о создании переменных на лету ($ var = ...)
-    # "RPY303",  # Отключить поиск "мертвых" меток (актуально, если в игре динамический роутер)
+    # "RPY303",  # Ignore unreferenced labels (useful if project relies heavily on dynamic routers)
+    # "RPY504",  # Ignore image overrides/redefinitions
 ]
 
 
 # =============================================================================
-# ШПАРГАЛКА ПО КОДАМ ОШИБОК SENPY:
+# [EN] SENPY RULE CHEAT SHEET
 # =============================================================================
-#  RPY101 - Опечатка/необъявленная переменная в подстановке диалога [var]
-#  RPY102 - Операция накопления ($ var += 1) до объявления в default (NameError)
-#  RPY103 - Необъявленная переменная в условии (if var:)
-#  RPY104 - Создание переменной через $ без default (ломает сохранения Save/Load)
+#  RPY101 [ERROR]   - Variable in dialogue interpolation [var] was never declared.
+#  RPY102 [ERROR]   - Augmented assignment ($ var += 1) before 'default' declaration.
+#  RPY103 [ERROR]   - Undeclared variable evaluated in condition (if var:).
+#  RPY104 [WARNING] - Dynamic assignment ($ var = ...) without a top-level 'default'.
+#  RPY105 [ERROR]   - Reassigning or mutating a constant declared with 'define'.
+#  RPY106 [WARNING] - Using standard 'random' or mutable 'set' during story flow.
 #
-#  RPY201 - Прямая мутация переменной внутри screen (ломает откат и предикшен)
-#  RPY202 - Экран читает переменную, которой нет в default (краш до старта игры)
+#  RPY201 [WARNING] - Direct state mutation inside screen (breaks prediction/rollback).
+#  RPY202 [WARNING] - Screen accesses variable not initialized via 'default'.
+#  RPY203 [WARNING] - Screen button (textbutton/imagebutton) missing 'action'.
+#  RPY204 [ERROR]   - Calling or showing a screen that does not exist.
+#  RPY205 [WARNING] - Heavy imperative for/while loops inside screen.
 #
-#  RPY301 - Незакрытые теги форматирования текста ({b}...{/b})
-#  RPY302 - Прыжок (jump/call) на несуществующую метку label (ScriptError)
-#  RPY303 - Мертвый код: метка объявлена, но на нее нигде нет ссылок
-#  RPY304 - Битый цвет в теге {color=#...} (невалидный hex или имя)
+#  RPY301 [ERROR]   - Unclosed or mismatched text tags ({b}...{/b}) in dialogue.
+#  RPY302 [ERROR]   - Jump/call to a label that does not exist (ScriptError).
+#  RPY303 [INFO]    - Label declared but never referenced statically (router/dead code).
+#  RPY304 [ERROR]   - Malformed hex code or unknown color in {color} tag.
+#  RPY305 [ERROR]   - Unescaped quotes inside dialogue string.
+#  RPY306 [WARNING] - Called label has no clear 'return' path (control flow bleed).
 #
-#  RPY401 - Логическая дыра в menu: переменная создана не во всех ветках выбора
-#  RPY501 - Аудиофайл (play music/sound) не найден на диске и в .rpa архивах
+#  RPY401 [WARNING] - Menu branch imbalance: variable declared in some paths but missing in others.
+#  RPY402 [WARNING] - Empty menu choice that immediately falls through.
+#  RPY403 [WARNING] - Condition is always False or contains a logical contradiction.
+#
+#  RPY501 [ERROR]   - Audio file not found on disk or inside .rpa archives.
+#  RPY502 [WARNING] - Sprite, background, or attribute not found in image definitions/assets.
+#  RPY504 [WARNING] - Duplicate image declaration or asset override.
+
+
+# =============================================================================
+# [RU] ПОЛНАЯ ШПАРГАЛКА ПО КОДАМ ОШИБОК SENPY
+# =============================================================================
+#
+# ПЕРЕМЕННЫЕ И СОСТОЯНИЕ (RPY1xx):
+#  RPY101 [ERROR]   - Опечатка/необъявленная переменная в диалоге [var] (KeyError).
+#  RPY102 [ERROR]   - Операция += ($ var += 1) до объявления в default (NameError).
+#  RPY103 [ERROR]   - Необъявленная переменная в условии if/elif (вылет при проверке).
+#  RPY104 [WARNING] - Создание переменной через $ без default (ломает сейвы после патча).
+#  RPY105 [ERROR]   - Изменение константы из define (define — только для констант!).
+#  RPY106 [WARNING] - Использование стандартного random или mutable set в сюжете.
+#
+# ЭКРАНЫ И ИНТЕРФЕЙС (RPY2xx):
+#  RPY201 [WARNING] - Мутация состояния прямо внутри screen (ломает откат и нагружает UI).
+#  RPY202 [WARNING] - Экран читает переменную без default (краш при входе в главное меню).
+#  RPY203 [WARNING] - Кнопка (textbutton/imagebutton) без action (не кликается).
+#  RPY204 [ERROR]   - Вызов или показ несуществующего экрана (ScriptError).
+#  RPY205 [WARNING] - Императивные циклы for/while в экране (замедляют предикшен UI).
+#
+# ТЕКСТ И ПОТОК ИСПОЛНЕНИЯ (RPY3xx):
+#  RPY301 [ERROR]   - Незакрытые или перепутанные теги форматирования ({b}...{/b}).
+#  RPY302 [ERROR]   - Прыжок (jump/call) на несуществующую метку (ScriptError).
+#  RPY303 [INFO]    - Нет статических ссылок на метку (динамический роутер или мёртвый код).
+#  RPY304 [ERROR]   - Опечатка в hex-коде цвета или неизвестный цвет в теге {color}.
+#  RPY305 [ERROR]   - Неэкранированные кавычки внутри текста реплики.
+#  RPY306 [WARNING] - Вызов через call метки, из которой управление не возвращается (нет return).
+#
+# ЛОГИКА СЮЖЕТА И МЕНЮ (RPY4xx):
+#  RPY401 [WARNING] - Развилка menu: переменная создаётся не во всех выборах (риск краша).
+#  RPY402 [WARNING] - Пустой пункт в menu (сюжет сквозняком провалится дальше).
+#  RPY403 [WARNING] - Заведомо ложное условие или логическое противоречие (a and not a).
+#
+# АССЕТЫ И РЕСУРСЫ (RPY5xx):
+#  RPY501 [ERROR]   - Аудиофайл (play music/sound) не найден на диске и в архивах .rpa.
+#  RPY502 [WARNING] - Спрайт или фон не найден в определениях image или ассетах.
+#  RPY504 [WARNING] - Дубликат объявления или намеренное переопределение спрайта модом.
 # =============================================================================

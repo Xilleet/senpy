@@ -77,6 +77,7 @@ TSUNDERE_UI = {
     "errors": "Найдено {summary_str}! Иди и исправляй, я не буду играть в такую сломанную новеллу! ({elapsed:.3f}s)" if IS_RU else "Found {summary_str}! Go fix them, I'm not playing such a broken novel! ({elapsed:.3f}s)",
     "warnings": "Найдено {summary_str}... Жить можно, но я за тобой слежу, бака! ({elapsed:.3f}s)" if IS_RU else "Found {summary_str}... It's playable, but I'm watching you, baka! ({elapsed:.3f}s)",
     "defaults_generated": "Я... я сгенерировала за тебя файл {path} с {count} переменными! Т-только не думай, что мне не всё равно на твои сохранения, бака!" if IS_RU else "I... I generated {path} with {count} variables for you! D-Don't think I care about your save files, baka!",
+    "info_omitted": "Я заметила ещё {count} мелких нюансов, но не покажу их, пока не попросишь через --info, бака!" if IS_RU else "I noticed {count} minor things, but I won't show them unless you ask with --info, baka!",
 }
 
 SEVERITY_STYLES = {
@@ -252,6 +253,11 @@ def main():
         help="Show only critical ERRORs, hiding WARNINGs and INFO notices"
     )
     parser.add_argument(
+        "--info",
+        action="store_true",
+        help="Display informational notices (e.g. unreferenced labels RPY303) in terminal"
+    )
+    parser.add_argument(
         "--output-format",
         "--format",
         dest="output_format",
@@ -289,6 +295,7 @@ def main():
         action="store_true",
         help="Run Senpy as a Language Server (LSP) for editors like VS Code/Neovim"
     )
+
 
     args = parser.parse_args()
     if args.lsp:        
@@ -367,9 +374,15 @@ def main():
             sys.exit(0)
 
         # Фильтруем ошибки по кодам из --ignore и --errors-only
+        hidden_info_count = sum(
+            1 for e in result.diagnostics
+            if e.severity == "INFO" and e.code not in ignored_codes and not args.info
+        )
         active_diagnostics = [
             e for e in result.diagnostics
-            if e.code not in ignored_codes and (not args.errors_only or e.severity == "ERROR")
+            if e.code not in ignored_codes
+            and (not args.errors_only or e.severity == "ERROR")
+            and (args.info or e.severity != "INFO")
         ]
         # --- ВЫВОД В ФОРМАТЕ JSON ДЛЯ VS CODE ---
         if args.output_format == "json":
@@ -463,6 +476,12 @@ def main():
                 console.print(f"\n[dim magenta][*] {TSUNDERE_UI['fixable'].format(count=result.fixable_count)}[/dim magenta]")
             else:
                 console.print(f"\n[dim][*] {result.fixable_count} fixable with the --fix option[/dim]")
+
+        if hidden_info_count > 0:
+            if is_tsundere:
+                console.print(f"\n[dim magenta](¬_¬ ) «{TSUNDERE_UI['info_omitted'].format(count=hidden_info_count)}»[/dim magenta]")
+            else:
+                console.print(f"\n[dim]ℹ {hidden_info_count} info notice(s) omitted (use --info to view them).[/dim]")
 
         # Подсчет по категориям
         error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")

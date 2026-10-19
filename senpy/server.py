@@ -38,15 +38,26 @@ def _get_workspace_root(ls: LanguageServer, fallback_file_path: str) -> str:
 _previously_diagnosed_uris: set[str] = set()
 _latest_diagnostics_by_path: dict[str, list[tuple[Diagnostic, lsp.Diagnostic]]] = {}
 _debounce_timer: threading.Timer | None = None
+_active_analyzer: SenpyAnalyzer | None = None
+_current_workspace_root: str | None = None
 
 
 def run_diagnostics(ls: LanguageServer, trigger_uri: str, in_memory: dict[str, str] | None = None):
-    global _previously_diagnosed_uris, _latest_diagnostics_by_path
+    global _previously_diagnosed_uris, _latest_diagnostics_by_path, _active_analyzer, _current_workspace_root
     file_path = _uri_to_path(trigger_uri)
     project_root = _get_workspace_root(ls, file_path)
 
-    analyzer = SenpyAnalyzer(project_root, in_memory_files=in_memory)
-    result = analyzer.run()
+    # Переиспользуем закэшированный экземпляр анализатора для одного workspace
+    if _active_analyzer is None or _current_workspace_root != project_root:
+        _current_workspace_root = project_root
+        _active_analyzer = SenpyAnalyzer(project_root, in_memory_files=in_memory)
+    else:
+        _active_analyzer.in_memory_files = {
+            os.path.normcase(os.path.abspath(k)): v
+            for k, v in (in_memory or {}).items()
+        }
+
+    result = _active_analyzer.run()
 
     files_diags: dict[str, list[lsp.Diagnostic]] = {}
     _latest_diagnostics_by_path.clear()
@@ -149,19 +160,13 @@ def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.Co
     for diag, lsp_diag in _latest_diagnostics_by_path[norm_path]:
         line_idx = max(0, diag.line_number - 1)
         if line_idx == user_line and diag.fix_title and diag.fix_replacement:
-            edit_range = lsp_diag.range
-
-            # Для тегов вставляем закрывающий тег прямо перед закрывающей кавычкой строки
-            if diag.code == "RPY301":
-                doc = ls.workspace.get_text_document(uri)
-                if doc and line_idx < len(doc.lines):
-                    line_text = doc.lines[line_idx]
-                    q_idx = max(line_text.rfind('"'), line_text.rfind("'"))
-                    if q_idx != -1:
-                        edit_range = lsp.Range(
-                            start=lsp.Position(line=line_idx, character=q_idx),
-                            end=lsp.Position(line=line_idx, character=q_idx),
-                        )
+            if diag.fix_start_col is not None and diag.fix_end_col is not None:
+                edit_range = lsp.Range(
+                    start=lsp.Position(line=line_idx, character=diag.fix_start_col),
+                    end=lsp.Position(line=line_idx, character=diag.fix_end_col),
+                )
+            else:
+                edit_range = lsp_diag.range
 
             action = lsp.CodeAction(
                 title=f"Senpy: {diag.fix_title}",

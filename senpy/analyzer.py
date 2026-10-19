@@ -24,6 +24,8 @@ class Diagnostic:
     end_col: int = 0
     fix_title: str | None = None
     fix_replacement: str | None = None
+    fix_start_col: int | None = None
+    fix_end_col: int | None = None
 
 
 @dataclass
@@ -101,7 +103,7 @@ BUILTIN_SYMBOLS = {
 
 IGNORED_DIRS = {
     ".git", ".svn", ".hg", "node_modules", ".venv", "venv", "env",
-    "__pycache__", ".idea", ".vscode", "build", "dist", "out"
+    "__pycache__", ".idea", ".vscode", "build", "dist", "out", "tl"
 }
 
 SYSTEM_LABELS = {
@@ -114,6 +116,13 @@ SYSTEM_LABELS = {
     "after_warp",
     "hide_windows",
     "warningscreen",
+}
+
+NON_DIALOGUE_STATEMENTS = {
+    "$", "python", "menu", "show", "scene", "hide", "play", "stop",
+    "voice", "queue", "call", "jump", "return", "default", "define",
+    "image", "screen", "init", "label", "transform", "style", "window",
+    "if", "elif", "else", "while", "for", "pass", "pause", "camera", "with"
 }
 
 SELF_CLOSING_TAGS = {"w", "p", "nw", "fast", "space", "vspace"}
@@ -155,9 +164,9 @@ RE_STRING_MATCH = re.compile(
     r'("([^"\\]*(?:\\.[^"\\]*)*)")|(\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
 )
 
-# Строгий матчинг диалоговой реплики для исключения выражений экранов
+# Поддержка реплик с атрибутами персонажей (eileen happy "...") и фразами вида 'with ...'
 RE_DIALOGUE_LINE = re.compile(
-    r'^\s*(?:([a-zA-Z_][a-zA-Z0-9_]*)\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')\s*$'
+    r'^\s*(?:(?:[a-zA-Z_][a-zA-Z0-9_]*|"[^"]+"|\'[^\']+\')(?:\s+[a-zA-Z0-9_]+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')(?:\s+with\s+.*)?\s*$'
 )
 
 RE_NOQA = re.compile(
@@ -165,7 +174,6 @@ RE_NOQA = re.compile(
     re.IGNORECASE,
 )
 
-# Имена локальных/служебных переменных в UI и циклах, не являющихся глобальным состоянием
 SCREEN_LOCAL_IGNORE = {
     "start", "end", "cols", "slot", "i", "idx", "item", "page",
     "original", "fixed1", "fixed2", "fixed3", "currentTrack", "lastPlayed"
@@ -199,6 +207,8 @@ def _infer_default_value(val_node: ast.AST | None) -> str:
 
 
 class SenpyAnalyzer:
+    _asset_cache: dict[str, tuple[set[str], set[str]]] = {}
+
     def __init__(
         self,
         project_path: str,
@@ -206,7 +216,7 @@ class SenpyAnalyzer:
         fix: bool = False,
         in_memory_files: dict[str, str] | None = None,
     ):
-        self.project_path = project_path
+        self.project_path = os.path.abspath(project_path)
         self.extra_files = extra_files or []
         self.fix = fix
         self.in_memory_files = {
@@ -252,7 +262,6 @@ class SenpyAnalyzer:
         self.declared_labels.clear()
         self.declared_screens.clear()
         self.referenced_labels.clear()
-        self.valid_images = set(BUILTIN_COLORS)
         self.labels_with_return.clear()
         self.label_outgoing_jumps.clear()
         self.declared_images.clear()
@@ -283,6 +292,15 @@ class SenpyAnalyzer:
         )
 
     def _index_assets(self):
+        if self.project_path in self._asset_cache:
+            cached_assets, cached_images = self._asset_cache[self.project_path]
+            self.known_assets = set(cached_assets)
+            self.valid_images = set(cached_images)
+            return
+
+        self.known_assets.clear()
+        self.valid_images = set(BUILTIN_COLORS)
+
         for root, dirs, filenames in os.walk(self.project_path):
             dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
             for f in filenames:
@@ -307,6 +325,8 @@ class SenpyAnalyzer:
                 tokenized = clean_name.replace("/", " ").replace("_", " ")
                 self.valid_images.add(tokenized)
                 self.valid_images.add(os.path.basename(clean_name))
+
+        self._asset_cache[self.project_path] = (set(self.known_assets), set(self.valid_images))
 
     def _read_rpa_index(self, rpa_path: str):
         with (
@@ -431,11 +451,9 @@ class SenpyAnalyzer:
                     idx += 1
                     continue
 
-                # Регистрация динамических переходов
                 if "renpy.call(" in clean or "renpy.jump(" in clean or "call expression" in clean or "jump expression" in clean:
                     self.has_dynamic_jumps = True
 
-                # Сбор упоминаний меток внутри строк Python
                 for str_match in re.finditer(r'["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']', clean):
                     candidate = str_match.group(1)
                     if candidate.isidentifier():
@@ -543,7 +561,6 @@ class SenpyAnalyzer:
         return ""
 
     def _can_reach_return(self, label_name: str, visited: set[str] | None = None) -> bool:
-        """Рекурсивно проверяет, может ли поток выполнения метки достичь return."""
         if label_name in self.labels_with_return:
             return True
         if visited is None:
@@ -595,7 +612,7 @@ class SenpyAnalyzer:
                 m_init = RE_INIT_PYTHON_START.match(raw_line)
                 if m_init:
                     indent = len(m_init.group(1))
-                    next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
+                    next_idx, _ = self._consume_block(lines, idx + 1, indent)
                     idx = next_idx
                     continue
 
@@ -666,7 +683,6 @@ class SenpyAnalyzer:
                     idx = next_idx
                     continue
 
-                # RPY204: Проверка вызова экранов
                 m_scr = RE_SCREEN_CALL.match(stripped)
                 if m_scr:
                     screen_target = m_scr.group(1)
@@ -688,7 +704,6 @@ class SenpyAnalyzer:
                             noqa_map,
                         )
 
-                # RPY502: Проверка спрайтов и фонов
                 m_show = RE_SHOW_SCENE.match(stripped)
                 if m_show and current_screen is None:
                     raw_tokens = m_show.group(2).split()
@@ -761,7 +776,6 @@ class SenpyAnalyzer:
                         if cmd_type == "jump":
                             branch_uninitialized.clear()
                         elif cmd_type == "call":
-                            # RPY306: CFG проверка достижимости возврата
                             if target_label in self.declared_labels and not self._can_reach_return(target_label):
                                 self._add_diagnostic(
                                     Diagnostic(
@@ -796,22 +810,21 @@ class SenpyAnalyzer:
                             noqa_map,
                         )
 
-                # RPY305: Проверка неэкранированных кавычек ТОЛЬКО в диалогах сценария
-                if in_label_context and current_screen is None:
-                    if RE_DIALOGUE_LINE.match(stripped):
-                        # Проверяем незаэкранированные внутренние двойные кавычки
-                        inner_quote_match = re.search(r'(?<!\\)"[^"\\]*(?<!\\)"\s+[a-zA-Z0-9_а-яА-ЯёЁ]+.*(?<!\\)"', stripped)
-                        if inner_quote_match:
-                            self._add_diagnostic(
-                                Diagnostic(
-                                    file_path=file_path,
-                                    line_number=idx + 1,
-                                    line_content=stripped,
-                                    code="RPY305",
-                                    message="Unescaped quotes inside dialogue text. Use '\\\"' instead of '\"' to avoid syntax errors.",
-                                ),
-                                noqa_map,
-                            )
+                # RPY305: Проверка неэкранированных кавычек в диалоге
+                first_token = stripped.split()[0] if stripped.split() else ""
+                if in_label_context and current_screen is None and first_token not in NON_DIALOGUE_STATEMENTS:
+                    unescaped_quotes = re.findall(r'(?<!\\)"', stripped)
+                    if len(unescaped_quotes) > 2:
+                        self._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=idx + 1,
+                                line_content=stripped,
+                                code="RPY305",
+                                message="Unescaped quotes inside dialogue text. Use '\\\"' instead of '\"' to avoid syntax errors.",
+                            ),
+                            noqa_map,
+                        )
 
                 new_line, modified = self._check_and_fix_quoted_strings(
                     file_path, idx + 1, raw_line, screen_local_symbols, noqa_map
@@ -917,7 +930,10 @@ class SenpyAnalyzer:
             quote_char = full_str[0]
             inner_content = full_str[1:-1]
 
-            for var in RE_INTERPOLATION.findall(inner_content):
+            # Маскируем экранированные {{, }}, [[, ]], сохраняя смещения символов
+            masked_content = re.sub(r"\{\{|\}\}|\[\[|\]\]", "  ", inner_content)
+
+            for var in RE_INTERPOLATION.findall(masked_content):
                 if var not in self.declared_symbols and var not in extra_symbols:
                     hint = self._suggest_similar_symbol(var)
                     start_c, end_c = self._get_utf16_range(raw_line, f"[{var}]")
@@ -935,7 +951,7 @@ class SenpyAnalyzer:
                     )
 
             stack: list[str] = []
-            for t_match in RE_TAG.finditer(inner_content):
+            for t_match in RE_TAG.finditer(masked_content):
                 is_closing = t_match.group(1) == "/"
                 tag_name = t_match.group(2).lower()
                 tag_param = t_match.group(3)
@@ -1003,8 +1019,8 @@ class SenpyAnalyzer:
                         stack.append(tag_name)
 
             if stack:
+                closing_tags = "".join(f"{{/{t}}}" for t in reversed(stack))
                 if self.fix:
-                    closing_tags = "".join(f"{{/{t}}}" for t in reversed(stack))
                     fixed_str = f"{quote_char}{inner_content}{closing_tags}{quote_char}"
                     start, end = match.span()
                     reconstructed_line = (
@@ -1019,7 +1035,9 @@ class SenpyAnalyzer:
                     unclosed = ", ".join(f"'{{{t}}}'" for t in stack)
                     first_unclosed_tag = f"{{{stack[0]}}}"
                     start_c, end_c = self._get_utf16_range(raw_line, first_unclosed_tag)
-                    closing_tags = "".join(f"{{/{t}}}" for t in reversed(stack))
+
+                    insert_idx = match.end() - 1
+                    ins_char = len(raw_line[:insert_idx].encode("utf-16-le")) // 2
 
                     self._add_diagnostic(
                         Diagnostic(
@@ -1032,6 +1050,8 @@ class SenpyAnalyzer:
                             end_col=end_c,
                             fix_title=f"Auto-close tag(s) with '{closing_tags}'",
                             fix_replacement=closing_tags,
+                            fix_start_col=ins_char,
+                            fix_end_col=ins_char,
                         ),
                         noqa_map,
                     )
@@ -1283,7 +1303,6 @@ class SenpyAnalyzer:
                         target_name = ast.unparse(target_node)
                         is_attr = True
 
-                    # Игнорируем стили и локальные UI-расчёты
                     if is_attr and target_name.startswith("style."):
                         continue
                     if target_name in SCREEN_LOCAL_IGNORE or target_name in screen_local_symbols:
@@ -1312,46 +1331,62 @@ class SenpyAnalyzer:
     def _check_python_ast(self, py_code: str, file_path: str, start_line: int, noqa_map: dict, lines: list[str] | None = None):
         with contextlib.suppress(SyntaxError):
             tree = ast.parse(py_code)
-            for node in tree.body:
-                if isinstance(node, ast.Import):
-                    for alias in node.names:
-                        if alias.name == "random":
-                            real_line = start_line + getattr(node, "lineno", 1) - 1
-                            raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else "import random"
-                            start_c, end_c = self._get_utf16_range(raw_l, "import random")
-                            self._add_diagnostic(
-                                Diagnostic(
-                                    file_path=file_path,
-                                    line_number=real_line,
-                                    line_content=raw_l.strip(),
-                                    code="RPY106",
-                                    message="Standard 'random' used during gameplay. Rollback and saves may become non-deterministic; prefer 'renpy.random'.",
-                                    col=start_c,
-                                    end_col=end_c,
-                                    fix_title="Replace with 'from renpy import random'",
-                                    fix_replacement="from renpy import random",
-                                ),
-                                noqa_map,
-                            )
-                elif isinstance(node, ast.ImportFrom) and node.module == "random":
-                    real_line = start_line + getattr(node, "lineno", 1) - 1
-                    raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else "from random import ..."
-                    start_c, end_c = self._get_utf16_range(raw_l, "random")
-                    self._add_diagnostic(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=real_line,
-                            line_content=raw_l.strip(),
-                            code="RPY106",
-                            message="Standard 'random' used during gameplay. Rollback and saves may become non-deterministic; prefer 'renpy.random'.",
-                            col=start_c,
-                            end_col=end_c,
-                        ),
-                        noqa_map,
-                    )
+            self._walk_python_nodes(tree.body, file_path, start_line, noqa_map, lines, local_scope=set())
 
-                elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
-                    var_name = node.target.id
+    def _walk_python_nodes(
+        self,
+        nodes: list[ast.stmt],
+        file_path: str,
+        start_line: int,
+        noqa_map: dict,
+        lines: list[str] | None,
+        local_scope: set[str],
+    ):
+        for node in nodes:
+            # Игнорируем вложенные функции и классы, они создают свой локальный скоуп
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "random":
+                        real_line = start_line + getattr(node, "lineno", 1) - 1
+                        raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else "import random"
+                        start_c, end_c = self._get_utf16_range(raw_l, "import random")
+                        self._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=real_line,
+                                line_content=raw_l.strip(),
+                                code="RPY106",
+                                message="Standard 'random' used during gameplay. Rollback and saves may become non-deterministic; prefer 'renpy.random'.",
+                                col=start_c,
+                                end_col=end_c,
+                                fix_title="Replace with 'from renpy import random'",
+                                fix_replacement="from renpy import random",
+                            ),
+                            noqa_map,
+                        )
+            elif isinstance(node, ast.ImportFrom) and node.module == "random":
+                real_line = start_line + getattr(node, "lineno", 1) - 1
+                raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else "from random import ..."
+                start_c, end_c = self._get_utf16_range(raw_l, "random")
+                self._add_diagnostic(
+                    Diagnostic(
+                        file_path=file_path,
+                        line_number=real_line,
+                        line_content=raw_l.strip(),
+                        code="RPY106",
+                        message="Standard 'random' used during gameplay. Rollback and saves may become non-deterministic; prefer 'renpy.random'.",
+                        col=start_c,
+                        end_col=end_c,
+                    ),
+                    noqa_map,
+                )
+
+            elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
+                var_name = node.target.id
+                if var_name not in local_scope:
                     real_line = start_line + getattr(node, "lineno", 1) - 1
                     raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
                     if (not raw_l or var_name not in raw_l) and lines and 0 <= start_line - 1 < len(lines):
@@ -1387,39 +1422,68 @@ class SenpyAnalyzer:
                             noqa_map,
                         )
 
-                elif isinstance(node, ast.Assign):
-                    real_line = start_line + getattr(node, "lineno", 1) - 1
-                    raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
-                    if not raw_l.strip() and lines and 0 <= start_line - 1 < len(lines):
-                        raw_l = lines[start_line - 1]
-                    for target in node.targets:
-                        is_set = False
-                        if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == "set":
-                            is_set = True
-                        elif isinstance(node.value, (ast.Set, ast.SetComp)):
-                            is_set = True
+            elif isinstance(node, ast.Assign):
+                real_line = start_line + getattr(node, "lineno", 1) - 1
+                raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+                if not raw_l.strip() and lines and 0 <= start_line - 1 < len(lines):
+                    raw_l = lines[start_line - 1]
 
-                        if is_set:
-                            sub_str = "set" if "set" in raw_l else "{"
-                            start_c, end_c = self._get_utf16_range(raw_l, sub_str)
-                            self._add_diagnostic(
-                                Diagnostic(
-                                    file_path=file_path,
-                                    line_number=real_line,
-                                    line_content=raw_l.strip(),
-                                    code="RPY106",
-                                    message="Mutable 'set' used in story flow. Ren'Py rollback does not track standard sets. Prefer list '[]' or 'renpy.revertable_set()'.",
-                                    col=start_c,
-                                    end_col=end_c,
-                                ),
-                                noqa_map,
-                            )
-                        if isinstance(target, ast.Name):
+                is_set = False
+                if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == "set":
+                    is_set = True
+                elif isinstance(node.value, (ast.Set, ast.SetComp)):
+                    is_set = True
+
+                if is_set:
+                    sub_str = "set" if "set" in raw_l else "{"
+                    start_c, end_c = self._get_utf16_range(raw_l, sub_str)
+                    self._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=real_line,
+                            line_content=raw_l.strip(),
+                            code="RPY106",
+                            message="Mutable 'set' used in story flow. Ren'Py rollback does not track standard sets. Prefer list '[]' or 'renpy.revertable_set()'.",
+                            col=start_c,
+                            end_col=end_c,
+                        ),
+                        noqa_map,
+                    )
+
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        if target.id not in local_scope:
                             self._verify_assign_target(target.id, file_path, real_line, noqa_map, raw_line=raw_l, val_node=node.value)
-                        elif isinstance(target, (ast.Tuple, ast.List)):
-                            for elt in target.elts:
-                                if isinstance(elt, ast.Name):
-                                    self._verify_assign_target(elt.id, file_path, real_line, noqa_map, raw_line=raw_l, val_node=node.value)
+                    elif isinstance(target, (ast.Tuple, ast.List)):
+                        for elt in target.elts:
+                            if isinstance(elt, ast.Name) and elt.id not in local_scope:
+                                self._verify_assign_target(elt.id, file_path, real_line, noqa_map, raw_line=raw_l, val_node=node.value)
+
+            # Рекурсивный обход блоков ветвлений и циклов
+            elif isinstance(node, (ast.If, ast.While)):
+                self._walk_python_nodes(node.body, file_path, start_line, noqa_map, lines, local_scope)
+                self._walk_python_nodes(node.orelse, file_path, start_line, noqa_map, lines, local_scope)
+
+            elif isinstance(node, ast.For):
+                loop_scope = set(local_scope)
+                if isinstance(node.target, ast.Name):
+                    loop_scope.add(node.target.id)
+                elif isinstance(node.target, (ast.Tuple, ast.List)):
+                    for elt in node.target.elts:
+                        if isinstance(elt, ast.Name):
+                            loop_scope.add(elt.id)
+                self._walk_python_nodes(node.body, file_path, start_line, noqa_map, lines, loop_scope)
+                self._walk_python_nodes(node.orelse, file_path, start_line, noqa_map, lines, loop_scope)
+
+            elif isinstance(node, ast.Try):
+                self._walk_python_nodes(node.body, file_path, start_line, noqa_map, lines, local_scope)
+                self._walk_python_nodes(node.orelse, file_path, start_line, noqa_map, lines, local_scope)
+                self._walk_python_nodes(node.finalbody, file_path, start_line, noqa_map, lines, local_scope)
+                for handler in node.handlers:
+                    h_scope = set(local_scope)
+                    if handler.name:
+                        h_scope.add(handler.name)
+                    self._walk_python_nodes(handler.body, file_path, start_line, noqa_map, lines, h_scope)
 
     def _verify_assign_target(self, var_name: str, file_path: str, line_idx: int, noqa_map: dict, raw_line: str = "", val_node: ast.AST | None = None):
         if var_name.startswith("_") or var_name in self.declared_characters:
