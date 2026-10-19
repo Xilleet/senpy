@@ -125,7 +125,10 @@ NON_DIALOGUE_STATEMENTS = {
     "$", "python", "menu", "show", "scene", "hide", "play", "stop",
     "voice", "queue", "call", "jump", "return", "default", "define",
     "image", "screen", "init", "label", "transform", "style", "window",
-    "if", "elif", "else", "while", "for", "pass", "pause", "camera", "with"
+    "if", "elif", "else", "while", "for", "pass", "pause", "camera", "with",
+    "text", "color", "frame", "vbox", "hbox", "grid", "fixed", "viewport",
+    "button", "textbutton", "imagebutton", "bar", "vbar", "null", "add",
+    "key", "timer", "on", "action", "use", "has", "hotspot", "hotbar"
 }
 
 SELF_CLOSING_TAGS = {"w", "p", "nw", "fast", "space", "vspace"}
@@ -208,6 +211,18 @@ def _infer_default_value(val_node: ast.AST | None) -> str:
             return "{}"
     return "False"
 
+def _strip_comment(line: str) -> str:
+    """Удаляет комментарий (#), не ломая hex-цвета (#fff) и решетки внутри кавычек."""
+    in_quote = None
+    for i, ch in enumerate(line):
+        if ch in ('"', "'"):
+            if in_quote == ch:
+                in_quote = None
+            elif in_quote is None:
+                in_quote = ch
+        elif ch == '#' and in_quote is None:
+            return line[:i]
+    return line
 
 class SenpyAnalyzer:
     _asset_cache: dict[str, tuple[set[str], set[str]]] = {}
@@ -384,7 +399,7 @@ class SenpyAnalyzer:
 
             while idx < len(lines):
                 line = lines[idx]
-                clean = line.split("#")[0].strip()
+                clean = _strip_comment(line).strip()
                 if not clean:
                     idx += 1
                     continue
@@ -616,7 +631,7 @@ class SenpyAnalyzer:
 
             while idx < len(lines):
                 raw_line = lines[idx]
-                clean = raw_line.split("#")[0]
+                clean = _strip_comment(raw_line)
                 stripped = clean.strip()
                 line_indent = len(raw_line) - len(raw_line.lstrip(" "))
 
@@ -639,6 +654,8 @@ class SenpyAnalyzer:
                 if m_label:
                     branch_uninitialized.clear()
                     in_label_context = True
+                if line_indent == 0 and stripped.startswith(("screen ", "style ", "init ", "transform ")):
+                    in_label_context = False
 
                 m_screen = RE_SCREEN_START.match(raw_line)
                 if m_screen:
@@ -1177,7 +1194,7 @@ class SenpyAnalyzer:
 
         while idx < len(lines):
             raw_line = lines[idx]
-            stripped = raw_line.split("#")[0].strip()
+            stripped = _strip_comment(raw_line).strip()
             line_indent = len(raw_line) - len(raw_line.lstrip(" "))
 
             if not stripped:
