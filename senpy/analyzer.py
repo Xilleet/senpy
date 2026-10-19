@@ -814,7 +814,9 @@ class SenpyAnalyzer:
                 first_token = stripped.split()[0] if stripped.split() else ""
                 if in_label_context and current_screen is None and first_token not in NON_DIALOGUE_STATEMENTS:
                     unescaped_quotes = re.findall(r'(?<!\\)"', stripped)
-                    if len(unescaped_quotes) > 2:
+                    is_odd_quotes = len(unescaped_quotes) % 2 != 0
+                    has_inner_quotes = bool(re.search(r'(?<!\\)"[^"\\]*(?<!\\)"\s+[^\s"\'#]+.*(?<!\\)"', stripped))
+                    if is_odd_quotes or has_inner_quotes:
                         self._add_diagnostic(
                             Diagnostic(
                                 file_path=file_path,
@@ -1298,7 +1300,6 @@ class SenpyAnalyzer:
                     is_attr = False
                     if isinstance(target_node, ast.Name):
                         target_name = target_node.id
-                        screen_local_symbols.add(target_name)
                     elif isinstance(target_node, ast.Attribute):
                         target_name = ast.unparse(target_node)
                         is_attr = True

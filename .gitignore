@@ -66,4 +66,9 @@ senpy-vscode/out/
 # Ren'Py test saves
 *.rpyc
 saves/
+.pytest_cache/
 senpy-vscode/reinstall.bat
+publish_pypi.bat
+bump_version.py
+test_report.json
+test_report.txt

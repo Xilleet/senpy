@@ -1,13 +1,13 @@
 {
   "publisher": "Xilleet",
-"repository": {
-  "type": "git",
-  "url": "https://github.com/Xilleet/senpy"
-},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xilleet/senpy"
+  },
   "name": "senpy-vscode",
   "displayName": "senpy-vscode",
   "description": "Notice me, Senpy! Fast semantic Ren'Py linter with LSP support",
-  "version": "0.0.1",
+  "version": "0.1.2",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -23,8 +23,14 @@
     "languages": [
       {
         "id": "renpy",
-        "aliases": ["Ren'Py", "renpy"],
-        "extensions": [".rpy", ".rpym"]
+        "aliases": [
+          "Ren'Py",
+          "renpy"
+        ],
+        "extensions": [
+          ".rpy",
+          ".rpym"
+        ]
       }
     ],
     "configuration": {
