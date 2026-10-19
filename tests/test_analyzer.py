@@ -18,51 +18,65 @@ def run_senpy_on_code(code: str, tmp_path: Path, fix: bool = False):
     return result, script_file
 
 
-# Твой эталонный тестовый сценарий
+# Эталонный тестовый сценарий: покрывает ВСЕ 23 правила Senpy
 MEGA_TEST_SCRIPT = """
 init python:
     def calculate_bonus(x):
         return x * 2
 
-    import random
+    import random   # RPY106
 
 image bg room = "room_day.png"
-image bg room = "room_night.png"
+image bg room = "room_night.png"   # RPY504
 
 default friend_name = "Дима"
 define max_hp = 100
 
+label infinite_scene:
+    "Эта метка объявлена, но забыли поставить return!"
+
 label start:
     "Добро пожаловать в игру!"
 
-    $ max_hp += 10
+    $ max_hp += 10   # RPY105
 
     python:
-        unregistered_var = 100
-        magic_points += 5
+        unregistered_var = 100   # RPY104
+        magic_points += 5        # RPY102
 
-    call sub_scene
+    call infinite_scene   # RPY306: метка есть, но возврата нет!
+
+    # RPY103: переменная без объявления в сюжетном условии
+    if quest_unlocked_secret:
+        "Секретный квест"
+
+    # RPY403: заведомо ложное условие
+    if False:
+        "Этот блок никогда не выполнится"
+
+    # RPY305: неэкранированные кавычки в реплике
+    "Она сказала "Привет" и ушла."
 
 default player_gold = 100
 
 screen shop():
-    $ player_gold -= 10 
+    $ player_gold -= 10   # RPY201
 
     python:
-        for i in range(10):
+        for i in range(10):   # RPY205
             pass
 
-    if special_discount_active: 
+    if special_discount_active:   # RPY202
         text "Скидка активна!"
 
-    textbutton "Купить меч"
+    textbutton "Купить меч"   # RPY203
 
 label bad_end:
     "Это тупиковая концовка, и линтер на нее НЕ ругается!"
 
 label chapter_two:
-    "Внимание: {b}опасная зона!"
-    jump bad_edd 
+    "Внимание: {b}опасная зона!"   # RPY301
+    jump bad_edd   # RPY302
 
 $ player_gold -= 10 
 
@@ -75,54 +89,40 @@ label test_flow:
         "Идти в темноте":
             "Вы идете наощупь."
 
-        "Сдаться и лечь спать":
+        "Сдаться и лечь спать":   # RPY402
 
-    if has_torch:
+    if has_torch:   # RPY401
         "Свет факела разгоняет тьму."
 
 label test_new_rules:
-    "Этот текст покрашен {color=#12345}странным цветом{/color}."
-    play music "bgm/non_existent_track.ogg"
+    "Этот текст покрашен {color=#12345}странным цветом{/color}."   # RPY304
+    play music "bgm/non_existent_track.ogg"   # RPY501
 
-label forgotten_secret_draft:
+label forgotten_secret_draft:   # RPY303: метка без прямых переходов
     jump missing_secret_room
-    "Привет [ghost_character], добро пожаловать в {b}подвал!"
-    "Этот кусок сценарист написал и забыл подключить к сюжету."
+    "Привет [ghost_character], добро пожаловать в подвал!"   # RPY101
 
-    $ bad_inventory = set()
-    call screen non_existent_shop_menu
-    show sayori 99z_crazy_pose
+    $ bad_inventory = set()   # RPY106
+    call screen non_existent_shop_menu   # RPY204
+    show sayori 99z_crazy_pose   # RPY502
 """
 
 
 def test_mega_broken_script_catches_all_rules(tmp_path: Path):
-    """Проверяем, что эталонный скрипт с ошибками ловит все ожидаемые правила."""
+    """Проверяем, что эталонный скрипт с ошибками ловит ВСЕ 23 правила Senpy."""
     result, _ = run_senpy_on_code(MEGA_TEST_SCRIPT, tmp_path)
     codes_found = {d.code for d in result.diagnostics}
 
-    expected_rules = {
-        "RPY101",  # [ghost_character]
-        "RPY102",  # magic_points += 5
-        "RPY104",  # unregistered_var = 100
-        "RPY105",  # max_hp += 10
-        "RPY106",  # import random, mutable set()
-        "RPY201",  # $ player_gold -= 10 inside screen
-        "RPY202",  # special_discount_active inside screen
-        "RPY203",  # textbutton without action
-        "RPY204",  # non_existent_shop_menu
-        "RPY205",  # for loop in screen
-        "RPY301",  # unclosed {b}
-        "RPY302",  # jump bad_edd, call sub_scene
-        "RPY303",  # unreferenced label forgotten_secret_draft
-        "RPY304",  # bad hex color #12345
-        "RPY401",  # has_torch missing in choice
-        "RPY402",  # empty menu choice
-        "RPY501",  # audio non_existent_track.ogg
-        "RPY502",  # sprite sayori 99z_crazy_pose
-        "RPY504",  # duplicate image bg room
+    # Полная матрица всех 23 правил линтера
+    all_23_rules = {
+        "RPY101", "RPY102", "RPY103", "RPY104", "RPY105", "RPY106",
+        "RPY201", "RPY202", "RPY203", "RPY204", "RPY205",
+        "RPY301", "RPY302", "RPY303", "RPY304", "RPY305", "RPY306",
+        "RPY401", "RPY402", "RPY403",
+        "RPY501", "RPY502", "RPY504",
     }
 
-    missing_rules = expected_rules - codes_found
+    missing_rules = all_23_rules - codes_found
     assert not missing_rules, f"Linter missed expected rules: {missing_rules}"
 
 
@@ -138,7 +138,6 @@ label start:
     return
 """
     result, _ = run_senpy_on_code(clean_code, tmp_path)
-    # Фильтруем системные инфо если есть
     errors_and_warnings = [d for d in result.diagnostics if d.severity in ("ERROR", "WARNING")]
     assert len(errors_and_warnings) == 0, f"Unexpected diagnostics: {errors_and_warnings}"
 

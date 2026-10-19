@@ -72,3 +72,4 @@ publish_pypi.bat
 bump_version.py
 test_report.json
 test_report.txt
+порядок.txt
