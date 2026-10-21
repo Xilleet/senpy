@@ -44,6 +44,12 @@ def _is_russian_os() -> bool:
 IS_RU = _is_russian_os()
 
 TSUNDERE_FLAVORS = {
+    "RPY001": "(╯°□°)╯︵ ┻━┻ «Ты посмел вставить табуляцию вместо пробелов?! Ren'Py такое не прощает, ленивый бака!»" if IS_RU else "(╯°□°)╯︵ ┻━┻ «Tabs instead of spaces in indentation?! Ren'Py does not forgive this, lazy baka!»",
+    "RPY002": "(｀ε´ ) «Ты копировал текст прямо из Word?! Эти фигурные кавычки сломают весь код, бака!»" if IS_RU else "(｀ε´ ) «Did you paste from Word?! Smart quotes break Python code, baka!»",
+    "RPY206": "(╬ Ò﹏Ó) «Ты вызвал функцию в action со скобками?! Она сработает ещё до клика, прямо при открытии экрана, идиот!»" if IS_RU else "(╬ Ò﹏Ó) «Calling a function directly in action?! It executes during screen render, not on click! Use Function(), dummy!»",
+    "RPY307": "(╬ Ò﹏Ó) «Эта метка уже была объявлена раньше! Игра упадёт на старте из-за дубликата, слепой!»" if IS_RU else "(╬ Ò﹏Ó) «Duplicate label declaration! The game will crash on startup, blind idiot!»",
+    "RPY308": "(；￣Д￣) «Сюжет в этой метке никуда не уходит и просто провалится в следующую сцену! Поставь return или jump, бестолочь!»" if IS_RU else "(；￣Д￣) «This label doesn't end with jump or return, it falls right through into the next scene, dummy!»",
+    "RPY503": "(눈_눈) «Этот файл ассета нигде не используется! Зря только место на диске жрёт, бака!»" if IS_RU else "(눈_눈) «Unused media asset found! It's just wasting disk space and build size, baka!»",
     "RPY101": "(¬_¬ ) «Бака! Ты используешь переменную в диалоге, но даже не объявил её! О чем ты вообще думал?!»" if IS_RU else "(¬_¬ ) «B-Baka! You used a variable in dialogue without declaring it! What were you thinking?!»",
     "RPY102": "(╬ Ò﹏Ó) «Ты делаешь += к переменной, которой НЕТ! Это же чистый NameError при запуске, идиот!»" if IS_RU else "(╬ Ò﹏Ó) «You're doing += to a variable that DOESN'T EXIST! That's a guaranteed NameError, idiot!»",
     "RPY103": "( ﾟдﾟ) «Ты вставил в условие if переменную из воздуха! Игра вылетит, бестолочь!»" if IS_RU else "( ﾟдﾟ) «You put a phantom variable in an if-condition! The game will crash, dummy!»",

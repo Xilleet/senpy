@@ -42,6 +42,8 @@ class AnalysisResult:
 
 # Градация правил
 RULE_SEVERITY = {
+    "RPY001": "ERROR",    # Табуляция в отступах
+    "RPY002": "ERROR",    # Фигурные/типографские кавычки
     "RPY101": "ERROR",    # Опечатка в [var] -> падение с KeyError
     "RPY102": "ERROR",    # += до default -> NameError при входе
     "RPY103": "ERROR",    # if var: без объявления -> NameError при входе
@@ -53,17 +55,21 @@ RULE_SEVERITY = {
     "RPY203": "WARNING",  # Кнопка без action
     "RPY204": "ERROR",    # Несуществующий экран -> ScriptError
     "RPY205": "WARNING",  # Циклы for/while внутри экрана
+    "RPY206": "ERROR",    # Прямой вызов функции в action
     "RPY301": "ERROR",    # Незакрытый тег диалога
     "RPY302": "ERROR",    # Прыжок на несуществующую метку
     "RPY303": "INFO",     # Метка без статических ссылок (возможен динамический роутер)
     "RPY304": "ERROR",    # Невалидный hex-цвет
     "RPY305": "ERROR",    # Неэкранированные кавычки в диалоге
     "RPY306": "WARNING",  # Поток исполнения call не гарантирует возврат
+    "RPY307": "ERROR",    # Дубликат label
+    "RPY308": "WARNING",  # Label fallthrough
     "RPY401": "WARNING",  # Развилка menu: переменная объявлена не везде
     "RPY402": "WARNING",  # Пустой выбор в menu
     "RPY403": "WARNING",  # Заведомо ложное условие
     "RPY501": "ERROR",    # Отсутствует аудиофайл
     "RPY502": "WARNING",  # Спрайт не найден в ассетах
+    "RPY503": "WARNING",  # Неиспользуемый ассет
     "RPY504": "WARNING",  # Повторное объявление/переопределение image
 }
 
@@ -72,6 +78,28 @@ BUILTIN_SCREENS = {
     "save", "load", "preferences", "confirm", "history", "help",
     "keyboard_help", "mouse_help", "gamepad_help", "input", "notify",
     "quick_menu", "dialog", "ctc"
+}
+
+MEDIA_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".avif",
+    ".mp3", ".ogg", ".wav", ".opus", ".flac", ".webm", ".ogv"
+}
+
+AUDIO_EXTENSIONS = {".mp3", ".ogg", ".wav", ".opus", ".flac"}
+
+SMART_QUOTES = {
+    "“": '"', "”": '"', "«": '"', "»": '"',
+    "‘": "'", "’": "'"
+}
+
+BUILTIN_ACTIONS = {
+    "SetVariable", "SetField", "SetScreenVariable", "ToggleVariable",
+    "ToggleField", "ToggleScreenVariable", "Show", "Hide", "Jump",
+    "Return", "Function", "Play", "Stop", "Queue", "PauseAudio",
+    "NullAction", "Call", "Notify", "Confirm", "Preference",
+    "FileSave", "FileLoad", "FileDelete", "FileAction", "QuickSave",
+    "QuickLoad", "Rollback", "Skip", "Help", "Quit", "OpenURL",
+    "SelectedIf", "SensitiveIf", "With", "HideInterface"
 }
 
 BUILTIN_COLORS = {"black", "white", "trueblack", "none"}
@@ -150,7 +178,11 @@ RE_JUMP_CALL = re.compile(
     r"^\s*(jump|call)\s+(?!screen\b)([a-zA-Z_][a-zA-Z0-9_]*|\bexpression\b)"
 )
 RE_PLAY_AUDIO = re.compile(
-    r"^\s*play\s+(?:music|sound|voice|audio)\s+[\"']([^\"']+)[\"']", re.IGNORECASE
+    r"^\s*(?:play|queue)\s+(?:music|sound|voice|audio)\s+([A-Za-z0-9_./\\'\"]+)",
+    re.IGNORECASE
+)
+RE_DEFINE_AUDIO = re.compile(
+    r"^\s*define\s+(?:audio\.)?([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*[\"']([^\"']+)[\"']"
 )
 RE_INTERPOLATION = re.compile(r"\[([a-zA-Z_][a-zA-Z0-9_]*)(?:![a-zA-Z]+)?\]")
 RE_CONDITION = re.compile(r"^\s*(?:if|elif)\s+(.+):$")
@@ -260,6 +292,10 @@ class SenpyAnalyzer:
         self.fixed_count: int = 0
         self.fixable_count: int = 0
         self._fuzzy_img_cache: dict[str, str | None] = {}
+        self.media_disk_files: dict[str, str] = {}  # rel_path -> full_path
+        self.used_asset_keys: set[str] = set()
+        self.defined_audio_map: dict[str, str] = {}
+        self.audio_dir_files: dict[str, str] = {}
 
     @staticmethod
     def find_orphaned_rpyc(project_path: str) -> list[str]:
@@ -291,6 +327,10 @@ class SenpyAnalyzer:
         self.fixable_count = 0
         self.defined_constants.clear()
         self.declared_characters.clear()
+        self.media_disk_files.clear()
+        self.used_asset_keys.clear()
+        self.defined_audio_map.clear()
+        self.audio_dir_files.clear()
 
         self._index_assets()
         rpy_files = self._get_rpy_files() + self.extra_files
@@ -312,6 +352,7 @@ class SenpyAnalyzer:
         print()
 
         self._check_unreachable_labels()
+        self._check_unused_assets()
 
         return AnalysisResult(
             diagnostics=self.diagnostics,
@@ -334,14 +375,10 @@ class SenpyAnalyzer:
         return file_diags
 
     def _index_assets(self):
-        if self.project_path in self._asset_cache:
-            cached_assets, cached_images = self._asset_cache[self.project_path]
-            self.known_assets = set(cached_assets)
-            self.valid_images = set(cached_images)
-            return
-
         self.known_assets.clear()
         self.valid_images = set(BUILTIN_COLORS)
+        self.media_disk_files.clear()
+        self.audio_dir_files.clear()
 
         for root, dirs, filenames in os.walk(self.project_path):
             dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
@@ -355,6 +392,19 @@ class SenpyAnalyzer:
                 self.known_assets.add(rel_path)
                 self.known_assets.add(f.lower())
 
+                clean_rel = rel_path.removeprefix("game/")
+                self.known_assets.add(clean_rel)
+
+                _, ext = os.path.splitext(f.lower())
+                if ext in MEDIA_EXTENSIONS:
+                    self.media_disk_files[rel_path] = full_path
+
+                    clean_norm = rel_path
+                    clean_norm = clean_norm.removeprefix("game/")
+                    if clean_norm.startswith("audio/") and ext in AUDIO_EXTENSIONS:
+                        stem = os.path.splitext(os.path.basename(clean_norm))[0]
+                        self.audio_dir_files[stem] = rel_path
+
                 if f.lower().endswith(".rpa"):
                     self._read_rpa_index(full_path)
 
@@ -362,8 +412,8 @@ class SenpyAnalyzer:
             base, ext = os.path.splitext(asset)
             if ext.lower() in (".png", ".webp", ".jpg", ".jpeg"):
                 clean_name = base.replace("\\", "/")
-                if clean_name.startswith("images/"):
-                    clean_name = clean_name[7:]
+                clean_name = clean_name.removeprefix("game/")
+                clean_name = clean_name.removeprefix("images/")
                 tokenized = clean_name.replace("/", " ").replace("_", " ")
                 self.valid_images.add(tokenized)
                 self.valid_images.add(os.path.basename(clean_name))
@@ -428,6 +478,17 @@ class SenpyAnalyzer:
                     idx += 1
                     continue
 
+                m_audio_def = RE_DEFINE_AUDIO.match(clean)
+                if m_audio_def:
+                    alias = m_audio_def.group(1)
+                    target_file = m_audio_def.group(2).replace("\\", "/").lower()
+                    self.defined_audio_map[alias] = target_file
+                    self.declared_symbols.add(alias)
+                    self.declared_symbols.add(f"audio.{alias}")
+                    idx += 1
+                    continue
+
+                # 2. И ТОЛЬКО ПОТОМ обычный define
                 m_define = RE_DEFINE.match(clean)
                 if m_define:
                     var = m_define.group(1)
@@ -449,8 +510,22 @@ class SenpyAnalyzer:
                 m_label = RE_LABEL.match(clean)
                 if m_label:
                     label_name = m_label.group(1)
+                    if label_name in self.declared_labels:
+                        prev_file, prev_line, _ = self.declared_labels[label_name]
+                        self.diagnostics.append(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=idx + 1,
+                                line_content=clean,
+                                code="RPY307",
+                                message=f"Duplicate label '{label_name}'. Previously declared at {os.path.basename(prev_file)}:{prev_line}. Causes fatal ScriptError.",
+                                severity="ERROR",
+                            )
+                        )
+                    else:
+                        self.declared_labels[label_name] = (file_path, idx + 1, clean)
+                    
                     current_label = label_name
-                    self.declared_labels[label_name] = (file_path, idx + 1, clean)
                     self.label_outgoing_jumps[label_name] = set()
 
                     raw_params = m_label.group(2)
@@ -632,8 +707,6 @@ class SenpyAnalyzer:
                 return
 
             self.total_lines += len(lines)
-            if file_path.endswith("_ren.py"):
-                return
             file_modified = False
 
             noqa_map: dict[int, set[str] | None] = {}
@@ -653,11 +726,67 @@ class SenpyAnalyzer:
                 raw_line = lines[idx]
                 clean = _strip_comment(raw_line)
                 stripped = clean.strip()
-                line_indent = len(raw_line) - len(raw_line.lstrip(" "))
 
                 if not stripped:
                     idx += 1
                     continue
+
+                # RPY001: Проверка табуляции в отступах
+                leading_ws = raw_line[:len(raw_line) - len(raw_line.lstrip())]
+                if "\t" in leading_ws:
+                    self.fixable_count += 1
+                    if self.fix:
+                        fixed_leading = leading_ws.replace("\t", "    ")
+                        raw_line = fixed_leading + raw_line[len(leading_ws):]
+                        lines[idx] = raw_line
+                        file_modified = True
+                        self.fixed_count += 1
+                    else:
+                        start_c, end_c = 0, len(leading_ws.encode("utf-16-le")) // 2
+                        self._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=idx + 1,
+                                line_content=raw_line.rstrip(),
+                                code="RPY001",
+                                message="Tab character ('\\t') used in indentation. Ren'Py requires 4 spaces per indent level.",
+                                col=start_c,
+                                end_col=end_c,
+                                fix_title="Replace tabs with 4 spaces",
+                                fix_replacement=leading_ws.replace("\t", "    "),
+                                fix_start_col=start_c,
+                                fix_end_col=end_c,
+                            ),
+                            noqa_map,
+                        )
+
+                # RPY002: Фигурные/типографские кавычки в коде
+                if any(q in raw_line for q in SMART_QUOTES):
+                    if stripped.startswith(("$", "if ", "elif ", "default ", "define ")) or current_screen is not None:
+                        self.fixable_count += 1
+                        if self.fix:
+                            fixed_l = raw_line
+                            for sq, aq in SMART_QUOTES.items():
+                                fixed_l = fixed_l.replace(sq, aq)
+                            lines[idx] = fixed_l
+                            raw_line = fixed_l
+                            file_modified = True
+                            self.fixed_count += 1
+                        else:
+                            self._add_diagnostic(
+                                Diagnostic(
+                                    file_path=file_path,
+                                    line_number=idx + 1,
+                                    line_content=stripped,
+                                    code="RPY002",
+                                    message="Smart/curly quotes (“ ” ‘ ’ « ») detected in code statement. Will cause Python SyntaxError.",
+                                    fix_title="Replace smart quotes with standard quotes",
+                                    fix_replacement=''.join(SMART_QUOTES.get(c, c) for c in raw_line),
+                                ),
+                                noqa_map,
+                            )
+
+                line_indent = len(raw_line) - len(raw_line.lstrip(" "))
 
                 m_init = RE_INIT_PYTHON_START.match(raw_line)
                 if m_init:
@@ -672,8 +801,29 @@ class SenpyAnalyzer:
 
                 m_label = RE_LABEL.match(clean)
                 if m_label:
+                    # RPY308: Проверяем предыдущую строку перед меткой
+                    if in_label_context and idx > 0:
+                        prev_idx = idx - 1
+                        while prev_idx >= 0 and not lines[prev_idx].strip():
+                            prev_idx -= 1
+                        if prev_idx >= 0:
+                            prev_clean = _strip_comment(lines[prev_idx]).strip()
+                            if prev_clean and not prev_clean.startswith(("return", "jump ", "jump\t", "renpy.full_restart", "renpy.quit")):
+                                if not prev_clean.endswith(":"):
+                                    self._add_diagnostic(
+                                        Diagnostic(
+                                            file_path=file_path,
+                                            line_number=idx + 1,
+                                            line_content=stripped,
+                                            code="RPY308",
+                                            message=f"Label '{m_label.group(1)}' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through.",
+                                            severity="WARNING",
+                                        ),
+                                        noqa_map,
+                                    )
                     branch_uninitialized.clear()
                     in_label_context = True
+
                 if line_indent == 0 and stripped.startswith(("screen ", "style ", "init ", "transform ")):
                     in_label_context = False
 
@@ -705,6 +855,7 @@ class SenpyAnalyzer:
 
                     m_btn = RE_BUTTON_LINE.match(stripped)
                     if m_btn:
+                        # RPY203: кнопка без действия action
                         if not stripped.endswith(":") and not re.search(r"\baction\b", stripped):
                             btn_word = m_btn.group(1)
                             start_c, end_c = self._get_utf16_range(raw_line, btn_word)
@@ -720,6 +871,26 @@ class SenpyAnalyzer:
                                 ),
                                 noqa_map,
                             )
+                        # RPY206: прямой вызов функции в action со скобками
+                        m_act = re.search(r"\baction\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(", stripped)
+                        if m_act:
+                            fn_name = m_act.group(1)
+                            if fn_name not in BUILTIN_ACTIONS:
+                                start_c, end_c = self._get_utf16_range(raw_line, f"action {fn_name}(")
+                                self._add_diagnostic(
+                                    Diagnostic(
+                                        file_path=file_path,
+                                        line_number=idx + 1,
+                                        line_content=stripped,
+                                        code="RPY206",
+                                        message=f"Direct function call '{fn_name}()' in action. It executes immediately during screen render! Use 'action Function({fn_name}, ...)' instead.",
+                                        col=start_c,
+                                        end_col=end_c,
+                                        fix_title=f"Wrap with Function({fn_name})",
+                                        fix_replacement=f"Function({fn_name})",
+                                    ),
+                                    noqa_map,
+                                )
 
                 m_menu = RE_MENU_START.match(raw_line)
                 if m_menu and current_screen is None:
@@ -767,6 +938,7 @@ class SenpyAnalyzer:
 
                     if img_tokens:
                         full_img_tag = " ".join(img_tokens)
+                        self._mark_asset_used(full_img_tag)
                         base_tag = img_tokens[0]
                         all_valid = self.valid_images.union(self.declared_images.keys())
 
@@ -776,14 +948,10 @@ class SenpyAnalyzer:
                         if is_single_tag_manipulation and has_base:
                             pass
                         elif full_img_tag not in all_valid and full_img_tag not in BUILTIN_COLORS:
-                            # 1. Если уже искали этот спрайт раньше — берём из кэша мгновенно
                             if full_img_tag in self._fuzzy_img_cache:
                                 best_sprite = self._fuzzy_img_cache[full_img_tag]
                             else:
-                                # 2. Ищем похожие только среди спрайтов этой же девочки/слоя (base_tag)
                                 candidates = [img for img in all_valid if img.startswith(base_tag + " ")]
-                                
-                                # Если имя девочки тоже с опечаткой — ищем среди похожих персонажей
                                 if not candidates:
                                     all_tags = {img.split()[0] for img in all_valid}
                                     matched_tags = difflib.get_close_matches(base_tag, list(all_tags), n=1, cutoff=0.7)
@@ -857,20 +1025,42 @@ class SenpyAnalyzer:
                     idx += 1
                     continue
 
+                # RPY501: Проверка аудио (в кавычках и без)
                 m_play = RE_PLAY_AUDIO.match(stripped)
                 if m_play:
-                    audio_path = m_play.group(1).replace("\\", "/").lower()
-                    audio_file = os.path.basename(audio_path)
-                    if audio_path not in self.known_assets and audio_file not in self.known_assets:
-                        raw_audio_str = m_play.group(1)
-                        start_c, end_c = self._get_utf16_range(raw_line, raw_audio_str)
+                    raw_audio_target = m_play.group(1).strip()
+                    audio_found = False
+
+                    if raw_audio_target.startswith(('"', "'")) and raw_audio_target.endswith(('"', "'")):
+                        clean_audio_path = raw_audio_target[1:-1].replace("\\", "/").lower()
+                        audio_file = os.path.basename(clean_audio_path)
+                        if clean_audio_path in self.known_assets or audio_file in self.known_assets:
+                            audio_found = True
+                            self._mark_asset_used(clean_audio_path)
+                            self._mark_asset_used(audio_file)
+                    else:
+                        identifier = raw_audio_target
+                        identifier = identifier.removeprefix("audio.")
+
+                        if identifier in self.defined_audio_map:
+                            audio_found = True
+                            self._mark_asset_used(self.defined_audio_map[identifier])
+                        elif identifier in self.audio_dir_files:
+                            audio_found = True
+                            self._mark_asset_used(self.audio_dir_files[identifier])
+                        elif identifier in self.known_assets:
+                            audio_found = True
+                            self._mark_asset_used(identifier)
+
+                    if not audio_found:
+                        start_c, end_c = self._get_utf16_range(raw_line, raw_audio_target)
                         self._add_diagnostic(
                             Diagnostic(
                                 file_path=file_path,
                                 line_number=idx + 1,
                                 line_content=stripped,
                                 code="RPY501",
-                                message=f"Audio file '{raw_audio_str}' not found in project or .rpa archives.",
+                                message=f"Audio asset '{raw_audio_target}' not found in project, 'audio/' directory, or RPA archives.",
                                 col=start_c,
                                 end_col=end_c,
                             ),
@@ -1000,9 +1190,16 @@ class SenpyAnalyzer:
             quote_char = full_str[0]
             inner_content = full_str[1:-1]
 
+            # Регистрация ассета, если в кавычках указан медиафайл (для RPY503)
+            val_clean = inner_content.replace("\\", "/").lower().strip()
+            if any(val_clean.endswith(ext) for ext in MEDIA_EXTENSIONS):
+                self._mark_asset_used(val_clean)
+                self._mark_asset_used(os.path.basename(val_clean))
+
             # Маскируем экранированные {{, }}, [[, ]], сохраняя смещения символов
             masked_content = re.sub(r"\{\{|\}\}|\[\[|\]\]", "  ", inner_content)
 
+            # RPY101: Переменные в интерполяции диалога [var]
             for var in RE_INTERPOLATION.findall(masked_content):
                 if var not in self.declared_symbols and var not in extra_symbols:
                     hint = self._suggest_similar_symbol(var)
@@ -1029,6 +1226,7 @@ class SenpyAnalyzer:
                 tag_param = t_match.group(3)
                 t_start, t_end = t_match.span()
 
+                # RPY304: Проверка валидности hex-цвета
                 if tag_name == "color" and not is_closing and tag_param:
                     color_val = tag_param.strip("\"'").lower()
                     if color_val.startswith("#"):
@@ -1089,13 +1287,12 @@ class SenpyAnalyzer:
                                     noqa_map,
                                 )
                     else:
-                        # УМНАЯ ПРОВЕРКА: Если тег стиля уже открыт — это 100% забытый слэш!
+                        # Умная проверка: если парный тег стиля уже открыт — это опечатка вместо закрывающего
                         if tag_name in non_nestable_tags and tag_name in stack:
                             stack.remove(tag_name)
                             replacement_tag = f"{{/{tag_name}}}"
                             in_place_replacements.append((t_start, t_end, replacement_tag))
 
-                            # Точные координаты конкретно этого ошибочного тега в строке
                             raw_tag_start = match.start() + 1 + t_start
                             raw_tag_end = match.start() + 1 + t_end
                             start_c = len(raw_line[:raw_tag_start].encode("utf-16-le")) // 2
@@ -1129,7 +1326,7 @@ class SenpyAnalyzer:
                     modified = True
                     self.fixed_count += len(in_place_replacements)
 
-            # 2. Если остались реально незакрытые теги в конце строки (например, "{b}Текст")
+            # 2. Если остались незакрытые теги в конце строки (например, "{b}Текст")
             if stack:
                 closing_tags = "".join(f"{{/{t}}}" for t in reversed(stack))
                 if self.fix:
@@ -1745,3 +1942,41 @@ class SenpyAnalyzer:
             f.writelines(lines)
 
         return out_file, len(self.missing_defaults)
+
+    def _mark_asset_used(self, asset_ref: str):
+        ref_norm = asset_ref.replace("\\", "/").lower().strip()
+        self.used_asset_keys.add(ref_norm)
+        self.used_asset_keys.add(os.path.basename(ref_norm))
+
+    def _check_unused_assets(self):
+        """RPY503: Поиск неиспользуемых медиафайлов на диске."""
+        for rel_path, full_path in sorted(self.media_disk_files.items()):
+            base_fn = os.path.basename(rel_path)
+            stem, _ = os.path.splitext(base_fn)
+
+            clean_rel = rel_path
+            clean_rel = clean_rel.removeprefix("game/")
+
+            tokenized = clean_rel
+            tokenized = tokenized.removeprefix("images/")
+            tokenized_stem = os.path.splitext(tokenized)[0].replace("/", " ").replace("_", " ")
+
+            is_used = (
+                rel_path in self.used_asset_keys
+                or clean_rel in self.used_asset_keys
+                or base_fn in self.used_asset_keys
+                or stem in self.used_asset_keys
+                or tokenized_stem in self.used_asset_keys
+            )
+
+            if not is_used:
+                self.diagnostics.append(
+                    Diagnostic(
+                        file_path=full_path,
+                        line_number=1,
+                        line_content=f"[file] {rel_path}",
+                        code="RPY503",
+                        message=f"Unused media asset '{rel_path}' is never referenced in scripts. Increases distribution size.",
+                        severity="WARNING",
+                    )
+                )

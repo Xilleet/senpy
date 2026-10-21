@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from pathlib import Path
 
@@ -6,10 +8,22 @@ import pytest
 from senpy.analyzer import SenpyAnalyzer
 
 
-def run_senpy_on_code(code: str, tmp_path: Path, fix: bool = False):
-    """Вспомогательная функция: сохраняет код во временный .rpy и прогоняет Senpy."""
+def run_senpy_on_code(
+    code: str,
+    tmp_path: Path,
+    fix: bool = False,
+    extra_files: dict[str, bytes] | None = None,
+):
+    """Вспомогательная функция: сохраняет код и ассеты во временный .rpy и прогоняет Senpy."""
     game_dir = tmp_path / "game"
-    game_dir.mkdir(exist_ok=True)
+    game_dir.mkdir(parents=True, exist_ok=True)
+
+    if extra_files:
+        for rel_path, data in extra_files.items():
+            dest = game_dir / rel_path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(data)
+
     script_file = game_dir / "script.rpy"
     script_file.write_text(code, encoding="utf-8")
 
@@ -18,7 +32,7 @@ def run_senpy_on_code(code: str, tmp_path: Path, fix: bool = False):
     return result, script_file
 
 
-# Эталонный тестовый сценарий: покрывает ВСЕ 23 правила Senpy
+# Эталонный тестовый сценарий: покрывает ВСЕ 29 правил Senpy
 MEGA_TEST_SCRIPT = """
 init python:
     def calculate_bonus(x):
@@ -33,12 +47,13 @@ default friend_name = "Дима"
 define max_hp = 100
 
 label infinite_scene:
-    "Эта метка объявлена, но забыли поставить return!"
+\t"Метка с табуляцией в отступе!"   # RPY001
 
 label start:
     "Добро пожаловать в игру!"
 
     $ max_hp += 10   # RPY105
+    $ smart_quote_val = “ошибка_из_ворда”   # RPY002
 
     python:
         unregistered_var = 100   # RPY104
@@ -70,9 +85,11 @@ screen shop():
         text "Скидка активна!"
 
     textbutton "Купить меч"   # RPY203
+    textbutton "Лечиться" action heal_player()   # RPY206: прямой вызов функции в action!
 
 label bad_end:
     "Это тупиковая концовка, и линтер на нее НЕ ругается!"
+    return
 
 label chapter_two:
     "Внимание: {b}опасная зона!"   # RPY301
@@ -96,7 +113,17 @@ label test_flow:
 
 label test_new_rules:
     "Этот текст покрашен {color=#12345}странным цветом{/color}."   # RPY304
-    play music "bgm/non_existent_track.ogg"   # RPY501
+    play music "bgm/non_existent_track.ogg"   # RPY501 (в кавычках)
+    play sound non_existent_sfx               # RPY501 (без кавычек)
+
+label fallthrough_hazard:
+    "Сюжет просто закончился текстом без return или jump!"
+
+label duplicate_label_test:   # RPY308: сюжет из fallthrough_hazard провалится сюда!
+    return
+
+label duplicate_label_test:   # RPY307: повторное объявление метки с тем же именем!
+    return
 
 label forgotten_secret_draft:   # RPY303: метка без прямых переходов
     jump missing_secret_room
@@ -109,25 +136,31 @@ label forgotten_secret_draft:   # RPY303: метка без прямых пер�
 
 
 def test_mega_broken_script_catches_all_rules(tmp_path: Path):
-    """Проверяем, что эталонный скрипт с ошибками ловит ВСЕ 23 правила Senpy."""
-    result, _ = run_senpy_on_code(MEGA_TEST_SCRIPT, tmp_path)
-    codes_found = {d.code for d in result.diagnostics}
-
-    # Полная матрица всех 23 правил линтера
-    all_23_rules = {
-        "RPY101", "RPY102", "RPY103", "RPY104", "RPY105", "RPY106",
-        "RPY201", "RPY202", "RPY203", "RPY204", "RPY205",
-        "RPY301", "RPY302", "RPY303", "RPY304", "RPY305", "RPY306",
-        "RPY401", "RPY402", "RPY403",
-        "RPY501", "RPY502", "RPY504",
+    """Verify all 29 Senpy semantic rules are caught in broken script"""
+    # Создаём файл ассета, на который нет ни одной ссылки в коде (вызывает RPY503)
+    extra_files = {
+        "images/completely_unused_background.png": b"dummy_png_bytes"
     }
 
-    missing_rules = all_23_rules - codes_found
-    assert not missing_rules, f"Linter missed expected rules: {missing_rules}"
+    result, _ = run_senpy_on_code(MEGA_TEST_SCRIPT, tmp_path, extra_files=extra_files)
+    codes_found = {d.code for d in result.diagnostics}
+
+    # Полная матрица всех 29 правил линтера
+    all_29_rules = {
+        "RPY001", "RPY002",
+        "RPY101", "RPY102", "RPY103", "RPY104", "RPY105", "RPY106",
+        "RPY201", "RPY202", "RPY203", "RPY204", "RPY205", "RPY206",
+        "RPY301", "RPY302", "RPY303", "RPY304", "RPY305", "RPY306", "RPY307", "RPY308",
+        "RPY401", "RPY402", "RPY403",
+        "RPY501", "RPY502", "RPY503", "RPY504",
+    }
+
+    missing_rules = all_29_rules - codes_found
+    assert not missing_rules, f"Linter missed expected rules: {sorted(missing_rules)}"
 
 
 def test_clean_script_has_zero_errors(tmp_path: Path):
-    """Идеальный сценарий не должен выдавать ошибок."""
+    """Verify zero errors/warnings reported on clean script"""
     clean_code = """
 default player_gold = 100
 define MAX_LEVEL = 50
@@ -143,7 +176,7 @@ label start:
 
 
 def test_escaped_brackets_dont_trigger_rpy301_or_rpy101(tmp_path: Path):
-    """Проверяем исправление экранирования: {{b}} и [[var]] не должны ломать парсер."""
+    """Verify escaped brackets {{b}} and [[var]] do not trigger false positives"""
     code = """
 label start:
     "Нажмите {{b}}, чтобы использовать способность."
@@ -157,7 +190,7 @@ label start:
 
 
 def test_dialogue_with_attributes_and_clauses(tmp_path: Path):
-    """Проверяем реплики с эмоциями (eileen happy '...') и фразами 'with dissolve'."""
+    """Verify dialogue with character attributes and 'with' clauses parses cleanly"""
     code = """
 define e = Character("Эйлин")
 
@@ -171,7 +204,7 @@ label start:
 
 
 def test_local_variables_in_python_def_dont_trigger_rpy104(tmp_path: Path):
-    """Локальные переменные функций и циклов внутри python: не требуют default."""
+    """Verify local variables in python functions do not trigger RPY104/RPY102"""
     code = """
 label start:
     python:
@@ -189,7 +222,7 @@ label start:
 
 
 def test_autofix_unclosed_tags(tmp_path: Path):
-    """Проверяем автофикс незакрытых тегов RPY301 (параметр --fix)."""
+    """Verify auto-fixing unclosed dialogue tags with closing sequence (RPY301)"""
     broken_code = """
 label start:
     "Тут незакрытый {b}{i}жирный курсив."
@@ -200,3 +233,45 @@ label start:
 
     assert result.fixed_count > 0
     assert "{/i}{/b}\"" in fixed_content
+
+
+def test_autofix_tab_indentation_rpy001(tmp_path: Path):
+    """Verify auto-replacing tab indentation with 4 spaces (RPY001)"""
+    broken_code = "label start:\n\t$ x = 1\n\treturn\n"
+    result, script_file = run_senpy_on_code(broken_code, tmp_path, fix=True)
+    fixed_code = script_file.read_text(encoding="utf-8")
+
+    assert "\t" not in fixed_code
+    assert "    $ x = 1" in fixed_code
+    assert result.fixed_count >= 2
+
+
+def test_autofix_smart_quotes_rpy002(tmp_path: Path):
+    """Verify auto-replacing smart/curly quotes with ASCII quotes (RPY002)"""
+    broken_code = 'label start:\n    $ status = “active”\n    return\n'
+    result, script_file = run_senpy_on_code(broken_code, tmp_path, fix=True)
+    fixed_code = script_file.read_text(encoding="utf-8")
+
+    assert "“" not in fixed_code
+    assert "”" not in fixed_code
+    assert '$ status = "active"' in fixed_code
+    assert result.fixed_count > 0
+
+
+def test_unquoted_audio_recognition_rpy501(tmp_path: Path):
+    """Verify unquoted audio statements in audio/ resolve cleanly (RPY501)"""
+    extra_files = {
+        "audio/click.ogg": b"dummy_sound",
+        "audio/theme.mp3": b"dummy_music",
+    }
+    code = """
+define audio.custom_track = "audio/theme.mp3"
+
+label start:
+    play sound click
+    play music audio.custom_track
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path, extra_files=extra_files)
+    rpy501_errors = [d for d in result.diagnostics if d.code == "RPY501"]
+    assert len(rpy501_errors) == 0, f"Expected valid audio, but got: {rpy501_errors}"
