@@ -17,6 +17,8 @@ BUILTIN_SYMBOLS = {
     "config",
     "persistent",
     "renpy",
+    "audio",
+    "currentuser",
     "gui",
     "layout",
     "store",
@@ -47,7 +49,9 @@ BUILTIN_ACTIONS = {
     "NullAction", "Call", "Notify", "Confirm", "Preference",
     "FileSave", "FileLoad", "FileDelete", "FileAction", "QuickSave",
     "QuickLoad", "Rollback", "Skip", "Help", "Quit", "OpenURL",
-    "SelectedIf", "SensitiveIf", "With", "HideInterface"
+    "SelectedIf", "SensitiveIf", "With", "HideInterface",
+    "ShowMenu", "MainMenu", "Start", "EndReplay", "If", "Language", 
+    "ShowTransient"
 }
 
 IGNORED_DIRS = {
@@ -117,7 +121,13 @@ RE_JUMP_CALL = re.compile(
     r"^\s*(jump|call)\s+(?!screen\b)([a-zA-Z_][a-zA-Z0-9_]*|\bexpression\b)"
 )
 RE_PLAY_AUDIO = re.compile(
-    r"^\s*(?:play|queue)\s+(?:music|sound|voice|audio)\s+([A-Za-z0-9_./\\'\"]+)",
+    r'^\s*(?:play|queue)\s+(?:music|sound|voice|audio)\s+('
+    r'"[^"\\]*(?:\\.[^"\\]*)*"'
+    r'|'
+    r"'[^'\\]*(?:\\.[^'\\]*)*'"
+    r'|'
+    r'[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*'
+    r')',
     re.IGNORECASE,
 )
 RE_INTERPOLATION = re.compile(r"\[([a-zA-Z_][a-zA-Z0-9_]*)(?:![a-zA-Z]+)?\]")

@@ -203,12 +203,22 @@ class StoryFlowAnalyzer:
         declared = self.analyzer.declared_labels
         outgoing = self.analyzer.label_outgoing_jumps
 
-        # Объявляем узлы
+        # Объявляем узлы и ищем тупики (Fallthrough)
         for label in sorted(declared.keys()):
             if label.startswith("_"):
                 continue
+            
             has_return = label in self.analyzer.labels_with_return
-            shape_start, shape_end = ("([", "])") if has_return else ('["', '"]')
+            has_jumps = len(outgoing.get(label, set())) > 0
+            
+            if has_return:
+                shape_start, shape_end = ("([", "])")
+            elif not has_jumps:
+                # Если нет ни возврата, ни переходов - это тупик (Fallthrough hazard)
+                shape_start, shape_end = ("[[", "]]:::fallthrough")
+            else:
+                shape_start, shape_end = ('["', '"]')
+                
             lines.append(f"    {label}{shape_start}{label}{shape_end}")
 
         lines.append("")
@@ -219,18 +229,23 @@ class StoryFlowAnalyzer:
             if src.startswith("_"):
                 continue
             for tgt in sorted(targets):
+                # Простейшая эвристика: если целевая метка имеет return, скорее всего это был call
+                is_call = tgt in self.analyzer.labels_with_return
+                arrow = "-- call -->" if is_call else "-->"
+
                 if tgt in declared:
-                    lines.append(f"    {src} --> {tgt}")
+                    lines.append(f"    {src} {arrow} {tgt}")
                     edges_added = True
                 else:
-                    # Прыжок на несуществующую метку выделяем пунктиром
-                    lines.append(f"    {src} -.-> {tgt}:::missing")
+                    # Прыжок на несуществующую метку выделяем красным
+                    lines.append(f"    {src} -. jump .-> {tgt}:::missing")
                     edges_added = True
 
         if not edges_added:
             lines.append("    %% No static jumps detected")
 
-        # Стили для отсутствующих меток
+        # Стили для отсутствующих меток и тупиков
         lines.append("\n    classDef missing fill:#ff4d4f,stroke:#333,stroke-width:1px,color:#fff;")
+        lines.append("    classDef fallthrough fill:#faad14,stroke:#333,stroke-width:1px,color:#fff;")
         lines.append("```")
         return "\n".join(lines)

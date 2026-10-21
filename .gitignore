@@ -75,3 +75,5 @@ test_report.txt
 порядок.txt
 check.bat
 ruff_report.txt
+senpy/analyzer.py
+install_dev.bat

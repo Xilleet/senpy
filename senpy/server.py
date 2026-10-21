@@ -16,7 +16,7 @@ except ImportError:
 
 from senpy.analyzer import Diagnostic, SenpyAnalyzer
 
-server = LanguageServer("senpy-lsp", "v0.2.0")
+server = LanguageServer("senpy-lsp", "v0.2.1")
 
 
 def _uri_to_path(uri: str) -> str:
@@ -91,7 +91,7 @@ def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
             _current_workspace_root = project_root
             _active_analyzer = SenpyAnalyzer(project_root)
 
-        result = _active_analyzer.run()
+        result = _active_analyzer.run(quiet=True)
         _is_initialized = True
 
         files_diags: dict[str, list[lsp.Diagnostic]] = {}

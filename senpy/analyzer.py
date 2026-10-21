@@ -131,7 +131,7 @@ class SenpyAnalyzer:
     def _check_unused_assets(self) -> None:
         self.diagnostics.extend(self.assets.check_unused())
 
-    def run(self) -> AnalysisResult:
+    def run(self, quiet: bool = False) -> AnalysisResult:
         self.missing_defaults.clear()
         self.diagnostics.clear()
         self._fuzzy_img_cache.clear()
@@ -158,17 +158,21 @@ class SenpyAnalyzer:
 
         for i, file_path in enumerate(rpy_files, 1):
             fname = os.path.basename(file_path)
-            msg = f"\r[1/2] Сбор символов: {i}/{total_files} ({fname[:25]})"
-            print(msg.ljust(75), end="", flush=True)
+            if not quiet:
+                msg = f"\r[1/2] Сбор символов: {i}/{total_files} ({fname[:25]})"
+                print(msg.ljust(75), end="", flush=True)
             self._collect_symbols(file_path)
-        print()
+        if not quiet:
+            print()
 
         for i, file_path in enumerate(rpy_files, 1):
             fname = os.path.basename(file_path)
-            msg = f"\r[2/2] Анализ правил: {i}/{total_files} ({fname[:25]})"
-            print(msg.ljust(75), end="", flush=True)
+            if not quiet:
+                msg = f"\r[2/2] Анализ правил: {i}/{total_files} ({fname[:25]})"
+                print(msg.ljust(75), end="", flush=True)
             self._analyze_file(file_path)
-        print()
+        if not quiet:
+            print()
 
         self._check_unreachable_labels()
         self._check_unused_assets()
@@ -266,17 +270,19 @@ class SenpyAnalyzer:
                 if m_label:
                     label_name = m_label.group(1)
                     if label_name in self.declared_labels:
-                        prev_file, prev_line, _ = self.declared_labels[label_name]
-                        self.diagnostics.append(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=idx + 1,
-                                line_content=clean,
-                                code="RPY307",
-                                message=f"Duplicate label '{label_name}'. Previously declared at {os.path.basename(prev_file)}:{prev_line}. Causes fatal ScriptError.",
-                                severity="ERROR",
+                        # Служебные хуки вроде label _(message): не считаем ошибкой
+                        if not label_name.startswith("_"):
+                            prev_file, prev_line, _ = self.declared_labels[label_name]
+                            self.diagnostics.append(
+                                Diagnostic(
+                                    file_path=file_path,
+                                    line_number=idx + 1,
+                                    line_content=clean,
+                                    code="RPY307",
+                                    message=f"Duplicate label '{label_name}'. Previously declared at {os.path.basename(prev_file)}:{prev_line}. Causes fatal ScriptError.",
+                                    severity="ERROR",
+                                )
                             )
-                        )
                     else:
                         self.declared_labels[label_name] = (file_path, idx + 1, clean)
                     
@@ -746,7 +752,10 @@ class SenpyAnalyzer:
                     audio_found = False
 
                     if raw_audio_target.startswith(('"', "'")) and raw_audio_target.endswith(('"', "'")):
-                        clean_audio_path = raw_audio_target[1:-1].replace("\\", "/").lower()
+                        clean_audio_path = raw_audio_target[1:-1].strip()
+                        # Срезаем Ren'Py-модификаторы таймингов вроде <from 10.0 to 50.0>
+                        clean_audio_path = re.sub(r"^<[^>]+>\s*", "", clean_audio_path)
+                        clean_audio_path = clean_audio_path.replace("\\", "/").lower()
                         audio_file = os.path.basename(clean_audio_path)
                         if clean_audio_path in self.known_assets or audio_file in self.known_assets:
                             audio_found = True
