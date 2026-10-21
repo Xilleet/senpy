@@ -72,6 +72,10 @@ TSUNDERE_FLAVORS = {
     "RPY304": "(｀ε´ ) «Что это за цвет такой?! Ты даже в hex-кодах умудрился опечататься!»" if IS_RU else "(｀ε´ ) «What kind of color is that?! You even managed to make a typo in hex codes!»",
     "RPY401": "(눈_눈) «В одном пункте меню ты переменную дал, а во втором забыл?! Выберут второй — и игра крашнется!»" if IS_RU else "(눈_눈) «You defined a variable in one menu choice but forgot it in another?! They pick the second one and it crashes!»",
     "RPY501": "(￣︿￣) «Музыка не найдена! В этой сцене будет гробовая тишина, глупый!»" if IS_RU else "(￣︿￣) «Music file not found! There will be dead silence in this scene, stupid!»",
+    "RPY601": "(╬ Ò﹏Ó) «Ты сломал переменную в переводе! Оригинал ждёт [var], а у тебя опечатка! Игра вылетит с KeyError, идиот!»" if IS_RU else "(╬ Ò﹏Ó) «Variable mismatch in translation! The original expects [var], but you made a typo! The game will crash with KeyError, dummy!»",
+    "RPY602": "(；￣Д￣) «Теги форматирования в переводе не совпадают с оригиналом! Текст игры поплывёт, бестолочь!»" if IS_RU else "(；￣Д￣) «Formatting tags in translation don't match the original! Text styling will break, idiot!»",
+    "RPY603": "(￣︿￣) «Ты оставил строку перевода пустой! У игроков там будет пустота вместо текста!»" if IS_RU else "(￣︿￣) «You left the translation string empty! Players will see blank air instead of text!»",
+    "RPY107": "(눈_눈) «Ты используешь замшелую функцию из каменного века Ren'Py! Обнови код на современный аналог, дед!»" if IS_RU else "(눈_눈) «Using an obsolete Ren'Py function from the stone age! Update your code to modern APIs, boomer!»",
 }
 
 TSUNDERE_UI = {
@@ -312,7 +316,7 @@ def main():
     g_rules.add_argument(
         "--rules",
         action="store_true",
-        help="List all 29 available Senpy rules and their descriptions"
+        help="List all 33 available Senpy rules and their descriptions"
     )
     g_rules.add_argument(
         "--rule",

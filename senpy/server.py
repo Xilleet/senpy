@@ -16,7 +16,7 @@ except ImportError:
 
 from senpy.analyzer import Diagnostic, SenpyAnalyzer
 
-server = LanguageServer("senpy-lsp", "v0.2.2")
+server = LanguageServer("senpy-lsp", "v0.2.3")
 
 
 def _uri_to_path(uri: str) -> str:

@@ -7,6 +7,7 @@ import textwrap
 import warnings
 
 from senpy.assets import AssetManager, find_orphaned_rpyc
+from senpy.deprecated import DeprecationChecker
 from senpy.flow import StoryFlowAnalyzer
 from senpy.python_ast import PythonAstChecker
 from senpy.text_tags import get_utf16_range, process_quoted_strings
@@ -189,6 +190,7 @@ class SenpyAnalyzer:
         self.assets = AssetManager(self.project_path)
         self.python_ast = PythonAstChecker(self)
         self.flow = StoryFlowAnalyzer(self)
+        self.deprecated = DeprecationChecker()
         self.extra_files = extra_files or []
         self.fix = fix
         self.in_memory_files = {
@@ -275,7 +277,8 @@ class SenpyAnalyzer:
         self.declared_characters.clear()
 
         self._index_assets()
-        rpy_files = self._get_rpy_files() + self.extra_files
+        main_rpy, tl_rpy = self._get_rpy_files()
+        rpy_files = main_rpy + self.extra_files
 
         total_files = len(rpy_files)
 
@@ -300,9 +303,13 @@ class SenpyAnalyzer:
         self._check_unreachable_labels()
         self._check_unused_assets()
 
+        # [3/3] Валидация файлов перевода (TL-Checker)
+        for tl_file in tl_rpy:
+            self._analyze_tl_file(tl_file)
+
         return AnalysisResult(
             diagnostics=self.diagnostics,
-            file_count=len(rpy_files),
+            file_count=len(rpy_files) + len(tl_rpy),
             total_lines=self.total_lines,
             fixed_count=self.fixed_count,
             fixable_count=self.fixable_count,
@@ -351,22 +358,34 @@ class SenpyAnalyzer:
         old_diags = self.diagnostics
         self.diagnostics = file_diags
         norm_path = os.path.normcase(os.path.abspath(file_path))
+        rel_parts = os.path.relpath(file_path, self.project_path).replace("\\", "/").split("/")
         try:
-            self._purge_file_symbols(norm_path)
-            self._collect_symbols(file_path)
-            self._analyze_file(file_path)
+            if "tl" in rel_parts:
+                self._analyze_tl_file(file_path)
+            else:
+                self._purge_file_symbols(norm_path)
+                self._collect_symbols(file_path)
+                self._analyze_file(file_path)
         finally:
             self.diagnostics = old_diags
         return file_diags
 
-    def _get_rpy_files(self) -> list[str]:
-        files: list[str] = []
+    def _get_rpy_files(self) -> tuple[list[str], list[str]]:
+        main_files: list[str] = []
+        tl_files: list[str] = []
         for root, dirs, filenames in os.walk(self.project_path):
             dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
+            rel_parts = os.path.relpath(root, self.project_path).replace("\\", "/").split("/")
+            is_tl_dir = "tl" in rel_parts
+
             for f in filenames:
                 if f.endswith((".rpy", "_ren.py")):
-                    files.append(os.path.join(root, f))
-        return files
+                    full_p = os.path.join(root, f)
+                    if is_tl_dir:
+                        tl_files.append(full_p)
+                    else:
+                        main_files.append(full_p)
+        return main_files, tl_files
 
     def _collect_symbols(self, file_path: str):
         try:
@@ -668,6 +687,10 @@ class SenpyAnalyzer:
                 if not stripped:
                     idx = next_idx
                     continue
+
+                # RPY107: Проверка устаревшего API Ren'Py (LiveComposite, im.*, ui.*, etc.)
+                for d in self.deprecated.check_line(raw_line, idx + 1, file_path):
+                    self._add_diagnostic(d, noqa_map)
 
                 # RPY001: Проверка табуляции в отступах
                 leading_ws = raw_line[:len(raw_line) - len(raw_line.lstrip())]
@@ -1260,6 +1283,158 @@ class SenpyAnalyzer:
         self.python_ast.check_condition(
             file_path, line_idx, line_content, expr, screen_name, screen_local_symbols, noqa_map
         )
+
+    def _analyze_tl_file(self, file_path: str):
+        try:
+            norm_path = os.path.normcase(os.path.abspath(file_path))
+            if norm_path in self.in_memory_files:
+                lines = self.in_memory_files[norm_path].splitlines(keepends=True)
+            else:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+        except (UnicodeDecodeError, OSError):
+            return
+
+        self.total_lines += len(lines)
+        pairs = self._parse_tl_pairs(lines)
+        self._validate_tl_pairs(pairs, file_path)
+
+    @staticmethod
+    def _parse_tl_pairs(lines: list[str]) -> list[tuple[str, int, str, int]]:
+        """
+        Конечный автомат (State Machine). Собирает безопасные пары:
+        (исходный_текст, строка_old, текст_перевода, строка_new)
+        Устойчив к комментариям, пустым строкам, voice/with и пропущенным new.
+        """
+        re_old = re.compile(r'^\s*old\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')')
+        re_new = re.compile(r'^\s*new\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')')
+        re_dialogue_old = re.compile(
+            r'^\s*#\s*(?:(?:[a-zA-Z0-9_]+|"[^"]*"|\'[^\']*\')(?:\s+[a-zA-Z0-9_]+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
+        )
+        re_dialogue_new = re.compile(
+            r'^\s*(?:(?:[a-zA-Z0-9_]+|"[^"]*"|\'[^\']*\')(?:\s+[a-zA-Z0-9_]+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
+        )
+
+        pairs = []
+        pending_old = None
+        pending_old_line = 0
+
+        for line_no, raw_line in enumerate(lines, start=1):
+            clean = raw_line.strip()
+            if not clean:
+                continue
+
+            # 1. Поиск для translate strings: (old / new)
+            m_old = re_old.match(clean)
+            if m_old:
+                s = m_old.group(1)
+                pending_old = s[1:-1]
+                pending_old_line = line_no
+                continue
+
+            m_new = re_new.match(clean)
+            if m_new:
+                if pending_old is not None:
+                    s = m_new.group(1)
+                    pairs.append((pending_old, pending_old_line, s[1:-1], line_no))
+                    pending_old = None
+                    pending_old_line = 0
+                continue
+
+            # 2. Поиск для диалоговых блоков translate: (# "оригинал" / "перевод")
+            if clean.startswith("#"):
+                m_d_old = re_dialogue_old.match(clean)
+                if m_d_old:
+                    s = m_d_old.group(1)
+                    pending_old = s[1:-1]
+                    pending_old_line = line_no
+                continue
+            else:
+                first_word = clean.split()[0] if clean.split() else ""
+                # Пропускаем служебные команды внутри диалога (voice, with, $, play, scene и т.д.)
+                if first_word in NON_DIALOGUE_STATEMENTS or clean.startswith("translate "):
+                    if clean.startswith("translate "):
+                        pending_old = None
+                    continue
+
+                if pending_old is not None:
+                    m_d_new = re_dialogue_new.match(clean)
+                    if m_d_new:
+                        s = m_d_new.group(1)
+                        pairs.append((pending_old, pending_old_line, s[1:-1], line_no))
+                    pending_old = None
+                    pending_old_line = 0
+
+        return pairs
+
+    def _validate_tl_pairs(self, pairs: list[tuple[str, int, str, int]], file_path: str):
+        from collections import Counter
+        re_var = re.compile(r"\[([a-zA-Z_][a-zA-Z0-9_]*)(?:![a-zA-Z]+)?\]")
+        re_tag = re.compile(r"\{(/?[a-zA-Z_]+)(?:=[^}]*)?\}")
+
+        for old_txt, old_line, new_txt, new_line in pairs:
+            # Маскируем экранированные скобки \[ и \{
+            old_masked = re.sub(r"\\.|(\{\{|\}\}|\[\[|\]\])", "  ", old_txt)
+            new_masked = re.sub(r"\\.|(\{\{|\}\}|\[\[|\]\])", "  ", new_txt)
+
+            # RPY603: Пустой перевод
+            if old_txt.strip() and not new_txt.strip():
+                start_c, end_c = self._get_utf16_range(f'new "{new_txt}"', new_txt)
+                self.diagnostics.append(
+                    Diagnostic(
+                        file_path=file_path,
+                        line_number=new_line,
+                        line_content=f'new "{new_txt}"',
+                        code="RPY603",
+                        message="Translation string is empty ('new \"\"'). Players will see blank text.",
+                        severity="WARNING",
+                        col=start_c,
+                        end_col=end_c,
+                    )
+                )
+                continue
+
+            # RPY601: Сверка переменных [var]
+            old_vars = Counter(re_var.findall(old_masked))
+            new_vars = Counter(re_var.findall(new_masked))
+            missing = old_vars - new_vars
+            extra = new_vars - old_vars
+
+            if missing or extra:
+                diffs = []
+                if missing:
+                    diffs.append(f"lost: {', '.join(f'[{v}]' for v in missing)}")
+                if extra:
+                    diffs.append(f"typo/extra: {', '.join(f'[{v}]' for v in extra)}")
+
+                start_c, end_c = self._get_utf16_range(new_txt, next(iter(extra)) if extra else None)
+                self.diagnostics.append(
+                    Diagnostic(
+                        file_path=file_path,
+                        line_number=new_line,
+                        line_content=new_txt,
+                        code="RPY601",
+                        message=f"Variable mismatch in translation ({'; '.join(diffs)}). Will crash with KeyError at runtime!",
+                        severity="ERROR",
+                        col=start_c,
+                        end_col=end_c,
+                    )
+                )
+
+            # RPY602: Сверка тегов форматирования {b}, {color} и т.д.
+            old_tags = Counter(re_tag.findall(old_masked))
+            new_tags = Counter(re_tag.findall(new_masked))
+            if old_tags != new_tags:
+                self.diagnostics.append(
+                    Diagnostic(
+                        file_path=file_path,
+                        line_number=new_line,
+                        line_content=new_txt,
+                        code="RPY602",
+                        message="Formatting tags count or names do not match the original string. Text styles may break.",
+                        severity="WARNING",
+                    )
+                )
 
     def generate_defaults_file(self) -> tuple[str, int]:
         if not self.missing_defaults:

@@ -56,7 +56,7 @@ BUILTIN_ACTIONS = {
 
 IGNORED_DIRS = {
     ".git", ".svn", ".hg", "node_modules", ".venv", "venv", "env",
-    "__pycache__", ".idea", ".vscode", "build", "dist", "out", "tl",
+    "__pycache__", ".idea", ".vscode", "build", "dist", "out",
     "renpy", "lib"
 }
 

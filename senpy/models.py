@@ -52,6 +52,7 @@ RULE_SEVERITY: dict[str, str] = {
     "RPY104": "WARNING",  # $ var = 1 без default -> риск для сохранений
     "RPY105": "ERROR",    # Мутация define-константы -> ломает откат и сейвы
     "RPY106": "WARNING",  # Использование random/set в игровом процессе
+    "RPY107": "WARNING",  # Устаревший API Ren'Py (LiveComposite, im.*, ui.*)
     "RPY201": "WARNING",  # Глобальная мутация внутри screen -> ломает откат
     "RPY202": "WARNING",  # Переменная в screen без default
     "RPY203": "WARNING",  # Кнопка без action
@@ -73,4 +74,7 @@ RULE_SEVERITY: dict[str, str] = {
     "RPY502": "WARNING",  # Спрайт не найден в ассетах
     "RPY503": "WARNING",  # Неиспользуемый ассет на диске
     "RPY504": "WARNING",  # Повторное объявление/переопределение image
+    "RPY601": "ERROR",    # Рассинхрон переменных [var] в переводе -> KeyError
+    "RPY602": "WARNING",  # Рассинхрон или поломка тегов {тег} в переводе
+    "RPY603": "WARNING",  # Пустая строка перевода new "
 }

@@ -120,6 +120,8 @@ class AssetManager:
         """RPY503: Находит медиафайлы на диске, на которые нет ссылок в сценарии."""
         diagnostics: list[Diagnostic] = []
         for rel_path, full_path in sorted(self.media_disk_files.items()):
+            if rel_path.startswith("tl/") or "/tl/" in rel_path:
+                continue
             base_fn = os.path.basename(rel_path)
             stem, _ = os.path.splitext(base_fn)
 

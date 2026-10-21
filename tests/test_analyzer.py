@@ -374,3 +374,47 @@ def test_lsp_analyze_file_only_no_symbol_leak(tmp_path: Path):
     # Старое имя должно исчезнуть, новое появиться!
     assert "old_score" not in analyzer.declared_symbols
     assert "new_score" in analyzer.declared_symbols
+
+def test_translation_validation_catches_rpy601_602_603(tmp_path: Path):
+    """Verify translation validator catches variable mismatches, tag mismatches, and empty strings"""
+    game_dir = tmp_path / "game"
+    tl_dir = game_dir / "tl" / "russian"
+    tl_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Основной скрипт
+    (game_dir / "script.rpy").write_text("label start:\n    return\n", encoding="utf-8")
+
+    # 2. Файл локализации с ошибками
+    tl_content = """
+translate russian strings:
+    old "Hello, [player_name]!"
+    new "Привет, [player]!"         # RPY601: опечатка в переменной
+
+    old "{b}Warning!{/b}"
+    new "Внимание!"                 # RPY602: потерян тег {b}
+
+    old "Cancel"
+    new ""                          # RPY603: пустой перевод
+"""
+    (tl_dir / "common.rpy").write_text(tl_content, encoding="utf-8")
+
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    result = analyzer.run()
+
+    codes = {d.code for d in result.diagnostics}
+    assert "RPY601" in codes
+    assert "RPY602" in codes
+    assert "RPY603" in codes
+
+def test_deprecated_api_catches_livecomposite_and_autofixes(tmp_path: Path):
+    """Verify RPY107 catches LiveComposite and suggests Composite autofix"""
+    code = """
+image natsuki mouth = LiveComposite((960, 960), (0, 0), "natsuki/0.png")
+define c = DynamicCharacter("char_name")
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy107_errors = [d for d in result.diagnostics if d.code == "RPY107"]
+    
+    assert len(rpy107_errors) == 2
+    assert any("LiveComposite" in d.message and d.fix_replacement == "Composite" for d in rpy107_errors)
+    assert any("DynamicCharacter" in d.message for d in rpy107_errors)
