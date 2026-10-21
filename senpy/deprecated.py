@@ -19,11 +19,6 @@ DEPRECATED_APIS: dict[str, tuple[str, str | None]] = {
     "anim.Blink": ("Legacy animation helper. Prefer modern ATL instead.", None),
     "anim.SMAnimation": ("Legacy animation helper. Prefer modern ATL instead.", None),
     
-    # Старые im-манипуляторы (программный рендеринг на CPU вместо GPU)
-    "im.Composite": ("Legacy software-rendered manipulator. Prefer 'Composite' or ATL for GPU acceleration.", "Composite"),
-    "im.Scale": ("Legacy software-rendered manipulator. Prefer 'Transform(..., zoom=...)' or ATL for GPU acceleration.", None),
-    "im.FactorScale": ("Legacy software-rendered manipulator. Prefer 'Transform(..., zoom=...)' or ATL for GPU acceleration.", None),
-    
     # Устаревшие вызовы ui.* (заменены на Screen Language)
     "ui.text": ("Legacy 'ui' screen function is obsolete. Use Screen Language 'text' statement.", None),
     "ui.button": ("Legacy 'ui' screen function is obsolete. Use Screen Language 'button' statement.", None),
@@ -41,7 +36,7 @@ RE_DEPRECATED = re.compile(
 )
 
 # Быстрый фильтр подстрок, чтобы не гонять regex по обычным строкам
-FAST_TERMS = ("Live", "im.", "anim.", "ui.", "DynamicCharacter")
+FAST_TERMS = ("Live", "anim.", "ui.", "DynamicCharacter")
 
 class DeprecationChecker:
     """Проверяет строки кода сценария на использование устаревшего API Ren'Py."""

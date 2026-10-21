@@ -1,15 +1,55 @@
 # Senpy Rules
 
-Comprehensive guide to all semantic rules implemented in the **Senpy** Ren'Py linter.
+Comprehensive guide to all semantic and static rules implemented in the **Senpy** Ren'Py linter.
 
 ---
 
 ### Navigation
-- [RPY101](#rpy101) | [RPY102](#rpy102) | [RPY103](#rpy103) | [RPY104](#rpy104) | [RPY105](#rpy105) | [RPY106](#rpy106)
-- [RPY201](#rpy201) | [RPY202](#rpy202) | [RPY203](#rpy203) | [RPY204](#rpy204) | [RPY205](#rpy205)
-- [RPY301](#rpy301) | [RPY302](#rpy302) | [RPY303](#rpy303) | [RPY304](#rpy304) | [RPY305](#rpy305) | [RPY306](#rpy306)
-- [RPY401](#rpy401) | [RPY402](#rpy402) | [RPY403](#rpy403)
-- [RPY501](#rpy501) | [RPY502](#rpy502) | [RPY504](#rpy504)
+- **Indentation & Code (RPY0xx)**: [RPY001](#rpy001) | [RPY002](#rpy002)
+- **Variables & State (RPY1xx)**: [RPY101](#rpy101) | [RPY102](#rpy102) | [RPY103](#rpy103) | [RPY104](#rpy104) | [RPY105](#rpy105) | [RPY106](#rpy106) | [RPY107](#rpy107)
+- **Screens & UI (RPY2xx)**: [RPY201](#rpy201) | [RPY202](#rpy202) | [RPY203](#rpy203) | [RPY204](#rpy204) | [RPY205](#rpy205) | [RPY206](#rpy206)
+- **Story Flow & Dialogue (RPY3xx)**: [RPY301](#rpy301) | [RPY302](#rpy302) | [RPY303](#rpy303) | [RPY304](#rpy304) | [RPY305](#rpy305) | [RPY306](#rpy306) | [RPY307](#rpy307) | [RPY308](#rpy308)
+- **Branching & Conditions (RPY4xx)**: [RPY401](#rpy401) | [RPY402](#rpy402) | [RPY403](#rpy403)
+- **Assets & Media (RPY5xx)**: [RPY501](#rpy501) | [RPY502](#rpy502) | [RPY503](#rpy503) | [RPY504](#rpy504)
+- **Translations & Localization (RPY6xx)**: [RPY601](#rpy601) | [RPY602](#rpy602) | [RPY603](#rpy603)
+
+---
+
+## Indentation and Syntax (RPY0xx)
+
+<a id="rpy001"></a>
+### RPY001: Tab character in indentation
+- **Severity**: `ERROR`
+- **Why**: Ren'Py requires 4 spaces per indentation level. Tab characters (`\t`) cause indentation mismatches and `SyntaxError` across different text editors and operating systems.
+- **Tip**: Fixable automatically with `--fix` or via Quick Fix (`Ctrl+.`).
+
+```renpy
+# Bad
+label start:
+	"Tab character used here!"
+
+# Good
+label start:
+    "Standard 4 spaces used here."
+```
+
+---
+
+<a id="rpy002"></a>
+### RPY002: Smart/curly quotes in code statement
+- **Severity**: `ERROR`
+- **Why**: Typographic smart quotes (“ ” ‘ ’ « ») copied from text editors like MS Word into Python code statements break Python's lexical parser, causing a fatal `SyntaxError`.
+- **Tip**: Fixable automatically with `--fix` or via Quick Fix (`Ctrl+.`).
+
+```renpy
+# Bad
+$ status = “active”
+if item == «key»: ...
+
+# Good
+$ status = "active"
+if item == "key": ...
+```
 
 ---
 
@@ -34,7 +74,7 @@ default player_name = "Eileen"
 <a id="rpy102"></a>
 ### RPY102: Augmented assignment before declaration
 - **Severity**: `ERROR`
-- **Why**: Executing `+=`, `-=`, etc. before the variable exists causes an immediate `NameError`.
+- **Why**: Executing `+=`, `-=`, etc. before the variable exists causes an immediate runtime `NameError`.
 
 ```renpy
 # Bad
@@ -99,7 +139,7 @@ label start:
     $ karma += 1
 
 # Good
-default karma = 0
+default karma = 0  # Use default for mutable variables!
 label start:
     $ karma += 1
 ```
@@ -119,6 +159,24 @@ $ inventory = set()
 # Good
 from renpy import random
 $ inventory = []  # or renpy.revertable_set()
+```
+
+---
+
+<a id="rpy107"></a>
+### RPY107: Usage of deprecated / obsolete Ren'Py API
+- **Severity**: `WARNING`
+- **Why**: Calling obsolete Ren'Py functions (`LiveComposite`, `DynamicCharacter`, `im.*`, `ui.*`) harms rendering performance (CPU vs GPU) or breaks compatibility on Ren'Py 7/8.
+- **Tip**: Fixable automatically via Quick Fix (`Ctrl+.`).
+
+```renpy
+# Bad
+image natsuki mouth = LiveComposite((960, 960), (0, 0), "base.png")
+define c = DynamicCharacter("char_name")
+
+# Good
+image natsuki mouth = Composite((960, 960), (0, 0), "base.png")
+define c = Character("[char_name]")
 ```
 
 ---
@@ -212,6 +270,22 @@ screen inv():
 
 ---
 
+<a id="rpy206"></a>
+### RPY206: Direct function call in button action
+- **Severity**: `ERROR`
+- **Why**: Calling a function with parentheses `action heal_player()` executes it immediately during screen rendering and UI prediction, NOT upon user click.
+- **Tip**: Fixable automatically via Quick Fix (`Ctrl+.`).
+
+```renpy
+# Bad
+textbutton "Heal" action heal_player()
+
+# Good
+textbutton "Heal" action Function(heal_player)
+```
+
+---
+
 ## Story Flow and Tags (RPY3xx)
 
 <a id="rpy301"></a>
@@ -234,6 +308,7 @@ screen inv():
 ### RPY302: Jump or Call to non-existent label
 - **Severity**: `ERROR`
 - **Why**: Jumping to a missing label terminates the novel with a `ScriptError`.
+- **Tip**: Quick Fix (`Ctrl+.`) will suggest similar label names if a typo is detected.
 
 ```renpy
 # Bad
@@ -249,6 +324,15 @@ jump bad_end
 ### RPY303: Unreferenced / Dead label
 - **Severity**: `INFO`
 - **Why**: Label is declared but never referenced by any `jump` or `call`. It may be unreachable dead code or an abandoned draft.
+
+```renpy
+# Bad
+label forgotten_draft:
+    "Old scene never reached..."
+
+# Good
+# Connect with jump/call or remove dead script
+```
 
 ---
 
@@ -270,7 +354,7 @@ jump bad_end
 <a id="rpy305"></a>
 ### RPY305: Unescaped quotes inside dialogue
 - **Severity**: `ERROR`
-- **Why**: Unescaped quotes inside dialogue break Ren'Py's script parser during game initialization.
+- **Why**: Quotes inside a dialogue string without escaping (`\"`) break Ren'Py's script parser during game initialization.
 
 ```renpy
 # Bad
@@ -300,7 +384,50 @@ label sub_scene:
 
 ---
 
-## Control Flow (RPY4xx)
+<a id="rpy307"></a>
+### RPY307: Duplicate label declaration
+- **Severity**: `ERROR`
+- **Why**: Declaring two labels with the exact same name across any project script causes a fatal `ScriptError` on startup.
+
+```renpy
+# Bad
+label chapter_1:
+    ...
+label chapter_1:  # Duplicate label!
+    ...
+
+# Good
+label chapter_1:
+    ...
+label chapter_2:
+    ...
+```
+
+---
+
+<a id="rpy308"></a>
+### RPY308: Label preceded by regular statements (Fallthrough hazard)
+- **Severity**: `WARNING`
+- **Why**: Ending a scene without `jump` or `return` before the next label causes control flow to unintentionally fall right through into the next scene.
+
+```renpy
+# Bad
+label scene_a:
+    "End of scene A."
+label scene_b:
+    "Scene B starts immediately!"
+
+# Good
+label scene_a:
+    "End of scene A."
+    return
+label scene_b:
+    "Scene B starts!"
+```
+
+---
+
+## Control Flow and Branching (RPY4xx)
 
 <a id="rpy401"></a>
 ### RPY401: Variable defined in one menu choice but missing in another
@@ -353,7 +480,17 @@ menu:
 <a id="rpy403"></a>
 ### RPY403: Always-false condition
 - **Severity**: `WARNING`
-- **Why**: Conditions like `if False:` or `if x and not x:` can never be evaluated to true. The block is dead code.
+- **Why**: Conditions like `if False:` or `if x and not x:` can never evaluate to true. The block is dead code.
+
+```renpy
+# Bad
+if False:
+    "This branch will never execute."
+
+# Good
+if has_secret_item:
+    "Secret branch!"
+```
 
 ---
 
@@ -362,28 +499,110 @@ menu:
 <a id="rpy501"></a>
 ### RPY501: Missing audio file
 - **Severity**: `ERROR`
-- **Why**: Audio file referenced in `play music/sound/voice` was not found on disk or inside `.rpa` archives.
+- **Why**: Audio file referenced in `play` or `queue` was not found on disk, in `audio/`, or inside `.rpa` archives.
+
+```renpy
+# Bad
+play music "bgm/missing_track.ogg"
+
+# Good
+play music "bgm/existing_track.ogg"
+```
 
 ---
 
 <a id="rpy502"></a>
 ### RPY502: Missing or mistyped sprite / background
 - **Severity**: `WARNING`
-- **Why**: Image shown via `show` or `scene` does not exist in asset folders or `image` declarations.
+- **Why**: Sprite attribute or background shown via `show` or `scene` does not exist in asset folders, `layeredimage` definitions, or `image` declarations.
+- **Tip**: Quick Fix (`Ctrl+.`) will suggest the closest matching sprite or attribute name.
+
+```renpy
+# Bad
+show sayori 99z_crazy_pose
+
+# Good
+show sayori 1a
+```
+
+---
+
+<a id="rpy503"></a>
+### RPY503: Unused media asset on disk
+- **Severity**: `WARNING`
+- **Why**: Image or audio files located in the project directory are never referenced in any script. Inflates build distribution size.
+
+```renpy
+# Bad: File 'game/images/unused_background.png' exists on disk but is never shown
+
+# Good: Show the asset in script or remove the unused file
+```
 
 ---
 
 <a id="rpy504"></a>
 ### RPY504: Duplicate image declaration
-- **Severity**: `ERROR`
-- **Why**: Declaring the same image name twice silently overwrites the previous definition.
+- **Severity**: `WARNING`
+- **Why**: Declaring the same image tag twice (via `image name = ...` or `image name:`) silently overrides the previous definition, potentially masking bugs.
 
 ```renpy
 # Bad
 image bg room = "day.png"
-image bg room = "night.png"
+image bg room = "night.png"  # Silently overrides daytime room!
 
 # Good
 image bg room_day = "day.png"
 image bg room_night = "night.png"
 ```
+
+---
+
+## Translations and Localization (RPY6xx)
+
+<a id="rpy601"></a>
+### RPY601: Variable mismatch in translation string
+- **Severity**: `ERROR`
+- **Why**: If a translated string alters or misspells a dialogue variable (`[var]`), rendering the translation causes a fatal `KeyError` at runtime.
+
+```renpy
+# Bad
+old "Hello, [player_name]!"
+new "Привет, [player]!"  # Typo in variable name!
+
+# Good
+old "Hello, [player_name]!"
+new "Привет, [player_name]!"
+```
+
+---
+
+<a id="rpy602"></a>
+### RPY602: Formatting tag mismatch in translation string
+- **Severity**: `WARNING`
+- **Why**: Missing or altered formatting tags (`{b}`, `{color}`, `{i}`) in translation strings cause unclosed text tags and visual glitches.
+
+```renpy
+# Bad
+old "Danger: {b}Hazard!{/b}"
+new "Опасно: {b}Угроза!"  # Missing closing tag {/b}
+
+# Good
+old "Danger: {b}Hazard!{/b}"
+new "Опасно: {b}Угроза!{/b}"
+```
+
+---
+
+<a id="rpy603"></a>
+### RPY603: Empty translation string ('new ""')
+- **Severity**: `WARNING`
+- **Why**: Leaving `new ""` empty for a non-empty original line will display an empty, blank dialogue window to players in that language.
+
+```renpy
+# Bad
+old "Do you want to exit?"
+new ""  # Player sees an empty dialogue box!
+
+# Good
+old "Do you want to exit?"
+new "Вы хотите выйти?"

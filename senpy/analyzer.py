@@ -214,9 +214,9 @@ class SenpyAnalyzer:
         self.total_lines: int = 0
         self.fixed_count: int = 0
         self.fixable_count: int = 0
-        self._fuzzy_img_cache: dict[str, str | None] = {}
         self.defined_audio_map: dict[str, str] = {}
         self.file_scopes: dict[str, FileScope] = {}
+        
 
     @staticmethod
     def _get_utf16_range(line: str, sub: str | None = None) -> tuple[int, int]:
@@ -258,7 +258,6 @@ class SenpyAnalyzer:
         self.file_scopes.clear()
         self.missing_defaults.clear()
         self.diagnostics.clear()
-        self._fuzzy_img_cache.clear()
         self.user_symbols.clear()
         self.declared_symbols = set(BUILTIN_SYMBOLS)
         self.declared_labels.clear()
@@ -323,6 +322,7 @@ class SenpyAnalyzer:
 
     def _rebuild_aggregates(self) -> None:
         """Пересобирает глобальные множества символов на основе scopes всех остальных файлов."""
+        self.label_outgoing_jumps.clear()
         self.declared_symbols = set(BUILTIN_SYMBOLS)
         self.user_symbols.clear()
         self.defined_constants.clear()
@@ -334,7 +334,6 @@ class SenpyAnalyzer:
         self.defined_audio_map.clear()
         self.referenced_labels.clear()
         self.labels_with_return.clear()
-        self.label_outgoing_jumps.clear()
 
         for scope in self.file_scopes.values():
             self.declared_symbols.update(scope.declared_symbols)
@@ -631,14 +630,6 @@ class SenpyAnalyzer:
                 return
         diag.severity = RULE_SEVERITY.get(diag.code, "WARNING")
         self.diagnostics.append(diag)
-
-    def _suggest_similar_symbol(self, unknown_var: str) -> str:
-        matches = difflib.get_close_matches(
-            unknown_var, list(self.user_symbols), n=1, cutoff=0.6
-        )
-        if matches:
-            return f" (did you mean '{matches[0]}' ?)"
-        return ""
 
     def _can_reach_return(self, label_name: str, visited: set[str] | None = None) -> bool:
         return self.flow.can_reach_return(label_name, visited)

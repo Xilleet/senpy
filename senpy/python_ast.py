@@ -464,8 +464,7 @@ class PythonAstChecker:
                         ),
                         noqa_map,
                     )
-            tree = ast.parse(expr, mode="eval")
-            for node in ast.walk(tree):
+            for node in ast.walk(cond_tree):
                 if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                     var_name = node.id
                     if var_name.startswith("_") or var_name in SCREEN_LOCAL_IGNORE:

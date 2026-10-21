@@ -72,22 +72,25 @@ class AssetManager:
                 if ext in MEDIA_EXTENSIONS:
                     self.media_disk_files[rel_path] = full_path
 
-                    if clean_rel.startswith("audio/") and ext in AUDIO_EXTENSIONS:
+                    if clean_rel.startswith(("audio/", "bgm/", "sfx/")) and ext in AUDIO_EXTENSIONS:
                         stem = os.path.splitext(os.path.basename(clean_rel))[0]
                         self.audio_dir_files[stem] = rel_path
 
                 if f.lower().endswith(".rpa"):
                     self._read_rpa_index(full_path)
-
+        
         for asset in self.known_assets:
             base, ext = os.path.splitext(asset)
+                
+            # Оставляем строгий парсинг только для официального стандарта images/
             if ext.lower() in (".png", ".webp", ".jpg", ".jpeg"):
-                clean_name = base.replace("\\", "/")
+                clean_name = base.replace("\\", "/").lower()
                 clean_name = clean_name.removeprefix("game/")
-                clean_name = clean_name.removeprefix("images/")
-                tokenized = clean_name.replace("/", " ").replace("_", " ")
-                self.valid_images.add(tokenized)
-                self.valid_images.add(os.path.basename(clean_name))
+                if clean_name.startswith("images/"):
+                    clean_name = clean_name.removeprefix("images/")
+                    tokenized = clean_name.replace("/", " ").replace("_", " ")
+                    self.valid_images.add(tokenized)
+                    self.valid_images.add(os.path.basename(clean_name))
 
         self._asset_cache[self.project_path] = (set(self.known_assets), set(self.valid_images))
 

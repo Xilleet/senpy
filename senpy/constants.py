@@ -154,9 +154,6 @@ RE_STRING_MATCH = re.compile(
     r'("([^"\\]*(?:\\.[^"\\]*)*)")|'
     r"('([^'\\]*(?:\\.[^'\\]*)*)')"
 )
-RE_DIALOGUE_LINE = re.compile(
-    r'^\s*(?:(?:[a-zA-Z_][a-zA-Z0-9_]*|"[^"]+"|\'[^\']+\')(?:\s+[a-zA-Z0-9_]+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')(?:\s+with\s+.*)?\s*$'
-)
 RE_NOQA = re.compile(
     r"#\s*(?:noqa|senpy:\s*ignore)(?:\[([a-zA-Z0-9_,\s]+)\]|:\s*([a-zA-Z0-9_,\s]+))?",
     re.IGNORECASE,

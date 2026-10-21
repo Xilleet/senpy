@@ -8,6 +8,22 @@ from rich.text import Text
 console = Console()
 
 RULES_DATABASE = {
+    # ---------------- 000: Indentation & Code Formatting ----------------
+    "RPY001": {
+        "title": "Tab character in indentation",
+        "severity": "ERROR",
+        "why": "Ren'Py requires 4 spaces per indentation level. Tab characters ('\\t') cause indentation mismatches and SyntaxError across different editors and operating systems.",
+        "bad": 'label start:\n\t"Tab character used here!"',
+        "good": 'label start:\n    "Standard 4 spaces used here."',
+    },
+    "RPY002": {
+        "title": "Smart/curly quotes in code statement",
+        "severity": "ERROR",
+        "why": "Typographic smart quotes (“ ” ‘ ’ « ») copied from text editors like MS Word into Python code statements cause a fatal SyntaxError.",
+        "bad": '$ status = “active”\nif item == «key»: ...',
+        "good": '$ status = "active"\nif item == "key": ...',
+    },
+    # ---------------- 100: Variables, Types & Rollback ----------------
     "RPY101": {
         "title": "Unresolved variable in dialogue interpolation",
         "severity": "ERROR",
@@ -50,11 +66,19 @@ RULES_DATABASE = {
         "bad": "import random\n$ inventory = set()",
         "good": "from renpy import random\n$ inventory = []  # or renpy.revertable_set()",
     },
+    "RPY107": {
+        "title": "Usage of deprecated / obsolete Ren'Py API",
+        "severity": "WARNING",
+        "why": "Calling obsolete Ren'Py functions (LiveComposite, DynamicCharacter, im.*, ui.*) harms rendering performance (CPU vs GPU) or breaks on Ren'Py 7/8.",
+        "bad": 'image natsuki = LiveComposite((960, 960), (0, 0), "base.png")\ndefine c = DynamicCharacter("char_name")',
+        "good": 'image natsuki = Composite((960, 960), (0, 0), "base.png")\ndefine c = Character("[char_name]")',
+    },
+    # ---------------- 200: Screen Language & UI ----------------
     "RPY201": {
         "title": "Direct state mutation inside screen",
         "severity": "WARNING",
         "why": "Screens are evaluated continuously and predictively by the UI loop. Direct state mutations run repeatedly every frame and break rollback.",
-        "bad": "screen shop():\n    $ player_gold -= 10  # Runs every frame!",
+        "bad": "screen shop():\n    $ player_gold -= 10  # Runs repeatedly during prediction!",
         "good": "screen shop():\n    textbutton 'Buy' action SetVariable('player_gold', player_gold - 10)",
     },
     "RPY202": {
@@ -85,6 +109,14 @@ RULES_DATABASE = {
         "bad": "screen inv():\n    python:\n        for item in items: ...",
         "good": "screen inv():\n    for item in items:\n        text item",
     },
+    "RPY206": {
+        "title": "Direct function call in button action",
+        "severity": "ERROR",
+        "why": "Directly calling a function with parentheses in action executes it immediately during screen render, not upon user click.",
+        "bad": "textbutton 'Heal' action heal_player()  # Executes on screen show!",
+        "good": "textbutton 'Heal' action Function(heal_player)  # Executes on click",
+    },
+    # ---------------- 300: Dialogue & Control Flow ----------------
     "RPY301": {
         "title": "Unclosed or mismatched text tag in dialogue",
         "severity": "ERROR",
@@ -102,9 +134,9 @@ RULES_DATABASE = {
     "RPY303": {
         "title": "Unreferenced / Dead label",
         "severity": "INFO",
-        "why": "Label is declared but never called or jumped to anywhere in the project. It might be dead code or forgotten draft.",
+        "why": "Label is declared but never called or jumped to anywhere in the project. It might be dead code or a forgotten draft.",
         "bad": "label forgotten_draft:\n    'Old scene never reached...'",
-        "good": "# Connect to story flow with jump/call or remove",
+        "good": "# Connect to story flow with jump/call or remove dead script",
     },
     "RPY304": {
         "title": "Malformed color in {color} tag",
@@ -127,6 +159,21 @@ RULES_DATABASE = {
         "bad": "label sub_scene:\n    'Dialogue...'\n    # Missing return!",
         "good": "label sub_scene:\n    'Dialogue...'\n    return",
     },
+    "RPY307": {
+        "title": "Duplicate label declaration",
+        "severity": "ERROR",
+        "why": "Declaring two labels with the same name across any project script causes a fatal ScriptError on startup.",
+        "bad": "label chapter_1:\n    ...\nlabel chapter_1:  # Duplicate!\n    ...",
+        "good": "label chapter_1:\n    ...\nlabel chapter_2:\n    ...",
+    },
+    "RPY308": {
+        "title": "Label preceded by regular statements (Fallthrough hazard)",
+        "severity": "WARNING",
+        "why": "Ending a scene without 'jump' or 'return' before the next label causes control flow to unintentionally fall right through into the next scene.",
+        "bad": 'label scene_a:\n    "End of scene A."\nlabel scene_b:\n    "Scene B starts immediately!"',
+        "good": 'label scene_a:\n    "End of scene A."\n    return\nlabel scene_b:\n    "Scene B starts!"',
+    },
+    # ---------------- 400: Branching & Conditions ----------------
     "RPY401": {
         "title": "Variable defined in one menu choice but missing in another",
         "severity": "WARNING",
@@ -148,32 +195,62 @@ RULES_DATABASE = {
         "bad": "if False:\n    'This story branch is dead.'",
         "good": "if has_secret_item:\n    'Secret branch!'",
     },
+    # ---------------- 500: Assets & Media ----------------
     "RPY501": {
         "title": "Missing audio file",
         "severity": "ERROR",
-        "why": "Audio file referenced in play music/sound/voice does not exist on disk or inside .rpa archives.",
+        "why": "Audio file referenced in play/queue music/sound/voice does not exist on disk, in 'audio/', or inside .rpa archives.",
         "bad": 'play music "bgm/missing_track.ogg"',
         "good": 'play music "bgm/existing_track.ogg"',
     },
     "RPY502": {
         "title": "Missing or mistyped sprite / background",
         "severity": "WARNING",
-        "why": "Sprite pose or background shown via 'show' or 'scene' is missing from image declarations and asset folders.",
+        "why": "Sprite pose or background shown via 'show' or 'scene' is missing from image declarations, layered images, and asset folders.",
         "bad": "show sayori 99z_crazy_pose",
         "good": "show sayori 1a",
     },
+    "RPY503": {
+        "title": "Unused media asset on disk",
+        "severity": "WARNING",
+        "why": "Image or audio files located in the project directory are never referenced in any script. Increases build distribution size.",
+        "bad": "# File 'game/images/unused_background.png' exists on disk but is never shown",
+        "good": "# Show the asset in script or remove unused file from project",
+    },
     "RPY504": {
-        "title": "Duplicate image declaration",
-        "severity": "ERROR",
-        "why": "Declaring the same image tag twice (via 'image name = ...' or 'image name:') causes one definition to silently overwrite the other.",
-        "bad": 'image bg room = "day.png"\nimage bg room = "night.png"',
+        "title": "Duplicate / overridden image declaration",
+        "severity": "WARNING",
+        "why": "Declaring the same image tag twice (via 'image name = ...' or 'image name:') silently overrides the previous definition.",
+        "bad": 'image bg room = "day.png"\nimage bg room = "night.png"  # Silently overrides daytime room!',
         "good": 'image bg room_day = "day.png"\nimage bg room_night = "night.png"',
+    },
+    # ---------------- 600: Translations & Localization ----------------
+    "RPY601": {
+        "title": "Variable mismatch in translation string",
+        "severity": "ERROR",
+        "why": "If a translated string alters or misspells a dialogue variable ([var]), rendering the translation causes a fatal KeyError at runtime.",
+        "bad": 'old "Hello, [player_name]!"\nnew "Привет, [player]!"  # Typo in variable name!',
+        "good": 'old "Hello, [player_name]!"\nnew "Привет, [player_name]!"',
+    },
+    "RPY602": {
+        "title": "Formatting tag mismatch in translation string",
+        "severity": "WARNING",
+        "why": "Missing or altered formatting tags ({b}, {color}, {i}) in translation strings cause unclosed text tags and visual glitches.",
+        "bad": 'old "Danger: {b}Hazard!{/b}"\nnew "Опасно: {b}Угроза!"  # Missing closing tag {/b}',
+        "good": 'old "Danger: {b}Hazard!{/b}"\nnew "Опасно: {b}Угроза!{/b}"',
+    },
+    "RPY603": {
+        "title": "Empty translation string ('new \"\"')",
+        "severity": "WARNING",
+        "why": "Leaving 'new \"\"' empty for a non-empty original line will display an empty, blank dialogue window to players in that language.",
+        "bad": 'old "Do you want to exit?"\nnew ""  # Player sees empty dialogue box!',
+        "good": 'old "Do you want to exit?"\nnew "Вы хотите выйти?"',
     },
 }
 
 
 def show_rules_table():
-    table = Table(title="Senpy Linter Rules Reference", border_style="dim")
+    table = Table(title="Senpy Linter Rules Reference (All 33 Rules)", border_style="dim")
     table.add_column("Rule", style="bold cyan")
     table.add_column("Severity", justify="center")
     table.add_column("Description", style="bright_white")
@@ -190,7 +267,7 @@ def show_rules_table():
 
     console.print(table)
     console.print(
-        "\n[dim]Run 'senpy --rule <CODE>' (e.g. 'senpy --rule RPY104') for detailed explanation and examples.[/dim]\n"
+        "\n[dim]Run 'senpy --rule <CODE>' (e.g. 'senpy --rule RPY107') for detailed explanation and examples.[/dim]\n"
     )
 
 
