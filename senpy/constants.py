@@ -51,7 +51,7 @@ BUILTIN_ACTIONS = {
     "QuickLoad", "Rollback", "Skip", "Help", "Quit", "OpenURL",
     "SelectedIf", "SensitiveIf", "With", "HideInterface",
     "ShowMenu", "MainMenu", "Start", "EndReplay", "If", "Language", 
-    "ShowTransient"
+    "ShowTransient", "FilePage"
 }
 
 IGNORED_DIRS = {
@@ -115,6 +115,10 @@ RE_DEFINE_AUDIO = re.compile(
     r"^\s*define\s+(?:audio\.)?([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*[\"']([^\"']+)[\"']"
 )
 RE_IMAGE_DEF = re.compile(r"^\s*image\s+([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)\s*(?:=|:)(.*)")
+RE_LAYEREDIMAGE_START = re.compile(
+    r"^(\s*)layeredimage\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\(.*?\))?\s*:"
+)
+RE_LAYEREDIMAGE_ATTR = re.compile(r"^\s*attribute\s+([a-zA-Z_][a-zA-Z0-9_]*)")
 RE_RETURN = re.compile(r"^\s*return\b")
 RE_LABEL = re.compile(r"^\s*label\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\((.*?)\))?\s*:")
 RE_JUMP_CALL = re.compile(
@@ -145,7 +149,10 @@ RE_MENU_START = re.compile(r"^(\s*)menu(?:\s+[a-zA-Z0-9_]+)?\s*:")
 RE_MENU_CHOICE = re.compile(r"^(\s*)(\"[^\"]+\"|\'[^\']+\')(?:\s+if\s+.*)?\s*:")
 RE_TAG = re.compile(r"\{(/)?([a-zA-Z_]+)(?:=([^}]*))?\}")
 RE_STRING_MATCH = re.compile(
-    r'("([^"\\]*(?:\\.[^"\\]*)*)")|(\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
+    r'("""(?:\\.|[\s\S])*?""")|'
+    r"('''(?:\\[\s\S]|[\s\S])*?''')|"
+    r'("([^"\\]*(?:\\.[^"\\]*)*)")|'
+    r"('([^'\\]*(?:\\.[^'\\]*)*)')"
 )
 RE_DIALOGUE_LINE = re.compile(
     r'^\s*(?:(?:[a-zA-Z_][a-zA-Z0-9_]*|"[^"]+"|\'[^\']+\')(?:\s+[a-zA-Z0-9_]+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')(?:\s+with\s+.*)?\s*$'

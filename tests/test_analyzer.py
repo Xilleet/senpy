@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import os
+import pickle
+import zlib
 from pathlib import Path
 
 import pytest
 
 from senpy.analyzer import SenpyAnalyzer
+from senpy.rpa import safe_load_rpa_index
 
 
 def run_senpy_on_code(
@@ -275,3 +277,100 @@ label start:
     result, _ = run_senpy_on_code(code, tmp_path, extra_files=extra_files)
     rpy501_errors = [d for d in result.diagnostics if d.code == "RPY501"]
     assert len(rpy501_errors) == 0, f"Expected valid audio, but got: {rpy501_errors}"
+
+def test_modern_layeredimage_attributes_dont_trigger_rpy502(tmp_path: Path):
+    """Verify modern Ren'Py 7/8 layeredimage with group attributes does not trigger RPY502"""
+    code = """
+layeredimage august:
+    always "august_base"
+    group outfit:
+        attribute casual default
+        attribute coat
+    group face:
+        attribute happy
+        attribute angry
+
+label start:
+    show august happy coat
+    show august coat happy        # Произвольный порядок атрибутов
+    show august -coat casual       # Снятие атрибута через минус
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy502_errors = [d for d in result.diagnostics if d.code == "RPY502"]
+    assert len(rpy502_errors) == 0, f"Unexpected RPY502 on layeredimage: {rpy502_errors}"
+
+
+def test_multiline_conditions_and_screens_parse_cleanly(tmp_path: Path):
+    """Verify multiline if conditions and screen parameter blocks parse without errors"""
+    code = """
+default flag_a = True
+default flag_b = False
+
+screen complex_screen(
+    param_one,
+    param_two=True
+):
+    text "Screen content"
+
+label start:
+    if (
+        flag_a
+        and not flag_b
+    ):
+        "Условие сработало!"
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    errors = [d for d in result.diagnostics if d.severity == "ERROR"]
+    assert len(errors) == 0, f"Multiline statements triggered errors: {errors}"
+
+
+def test_escaped_backslash_brackets_and_quotes(tmp_path: Path):
+    """Verify escaped brackets \\[x\\], \\{b\\} and inner quotes \\" don't trigger false positives"""
+    code = """
+label start:
+    "Реплика с экранированными скобками \\[var\\] и \\{b\\}жирным\\{/b\\}."
+    "Он сказал: \\"Привет, мир! #1\\" и улыбнулся."
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    codes = {d.code for d in result.diagnostics}
+    assert "RPY101" not in codes
+    assert "RPY301" not in codes
+    assert "RPY305" not in codes
+
+
+def test_safe_rpa_blocks_malicious_pickle(tmp_path: Path):
+    """Verify safe_load_rpa_index rejects untrusted opcodes (GLOBAL/REDUCE)"""
+
+    # Имитируем вредоносный pickle с вызовом функции
+    class Exploit:
+        def __reduce__(self):
+            import os
+            return (os.system, ('echo hacked',))
+
+    malicious_data = zlib.compress(pickle.dumps(Exploit()))
+
+    with pytest.raises(pickle.UnpicklingError):
+        safe_load_rpa_index(malicious_data)
+
+def test_lsp_analyze_file_only_no_symbol_leak(tmp_path: Path):
+    """Verify analyze_file_only does not retain renamed symbols in state"""
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+    f = game_dir / "script.rpy"
+
+    # Шаг 1: файл с переменной old_score
+    f.write_text("default old_score = 10\nlabel start:\n    return\n", encoding="utf-8")
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    analyzer.run()
+    assert "old_score" in analyzer.declared_symbols
+
+    # Шаг 2: переименовываем в new_score и вызываем инкрементальный анализ
+    f.write_text("default new_score = 10\nlabel start:\n    return\n", encoding="utf-8")
+    analyzer.analyze_file_only(str(f))
+
+    # Старое имя должно исчезнуть, новое появиться!
+    assert "old_score" not in analyzer.declared_symbols
+    assert "new_score" in analyzer.declared_symbols

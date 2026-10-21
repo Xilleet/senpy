@@ -13,6 +13,7 @@ from senpy.constants import (
     MEDIA_EXTENSIONS,
 )
 from senpy.models import Diagnostic
+from senpy.rpa import safe_load_rpa_index
 
 
 def find_orphaned_rpyc(project_path: str) -> list[str]:
@@ -101,8 +102,7 @@ class AssetManager:
             if header.startswith((b"RPA-3.0 ", b"RPA-2.0 ")):
                 offset = int(header[8:24], 16)
                 f.seek(offset)
-                data = zlib.decompress(f.read())
-                index = pickle.loads(data)
+                index = safe_load_rpa_index(f.read())
                 for filename in index:
                     clean_fn = filename.replace("\\", "/").lower()
                     self.known_assets.add(clean_fn)

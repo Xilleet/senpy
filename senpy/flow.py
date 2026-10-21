@@ -73,9 +73,8 @@ class StoryFlowAnalyzer:
         """RPY401: Проверяет [var] в тексте после меню с несбалансированными переменными."""
         from senpy.constants import RE_INTERPOLATION
 
-        matches = RE_STRING_MATCH.findall(line_content)
-        for double_q, _, single_q, _ in matches:
-            s = double_q if double_q else single_q
+        for match in RE_STRING_MATCH.finditer(line_content):
+            s = match.group(0)
             for var in RE_INTERPOLATION.findall(s):
                 if var in branch_uninitialized:
                     missing_choice, defined_choice = branch_uninitialized[var]

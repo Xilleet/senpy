@@ -74,8 +74,13 @@ def process_quoted_strings(
     matches = list(RE_STRING_MATCH.finditer(raw_line))
     for match in reversed(matches):
         full_str = match.group(0)
-        quote_char = full_str[0]
-        inner_content = full_str[1:-1]
+        if full_str.startswith(('"""', "'''")):
+            quote_len = 3
+            quote_char = full_str[:3]
+        else:
+            quote_len = 1
+            quote_char = full_str[0]
+        inner_content = full_str[quote_len:-quote_len]
 
         # Регистрация ассета, если в кавычках указан путь к медиафайлу
         val_clean = inner_content.replace("\\", "/").lower().strip()
@@ -83,8 +88,9 @@ def process_quoted_strings(
             used_assets.append(val_clean)
             used_assets.append(os.path.basename(val_clean))
 
-        # Маскируем экранированные {{, }}, [[, ]], сохраняя смещения символов
-        masked_content = re.sub(r"\{\{|\}\}|\[\[|\]\]", "  ", inner_content)
+        # Маскируем любые экранированные символы (\", \[, \{, \\) и удвоенные {{, }}, [[, ]],
+        # сохраняя UTF-16 смещения 1:1, чтобы экранирование не вызывало ложных RPY101 и RPY301
+        masked_content = re.sub(r"\\.|(\{\{|\}\}|\[\[|\]\])", lambda m: " " * len(m.group(0)), inner_content)
 
         # RPY101: Переменные в интерполяции диалога [var]
         for var in RE_INTERPOLATION.findall(masked_content):
@@ -220,7 +226,7 @@ def process_quoted_strings(
                 first_unclosed_tag = f"{{{stack[0]}}}"
                 start_c, end_c = get_utf16_range(raw_line, first_unclosed_tag)
 
-                insert_idx = match.end() - 1
+                insert_idx = match.end() - quote_len
                 ins_char = len(raw_line[:insert_idx].encode("utf-16-le")) // 2
 
                 diagnostics.append(

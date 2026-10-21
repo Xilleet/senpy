@@ -32,6 +32,8 @@ from senpy.constants import (
     RE_INIT_PYTHON_START,
     RE_JUMP_CALL,
     RE_LABEL,
+    RE_LAYEREDIMAGE_ATTR,
+    RE_LAYEREDIMAGE_START,
     RE_MENU_START,
     RE_NOQA,
     RE_PLAY_AUDIO,
@@ -42,21 +44,135 @@ from senpy.constants import (
     RE_SHOW_SCENE,
     SMART_QUOTES,
 )
-from senpy.models import RULE_SEVERITY, AnalysisResult, Diagnostic
+from senpy.models import RULE_SEVERITY, AnalysisResult, Diagnostic, FileScope
 
 
 def _strip_comment(line: str) -> str:
-    """Удаляет комментарий (#), не ломая hex-цвета (#fff) и решетки внутри кавычек."""
+    """Удаляет комментарий (#), не ломая hex-цвета, экранированные кавычки (\") и тройные кавычки."""
     in_quote = None
-    for i, ch in enumerate(line):
-        if ch in ('"', "'"):
-            if in_quote == ch:
+    i = 0
+    n = len(line)
+    while i < n:
+        ch = line[i]
+        if ch == '\\':
+            i += 2
+            continue
+        if in_quote in ('"""', "'''"):
+            if line[i:i + 3] == in_quote:
                 in_quote = None
-            elif in_quote is None:
-                in_quote = ch
-        elif ch == '#' and in_quote is None:
+                i += 3
+                continue
+            i += 1
+            continue
+        if in_quote:
+            if ch == in_quote:
+                in_quote = None
+            i += 1
+            continue
+        if line[i:i + 3] in ('"""', "'''"):
+            in_quote = line[i:i + 3]
+            i += 3
+            continue
+        if ch in ('"', "'"):
+            in_quote = ch
+            i += 1
+            continue
+        if ch == '#':
             return line[:i]
+        i += 1
     return line
+
+
+def _count_bracket_delta(s: str) -> int:
+    """Считает баланс скобок (, [, { вне строковых литералов."""
+    delta = 0
+    in_quote = None
+    i = 0
+    n = len(s)
+    while i < n:
+        ch = s[i]
+        if ch == '\\':
+            i += 2
+            continue
+        if in_quote in ('"""', "'''"):
+            if s[i:i + 3] == in_quote:
+                in_quote = None
+                i += 3
+                continue
+            i += 1
+            continue
+        if in_quote:
+            if ch == in_quote:
+                in_quote = None
+            i += 1
+            continue
+        if s[i:i + 3] in ('"""', "'''"):
+            in_quote = s[i:i + 3]
+            i += 3
+            continue
+        if ch in ('"', "'"):
+            in_quote = ch
+            i += 1
+            continue
+        if ch in '([{':
+            delta += 1
+        elif ch in ')]}':
+            delta -= 1
+        i += 1
+    return delta
+
+
+def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
+    """
+    Склеивает многострочные конструкции (перенос через '\\' или незакрытые скобки).
+    Возвращает (next_idx, raw_line, clean_line).
+    """
+    first_raw = lines[idx]
+    first_clean = _strip_comment(first_raw)
+    stripped = first_clean.strip()
+
+    # Обычные диалоги и короткие строки не требуют заглядывания вперед
+    should_check = stripped.endswith('\\') or stripped.startswith((
+        "if ", "elif ", "while ", "screen ", "label ",
+        "image ", "define ", "default ", "$", "show ", "scene "
+    ))
+
+    if not should_check:
+        return idx + 1, first_raw, first_clean
+
+    raw_parts = [first_raw]
+    clean_parts = [first_clean]
+    bracket_depth = _count_bracket_delta(first_clean)
+    curr_idx = idx
+
+    while curr_idx + 1 < len(lines):
+        clean_stripped = clean_parts[-1].rstrip()
+        ends_with_backslash = clean_stripped.endswith('\\')
+        if not ends_with_backslash and bracket_depth <= 0:
+            break
+
+        curr_idx += 1
+        next_raw = lines[curr_idx]
+        next_clean = _strip_comment(next_raw)
+
+        raw_parts.append(next_raw)
+        clean_parts.append(next_clean)
+        bracket_depth += _count_bracket_delta(next_clean)
+
+    if len(raw_parts) == 1:
+        return idx + 1, first_raw, first_clean
+
+    cleaned_tokens = []
+    for p in clean_parts:
+        c = p.strip()
+        if c.endswith('\\'):
+            c = c[:-1].strip()
+        if c:
+            cleaned_tokens.append(c)
+
+    indent = len(clean_parts[0]) - len(clean_parts[0].lstrip())
+    joined_clean = (" " * indent) + " ".join(cleaned_tokens)
+    return curr_idx + 1, "".join(raw_parts), joined_clean
 
 class SenpyAnalyzer:
     def __init__(
@@ -85,6 +201,7 @@ class SenpyAnalyzer:
         self.labels_with_return: set[str] = set()
         self.label_outgoing_jumps: dict[str, set[str]] = {}
         self.declared_images: dict[str, tuple[str, int, str]] = {}
+        self.declared_layeredimages: dict[str, set[str]] = {}
         self.referenced_labels: set[str] = set()
         self.has_dynamic_jumps: bool = False
         self.diagnostics: list[Diagnostic] = []
@@ -94,6 +211,7 @@ class SenpyAnalyzer:
         self.fixable_count: int = 0
         self._fuzzy_img_cache: dict[str, str | None] = {}
         self.defined_audio_map: dict[str, str] = {}
+        self.file_scopes: dict[str, FileScope] = {}
 
     @staticmethod
     def _get_utf16_range(line: str, sub: str | None = None) -> tuple[int, int]:
@@ -132,6 +250,7 @@ class SenpyAnalyzer:
         self.diagnostics.extend(self.assets.check_unused())
 
     def run(self, quiet: bool = False) -> AnalysisResult:
+        self.file_scopes.clear()
         self.missing_defaults.clear()
         self.diagnostics.clear()
         self._fuzzy_img_cache.clear()
@@ -143,6 +262,7 @@ class SenpyAnalyzer:
         self.labels_with_return.clear()
         self.label_outgoing_jumps.clear()
         self.declared_images.clear()
+        self.declared_layeredimages.clear()
         self.defined_audio_map.clear()
         self.has_dynamic_jumps = False
         self.total_lines = 0
@@ -185,12 +305,51 @@ class SenpyAnalyzer:
             fixable_count=self.fixable_count,
         )
 
+    def _purge_file_symbols(self, norm_path: str) -> None:
+        """Удаляет символы файла из кэша и пересобирает глобальные таблицы."""
+        if norm_path in self.file_scopes:
+            del self.file_scopes[norm_path]
+            self._rebuild_aggregates()
+
+    def _rebuild_aggregates(self) -> None:
+        """Пересобирает глобальные множества символов на основе scopes всех остальных файлов."""
+        self.declared_symbols = set(BUILTIN_SYMBOLS)
+        self.user_symbols.clear()
+        self.defined_constants.clear()
+        self.declared_characters.clear()
+        self.declared_labels.clear()
+        self.declared_screens.clear()
+        self.declared_images.clear()
+        self.declared_layeredimages.clear()
+        self.defined_audio_map.clear()
+        self.referenced_labels.clear()
+        self.labels_with_return.clear()
+        self.label_outgoing_jumps.clear()
+
+        for scope in self.file_scopes.values():
+            self.declared_symbols.update(scope.declared_symbols)
+            self.user_symbols.update(scope.user_symbols)
+            self.defined_constants.update(scope.defined_constants)
+            self.declared_characters.update(scope.declared_characters)
+            self.declared_labels.update(scope.declared_labels)
+            self.declared_screens.update(scope.declared_screens)
+            self.declared_images.update(scope.declared_images)
+            for tag, attrs in scope.declared_layeredimages.items():
+                self.declared_layeredimages.setdefault(tag, set()).update(attrs)
+            self.defined_audio_map.update(scope.defined_audio_map)
+            self.referenced_labels.update(scope.referenced_labels)
+            self.labels_with_return.update(scope.labels_with_return)
+            for lbl, targets in scope.label_outgoing_jumps.items():
+                self.label_outgoing_jumps.setdefault(lbl, set()).update(targets)
+
     def analyze_file_only(self, file_path: str) -> list[Diagnostic]:
-        """Быстрый анализ только одного измененного файла для LSP (10-15 мс вместо 4 сек)."""
+        """Быстрый анализ только одного измененного файла для LSP без утечки состояния."""
         file_diags: list[Diagnostic] = []
         old_diags = self.diagnostics
         self.diagnostics = file_diags
+        norm_path = os.path.normcase(os.path.abspath(file_path))
         try:
+            self._purge_file_symbols(norm_path)
             self._collect_symbols(file_path)
             self._analyze_file(file_path)
         finally:
@@ -209,6 +368,8 @@ class SenpyAnalyzer:
     def _collect_symbols(self, file_path: str):
         try:
             norm_path = os.path.normcase(os.path.abspath(file_path))
+            scope = FileScope()
+
             if norm_path in self.in_memory_files:
                 lines = self.in_memory_files[norm_path].splitlines(keepends=True)
             else:
@@ -216,61 +377,70 @@ class SenpyAnalyzer:
                     lines = f.readlines()
 
             if file_path.endswith("_ren.py"):
-                self._collect_from_python_block(lines)
+                self._collect_from_python_block(lines, scope)
+                self.file_scopes[norm_path] = scope
                 return
 
             idx = 0
             current_label: str | None = None
 
             while idx < len(lines):
-                line = lines[idx]
-                clean = _strip_comment(line).strip()
+                next_idx, line, clean_line = _get_logical_line(lines, idx)
+                clean = clean_line.strip()
                 if not clean:
-                    idx += 1
+                    idx = next_idx
                     continue
 
                 m_def = RE_DEFAULT.match(clean)
                 if m_def:
                     var = m_def.group(1)
+                    scope.user_symbols.add(var)
+                    scope.declared_symbols.add(var)
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
-                    idx += 1
+                    idx = next_idx
                     continue
 
                 m_audio_def = RE_DEFINE_AUDIO.match(clean)
                 if m_audio_def:
                     alias = m_audio_def.group(1)
                     target_file = m_audio_def.group(2).replace("\\", "/").lower()
+                    scope.defined_audio_map[alias] = target_file
+                    scope.declared_symbols.add(alias)
+                    scope.declared_symbols.add(f"audio.{alias}")
                     self.defined_audio_map[alias] = target_file
                     self.declared_symbols.add(alias)
                     self.declared_symbols.add(f"audio.{alias}")
-                    idx += 1
+                    idx = next_idx
                     continue
 
-                # 2. И ТОЛЬКО ПОТОМ обычный define
                 m_define = RE_DEFINE.match(clean)
                 if m_define:
                     var = m_define.group(1)
+                    scope.user_symbols.add(var)
+                    scope.declared_symbols.add(var)
+                    scope.defined_constants.add(var)
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
                     self.defined_constants.add(var)
 
                     if "Character" in clean or "DynamicCharacter" in clean:
+                        scope.declared_characters.add(var)
                         self.declared_characters.add(var)
 
-                    idx += 1
+                    idx = next_idx
                     continue
 
                 m_screen_def = RE_SCREEN_START.match(line)
                 if m_screen_def:
                     s_name = m_screen_def.group(2)
+                    scope.declared_screens[s_name] = (file_path, idx + 1)
                     self.declared_screens[s_name] = (file_path, idx + 1)
 
                 m_label = RE_LABEL.match(clean)
                 if m_label:
                     label_name = m_label.group(1)
                     if label_name in self.declared_labels:
-                        # Служебные хуки вроде label _(message): не считаем ошибкой
                         if not label_name.startswith("_"):
                             prev_file, prev_line, _ = self.declared_labels[label_name]
                             self.diagnostics.append(
@@ -284,9 +454,11 @@ class SenpyAnalyzer:
                                 )
                             )
                     else:
+                        scope.declared_labels[label_name] = (file_path, idx + 1, clean)
                         self.declared_labels[label_name] = (file_path, idx + 1, clean)
-                    
+
                     current_label = label_name
+                    scope.label_outgoing_jumps[label_name] = set()
                     self.label_outgoing_jumps[label_name] = set()
 
                     raw_params = m_label.group(2)
@@ -294,17 +466,43 @@ class SenpyAnalyzer:
                         for p in raw_params.split(","):
                             p_clean = p.split("=")[0].strip()
                             if p_clean and p_clean.isidentifier():
+                                scope.declared_symbols.add(p_clean)
                                 self.declared_symbols.add(p_clean)
 
-                    idx += 1
+                    idx = next_idx
                     continue
 
                 if current_label:
                     if RE_RETURN.match(clean):
+                        scope.labels_with_return.add(current_label)
                         self.labels_with_return.add(current_label)
                     m_jump_in_label = re.match(r"^\s*jump\s+([a-zA-Z_][a-zA-Z0-9_]*)", clean)
                     if m_jump_in_label:
-                        self.label_outgoing_jumps.setdefault(current_label, set()).add(m_jump_in_label.group(1))
+                        target_j = m_jump_in_label.group(1)
+                        scope.label_outgoing_jumps.setdefault(current_label, set()).add(target_j)
+                        self.label_outgoing_jumps.setdefault(current_label, set()).add(target_j)
+
+                m_limg = RE_LAYEREDIMAGE_START.match(clean_line)
+                if m_limg:
+                    limg_indent = len(m_limg.group(1))
+                    limg_tag = m_limg.group(2).strip()
+                    next_block_idx, block_lines = self._consume_block(lines, idx + 1, limg_indent)
+
+                    attrs: set[str] = set()
+                    for bl in block_lines:
+                        clean_bl = _strip_comment(bl).strip()
+                        m_attr = RE_LAYEREDIMAGE_ATTR.match(clean_bl)
+                        if m_attr:
+                            attrs.add(m_attr.group(1).strip())
+
+                    scope.declared_layeredimages[limg_tag] = attrs
+                    self.declared_layeredimages[limg_tag] = attrs
+                    # Регистрируем базовый тег как валидный спрайт
+                    scope.declared_images[limg_tag] = (file_path, idx + 1, "layeredimage")
+                    self.declared_images[limg_tag] = (file_path, idx + 1, "layeredimage")
+
+                    idx = next_block_idx
+                    continue
 
                 m_img = RE_IMAGE_DEF.match(clean)
                 if m_img:
@@ -329,8 +527,9 @@ class SenpyAnalyzer:
                                 severity="WARNING" if not is_exact_dup else "INFO",
                             )
                         )
+                    scope.declared_images[img_name] = (file_path, idx + 1, img_body)
                     self.declared_images[img_name] = (file_path, idx + 1, img_body)
-                    idx += 1
+                    idx = next_idx
                     continue
 
                 if "renpy.call(" in clean or "renpy.jump(" in clean or "call expression" in clean or "jump expression" in clean:
@@ -339,21 +538,32 @@ class SenpyAnalyzer:
                 for str_match in re.finditer(r'["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']', clean):
                     candidate = str_match.group(1)
                     if candidate.isidentifier():
+                        scope.referenced_labels.add(candidate)
                         self.referenced_labels.add(candidate)
 
                 m_init = RE_INIT_PYTHON_START.match(line)
                 if m_init:
                     indent = len(m_init.group(1))
                     idx, block_lines = self._consume_block(lines, idx + 1, indent)
-                    self._collect_from_python_block(block_lines)
+                    self._collect_from_python_block(block_lines, scope)
                     continue
 
-                idx += 1
+                idx = next_idx
+
+            self.file_scopes[norm_path] = scope
+
         except (UnicodeDecodeError, OSError):
             pass
 
-    def _collect_from_python_block(self, code_lines: list[str]) -> None:
-        self.python_ast.collect_from_python_block(code_lines)
+    def _collect_from_python_block(self, code_lines: list[str], scope: FileScope | None = None) -> None:
+        names, refs = self.python_ast.collect_from_python_block(code_lines)
+        if scope is not None:
+            scope.user_symbols.update(names)
+            scope.declared_symbols.update(names)
+            scope.referenced_labels.update(refs)
+        self.user_symbols.update(names)
+        self.declared_symbols.update(names)
+        self.referenced_labels.update(refs)
 
     def _consume_block(self, lines: list[str], start_idx: int, header_indent: int) -> tuple[int, list[str]]:
         block = []
@@ -411,6 +621,16 @@ class SenpyAnalyzer:
     def _can_reach_return(self, label_name: str, visited: set[str] | None = None) -> bool:
         return self.flow.can_reach_return(label_name, visited)
 
+    def _get_tag_known_attributes(self, base_tag: str, all_valid: set[str]) -> set[str]:
+        """Возвращает все известные атрибуты для тега (из layeredimage и файловой структуры)."""
+        attrs = set(self.declared_layeredimages.get(base_tag, set()))
+        prefix = base_tag + " "
+        for valid_img in all_valid:
+            if valid_img.startswith(prefix):
+                for token in valid_img[len(prefix):].split():
+                    attrs.add(token)
+        return attrs
+
     def _analyze_file(self, file_path: str):
         try:
             norm_path = os.path.normcase(os.path.abspath(file_path))
@@ -439,12 +659,11 @@ class SenpyAnalyzer:
             branch_uninitialized: dict[str, tuple[str, str]] = {}
 
             while idx < len(lines):
-                raw_line = lines[idx]
-                clean = _strip_comment(raw_line)
+                next_idx, raw_line, clean = _get_logical_line(lines, idx)
                 stripped = clean.strip()
 
                 if not stripped:
-                    idx += 1
+                    idx = next_idx
                     continue
 
                 # RPY001: Проверка табуляции в отступах
@@ -528,20 +747,28 @@ class SenpyAnalyzer:
                             prev_clean = _strip_comment(lines[prev_idx]).strip()
                             if (
                                 prev_clean
-                                and not prev_clean.startswith(("return", "jump ", "jump\t", "renpy.full_restart", "renpy.quit"))
+                                and not prev_clean.startswith((
+                                    "return", 
+                                    "jump ", 
+                                    "jump\t", 
+                                    "call ",
+                                    "call\t",
+                                    "renpy.full_restart", 
+                                    "renpy.quit"
+                                ))
                                 and not prev_clean.endswith(":")
                             ):
-                                    self._add_diagnostic(
-                                        Diagnostic(
-                                            file_path=file_path,
-                                            line_number=idx + 1,
-                                            line_content=stripped,
-                                            code="RPY308",
-                                            message=f"Label '{m_label.group(1)}' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through.",
-                                            severity="WARNING",
-                                        ),
-                                        noqa_map,
-                                    )
+                                self._add_diagnostic(
+                                    Diagnostic(
+                                        file_path=file_path,
+                                        line_number=idx + 1,
+                                        line_content=stripped,
+                                        code="RPY308",
+                                        message=f"Label '{m_label.group(1)}' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through.",
+                                        severity="WARNING",
+                                    ),
+                                    noqa_map,
+                                )
                     branch_uninitialized.clear()
                     in_label_context = True
 
@@ -653,9 +880,13 @@ class SenpyAnalyzer:
                     raw_tokens = m_show.group(2).split()
                     img_tokens = []
                     for t in raw_tokens:
-                        if t in CLAUSE_KEYWORDS or t.endswith(":"):
+                        clean_t = t.rstrip(":")
+                        if clean_t in CLAUSE_KEYWORDS:
                             break
-                        img_tokens.append(t)
+                        img_tokens.append(clean_t)
+                        if t.endswith(":"):
+                            # Двоеточие означает начало ATL-блока или свойства, дальше параметры отсекаем
+                            break
 
                     if img_tokens:
                         full_img_tag = " ".join(img_tokens)
@@ -663,42 +894,66 @@ class SenpyAnalyzer:
                         base_tag = img_tokens[0]
                         all_valid = self.valid_images.union(self.declared_images.keys())
 
-                        is_single_tag_manipulation = len(img_tokens) == 1 and m_show.group(1) == "show"
-                        has_base = any(img.startswith(base_tag + " ") or img == base_tag for img in all_valid)
+                        has_base = (
+                            base_tag in self.declared_layeredimages
+                            or any(img.startswith(base_tag + " ") or img == base_tag for img in all_valid)
+                        )
+                        is_single_tag = len(img_tokens) == 1 and m_show.group(1) == "show"
 
-                        if is_single_tag_manipulation and has_base:
+                        # 1. Точное совпадение (Ren'Py 6.99 монолитный спрайт или объявление image)
+                        if full_img_tag in all_valid or full_img_tag in BUILTIN_COLORS or (is_single_tag and has_base):
                             pass
-                        elif full_img_tag not in all_valid and full_img_tag not in BUILTIN_COLORS:
-                            if full_img_tag in self._fuzzy_img_cache:
-                                best_sprite = self._fuzzy_img_cache[full_img_tag]
+                        elif has_base:
+                            # 2. Компонентный спрайт (Ren'Py 7/8 LayeredImage или авто-атрибуты из папки)
+                            valid_attrs = self._get_tag_known_attributes(base_tag, all_valid)
+                            provided_attrs = img_tokens[1:]
+                            invalid_attrs = []
+
+                            for attr in provided_attrs:
+                                clean_attr = attr.removeprefix("-")  # Поддержка снятия атрибута -attr
+                                if clean_attr not in valid_attrs:
+                                    invalid_attrs.append(clean_attr)
+
+                            # Если все переданные атрибуты известны движку — всё валидно
+                            if valid_attrs and not invalid_attrs:
+                                pass
                             else:
-                                candidates = [img for img in all_valid if img.startswith(base_tag + " ")]
-                                if not candidates:
-                                    all_tags = {img.split()[0] for img in all_valid}
-                                    matched_tags = difflib.get_close_matches(base_tag, list(all_tags), n=1, cutoff=0.7)
-                                    if matched_tags:
-                                        candidates = [img for img in all_valid if img.startswith(matched_tags[0] + " ")]
-
-                                matches = difflib.get_close_matches(full_img_tag, candidates, n=1, cutoff=0.6) if candidates else []
-                                best_sprite = matches[0] if matches else None
-                                self._fuzzy_img_cache[full_img_tag] = best_sprite
-
-                            hint = f" (did you mean '{best_sprite}' ?)" if best_sprite else ""
-                            start_c, end_c = self._get_utf16_range(raw_line, full_img_tag)
-                            msg = f"Sprite or background '{full_img_tag}' not found in assets or 'image' definitions{hint}."
-                            if has_base and not hint:
-                                msg += f" Base character '{base_tag}' exists, but attribute is missing."
+                                # Ошибка в атрибуте
+                                err_attr = invalid_attrs[0] if invalid_attrs else full_img_tag
+                                matches = difflib.get_close_matches(err_attr, list(valid_attrs), n=1, cutoff=0.6)
+                                hint = f" (did you mean attribute '{matches[0]}' ?)" if matches else ""
+                                start_c, end_c = self._get_utf16_range(raw_line, err_attr)
+                                self._add_diagnostic(
+                                    Diagnostic(
+                                        file_path=file_path,
+                                        line_number=idx + 1,
+                                        line_content=stripped,
+                                        code="RPY502",
+                                        message=f"Attribute '{err_attr}' is not defined for character '{base_tag}'{hint}.",
+                                        col=start_c,
+                                        end_col=end_c,
+                                        fix_title=f"Change to '{matches[0]}'" if matches else None,
+                                        fix_replacement=matches[0] if matches else None,
+                                    ),
+                                    noqa_map,
+                                )
+                        else:
+                            # 3. Базовый тег вообще не найден ни в файлах, ни в объявлениях
+                            all_tags = {img.split()[0] for img in all_valid}.union(self.declared_layeredimages.keys())
+                            matched_tags = difflib.get_close_matches(base_tag, list(all_tags), n=1, cutoff=0.7)
+                            hint = f" (did you mean base tag '{matched_tags[0]}' ?)" if matched_tags else ""
+                            start_c, end_c = self._get_utf16_range(raw_line, base_tag)
                             self._add_diagnostic(
                                 Diagnostic(
                                     file_path=file_path,
                                     line_number=idx + 1,
                                     line_content=stripped,
                                     code="RPY502",
-                                    message=msg,
+                                    message=f"Sprite or background '{base_tag}' not found in assets or 'image' definitions{hint}.",
                                     col=start_c,
                                     end_col=end_c,
-                                    fix_title=f"Change to '{best_sprite}'" if best_sprite else None,
-                                    fix_replacement=best_sprite,
+                                    fix_title=f"Change to '{matched_tags[0]}'" if matched_tags else None,
+                                    fix_replacement=matched_tags[0] if matched_tags else None,
                                 ),
                                 noqa_map,
                             )
@@ -886,7 +1141,7 @@ class SenpyAnalyzer:
                         noqa_map,
                     )
 
-                idx += 1
+                idx = next_idx
 
             if file_modified and self.fix:
                 with open(file_path, "w", encoding="utf-8") as f:
@@ -1024,8 +1279,3 @@ class SenpyAnalyzer:
             f.writelines(lines)
 
         return out_file, len(self.missing_defaults)
-
-    def _mark_asset_used(self, asset_ref: str):
-        ref_norm = asset_ref.replace("\\", "/").lower().strip()
-        self.used_asset_keys.add(ref_norm)
-        self.used_asset_keys.add(os.path.basename(ref_norm))

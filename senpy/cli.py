@@ -5,7 +5,6 @@ import contextlib
 import ctypes
 import json
 import os
-import pickle
 import shutil
 import subprocess
 import sys
@@ -14,7 +13,6 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
-import zlib
 from collections import Counter
 
 import tomllib
@@ -24,6 +22,7 @@ from rich.table import Table
 from rich.text import Text
 
 from senpy.analyzer import SenpyAnalyzer
+from senpy.rpa import safe_load_rpa_index
 
 console = Console()
 
@@ -211,8 +210,7 @@ def extract_scripts_from_rpa(rpa_path: str, temp_dir: str) -> list[str]:
         key = int(parts[2], 16) if len(parts) > 2 and parts[0].startswith(b"RPA-3.0") else 0
 
         f.seek(offset)
-        raw_index = zlib.decompress(f.read())
-        index = pickle.loads(raw_index)
+        index = safe_load_rpa_index(f.read())
 
         for filename, segments in index.items():
             clean_name = filename.replace("\\", "/")

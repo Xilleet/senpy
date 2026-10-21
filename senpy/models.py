@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -27,6 +27,21 @@ class AnalysisResult:
     fixed_count: int = 0
     fixable_count: int = 0
 
+
+@dataclass
+class FileScope:
+    user_symbols: set[str] = field(default_factory=set)
+    declared_symbols: set[str] = field(default_factory=set)
+    defined_constants: set[str] = field(default_factory=set)
+    declared_characters: set[str] = field(default_factory=set)
+    declared_labels: dict[str, tuple[str, int, str]] = field(default_factory=dict)
+    declared_screens: dict[str, tuple[str, int]] = field(default_factory=dict)
+    declared_images: dict[str, tuple[str, int, str]] = field(default_factory=dict)
+    declared_layeredimages: dict[str, set[str]] = field(default_factory=dict)
+    defined_audio_map: dict[str, str] = field(default_factory=dict)
+    referenced_labels: set[str] = field(default_factory=set)
+    labels_with_return: set[str] = field(default_factory=set)
+    label_outgoing_jumps: dict[str, set[str]] = field(default_factory=dict)
 
 RULE_SEVERITY: dict[str, str] = {
     "RPY001": "ERROR",    # Табуляция в отступах

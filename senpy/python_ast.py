@@ -59,23 +59,23 @@ class PythonAstChecker:
     def __init__(self, analyzer: SenpyAnalyzer):
         self.analyzer = analyzer
 
-    def collect_from_python_block(self, code_lines: list[str]) -> None:
+    def collect_from_python_block(self, code_lines: list[str]) -> tuple[set[str], set[str]]:
         """Собирает функции, классы и переменные из init python блоков."""
+        names: set[str] = set()
+        refs: set[str] = set()
         code = textwrap.dedent("".join(code_lines))
         with contextlib.suppress(SyntaxError):
             tree = ast.parse(code)
             for node in ast.walk(tree):
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    self.analyzer.user_symbols.add(node.name)
-                    self.analyzer.declared_symbols.add(node.name)
+                    names.add(node.name)
                 elif isinstance(node, ast.Assign):
                     for target in node.targets:
                         if isinstance(target, ast.Name):
-                            self.analyzer.user_symbols.add(target.id)
-                            self.analyzer.declared_symbols.add(target.id)
-                elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-                    if node.value.isidentifier():
-                        self.analyzer.referenced_labels.add(node.value)
+                            names.add(target.id)
+                elif isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.isidentifier():
+                    refs.add(node.value)
+        return names, refs
 
     def check_screen_mutation(
         self,
