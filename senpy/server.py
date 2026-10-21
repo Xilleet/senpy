@@ -16,7 +16,7 @@ except ImportError:
 
 from senpy.analyzer import Diagnostic, SenpyAnalyzer
 
-server = LanguageServer("senpy-lsp", "v0.1.7")
+server = LanguageServer("senpy-lsp", "v0.2.0")
 
 
 def _uri_to_path(uri: str) -> str:
@@ -123,7 +123,6 @@ def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
 
 def run_single_file_diagnostics(ls: LanguageServer, uri: str, content: str):
     """Сверхбыстрый анализ одного файла на лету (15 мс)."""
-    global _active_analyzer, _latest_diagnostics_by_path
     if _active_analyzer is None or not _is_initialized:
         schedule_full_diagnostics(ls, uri)
         return
@@ -265,7 +264,7 @@ def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.Co
             )
             actions.append(action)
 
-    except Exception as e:
+    except Exception as e: # noqa: BLE001
         ls.show_message_log(f"Error in code_action: {e}")
 
     return actions

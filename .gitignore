@@ -73,3 +73,5 @@ bump_version.py
 test_report.json
 test_report.txt
 порядок.txt
+check.bat
+ruff_report.txt

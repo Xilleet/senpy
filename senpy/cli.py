@@ -280,7 +280,7 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: st
                     print(msg.ljust(75), end="", flush=True)
         process.wait()
         print()
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError) as e:
         console.print(f"[bold red]Ошибка декомпиляции:[/bold red] {e}")
 
     decompiled_rpy = []
@@ -294,47 +294,84 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: st
 
 
 def main():
+
     parser = argparse.ArgumentParser(
         prog="senpy",
-        description="Notice me, Senpy! Fast semantic linter for Ren'Py."
+        description="Notice me, Senpy! Fast semantic linter & LSP for Ren'Py.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+
+    # 1. Позиционный аргумент: путь к проекту
     parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="Path to the Ren'Py project or 'game' directory (default: current dir)"
+    )
+
+    # 2. Справка и документация по правилам
+    g_rules = parser.add_argument_group("Rules & Documentation")
+    g_rules.add_argument(
+        "--rules",
+        action="store_true",
+        help="List all 29 available Senpy rules and their descriptions"
+    )
+    g_rules.add_argument(
         "--rule",
         metavar="CODE",
         help="Show detailed explanation and code examples for a specific rule (e.g. --rule RPY104)"
     )
-    parser.add_argument(
-        "--rules",
-        action="store_true",
-        help="List all available Senpy rules and their descriptions"
-    )
-    parser.add_argument("path", nargs="?", default=".", help="Path to the Ren'Py project (game directory)")
-    parser.add_argument(
-        "--tsundere",
-        action="store_true",
-        help="Enable Tsundere mode. (B-Baka! It's not like I want to check your visual novel!)"
-    )
-    parser.add_argument(
+
+    # 3. Настройки анализа и автофикса
+    g_lint = parser.add_argument_group("Analysis & Autofix")
+    g_lint.add_argument(
         "--fix",
         action="store_true",
-        help="Automatically fix safe errors (e.g. unclosed text tags RPY301)"
+        help="Automatically fix safe errors (unclosed tags RPY301, smart quotes RPY002, tabs RPY001)"
     )
-    parser.add_argument(
+    g_lint.add_argument(
         "--generate-defaults",
         action="store_true",
-        help="Automatically generate 'senpy_defaults.rpy' containing 'default' declarations for all RPY104 variables."
+        help="Generate 'senpy_defaults.rpy' containing 'default' declarations for all RPY104 variables"
     )
-    parser.add_argument(
+    g_lint.add_argument(
         "--errors-only",
         action="store_true",
         help="Show only critical ERRORs, hiding WARNINGs and INFO notices"
     )
-    parser.add_argument(
+    g_lint.add_argument(
         "--info",
         action="store_true",
-        help="Display informational notices (e.g. unreferenced labels RPY303) in terminal"
+        help="Display informational notices (e.g. unreferenced labels RPY303)"
     )
-    parser.add_argument(
+    g_lint.add_argument(
+        "--ignore",
+        nargs="+",
+        metavar="CODE",
+        default=None,
+        help="Ignore specific error codes (e.g. --ignore RPY104 RPY101)"
+    )
+    g_lint.add_argument(
+        "--max-errors",
+        type=int,
+        metavar="NUM",
+        default=None,
+        help="Maximum errors to display in terminal (default: 50)"
+    )
+
+    # 4. Визуализация и форматы отчётов
+    g_export = parser.add_argument_group("Visualization & Reports")
+    g_export.add_argument(
+        "--graph",
+        action="store_true",
+        help="Generate a Mermaid.js diagram of the story flow and label transitions"
+    )
+    g_export.add_argument(
+        "--graph-file",
+        metavar="FILE",
+        help="Save the Mermaid.js story diagram directly to a file (e.g. story.md)"
+    )
+    g_export.add_argument(
         "--output-format",
         "--format",
         dest="output_format",
@@ -342,38 +379,37 @@ def main():
         default="text",
         help="Output format: 'text' (default) or 'json' for CI/LSP"
     )
-    parser.add_argument(
+    g_export.add_argument(
         "--output-file",
+        metavar="FILE",
         help="Save report to a specific file (e.g. report.json or report.txt)"
     )
-    parser.add_argument(
-        "--ignore",
-        nargs="+",
-        default=None,
-        help="Ignore specific error codes (e.g. --ignore RPY104 RPY101)"
+
+    # 5. Декомпиляция и интеграции
+    g_tools = parser.add_argument_group("Tools & Integrations")
+    g_tools.add_argument(
+        "--lsp",
+        action="store_true",
+        help="Run Senpy as a Language Server (LSP) for editors like VS Code / Neovim"
     )
-    parser.add_argument(
-        "--max-errors",
-        type=int,
-        default=None,
-        help="Maximum errors to display in terminal (default: 50)"
-    )
-    parser.add_argument(
+    g_tools.add_argument(
         "--decompile",
         action="store_true",
         help="Automatically decompile orphaned .rpyc files into a temporary sandbox"
     )
-    parser.add_argument(
+    g_tools.add_argument(
         "--unrpyc",
+        metavar="PATH",
         help="Custom path to unrpyc.py or unrpyc executable"
     )
-    parser.add_argument(
-        "--lsp",
+    g_tools.add_argument(
+        "--tsundere",
         action="store_true",
-        help="Run Senpy as a Language Server (LSP) for editors like VS Code/Neovim"
+        help="B-Baka! It's not like I want to check your visual novel!"
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args() 
+    
     if args.lsp:
         from senpy.server import start_lsp
         start_lsp()
@@ -456,6 +492,18 @@ def main():
         analyzer = SenpyAnalyzer(args.path, extra_files=extra_rpy_files, fix=args.fix)
         result = analyzer.run()
         elapsed = time.perf_counter() - start_time
+        if args.graph or args.graph_file:
+            graph_content = analyzer.export_graph()
+            if args.graph_file:
+                with open(args.graph_file, "w", encoding="utf-8") as f:
+                    f.write(graph_content)
+                if is_tsundere:
+                    console.print(f"\n[bold magenta](//∇//) «Я... я нарисовала карту твоих переходов в [bold]{args.graph_file}[/bold]! Н-но не думай, что мне интересно, куда пойдёт твой герой, бака!»[/bold magenta]\n")
+                else:
+                    console.print(f"\n[bold green]✔ Story flow graph saved to [bold]{args.graph_file}[/bold]![/bold green]\n")
+            else:
+                print(graph_content)
+            sys.exit(0)
 
         # Генерация файла senpy_defaults.rpy
         if args.generate_defaults:

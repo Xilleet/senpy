@@ -1,0 +1,146 @@
+from __future__ import annotations
+
+import builtins
+import re
+
+BUILTIN_SCREENS = {
+    "say", "choice", "nvl", "main_menu", "navigation", "file_slots",
+    "save", "load", "preferences", "confirm", "history", "help",
+    "keyboard_help", "mouse_help", "gamepad_help", "input", "notify",
+    "quick_menu", "dialog", "ctc"
+}
+
+BUILTIN_COLORS = {"black", "white", "trueblack", "none"}
+CLAUSE_KEYWORDS = {"at", "as", "with", "zorder", "behind", "onlayer"}
+
+BUILTIN_SYMBOLS = {
+    "config",
+    "persistent",
+    "renpy",
+    "gui",
+    "layout",
+    "store",
+    "ui",
+    "im",
+    "Action",
+    "Preferences",
+    "main_menu",
+    "_return",
+    "_in_replay",
+    "_window_during_functions",
+    "_history_list",
+    "_restart",
+    "name",
+    "player",
+    "theme",
+    "style",
+    "who",
+    "what",
+    "prefix_",
+    *dir(builtins),
+}
+
+BUILTIN_ACTIONS = {
+    "SetVariable", "SetField", "SetScreenVariable", "ToggleVariable",
+    "ToggleField", "ToggleScreenVariable", "Show", "Hide", "Jump",
+    "Return", "Function", "Play", "Stop", "Queue", "PauseAudio",
+    "NullAction", "Call", "Notify", "Confirm", "Preference",
+    "FileSave", "FileLoad", "FileDelete", "FileAction", "QuickSave",
+    "QuickLoad", "Rollback", "Skip", "Help", "Quit", "OpenURL",
+    "SelectedIf", "SensitiveIf", "With", "HideInterface"
+}
+
+IGNORED_DIRS = {
+    ".git", ".svn", ".hg", "node_modules", ".venv", "venv", "env",
+    "__pycache__", ".idea", ".vscode", "build", "dist", "out", "tl",
+    "renpy", "lib"
+}
+
+SYSTEM_LABELS = {
+    "start",
+    "splashscreen",
+    "after_load",
+    "main_menu",
+    "before_main_menu",
+    "quit",
+    "after_warp",
+    "hide_windows",
+    "warningscreen",
+}
+
+NON_DIALOGUE_STATEMENTS = {
+    "$", "python", "menu", "show", "scene", "hide", "play", "stop",
+    "voice", "queue", "call", "jump", "return", "default", "define",
+    "image", "screen", "init", "label", "transform", "style", "window",
+    "if", "elif", "else", "while", "for", "pass", "pause", "camera", "with",
+    "text", "color", "frame", "vbox", "hbox", "grid", "fixed", "viewport",
+    "button", "textbutton", "imagebutton", "bar", "vbar", "null", "add",
+    "key", "timer", "on", "action", "use", "has", "hotspot", "hotbar"
+}
+
+SELF_CLOSING_TAGS = {"w", "p", "nw", "fast", "space", "vspace"}
+PAIR_TAGS = {
+    "b", "i", "u", "s", "plain", "color", "size", "font", "alpha", "cps", "k", "a"
+}
+
+NAMED_COLORS = {
+    "black", "white", "red", "green", "blue", "yellow", "cyan", "magenta",
+    "gray", "grey", "orange", "purple", "brown", "pink", "lime", "navy"
+}
+
+MEDIA_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".avif",
+    ".mp3", ".ogg", ".wav", ".opus", ".flac", ".webm", ".ogv"
+}
+AUDIO_EXTENSIONS = {".mp3", ".ogg", ".wav", ".opus", ".flac"}
+
+SMART_QUOTES = {
+    "“": '"', "”": '"', "«": '"', "»": '"',
+    "‘": "'", "’": "'"
+}
+
+SCREEN_LOCAL_IGNORE = {
+    "start", "end", "cols", "slot", "i", "idx", "item", "page",
+    "original", "fixed1", "fixed2", "fixed3", "currentTrack", "lastPlayed"
+}
+
+# Скомпилированные регулярные выражения
+RE_DEFAULT = re.compile(r"^\s*default\s+([a-zA-Z_][a-zA-Z0-9_]*)")
+RE_DEFINE = re.compile(r"^\s*define\s+([a-zA-Z_][a-zA-Z0-9_]*)")
+RE_DEFINE_AUDIO = re.compile(
+    r"^\s*define\s+(?:audio\.)?([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*[\"']([^\"']+)[\"']"
+)
+RE_IMAGE_DEF = re.compile(r"^\s*image\s+([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)\s*(?:=|:)(.*)")
+RE_RETURN = re.compile(r"^\s*return\b")
+RE_LABEL = re.compile(r"^\s*label\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\((.*?)\))?\s*:")
+RE_JUMP_CALL = re.compile(
+    r"^\s*(jump|call)\s+(?!screen\b)([a-zA-Z_][a-zA-Z0-9_]*|\bexpression\b)"
+)
+RE_PLAY_AUDIO = re.compile(
+    r"^\s*(?:play|queue)\s+(?:music|sound|voice|audio)\s+([A-Za-z0-9_./\\'\"]+)",
+    re.IGNORECASE,
+)
+RE_INTERPOLATION = re.compile(r"\[([a-zA-Z_][a-zA-Z0-9_]*)(?:![a-zA-Z]+)?\]")
+RE_CONDITION = re.compile(r"^\s*(?:if|elif)\s+(.+):$")
+RE_PYTHON_BLOCK_START = re.compile(r"^(\s*)python(?:\s+early)?\s*:$")
+RE_INIT_PYTHON_START = re.compile(r"^(\s*)init(?:\s+-?\d+)?\s+python(?:\s+early)?\s*:$")
+RE_SCREEN_START = re.compile(
+    r"^(\s*)screen\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\((.*?)\))?\s*:"
+)
+RE_SCREEN_CALL = re.compile(r"^\s*(?:show\s+screen|call\s+screen|use)\s+([a-zA-Z_][a-zA-Z0-9_]*)")
+RE_SHOW_SCENE = re.compile(r"^\s*(show|scene)\s+(?!expression\b|screen\b)([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)")
+RE_BUTTON_LINE = re.compile(r"^\s*(textbutton|imagebutton)\b")
+RE_FOR_LOOP = re.compile(r"^\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+")
+RE_MENU_START = re.compile(r"^(\s*)menu(?:\s+[a-zA-Z0-9_]+)?\s*:")
+RE_MENU_CHOICE = re.compile(r"^(\s*)(\"[^\"]+\"|\'[^\']+\')(?:\s+if\s+.*)?\s*:")
+RE_TAG = re.compile(r"\{(/)?([a-zA-Z_]+)(?:=([^}]*))?\}")
+RE_STRING_MATCH = re.compile(
+    r'("([^"\\]*(?:\\.[^"\\]*)*)")|(\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
+)
+RE_DIALOGUE_LINE = re.compile(
+    r'^\s*(?:(?:[a-zA-Z_][a-zA-Z0-9_]*|"[^"]+"|\'[^\']+\')(?:\s+[a-zA-Z0-9_]+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')(?:\s+with\s+.*)?\s*$'
+)
+RE_NOQA = re.compile(
+    r"#\s*(?:noqa|senpy:\s*ignore)(?:\[([a-zA-Z0-9_,\s]+)\]|:\s*([a-zA-Z0-9_,\s]+))?",
+    re.IGNORECASE,
+)
