@@ -49,6 +49,9 @@ from senpy.models import RULE_SEVERITY, AnalysisResult, Diagnostic, FileScope
 
 def _strip_comment(line: str) -> str:
     """Удаляет комментарий (#), не ломая hex-цвета, экранированные кавычки (\") и тройные кавычки."""
+    if '#' not in line:
+        return line
+    
     in_quote = None
     i = 0
     n = len(line)
@@ -696,9 +699,9 @@ class SenpyAnalyzer:
                         )
 
                 # RPY002: Фигурные/типографские кавычки в коде
-                if any(q in raw_line for q in SMART_QUOTES) and (
+                if any(q in clean for q in SMART_QUOTES) and (
                     stripped.startswith(("$", "if ", "elif ", "default ", "define "))
-                    or current_screen is not None
+                    or (current_screen is not None and not stripped.startswith(("text ", "textbutton ")))
                 ):
                         self.fixable_count += 1
                         if self.fix:
@@ -854,7 +857,7 @@ class SenpyAnalyzer:
                     idx = next_idx
                     continue
 
-                m_scr = RE_SCREEN_CALL.match(stripped)
+                m_scr = RE_SCREEN_CALL.match(stripped) if stripped.startswith(("show screen", "call screen", "use ")) else None
                 if m_scr:
                     screen_target = m_scr.group(1)
                     if screen_target not in self.declared_screens and screen_target not in BUILTIN_SCREENS:
@@ -875,8 +878,8 @@ class SenpyAnalyzer:
                             noqa_map,
                         )
 
-                m_show = RE_SHOW_SCENE.match(stripped)
-                if m_show and current_screen is None:
+                m_show = RE_SHOW_SCENE.match(stripped) if (current_screen is None and stripped.startswith(("show ", "scene "))) else None
+                if m_show:
                     raw_tokens = m_show.group(2).split()
                     img_tokens = []
                     for t in raw_tokens:
@@ -958,7 +961,7 @@ class SenpyAnalyzer:
                                 noqa_map,
                             )
 
-                m_jump = RE_JUMP_CALL.match(stripped)
+                m_jump = RE_JUMP_CALL.match(stripped) if stripped.startswith(("jump ", "call ")) else None
                 if m_jump:
                     cmd_type, target_label = m_jump.group(1), m_jump.group(2)
                     if target_label == "expression":
@@ -1001,7 +1004,7 @@ class SenpyAnalyzer:
                     continue
 
                 # RPY501: Проверка аудио (в кавычках и без)
-                m_play = RE_PLAY_AUDIO.match(stripped)
+                m_play = RE_PLAY_AUDIO.match(stripped) if stripped.startswith(("play ", "queue ")) else None
                 if m_play:
                     raw_audio_target = m_play.group(1).strip()
                     audio_found = False
@@ -1120,7 +1123,7 @@ class SenpyAnalyzer:
                     idx = next_idx
                     continue
 
-                m_cond = RE_CONDITION.match(stripped)
+                m_cond = RE_CONDITION.match(stripped) if stripped.startswith(("if ", "elif ")) else None
                 if m_cond:
                     expr = m_cond.group(1)
                     self._check_condition(

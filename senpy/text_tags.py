@@ -63,6 +63,8 @@ def process_quoted_strings(
     - Проверяет необъявленные переменные в [var] (RPY101).
     - Регистрирует упомянутые ассеты (для RPY503).
     """
+    if '"' not in raw_line and "'" not in raw_line:
+        return raw_line, False, [], 0, 0, []
     modified = False
     reconstructed_line = raw_line
     non_nestable_tags = {"b", "i", "u", "s", "plain"}
