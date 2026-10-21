@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import difflib
 import os
 import re
-import textwrap
 import warnings
 
 from senpy.assets import AssetManager, find_orphaned_rpyc
@@ -14,38 +12,33 @@ from senpy.text_tags import get_utf16_range, process_quoted_strings
 
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
+from senpy.checkers import (
+    AssetChecker,
+    DialogueChecker,
+    FormattingChecker,
+    ScreenChecker,
+    StateChecker,
+)
+
 # Импортируем вынесенные модели и константы
 from senpy.constants import (
-    BUILTIN_ACTIONS,
-    BUILTIN_COLORS,
-    BUILTIN_SCREENS,
     BUILTIN_SYMBOLS,
-    CLAUSE_KEYWORDS,
     IGNORED_DIRS,
     NON_DIALOGUE_STATEMENTS,
-    RE_BUTTON_LINE,
-    RE_CONDITION,
     RE_DEFAULT,
     RE_DEFINE,
     RE_DEFINE_AUDIO,
-    RE_FOR_LOOP,
     RE_IMAGE_DEF,
     RE_INIT_PYTHON_START,
-    RE_JUMP_CALL,
     RE_LABEL,
     RE_LAYEREDIMAGE_ATTR,
     RE_LAYEREDIMAGE_START,
-    RE_MENU_START,
     RE_NOQA,
-    RE_PLAY_AUDIO,
-    RE_PYTHON_BLOCK_START,
     RE_RETURN,
-    RE_SCREEN_CALL,
     RE_SCREEN_START,
-    RE_SHOW_SCENE,
-    SMART_QUOTES,
 )
 from senpy.models import RULE_SEVERITY, AnalysisResult, Diagnostic, FileScope
+from senpy.scope import ScopeStack, ScopeType
 
 
 def _strip_comment(line: str) -> str:
@@ -658,6 +651,13 @@ class SenpyAnalyzer:
             self.total_lines += len(lines)
             file_modified = False
 
+            scope_stack = ScopeStack(self.declared_symbols)
+            format_checker = FormattingChecker(self)
+            screen_checker = ScreenChecker(self)
+            asset_checker = AssetChecker(self)
+            dialogue_checker = DialogueChecker(self)
+            state_checker = StateChecker(self)
+
             noqa_map: dict[int, set[str] | None] = {}
             for line_no, raw_line in enumerate(lines, start=1):
                 has_noqa, codes = self._parse_noqa(raw_line)
@@ -665,12 +665,6 @@ class SenpyAnalyzer:
                     noqa_map[line_no] = codes
 
             idx = 0
-            current_screen: str | None = None
-            current_screen_indent = 0
-            screen_local_symbols: set[str] = set()
-            in_label_context: bool = False
-            branch_uninitialized: dict[str, tuple[str, str]] = {}
-
             while idx < len(lines):
                 next_idx, raw_line, clean = _get_logical_line(lines, idx)
                 stripped = clean.strip()
@@ -679,68 +673,15 @@ class SenpyAnalyzer:
                     idx = next_idx
                     continue
 
-                # RPY107: Проверка устаревшего API Ren'Py (LiveComposite, im.*, ui.*, etc.)
-                for d in self.deprecated.check_line(raw_line, idx + 1, file_path):
-                    self._add_diagnostic(d, noqa_map)
-
-                # RPY001: Проверка табуляции в отступах
-                leading_ws = raw_line[:len(raw_line) - len(raw_line.lstrip())]
-                if "\t" in leading_ws:
-                    self.fixable_count += 1
-                    if self.fix:
-                        fixed_leading = leading_ws.replace("\t", "    ")
-                        raw_line = fixed_leading + raw_line[len(leading_ws):]
-                        lines[idx] = raw_line
-                        file_modified = True
-                        self.fixed_count += 1
-                    else:
-                        start_c, end_c = 0, len(leading_ws.encode("utf-16-le")) // 2
-                        self._add_diagnostic(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=idx + 1,
-                                line_content=raw_line.rstrip(),
-                                code="RPY001",
-                                message="Tab character ('\\t') used in indentation. Ren'Py requires 4 spaces per indent level.",
-                                col=start_c,
-                                end_col=end_c,
-                                fix_title="Replace tabs with 4 spaces",
-                                fix_replacement=leading_ws.replace("\t", "    "),
-                                fix_start_col=start_c,
-                                fix_end_col=end_c,
-                            ),
-                            noqa_map,
-                        )
-
-                # RPY002: Фигурные/типографские кавычки в коде
-                if any(q in clean for q in SMART_QUOTES) and (
-                    stripped.startswith(("$", "if ", "elif ", "default ", "define "))
-                    or (current_screen is not None and not stripped.startswith(("text ", "textbutton ")))
-                ):
-                        self.fixable_count += 1
-                        if self.fix:
-                            fixed_l = raw_line
-                            for sq, aq in SMART_QUOTES.items():
-                                fixed_l = fixed_l.replace(sq, aq)
-                            lines[idx] = fixed_l
-                            raw_line = fixed_l
-                            file_modified = True
-                            self.fixed_count += 1
-                        else:
-                            self._add_diagnostic(
-                                Diagnostic(
-                                    file_path=file_path,
-                                    line_number=idx + 1,
-                                    line_content=stripped,
-                                    code="RPY002",
-                                    message="Smart/curly quotes (“ ” ‘ ’ « ») detected in code statement. Will cause Python SyntaxError.",
-                                    fix_title="Replace smart quotes with standard quotes",
-                                    fix_replacement=''.join(SMART_QUOTES.get(c, c) for c in raw_line),
-                                ),
-                                noqa_map,
-                            )
-
                 line_indent = len(raw_line) - len(raw_line.lstrip(" "))
+                scope_stack.pop_to_indent(line_indent)
+
+                # 1. FormattingChecker (RPY001, RPY002, RPY107)
+                raw_line, modified = format_checker.check_line(
+                    file_path, idx, raw_line, clean, scope_stack, noqa_map, lines
+                )
+                if modified:
+                    file_modified = True
 
                 m_init = RE_INIT_PYTHON_START.match(raw_line)
                 if m_init:
@@ -749,414 +690,53 @@ class SenpyAnalyzer:
                     idx = next_idx
                     continue
 
-                if current_screen is not None and line_indent <= current_screen_indent:
-                    current_screen = None
-                    screen_local_symbols.clear()
-
+                # Scope: Labels
                 m_label = RE_LABEL.match(clean)
                 if m_label:
-                    # RPY308: Проверяем предыдущую строку перед меткой
-                    if in_label_context and idx > 0:
-                        prev_idx = idx - 1
-                        while prev_idx >= 0 and not lines[prev_idx].strip():
-                            prev_idx -= 1
-                        if prev_idx >= 0:
-                            prev_clean = _strip_comment(lines[prev_idx]).strip()
-                            if (
-                                prev_clean
-                                and not prev_clean.startswith((
-                                    "return", 
-                                    "jump ", 
-                                    "jump\t", 
-                                    "call ",
-                                    "call\t",
-                                    "renpy.full_restart", 
-                                    "renpy.quit"
-                                ))
-                                and not prev_clean.endswith(":")
-                            ):
-                                self._add_diagnostic(
-                                    Diagnostic(
-                                        file_path=file_path,
-                                        line_number=idx + 1,
-                                        line_content=stripped,
-                                        code="RPY308",
-                                        message=f"Label '{m_label.group(1)}' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through.",
-                                        severity="WARNING",
-                                    ),
-                                    noqa_map,
-                                )
-                    branch_uninitialized.clear()
-                    in_label_context = True
+                    scope_stack.push(ScopeType.LABEL, m_label.group(1), line_indent)
+                    state_checker.reset()
 
-                if line_indent == 0 and stripped.startswith(("screen ", "style ", "init ", "transform ")):
-                    in_label_context = False
-
+                # Scope: Screens
                 m_screen = RE_SCREEN_START.match(raw_line)
                 if m_screen:
-                    current_screen = m_screen.group(2)
-                    current_screen_indent = len(m_screen.group(1))
-                    screen_local_symbols.clear()
-                    in_label_context = False
+                    screen_name = m_screen.group(2)
+                    scope_stack.push(ScopeType.SCREEN, screen_name, line_indent)
                     params_str = m_screen.group(3)
                     if params_str:
                         for p in params_str.split(","):
                             p_clean = p.split("=")[0].strip()
                             if p_clean and p_clean.isidentifier():
-                                screen_local_symbols.add(p_clean)
+                                scope_stack.add_symbol(p_clean)
                     idx += 1
                     continue
 
-                if current_screen is not None:
-                    m_def = RE_DEFAULT.match(stripped)
-                    if m_def:
-                        screen_local_symbols.add(m_def.group(1))
-                        idx += 1
-                        continue
+                # 2. ScreenChecker (RPY203, RPY204, RPY206)
+                _, _ = screen_checker.check_line(
+                    file_path, idx, raw_line, clean, scope_stack, noqa_map, lines
+                )
 
-                    m_for = RE_FOR_LOOP.match(stripped)
-                    if m_for:
-                        screen_local_symbols.add(m_for.group(1))
+                # 3. AssetChecker (RPY501, RPY502)
+                _, _ = asset_checker.check_line(
+                    file_path, idx, raw_line, clean, scope_stack, noqa_map, lines
+                )
 
-                    m_btn = RE_BUTTON_LINE.match(stripped)
-                    if m_btn:
-                        # RPY203: кнопка без действия action
-                        if not stripped.endswith(":") and not re.search(r"\baction\b", stripped):
-                            btn_word = m_btn.group(1)
-                            start_c, end_c = self._get_utf16_range(raw_line, btn_word)
-                            self._add_diagnostic(
-                                Diagnostic(
-                                    file_path=file_path,
-                                    line_number=idx + 1,
-                                    line_content=stripped,
-                                    code="RPY203",
-                                    message=f"{btn_word.capitalize()} is missing an 'action' argument and will not respond to clicks.",
-                                    col=start_c,
-                                    end_col=end_c,
-                                ),
-                                noqa_map,
-                            )
-                        # RPY206: прямой вызов функции в action со скобками
-                        m_act = re.search(r"\baction\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(", stripped)
-                        if m_act:
-                            fn_name = m_act.group(1)
-                            if fn_name not in BUILTIN_ACTIONS:
-                                start_c, end_c = self._get_utf16_range(raw_line, f"action {fn_name}(")
-                                self._add_diagnostic(
-                                    Diagnostic(
-                                        file_path=file_path,
-                                        line_number=idx + 1,
-                                        line_content=stripped,
-                                        code="RPY206",
-                                        message=f"Direct function call '{fn_name}()' in action. It executes immediately during screen render! Use 'action Function({fn_name}, ...)' instead.",
-                                        col=start_c,
-                                        end_col=end_c,
-                                        fix_title=f"Wrap with Function({fn_name})",
-                                        fix_replacement=f"Function({fn_name})",
-                                    ),
-                                    noqa_map,
-                                )
+                # 4. DialogueChecker (RPY302, RPY305, RPY306, RPY308)
+                _, _ = dialogue_checker.check_line(
+                    file_path, idx, raw_line, clean, scope_stack, noqa_map, lines, state_checker.branch_uninitialized
+                )
 
-                m_menu = RE_MENU_START.match(raw_line)
-                if m_menu and current_screen is None:
-                    menu_indent = len(m_menu.group(1))
-                    next_idx, uninit_vars = self._analyze_menu_flow(
-                        lines,
-                        idx + 1,
-                        menu_indent,
-                        file_path=file_path,
-                        noqa_map=noqa_map,
-                    )
-                    branch_uninitialized.update(uninit_vars)
-                    idx = next_idx
-                    continue
-
-                m_scr = RE_SCREEN_CALL.match(stripped) if stripped.startswith(("show screen", "call screen", "use ")) else None
-                if m_scr:
-                    screen_target = m_scr.group(1)
-                    if screen_target not in self.declared_screens and screen_target not in BUILTIN_SCREENS:
-                        all_screens = list(self.declared_screens.keys()) + list(BUILTIN_SCREENS)
-                        matches = difflib.get_close_matches(screen_target, all_screens, n=1, cutoff=0.6)
-                        hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
-                        start_c, end_c = self._get_utf16_range(raw_line, screen_target)
-                        self._add_diagnostic(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=idx + 1,
-                                line_content=stripped,
-                                code="RPY204",
-                                message=f"Screen '{screen_target}' is not declared in project{hint}. Causes runtime ScriptError.",
-                                col=start_c,
-                                end_col=end_c,
-                            ),
-                            noqa_map,
-                        )
-
-                m_show = RE_SHOW_SCENE.match(stripped) if (current_screen is None and stripped.startswith(("show ", "scene "))) else None
-                if m_show:
-                    raw_tokens = m_show.group(2).split()
-                    img_tokens = []
-                    for t in raw_tokens:
-                        clean_t = t.rstrip(":")
-                        if clean_t in CLAUSE_KEYWORDS:
-                            break
-                        img_tokens.append(clean_t)
-                        if t.endswith(":"):
-                            # Двоеточие означает начало ATL-блока или свойства, дальше параметры отсекаем
-                            break
-
-                    if img_tokens:
-                        full_img_tag = " ".join(img_tokens)
-                        self._mark_asset_used(full_img_tag)
-                        base_tag = img_tokens[0]
-                        all_valid = self.valid_images.union(self.declared_images.keys())
-
-                        has_base = (
-                            base_tag in self.declared_layeredimages
-                            or any(img.startswith(base_tag + " ") or img == base_tag for img in all_valid)
-                        )
-                        is_single_tag = len(img_tokens) == 1 and m_show.group(1) == "show"
-
-                        # 1. Точное совпадение (Ren'Py 6.99 монолитный спрайт или объявление image)
-                        if full_img_tag in all_valid or full_img_tag in BUILTIN_COLORS or (is_single_tag and has_base):
-                            pass
-                        elif has_base:
-                            # 2. Компонентный спрайт (Ren'Py 7/8 LayeredImage или авто-атрибуты из папки)
-                            valid_attrs = self._get_tag_known_attributes(base_tag, all_valid)
-                            provided_attrs = img_tokens[1:]
-                            invalid_attrs = []
-
-                            for attr in provided_attrs:
-                                clean_attr = attr.removeprefix("-")  # Поддержка снятия атрибута -attr
-                                if clean_attr not in valid_attrs:
-                                    invalid_attrs.append(clean_attr)
-
-                            # Если все переданные атрибуты известны движку — всё валидно
-                            if valid_attrs and not invalid_attrs:
-                                pass
-                            else:
-                                # Ошибка в атрибуте
-                                err_attr = invalid_attrs[0] if invalid_attrs else full_img_tag
-                                matches = difflib.get_close_matches(err_attr, list(valid_attrs), n=1, cutoff=0.6)
-                                hint = f" (did you mean attribute '{matches[0]}' ?)" if matches else ""
-                                start_c, end_c = self._get_utf16_range(raw_line, err_attr)
-                                self._add_diagnostic(
-                                    Diagnostic(
-                                        file_path=file_path,
-                                        line_number=idx + 1,
-                                        line_content=stripped,
-                                        code="RPY502",
-                                        message=f"Attribute '{err_attr}' is not defined for character '{base_tag}'{hint}.",
-                                        col=start_c,
-                                        end_col=end_c,
-                                        fix_title=f"Change to '{matches[0]}'" if matches else None,
-                                        fix_replacement=matches[0] if matches else None,
-                                    ),
-                                    noqa_map,
-                                )
-                        else:
-                            # 3. Базовый тег вообще не найден ни в файлах, ни в объявлениях
-                            all_tags = {img.split()[0] for img in all_valid}.union(self.declared_layeredimages.keys())
-                            matched_tags = difflib.get_close_matches(base_tag, list(all_tags), n=1, cutoff=0.7)
-                            hint = f" (did you mean base tag '{matched_tags[0]}' ?)" if matched_tags else ""
-                            start_c, end_c = self._get_utf16_range(raw_line, base_tag)
-                            self._add_diagnostic(
-                                Diagnostic(
-                                    file_path=file_path,
-                                    line_number=idx + 1,
-                                    line_content=stripped,
-                                    code="RPY502",
-                                    message=f"Sprite or background '{base_tag}' not found in assets or 'image' definitions{hint}.",
-                                    col=start_c,
-                                    end_col=end_c,
-                                    fix_title=f"Change to '{matched_tags[0]}'" if matched_tags else None,
-                                    fix_replacement=matched_tags[0] if matched_tags else None,
-                                ),
-                                noqa_map,
-                            )
-
-                m_jump = RE_JUMP_CALL.match(stripped) if stripped.startswith(("jump ", "call ")) else None
-                if m_jump:
-                    cmd_type, target_label = m_jump.group(1), m_jump.group(2)
-                    if target_label == "expression":
-                        self.has_dynamic_jumps = True
-                    else:
-                        self.referenced_labels.add(target_label)
-                        if target_label not in self.declared_labels:
-                            matches = difflib.get_close_matches(target_label, list(self.declared_labels.keys()), n=1, cutoff=0.6)
-                            best_match = matches[0] if matches else None
-                            hint = f" (did you mean '{best_match}' ?)" if best_match else ""
-                            start_c, end_c = self._get_utf16_range(raw_line, target_label)
-                            self._add_diagnostic(
-                                Diagnostic(
-                                    file_path=file_path,
-                                    line_number=idx + 1,
-                                    line_content=stripped,
-                                    code="RPY302",
-                                    message=f"{cmd_type.capitalize()} to non-existent label '{target_label}'{hint}. Causes ScriptError.",
-                                    col=start_c,
-                                    end_col=end_c,
-                                    fix_title=f"Change to '{best_match}'" if best_match else None,
-                                    fix_replacement=best_match,
-                                ),
-                                noqa_map,
-                            )
-                        if cmd_type == "jump":
-                            branch_uninitialized.clear()
-                        elif cmd_type == "call" and target_label in self.declared_labels and not self._can_reach_return(target_label):
-                            self._add_diagnostic(
-                                Diagnostic(
-                                        file_path=file_path,
-                                        line_number=idx + 1,
-                                        line_content=stripped,
-                                        code="RPY306",
-                                        message=f"Static analysis could not find a 'return' path from called label '{target_label}'. Verify that control flow returns correctly.",
-                                    ),
-                                    noqa_map,
-                                )
-                    idx += 1
-                    continue
-
-                # RPY501: Проверка аудио (в кавычках и без)
-                m_play = RE_PLAY_AUDIO.match(stripped) if stripped.startswith(("play ", "queue ")) else None
-                if m_play:
-                    raw_audio_target = m_play.group(1).strip()
-                    audio_found = False
-
-                    if raw_audio_target.startswith(('"', "'")) and raw_audio_target.endswith(('"', "'")):
-                        clean_audio_path = raw_audio_target[1:-1].strip()
-                        # Срезаем Ren'Py-модификаторы таймингов вроде <from 10.0 to 50.0>
-                        clean_audio_path = re.sub(r"^<[^>]+>\s*", "", clean_audio_path)
-                        clean_audio_path = clean_audio_path.replace("\\", "/").lower()
-                        audio_file = os.path.basename(clean_audio_path)
-                        if clean_audio_path in self.known_assets or audio_file in self.known_assets:
-                            audio_found = True
-                            self._mark_asset_used(clean_audio_path)
-                            self._mark_asset_used(audio_file)
-                    else:
-                        identifier = raw_audio_target
-                        identifier = identifier.removeprefix("audio.")
-
-                        if identifier in self.defined_audio_map:
-                            audio_found = True
-                            self._mark_asset_used(self.defined_audio_map[identifier])
-                        elif identifier in self.audio_dir_files:
-                            audio_found = True
-                            self._mark_asset_used(self.audio_dir_files[identifier])
-                        elif identifier in self.known_assets:
-                            audio_found = True
-                            self._mark_asset_used(identifier)
-
-                    if not audio_found:
-                        start_c, end_c = self._get_utf16_range(raw_line, raw_audio_target)
-                        self._add_diagnostic(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=idx + 1,
-                                line_content=stripped,
-                                code="RPY501",
-                                message=f"Audio asset '{raw_audio_target}' not found in project, 'audio/' directory, or RPA archives.",
-                                col=start_c,
-                                end_col=end_c,
-                            ),
-                            noqa_map,
-                        )
-
-                # RPY305: Проверка неэкранированных кавычек в диалоге
-                first_token = stripped.split()[0] if stripped.split() else ""
-                if in_label_context and current_screen is None and first_token not in NON_DIALOGUE_STATEMENTS:
-                    unescaped_quotes = re.findall(r'(?<!\\)"', stripped)
-                    is_odd_quotes = len(unescaped_quotes) % 2 != 0
-                    has_inner_quotes = bool(re.search(r'(?<!\\)"[^"\\]*(?<!\\)"\s+[^\s"\'#]+.*(?<!\\)"', stripped))
-                    if is_odd_quotes or has_inner_quotes:
-                        self._add_diagnostic(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=idx + 1,
-                                line_content=stripped,
-                                code="RPY305",
-                                message="Unescaped quotes inside dialogue text. Use '\\\"' instead of '\"' to avoid syntax errors.",
-                            ),
-                            noqa_map,
-                        )
-
+                # 5. Проверка кавычек, интерполяций и тегов (RPY101, RPY301, RPY304)
                 new_line, modified = self._check_and_fix_quoted_strings(
-                    file_path, idx + 1, raw_line, screen_local_symbols, noqa_map
+                    file_path, idx + 1, raw_line, scope_stack.get_local_symbols(), noqa_map
                 )
                 if modified:
                     lines[idx] = new_line
                     file_modified = True
 
-                self._check_cfg_interpolations(
-                    file_path, idx + 1, stripped, branch_uninitialized, noqa_map
+                # 6. StateChecker (RPY102-106, RPY201, RPY205, RPY401-403)
+                next_idx, _ = state_checker.check_line(
+                    file_path, idx, next_idx, raw_line, clean, scope_stack, noqa_map, lines
                 )
-
-                if stripped.startswith("$"):
-                    py_code = stripped[1:].strip()
-                    if current_screen is not None:
-                        self._check_screen_mutation(
-                            py_code,
-                            file_path,
-                            idx + 1,
-                            stripped,
-                            current_screen,
-                            screen_local_symbols,
-                            noqa_map,
-                            lines=lines,
-                        )
-                    else:
-                        self._check_python_ast(
-                            py_code, file_path, start_line=idx + 1, noqa_map=noqa_map, lines=lines
-                        )
-                        self._clear_safe_cfg_vars(py_code, branch_uninitialized)
-                    idx += 1
-                    continue
-
-                m_py = RE_PYTHON_BLOCK_START.match(raw_line)
-                if m_py:
-                    indent = len(m_py.group(1))
-                    next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
-                    if block_lines:
-                        code = textwrap.dedent("".join(block_lines))
-                        if current_screen is not None:
-                            self._check_screen_mutation(
-                                code,
-                                file_path,
-                                idx + 2,
-                                stripped,
-                                current_screen,
-                                screen_local_symbols,
-                                noqa_map,
-                                lines=lines,
-                            )
-                        else:
-                            self._check_python_ast(
-                                code, file_path, start_line=idx + 2, noqa_map=noqa_map, lines=lines
-                            )
-                            self._clear_safe_cfg_vars(code, branch_uninitialized)
-                    idx = next_idx
-                    continue
-
-                m_cond = RE_CONDITION.match(stripped) if stripped.startswith(("if ", "elif ")) else None
-                if m_cond:
-                    expr = m_cond.group(1)
-                    self._check_condition(
-                        file_path,
-                        idx + 1,
-                        stripped,
-                        expr,
-                        current_screen,
-                        screen_local_symbols,
-                        noqa_map,
-                    )
-                    self._check_cfg_condition(
-                        file_path,
-                        idx + 1,
-                        stripped,
-                        expr,
-                        branch_uninitialized,
-                        noqa_map,
-                    )
 
                 idx = next_idx
 
