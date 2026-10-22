@@ -12,6 +12,7 @@ from senpy.constants import (
     BUILTIN_SCREENS,
     CLAUSE_KEYWORDS,
     NON_DIALOGUE_STATEMENTS,
+    RE_AUDIO_STATEMENT,
     RE_BUTTON_LINE,
     RE_CONDITION,
     RE_DEFAULT,
@@ -19,7 +20,6 @@ from senpy.constants import (
     RE_JUMP_CALL,
     RE_LABEL,
     RE_MENU_START,
-    RE_PLAY_AUDIO,
     RE_PYTHON_BLOCK_START,
     RE_SCREEN_CALL,
     RE_SHOW_SCENE,
@@ -303,47 +303,91 @@ class AssetChecker(BaseChecker):
                         noqa_map,
                     )
 
-        # RPY501: Проверка аудио (play / queue)
-        m_play = RE_PLAY_AUDIO.match(stripped) if stripped.startswith(("play ", "queue ")) else None
-        if m_play:
-            raw_audio_target = m_play.group(1).strip()
-            audio_found = False
+        # RPY501 & RPY505: Проверка play / queue (каналы и файлы)
+        m_audio = RE_AUDIO_STATEMENT.match(stripped) if stripped.startswith(("play ", "queue ")) else None
+        if m_audio:
+            channel = m_audio.group(2).lower()
+            rest = m_audio.group(3).strip()
 
-            if raw_audio_target.startswith(('"', "'")) and raw_audio_target.endswith(('"', "'")):
-                clean_audio_path = raw_audio_target[1:-1].strip()
-                clean_audio_path = re.sub(r"^<[^>]+>\s*", "", clean_audio_path)
-                clean_audio_path = clean_audio_path.replace("\\", "/").lower()
-                audio_file = os.path.basename(clean_audio_path)
-                if clean_audio_path in self.analyzer.known_assets or audio_file in self.analyzer.known_assets:
-                    audio_found = True
-                    self.analyzer._mark_asset_used(clean_audio_path)
-                    self.analyzer._mark_asset_used(audio_file)
-            else:
-                identifier = raw_audio_target.removeprefix("audio.")
-                if identifier in self.analyzer.defined_audio_map:
-                    audio_found = True
-                    self.analyzer._mark_asset_used(self.analyzer.defined_audio_map[identifier])
-                elif identifier in self.analyzer.audio_dir_files:
-                    audio_found = True
-                    self.analyzer._mark_asset_used(self.analyzer.audio_dir_files[identifier])
-                elif identifier in self.analyzer.known_assets:
-                    audio_found = True
-                    self.analyzer._mark_asset_used(identifier)
-
-            if not audio_found:
-                start_c, end_c = self.analyzer._get_utf16_range(raw_line, raw_audio_target)
+            # 1. RPY505: Проверка валидности канала
+            if channel not in self.analyzer.registered_audio_channels:
+                start_c, end_c = self.analyzer._get_utf16_range(raw_line, m_audio.group(2))
                 self.analyzer._add_diagnostic(
                     Diagnostic(
                         file_path=file_path,
                         line_number=idx + 1,
                         line_content=stripped,
-                        code="RPY501",
-                        message=f"Audio asset '{raw_audio_target}' not found in project, 'audio/' directory, or RPA archives.",
+                        code="RPY505",
+                        message=(
+                            f"Audio channel '{channel}' is not a built-in channel (music, sound, voice, audio) "
+                            "and has not been registered via 'renpy.music.register_channel()'. Causes runtime Exception."
+                        ),
+                        severity="ERROR",
                         col=start_c,
                         end_col=end_c,
                     ),
                     noqa_map,
                 )
+
+            # 2. RPY505: Зацикливание голоса на канале voice
+            if channel == "voice" and re.search(r"\bloop\b", rest, re.IGNORECASE):
+                start_c, end_c = self.analyzer._get_utf16_range(raw_line, "loop")
+                self.analyzer._add_diagnostic(
+                    Diagnostic(
+                        file_path=file_path,
+                        line_number=idx + 1,
+                        line_content=stripped,
+                        code="RPY505",
+                        message="Using 'loop' on the 'voice' audio channel. Voice playback is cut off on dialogue advance; looping voice causes audio glitches.",
+                        severity="WARNING",
+                        col=start_c,
+                        end_col=end_c,
+                    ),
+                    noqa_map,
+                )
+
+            # 3. RPY501: Проверка существования самого аудиофайла
+            # Извлекаем первый токен или строку в кавычках
+            m_target = re.match(r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\'|[^\s]+)', rest)
+            if m_target:
+                raw_audio_target = m_target.group(1).strip()
+                audio_found = False
+
+                if raw_audio_target.startswith(('"', "'")) and raw_audio_target.endswith(('"', "'")):
+                    clean_audio_path = raw_audio_target[1:-1].strip()
+                    clean_audio_path = re.sub(r"^<[^>]+>\s*", "", clean_audio_path)
+                    clean_audio_path = clean_audio_path.replace("\\", "/").lower()
+                    audio_file = os.path.basename(clean_audio_path)
+                    if clean_audio_path in self.analyzer.known_assets or audio_file in self.analyzer.known_assets:
+                        audio_found = True
+                        self.analyzer._mark_asset_used(clean_audio_path)
+                        self.analyzer._mark_asset_used(audio_file)
+                else:
+                    identifier = raw_audio_target.removeprefix("audio.")
+                    if identifier in self.analyzer.defined_audio_map:
+                        audio_found = True
+                        self.analyzer._mark_asset_used(self.analyzer.defined_audio_map[identifier])
+                    elif identifier in self.analyzer.audio_dir_files:
+                        audio_found = True
+                        self.analyzer._mark_asset_used(self.analyzer.audio_dir_files[identifier])
+                    elif identifier in self.analyzer.known_assets:
+                        audio_found = True
+                        self.analyzer._mark_asset_used(identifier)
+
+                if not audio_found and raw_audio_target not in ("fadein", "fadeout", "volume"):
+                    start_c, end_c = self.analyzer._get_utf16_range(raw_line, raw_audio_target)
+                    self.analyzer._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=idx + 1,
+                            line_content=stripped,
+                            code="RPY501",
+                            message=f"Audio asset '{raw_audio_target}' not found in project, 'audio/' directory, or RPA archives.",
+                            col=start_c,
+                            end_col=end_c,
+                        ),
+                        noqa_map,
+                    )
 
         return raw_line, False
 

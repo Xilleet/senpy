@@ -471,3 +471,43 @@ label start:
     rpy404_diags = [d for d in result.diagnostics if d.code == "RPY404"]
     assert len(rpy404_diags) == 2  # Сработало и на 'if met_yuri', и на '[met_yuri]'
     assert any("Пойти домой" in d.message for d in rpy404_diags)
+
+def test_taint_constant_mutation_methods_rpy105(tmp_path: Path):
+    """Verify RPY105 catches in-place mutations (.append, .clear, subscript) on define constants"""
+    code = """
+define INVENTORY_LIST = ["potion", "herb"]
+define QUEST_DICT = {"act1": True}
+
+label start:
+    $ INVENTORY_LIST.append("sword")       # RPY105 (.append)
+    $ QUEST_DICT["act2"] = True           # RPY105 (subscript assignment)
+    $ INVENTORY_LIST.clear()               # RPY105 (.clear)
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy105_diags = [d for d in result.diagnostics if d.code == "RPY105"]
+
+    assert len(rpy105_diags) == 3
+    assert any(".append()" in d.message for d in rpy105_diags)
+    assert any(".clear()" in d.message for d in rpy105_diags)
+    assert any("subscript" in d.message for d in rpy105_diags)
+
+def test_audio_channel_validation_rpy505(tmp_path: Path):
+    """Verify RPY505 catches unregistered audio channels and loop on voice channel"""
+    code = """
+init python:
+    renpy.music.register_channel("ambient", mixer="sfx", loop=True)
+
+label start:
+    play ambient "valid_sound"           # Валидный кастомный канал
+    play mystery_channel "valid_sound"   # RPY505: незарегистрированный канал!
+    play voice "valid_sound" loop        # RPY505: зацикливание голоса!
+    return
+"""
+    extra_files = {"audio/valid_sound.ogg": b"dummy_sound"}
+    result, _ = run_senpy_on_code(code, tmp_path, extra_files=extra_files)
+    rpy505_diags = [d for d in result.diagnostics if d.code == "RPY505"]
+
+    assert len(rpy505_diags) == 2
+    assert any("mystery_channel" in d.message and d.severity == "WARNING" for d in rpy505_diags)
+    assert any("voice" in d.message and d.severity == "WARNING" for d in rpy505_diags)

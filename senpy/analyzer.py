@@ -22,6 +22,7 @@ from senpy.checkers import (
 
 # Импортируем вынесенные модели и константы
 from senpy.constants import (
+    BUILTIN_AUDIO_CHANNELS,
     BUILTIN_SYMBOLS,
     IGNORED_DIRS,
     NON_DIALOGUE_STATEMENTS,
@@ -210,6 +211,7 @@ class SenpyAnalyzer:
         self.fixed_count: int = 0
         self.fixable_count: int = 0
         self.defined_audio_map: dict[str, str] = {}
+        self.registered_audio_channels: set[str] = set(BUILTIN_AUDIO_CHANNELS)
         self.file_scopes: dict[str, FileScope] = {}
         
 
@@ -263,6 +265,7 @@ class SenpyAnalyzer:
         self.declared_images.clear()
         self.declared_layeredimages.clear()
         self.defined_audio_map.clear()
+        self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
         self.has_dynamic_jumps = False
         self.total_lines = 0
         self.fixed_count = 0
@@ -327,6 +330,9 @@ class SenpyAnalyzer:
         self.declared_images.clear()
         self.declared_layeredimages.clear()
         self.defined_audio_map.clear()
+        self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
+        for scope in self.file_scopes.values():
+            self.registered_audio_channels.update(scope.registered_audio_channels)
         self.referenced_labels.clear()
         self.labels_with_return.clear()
 
@@ -435,10 +441,12 @@ class SenpyAnalyzer:
                     var = m_define.group(1)
                     scope.user_symbols.add(var)
                     scope.declared_symbols.add(var)
-                    scope.defined_constants.add(var)
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
-                    self.defined_constants.add(var)
+                    # Если define настраивает свойство (config.xxx, gui.xxx, persistent.xxx), не считаем корень константой
+                    if "." not in clean.split("=")[0]:
+                        scope.defined_constants.add(var)
+                        self.defined_constants.add(var)
 
                     if "Character" in clean or "DynamicCharacter" in clean:
                         scope.declared_characters.add(var)
@@ -549,6 +557,12 @@ class SenpyAnalyzer:
                     idx = next_idx
                     continue
 
+                m_chan = re.search(r'renpy\.music\.register_channel\s*\(\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']', clean)
+                if m_chan:
+                    chan_name = m_chan.group(1).lower()
+                    scope.registered_audio_channels.add(chan_name)
+                    self.registered_audio_channels.add(chan_name)
+
                 if "renpy.call(" in clean or "renpy.jump(" in clean or "call expression" in clean or "jump expression" in clean:
                     self.has_dynamic_jumps = True
 
@@ -574,6 +588,13 @@ class SenpyAnalyzer:
             pass
 
     def _collect_from_python_block(self, code_lines: list[str], scope: FileScope | None = None) -> None:
+        full_code = "".join(code_lines)
+        for m in re.finditer(r'renpy\.music\.register_channel\s*\(\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']', full_code):
+            chan = m.group(1).lower()
+            if scope is not None:
+                scope.registered_audio_channels.add(chan)
+            self.registered_audio_channels.add(chan)
+
         names, refs = self.python_ast.collect_from_python_block(code_lines)
         if scope is not None:
             scope.user_symbols.update(names)

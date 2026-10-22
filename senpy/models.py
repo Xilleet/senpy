@@ -39,6 +39,7 @@ class FileScope:
     declared_images: dict[str, tuple[str, int, str]] = field(default_factory=dict)
     declared_layeredimages: dict[str, set[str]] = field(default_factory=dict)
     defined_audio_map: dict[str, str] = field(default_factory=dict)
+    registered_audio_channels: set[str] = field(default_factory=set)
     referenced_labels: set[str] = field(default_factory=set)
     labels_with_return: set[str] = field(default_factory=set)
     label_outgoing_jumps: dict[str, set[str]] = field(default_factory=dict)
@@ -87,6 +88,7 @@ RULE_SEVERITY: dict[str, str] = {
     "RPY502": "WARNING",  # Спрайт или поза не найдена в ассетах
     "RPY503": "HINT",     # Неиспользуемый ассет на диске (лишний вес билда)
     "RPY504": "HINT",     # Повторное объявление/переопределение image (часто намеренно в модах)
+    "RPY505": "WARNING",  # Несуществующий аудиоканал или невалидный модификатор (loop на voice)
 
     # 6xx: Локализация (tl/)
     "RPY601": "ERROR",    # Рассинхрон переменных [var] в переводе -> KeyError

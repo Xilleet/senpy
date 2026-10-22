@@ -11,6 +11,7 @@ BUILTIN_SCREENS = {
 }
 
 BUILTIN_COLORS = {"black", "white", "trueblack", "none"}
+BUILTIN_AUDIO_CHANNELS = {"music", "sound", "voice", "audio"}
 CLAUSE_KEYWORDS = {"at", "as", "with", "zorder", "behind", "onlayer"}
 
 BUILTIN_SYMBOLS = {
@@ -124,14 +125,8 @@ RE_LABEL = re.compile(r"^\s*label\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\((.*?)\))?\s*
 RE_JUMP_CALL = re.compile(
     r"^\s*(jump|call)\s+(?!screen\b)([a-zA-Z_][a-zA-Z0-9_]*|\bexpression\b)"
 )
-RE_PLAY_AUDIO = re.compile(
-    r'^\s*(?:play|queue)\s+(?:music|sound|voice|audio)\s+('
-    r'"[^"\\]*(?:\\.[^"\\]*)*"'
-    r'|'
-    r"'[^'\\]*(?:\\.[^'\\]*)*'"
-    r'|'
-    r'[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*'
-    r')',
+RE_AUDIO_STATEMENT = re.compile(
+    r"^\s*(play|queue)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(.+)",
     re.IGNORECASE,
 )
 RE_INTERPOLATION = re.compile(r"\[([a-zA-Z_][a-zA-Z0-9_]*)(?:![a-zA-Z]+)?\]")

@@ -39,6 +39,26 @@ def infer_default_value(val_node: ast.AST | None) -> str:
             return "{}"
     return "False"
 
+# Системные пространства имён Ren'Py, мутация которых допустима во время игры
+SYSTEM_MUTABLE_NAMESPACES = {"persistent", "config", "store", "gui", "style"}
+
+MUTATING_METHODS = {
+    # Списки (list / deque)
+    "append", "extend", "insert", "remove", "pop", "clear", "reverse", "sort",
+    # Множества (set)
+    "add", "discard", "difference_update", "intersection_update", "symmetric_difference_update",
+    # Словари (dict)
+    "update", "popitem", "setdefault",
+}
+
+def _get_root_name(node: ast.AST | None) -> str | None:
+    """Рекурсивно разворачивает срезы и атрибуты до базового имени переменной (например, a[0]['k'] -> a)."""
+    curr = node
+    while isinstance(curr, (ast.Subscript, ast.Attribute)):
+        curr = curr.value
+    if isinstance(curr, ast.Name):
+        return curr.id
+    return None
 
 def extract_assigned_names(py_code: str) -> set[str]:
     """Извлекает имена переменных, которым присваивается значение в строке Python."""
@@ -245,42 +265,72 @@ class PythonAstChecker:
                     noqa_map,
                 )
 
-            elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
-                var_name = node.target.id
-                if var_name not in local_scope:
-                    real_line = start_line + getattr(node, "lineno", 1) - 1
-                    raw_l = (
-                        lines[real_line - 1]
-                        if lines and 0 <= real_line - 1 < len(lines)
-                        else ""
-                    )
-                    if (not raw_l or var_name not in raw_l) and lines and 0 <= start_line - 1 < len(lines):
-                        raw_l = lines[start_line - 1]
-                    start_c, end_c = get_utf16_range(raw_l, var_name)
+            elif isinstance(node, ast.AugAssign):
+                # 1. Мутация через +=, -= переменной: $ CONST += 1
+                if isinstance(node.target, ast.Name):
+                    var_name = node.target.id
+                    if var_name not in local_scope:
+                        real_line = start_line + getattr(node, "lineno", 1) - 1
+                        raw_l = (
+                            lines[real_line - 1]
+                            if lines and 0 <= real_line - 1 < len(lines)
+                            else ""
+                        )
+                        if (not raw_l or var_name not in raw_l) and lines and 0 <= start_line - 1 < len(lines):
+                            raw_l = lines[start_line - 1]
+                        start_c, end_c = get_utf16_range(raw_l, var_name)
 
-                    if var_name in self.analyzer.defined_constants:
-                        if var_name not in self.analyzer.declared_characters:
+                        if var_name in self.analyzer.defined_constants:
+                            if var_name not in self.analyzer.declared_characters:
+                                self.analyzer._add_diagnostic(
+                                    Diagnostic(
+                                        file_path=file_path,
+                                        line_number=real_line,
+                                        line_content=raw_l.strip(),
+                                        code="RPY105",
+                                        message=f"Constant '{var_name}' was declared with 'define', but modified via '+='. Use 'default' for mutable variables.",
+                                        col=start_c,
+                                        end_col=end_c,
+                                    ),
+                                    noqa_map,
+                                )
+                        elif var_name not in self.analyzer.declared_symbols:
+                            hint = suggest_similar_symbol(var_name, self.analyzer.user_symbols)
                             self.analyzer._add_diagnostic(
                                 Diagnostic(
                                     file_path=file_path,
                                     line_number=real_line,
                                     line_content=raw_l.strip(),
-                                    code="RPY105",
-                                    message=f"Constant '{var_name}' was declared with 'define', but modified via '+='. Use 'default' for mutable variables.",
+                                    code="RPY102",
+                                    message=f"Augmented assignment to '{var_name}' before declaration via 'default'{hint}. Causes runtime NameError.",
                                     col=start_c,
                                     end_col=end_c,
                                 ),
                                 noqa_map,
                             )
-                    elif var_name not in self.analyzer.declared_symbols:
-                        hint = suggest_similar_symbol(var_name, self.analyzer.user_symbols)
+                # 2. Мутация по ключу константы: $ CONST["k"] += 1
+                elif isinstance(node.target, ast.Subscript):
+                    root_name = _get_root_name(node.target.value)
+                    if (
+                        root_name
+                        and root_name in self.analyzer.defined_constants
+                        and root_name not in self.analyzer.declared_characters
+                        and root_name not in SYSTEM_MUTABLE_NAMESPACES
+                        and root_name not in local_scope
+                    ):
+                        real_line = start_line + getattr(node, "lineno", 1) - 1
+                        raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+                        start_c, end_c = get_utf16_range(raw_l, root_name)
                         self.analyzer._add_diagnostic(
                             Diagnostic(
                                 file_path=file_path,
                                 line_number=real_line,
                                 line_content=raw_l.strip(),
-                                code="RPY102",
-                                message=f"Augmented assignment to '{var_name}' before declaration via 'default'{hint}. Causes runtime NameError.",
+                                code="RPY105",
+                                message=(
+                                    f"In-place subscript mutation on constant '{root_name}' declared with 'define'. "
+                                    "Modifying mutable collections declared with 'define' silently breaks Ren'Py rollback! Use 'default' instead."
+                                ),
                                 col=start_c,
                                 end_col=end_c,
                             ),
@@ -330,6 +380,32 @@ class PythonAstChecker:
                                 raw_line=raw_l,
                                 val_node=node.value,
                             )
+                    # 3. Мутация по ключу/индексу: $ CONST["ключ"] = "значение"
+                    elif isinstance(target, ast.Subscript):
+                        root_name = _get_root_name(target.value)
+                        if (
+                            root_name
+                            and root_name in self.analyzer.defined_constants
+                            and root_name not in self.analyzer.declared_characters
+                            and root_name not in SYSTEM_MUTABLE_NAMESPACES
+                            and root_name not in local_scope
+                        ):
+                            start_c, end_c = get_utf16_range(raw_l, root_name)
+                            self.analyzer._add_diagnostic(
+                                Diagnostic(
+                                    file_path=file_path,
+                                    line_number=real_line,
+                                    line_content=raw_l.strip(),
+                                    code="RPY105",
+                                    message=(
+                                        f"In-place subscript assignment on constant '{root_name}' declared with 'define'. "
+                                        "Modifying mutable collections declared with 'define' breaks rollback and save persistence! Use 'default' instead."
+                                    ),
+                                    col=start_c,
+                                    end_col=end_c,
+                                ),
+                                noqa_map,
+                            )
                     elif isinstance(target, (ast.Tuple, ast.List)):
                         for elt in target.elts:
                             if isinstance(elt, ast.Name) and elt.id not in local_scope:
@@ -340,6 +416,41 @@ class PythonAstChecker:
                                     noqa_map,
                                     raw_line=raw_l,
                                     val_node=node.value,
+                                )
+
+            # 4. Мутирующие методы Python: $ CONST.append(...), CONST.clear(), CONST.pop()
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                for sub in ast.walk(node):
+                    if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute):
+                        method_name = sub.func.attr
+                        if method_name in MUTATING_METHODS:
+                            root_name = _get_root_name(sub.func.value)
+                            if (
+                                root_name
+                                and root_name in self.analyzer.defined_constants
+                                and root_name not in self.analyzer.declared_characters
+                                and root_name not in SYSTEM_MUTABLE_NAMESPACES
+                                and root_name not in local_scope
+                            ):
+                                real_line = start_line + getattr(sub, "lineno", 1) - 1
+                                raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+                                target_str = f"{root_name}.{method_name}"
+                                sub_str = target_str if target_str in raw_l else root_name
+                                start_c, end_c = get_utf16_range(raw_l, sub_str)
+                                self.analyzer._add_diagnostic(
+                                    Diagnostic(
+                                        file_path=file_path,
+                                        line_number=real_line,
+                                        line_content=raw_l.strip(),
+                                        code="RPY105",
+                                        message=(
+                                            f"Constant '{root_name}' was declared with 'define', but mutated via in-place method '.{method_name}()'. "
+                                            "In Ren'Py, modifying mutable objects declared with 'define' breaks rollback history! Use 'default' instead."
+                                        ),
+                                        col=start_c,
+                                        end_col=end_c,
+                                    ),
+                                    noqa_map,
                                 )
 
             elif isinstance(node, (ast.If, ast.While)):
@@ -376,7 +487,7 @@ class PythonAstChecker:
         raw_line: str = "",
         val_node: ast.AST | None = None,
     ) -> None:
-        if var_name.startswith("_") or var_name in self.analyzer.declared_characters:
+        if var_name.startswith("_") or var_name in self.analyzer.declared_characters or var_name in SYSTEM_MUTABLE_NAMESPACES:
             return
 
         start_c, end_c = get_utf16_range(raw_line, var_name) if raw_line else (0, 0)
