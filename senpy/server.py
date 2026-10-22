@@ -16,7 +16,7 @@ except ImportError:
 
 from senpy.analyzer import Diagnostic, SenpyAnalyzer
 
-server = LanguageServer("senpy-lsp", "v0.2.3")
+server = LanguageServer("senpy-lsp", "v0.2.4")
 
 
 def _uri_to_path(uri: str) -> str:
@@ -50,6 +50,7 @@ _is_initialized: bool = False
 SEVERITY_MAP = {
     "ERROR": lsp.DiagnosticSeverity.Error,
     "WARNING": lsp.DiagnosticSeverity.Warning,
+    "HINT": lsp.DiagnosticSeverity.Hint,
     "INFO": lsp.DiagnosticSeverity.Information,
 }
 

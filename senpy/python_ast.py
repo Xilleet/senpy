@@ -511,7 +511,7 @@ class PythonAstChecker:
         branch_uninitialized: dict,
         noqa_map: dict,
     ) -> None:
-        """RPY401: Проверяет условие на использование переменной, объявленной не во всех ветках menu."""
+        """RPY404: Проверяет условие if/elif на переменную в статусе MAYBE_SET."""
         with contextlib.suppress(SyntaxError):
             tree = ast.parse(expr, mode="eval")
             for node in ast.walk(tree):
@@ -520,18 +520,22 @@ class PythonAstChecker:
                     and isinstance(node.ctx, ast.Load)
                     and node.id in branch_uninitialized
                 ):
-                    missing_choice, defined_choice = branch_uninitialized[node.id]
+                    info = branch_uninitialized[node.id]
+                    missing_choice = info[0]
+                    menu_line = info[2] if len(info) > 2 else "earlier"
+                    start_c, end_c = get_utf16_range(line_content, node.id)
                     self.analyzer._add_diagnostic(
                         Diagnostic(
                             file_path=file_path,
                             line_number=line_idx,
                             line_content=line_content,
-                            code="RPY401",
+                            code="RPY404",
                             message=(
-                                f"Variable '{node.id}' is only defined in menu choice '{defined_choice}', "
-                                f"but missing in '{missing_choice}'. When choosing '{missing_choice}', "
-                                "this condition will crash with NameError."
+                                f"Variable '{node.id}' may be uninitialized (MAYBE_SET) if player took choice "
+                                f"'{missing_choice}' on line {menu_line}. Condition will crash with NameError."
                             ),
+                            col=start_c,
+                            end_col=end_c,
                         ),
                         noqa_map,
                     )

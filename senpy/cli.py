@@ -94,6 +94,7 @@ TSUNDERE_UI = {
 SEVERITY_STYLES = {
     "ERROR": ("bold red", "red dim"),
     "WARNING": ("bold yellow", "yellow dim"),
+    "HINT": ("bold cyan", "cyan dim"),
     "INFO": ("bold blue", "blue dim"),
 }
 
@@ -632,6 +633,7 @@ def main():
         # Подсчет по категориям
         error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
         warn_count = sum(1 for e in active_diagnostics if e.severity == "WARNING")
+        hint_count = sum(1 for e in active_diagnostics if e.severity == "HINT")
         info_count = sum(1 for e in active_diagnostics if e.severity == "INFO")
 
         summary_parts = []
@@ -639,6 +641,8 @@ def main():
             summary_parts.append(f"[bold red]{error_count} error(s)[/bold red]")
         if warn_count:
             summary_parts.append(f"[bold yellow]{warn_count} warning(s)[/bold yellow]")
+        if hint_count:
+            summary_parts.append(f"[bold cyan]{hint_count} hint(s)[/bold cyan]")
         if info_count:
             summary_parts.append(f"[bold blue]{info_count} info notice(s)[/bold blue]")
 

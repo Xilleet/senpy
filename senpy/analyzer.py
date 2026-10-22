@@ -30,10 +30,12 @@ from senpy.constants import (
     RE_DEFINE_AUDIO,
     RE_IMAGE_DEF,
     RE_INIT_PYTHON_START,
+    RE_JUMP_TARGET,
     RE_LABEL,
     RE_LAYEREDIMAGE_ATTR,
     RE_LAYEREDIMAGE_START,
     RE_NOQA,
+    RE_QUOTED_IDENTIFIER,
     RE_RETURN,
     RE_SCREEN_START,
 )
@@ -490,7 +492,8 @@ class SenpyAnalyzer:
                     if RE_RETURN.match(clean):
                         scope.labels_with_return.add(current_label)
                         self.labels_with_return.add(current_label)
-                    m_jump_in_label = re.match(r"^\s*jump\s+([a-zA-Z_][a-zA-Z0-9_]*)", clean)
+
+                    m_jump_in_label = RE_JUMP_TARGET.match(clean)
                     if m_jump_in_label:
                         target_j = m_jump_in_label.group(1)
                         scope.label_outgoing_jumps.setdefault(current_label, set()).add(target_j)
@@ -549,11 +552,12 @@ class SenpyAnalyzer:
                 if "renpy.call(" in clean or "renpy.jump(" in clean or "call expression" in clean or "jump expression" in clean:
                     self.has_dynamic_jumps = True
 
-                for str_match in re.finditer(r'["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']', clean):
-                    candidate = str_match.group(1)
-                    if candidate.isidentifier():
-                        scope.referenced_labels.add(candidate)
-                        self.referenced_labels.add(candidate)
+                if '"' in clean or "'" in clean:
+                    for str_match in RE_QUOTED_IDENTIFIER.finditer(clean):
+                        candidate = str_match.group(1)
+                        if candidate.isidentifier():
+                            scope.referenced_labels.add(candidate)
+                            self.referenced_labels.add(candidate)
 
                 m_init = RE_INIT_PYTHON_START.match(line)
                 if m_init:
@@ -773,6 +777,7 @@ class SenpyAnalyzer:
 
     def _check_unreachable_labels(self) -> None:
         self.diagnostics.extend(self.flow.check_unreachable_labels())
+        self.diagnostics.extend(self.flow.check_story_islands())
 
     def _analyze_menu_flow(
         self,

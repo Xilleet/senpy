@@ -418,3 +418,56 @@ define c = DynamicCharacter("char_name")
     assert len(rpy107_errors) == 2
     assert any("LiveComposite" in d.message and d.fix_replacement == "Composite" for d in rpy107_errors)
     assert any("DynamicCharacter" in d.message for d in rpy107_errors)
+
+def test_story_island_cycle_detected_rpy309(tmp_path: Path):
+    """Verify RPY309 detects unreachable label loops/islands while start flow is clean"""
+    code = """
+label start:
+    "Основной сюжет"
+    jump chapter_1
+
+label chapter_1:
+    "Конец первой главы"
+    return
+
+# Изолированный мёртвый остров (ссылаются друг на друга по кругу!):
+label abandoned_island_a:
+    "Черновик А"
+    jump abandoned_island_b
+
+label abandoned_island_b:
+    "Черновик Б"
+    jump abandoned_island_a
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    codes = {d.code for d in result.diagnostics}
+
+    # RPY303 тут НЕ сработает, потому что они ссылаются друг на друга!
+    # Но RPY309 должен поймать обе метки!
+    assert "RPY309" in codes
+    island_diags = [d for d in result.diagnostics if d.code == "RPY309"]
+    assert len(island_diags) == 2
+
+def test_maybe_set_variable_flow_rpy404(tmp_path: Path):
+    """Verify RPY404 detects MAYBE_SET variables evaluated after branching menus"""
+    code = """
+label start:
+    menu:
+        "Пойти в библиотеку":
+            $ met_yuri = True
+            "Вы встретили Юри."
+        "Пойти домой":
+            "Вы пошли спать."
+
+    # Чтение MAYBE_SET переменной без default:
+    if met_yuri:
+        "Диалог с [met_yuri]"
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    codes = {d.code for d in result.diagnostics}
+
+    assert "RPY404" in codes
+    rpy404_diags = [d for d in result.diagnostics if d.code == "RPY404"]
+    assert len(rpy404_diags) == 2  # Сработало и на 'if met_yuri', и на '[met_yuri]'
+    assert any("Пойти домой" in d.message for d in rpy404_diags)

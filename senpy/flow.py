@@ -62,31 +62,97 @@ class StoryFlowAnalyzer:
                 )
         return diagnostics
 
+    def check_story_islands(self) -> list[Diagnostic]:
+        """RPY309: Находит изолированные подграфы (острова) и циклы, недостижимые из системных точек входа."""
+        from collections import deque
+
+        declared = self.analyzer.declared_labels
+        outgoing = self.analyzer.label_outgoing_jumps
+
+        # 1. Находим все точки входа в новеллу (start, splashscreen, main_menu и служебные _*)
+        root_labels = {
+            lbl for lbl in declared
+            if lbl.lower() in SYSTEM_LABELS or lbl.startswith("_")
+        }
+
+        # Если в проекте вообще нет системных меток (например, это подмодуль), не спамим
+        if not root_labels:
+            return []
+
+        # 2. Обход в ширину (BFS) от всех точек входа по графу переходов (jump/call)
+        reachable: set[str] = set()
+        queue = deque(root_labels)
+        reachable.update(root_labels)
+
+        while queue:
+            curr = queue.popleft()
+            for target in outgoing.get(curr, set()):
+                if target in declared and target not in reachable:
+                    reachable.add(target)
+                    queue.append(target)
+
+        # 3. Любая объявленная метка, до которой нельзя дойти от корней:
+        # Если на неё вообще нет ссылок — это RPY303 (одиночка).
+        # А вот если на неё ССЫЛАЮТСЯ (например, по кругу), но она вне графа — это СЮЖЕТНЫЙ ОСТРОВ (RPY309)!
+        diagnostics: list[Diagnostic] = []
+        for label_name, (file_path, line_idx, content) in declared.items():
+            if label_name in reachable:
+                continue
+            if label_name.startswith("_") or label_name.lower() in SYSTEM_LABELS:
+                continue
+
+            # Проверяем, есть ли на эту метку ссылки внутри изолированного подграфа
+            has_incoming_jump = any(label_name in targets for targets in outgoing.values())
+            has_reference = label_name in self.analyzer.referenced_labels
+
+            # Если на метку есть ссылки (то есть это не просто одиночная метка из RPY303), но от start не дойти:
+            if has_incoming_jump or has_reference:
+                msg = f"Story island detected: label '{label_name}' forms an isolated subgraph unreachable from 'start'."
+                if self.analyzer.has_dynamic_jumps:
+                    msg += " Project uses dynamic routing, verify reachability."
+                start_c, end_c = get_utf16_range(content, label_name)
+                diagnostics.append(
+                    Diagnostic(
+                        file_path=file_path,
+                        line_number=line_idx,
+                        line_content=content,
+                        code="RPY309",
+                        message=msg,
+                        severity="WARNING",
+                        col=start_c,
+                        end_col=end_c,
+                    )
+                )
+
+        return diagnostics
+
     def check_cfg_interpolations(
         self,
         file_path: str,
         line_idx: int,
         line_content: str,
-        branch_uninitialized: dict[str, tuple[str, str]],
+        branch_uninitialized: dict[str, tuple[str, ...]],
         noqa_map: dict,
     ) -> None:
-        """RPY401: Проверяет [var] в тексте после меню с несбалансированными переменными."""
+        """RPY404: Проверяет [var] в тексте после меню с переменными в статусе MAYBE_SET."""
         from senpy.constants import RE_INTERPOLATION
 
         for match in RE_STRING_MATCH.finditer(line_content):
             s = match.group(0)
             for var in RE_INTERPOLATION.findall(s):
                 if var in branch_uninitialized:
-                    missing_choice, defined_choice = branch_uninitialized[var]
+                    info = branch_uninitialized[var]
+                    missing_choice = info[0]
+                    menu_line = info[2] if len(info) > 2 else "earlier"
                     self.analyzer._add_diagnostic(
                         Diagnostic(
                             file_path=file_path,
                             line_number=line_idx,
                             line_content=line_content,
-                            code="RPY401",
+                            code="RPY404",
                             message=(
-                                f"Variable '[{var}]' is only defined in menu choice '{defined_choice}', "
-                                f"but missing in '{missing_choice}'. Taking '{missing_choice}' will cause KeyError."
+                                f"Variable '[{var}]' may be uninitialized (MAYBE_SET) if player took choice "
+                                f"'{missing_choice}' on line {menu_line}. Will cause KeyError or save crash."
                             ),
                         ),
                         noqa_map,
@@ -178,16 +244,42 @@ class StoryFlowAnalyzer:
                 if var in self.analyzer.user_symbols:
                     continue
 
-                defined_choice = next(
-                    c["title"] for c in merging_choices if var in c["defined"]
+                missing_choice_dict = next(
+                    (c for c in merging_choices if var not in c["defined"]),
+                    None,
                 )
-                missing_choice = next(
-                    (c["title"] for c in merging_choices if var not in c["defined"]),
+                defined_choice_dict = next(
+                    (c for c in merging_choices if var in c["defined"]),
                     None,
                 )
 
-                if missing_choice:
-                    uninitialized_vars[var] = (missing_choice, defined_choice)
+                if missing_choice_dict and defined_choice_dict:
+                    # 1. RPY401: Предупреждаем прямо на строке выбора меню, где переменную забыли!
+                    if file_path:
+                        start_c, end_c = get_utf16_range(missing_choice_dict["raw"], missing_choice_dict["title"])
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=missing_choice_dict["line"],
+                                line_content=missing_choice_dict["raw"],
+                                code="RPY401",
+                                message=(
+                                    f"Menu branch asymmetry: variable '{var}' is assigned in choice "
+                                    f"'{defined_choice_dict['title']}' (line {defined_choice_dict['line']}), "
+                                    f"but missing in '{missing_choice_dict['title']}'."
+                                ),
+                                col=start_c,
+                                end_col=end_c,
+                            ),
+                            noqa_map,
+                        )
+
+                    # 2. Сохраняем статус MAYBE_SET для правила RPY404 (ловли крашей дальше по сюжету)
+                    uninitialized_vars[var] = (
+                        missing_choice_dict["title"],
+                        defined_choice_dict["title"],
+                        str(missing_choice_dict["line"]),
+                    )
 
         return idx, uninitialized_vars
 

@@ -158,3 +158,5 @@ RE_NOQA = re.compile(
     r"#\s*(?:noqa|senpy:\s*ignore)(?:\[([a-zA-Z0-9_,\s]+)\]|:\s*([a-zA-Z0-9_,\s]+))?",
     re.IGNORECASE,
 )
+RE_JUMP_TARGET = re.compile(r"^\s*(?:jump|call)\s+([a-zA-Z_][a-zA-Z0-9_]*)")
+RE_QUOTED_IDENTIFIER = re.compile(r'["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']')
