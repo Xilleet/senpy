@@ -16,7 +16,7 @@ except ImportError:
 
 from senpy.analyzer import Diagnostic, SenpyAnalyzer
 
-server = LanguageServer("senpy-lsp", "v0.2.5")
+server = LanguageServer("senpy-lsp", "v0.2.6")
 
 
 def _uri_to_path(uri: str) -> str:
@@ -181,6 +181,9 @@ def did_open(ls: LanguageServer, params: lsp.DidOpenTextDocumentParams):
 
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
+@server.feature(lsp.WORKSPACE_DID_CHANGE_WATCHED_FILES)
+def did_change_watched_files(ls: LanguageServer, params: lsp.DidChangeWatchedFilesParams):
+    """Гасит уведомления об изменении файлов от VS Code, предотвращая спам в Output лог."""
 def did_save(ls: LanguageServer, params: lsp.DidSaveTextDocumentParams):
     if params.text_document.uri.endswith(".rpy"):
         schedule_full_diagnostics(ls, params.text_document.uri)
@@ -270,6 +273,115 @@ def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.Co
 
     return actions
 
+@server.feature(lsp.TEXT_DOCUMENT_COMPLETION)
+def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.CompletionList:
+    """Контекстный автокомплит для меток, спрайтов и экранов."""
+    items: list[lsp.CompletionItem] = []
+    if _active_analyzer is None or not _is_initialized:
+        return lsp.CompletionList(is_incomplete=False, items=items)
+
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    if not doc:
+        return lsp.CompletionList(is_incomplete=False, items=items)
+
+    line = doc.lines[params.position.line]
+    prefix = line[:params.position.character].lstrip()
+
+    # 1. Автокомплит меток для jump / call
+    if prefix.startswith(("jump ", "call ")):
+        for label_name, (fpath, lnum, _) in sorted(_active_analyzer.declared_labels.items()):
+            if label_name.startswith("_"):
+                continue
+            items.append(lsp.CompletionItem(
+                label=label_name,
+                kind=lsp.CompletionItemKind.Reference,
+                detail=f"Label ({os.path.basename(fpath)}:{lnum})"
+            ))
+
+    # 2. Автокомплит экранов для show screen / call screen / use
+    elif prefix.startswith(("show screen ", "call screen ", "use ")):
+        for screen_name, (fpath, lnum) in sorted(_active_analyzer.declared_screens.items()):
+            items.append(lsp.CompletionItem(
+                label=screen_name,
+                kind=lsp.CompletionItemKind.Interface,
+                detail=f"Screen ({os.path.basename(fpath)}:{lnum})"
+            ))
+
+    # 3. Автокомплит спрайтов и атрибутов layeredimage для show / scene
+    elif prefix.startswith(("show ", "scene ")):
+        tokens = prefix.split()
+        # Если только начали писать имя спрайта: `show `
+        if len(tokens) == 1 or (len(tokens) == 2 and not prefix.endswith(" ")):
+            all_tags = {img.split()[0] for img in _active_analyzer.declared_images}
+            all_tags.update(_active_analyzer.declared_layeredimages)
+            for tag in sorted(all_tags):
+                items.append(lsp.CompletionItem(
+                    label=tag,
+                    kind=lsp.CompletionItemKind.Class,
+                    detail="Sprite Tag"
+                ))
+        # Если базовый тег уже введён и выбираем эмоции/атрибуты: `show sayori `
+        elif len(tokens) >= 2:
+            base_tag = tokens[1]
+            all_valid = _active_analyzer.valid_images.union(_active_analyzer.declared_images.keys())
+            attrs = _active_analyzer._get_tag_known_attributes(base_tag, all_valid)
+            for attr in sorted(attrs):
+                items.append(lsp.CompletionItem(
+                    label=attr,
+                    kind=lsp.CompletionItemKind.EnumMember,
+                    detail=f"Attribute for '{base_tag}'"
+                ))
+
+    return lsp.CompletionList(is_incomplete=False, items=items)
+
+
+@server.feature(lsp.TEXT_DOCUMENT_DEFINITION)
+def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location | None:
+    """Нативный переход по F12 / Ctrl+Click к месту объявления метки или экрана."""
+    if _active_analyzer is None or not _is_initialized:
+        return None
+
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    if not doc:
+        return None
+
+    line = doc.lines[params.position.line]
+    col = params.position.character
+
+    # Извлекаем слово под курсором
+    import re
+    word = None
+    for m in re.finditer(r'[a-zA-Z_][a-zA-Z0-9_]*', line):
+        if m.start() <= col <= m.end():
+            word = m.group(0)
+            break
+
+    if not word:
+        return None
+
+    # Если кликнули по метке сюжета (jump/call)
+    if word in _active_analyzer.declared_labels:
+        fpath, lnum, _ = _active_analyzer.declared_labels[word]
+        return lsp.Location(
+            uri=_path_to_uri(fpath),
+            range=lsp.Range(
+                start=lsp.Position(line=max(0, lnum - 1), character=0),
+                end=lsp.Position(line=max(0, lnum - 1), character=len(word))
+            )
+        )
+
+    # Если кликнули по экрану (screen)
+    if word in _active_analyzer.declared_screens:
+        fpath, lnum = _active_analyzer.declared_screens[word]
+        return lsp.Location(
+            uri=_path_to_uri(fpath),
+            range=lsp.Range(
+                start=lsp.Position(line=max(0, lnum - 1), character=0),
+                end=lsp.Position(line=max(0, lnum - 1), character=len(word))
+            )
+        )
+
+    return None
 
 def start_lsp():
     server.start_io()

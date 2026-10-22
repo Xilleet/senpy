@@ -190,7 +190,7 @@ def find_unrpyc_executable(custom_path: str | None, project_path: str | None, au
     if local_found:
         return [sys.executable, local_found]
 
-    if auto_download:
+    if auto_download and hasattr(sys.stdin, "isatty") and sys.stdin.isatty():
         console.print("[bold yellow]unrpyc was not found on your system.[/bold yellow]")
         try:
             ans = input("Would you like Senpy to automatically download unrpyc from GitHub? [Y/n]: ").strip().lower()
@@ -365,6 +365,11 @@ def main():
     # 4. Визуализация и форматы отчётов
     g_export = parser.add_argument_group("Visualization & Reports")
     g_export.add_argument(
+        "--export-html",
+        metavar="FILE",
+        help="Generate a standalone HTML report with an interactive story map and diagnostics"
+    )
+    g_export.add_argument(
         "--graph",
         action="store_true",
         help="Generate a Mermaid.js diagram of the story flow and label transitions"
@@ -378,9 +383,9 @@ def main():
         "--output-format",
         "--format",
         dest="output_format",
-        choices=["text", "json"],
+        choices=["text", "json", "sarif"],
         default="text",
-        help="Output format: 'text' (default) or 'json' for CI/LSP"
+        help="Output format: 'text' (default), 'json' for VS Code, or 'sarif' for GitHub Actions"
     )
     g_export.add_argument(
         "--output-file",
@@ -463,7 +468,9 @@ def main():
         if orphaned_rpyc:
             should_decompile = auto_decompile
 
-            if not should_decompile:
+            # Спрашиваем только если запущены в ЖИВОМ интерактивном терминале и это не экспорт графа
+            is_interactive = hasattr(sys.stdin, "isatty") and sys.stdin.isatty()
+            if not should_decompile and is_interactive and not (args.graph or args.graph_file):
                 console.print(
                     f"[bold yellow]Found {len(orphaned_rpyc)} compiled .rpyc file(s) without source code.[/bold yellow]"
                 )
@@ -475,15 +482,18 @@ def main():
 
             if should_decompile:
                 custom_unrpyc = args.unrpyc or config.get("unrpyc_path")
-                unrpyc_cmd = find_unrpyc_executable(custom_unrpyc, args.path, auto_download=True)
+                unrpyc_cmd = find_unrpyc_executable(custom_unrpyc, args.path, auto_download=is_interactive)
                 if not unrpyc_cmd:
-                    console.print(
-                        "[bold red]Decompilation skipped:[/bold red] unrpyc could not be found or downloaded.\n"
-                    )
+                    if is_interactive:
+                        console.print(
+                            "[bold red]Decompilation skipped:[/bold red] unrpyc could not be found or downloaded.\n"
+                        )
                 else:
                     extra_rpy_files = decompile_to_sandbox(orphaned_rpyc, unrpyc_cmd, temp_sandbox)
 
-        if args.output_format != "json":
+        is_quiet_mode = bool(args.graph or args.graph_file or args.output_format in ("json", "sarif"))
+
+        if not is_quiet_mode:
             if is_tsundere:
                 console.print(
                     f"[bold magenta](¬_¬ ) «{TSUNDERE_UI['intro'].format(path=args.path)}»[/bold magenta]\n"
@@ -493,8 +503,29 @@ def main():
 
         start_time = time.perf_counter()
         analyzer = SenpyAnalyzer(args.path, extra_files=extra_rpy_files, fix=args.fix)
-        result = analyzer.run()
+        result = analyzer.run(quiet=is_quiet_mode)
         elapsed = time.perf_counter() - start_time
+        if args.export_html:
+            from senpy.html_report import generate_html_report
+            # Отфильтруем предварительно диагностики как для терминала
+            active_diagnostics = [
+                e for e in result.diagnostics
+                if e.code not in ignored_codes
+                and (not args.errors_only or e.severity == "ERROR")
+                and (args.info or e.severity != "INFO")
+            ]
+            generate_html_report(
+                diagnostics=active_diagnostics,
+                graph_mermaid=analyzer.export_graph(),
+                file_count=result.file_count,
+                total_lines=result.total_lines,
+                elapsed=elapsed,
+                out_path=args.export_html
+            )
+            if is_tsundere:
+                console.print(f"[bold magenta](//∇//) «Я... я сгенерировала HTML отчёт в [bold]{args.export_html}[/bold]! Изучай свои сюжетные дыры, бака!»[/bold magenta]\n")
+            else:
+                console.print(f"[bold green]✔ Autonomous HTML report saved to [bold]{args.export_html}[/bold][/bold green]\n")
         if args.graph or args.graph_file:
             graph_content = analyzer.export_graph()
             if args.graph_file:
@@ -532,8 +563,23 @@ def main():
             and (args.info or e.severity != "INFO")
         ]
 
+        # --- ВЫВОД В ФОРМАТЕ SARIF ДЛЯ GITHUB ACTIONS ---
+        if args.output_format == "sarif":
+            from senpy.sarif import generate_sarif
+            sarif_str = generate_sarif(active_diagnostics, args.path)
+            
+            if args.output_file:
+                with open(args.output_file, "w", encoding="utf-8") as f:
+                    f.write(sarif_str)
+                console.print(f"[bold green]✔ SARIF report saved to {args.output_file}[/bold green]")
+            else:
+                print(sarif_str)
+                
+            error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
+            sys.exit(1 if error_count > 0 else 0)
+
         # --- ВЫВОД В ФОРМАТЕ JSON ДЛЯ VS CODE ---
-        if args.output_format == "json":
+        elif args.output_format == "json":
             json_output = []
             for err in active_diagnostics:
                 json_output.append({

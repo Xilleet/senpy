@@ -1,0 +1,2811 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Senpy Linter",
+          "informationUri": "https://github.com/Xilleet/senpy",
+          "rules": [
+            {
+              "id": "RPY001",
+              "shortDescription": {
+                "text": "Tab character in indentation"
+              },
+              "fullDescription": {
+                "text": "Ren'Py requires 4 spaces per indentation level. Tab characters ('\\t') cause indentation mismatches and SyntaxError across different editors and operating systems."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy001"
+            },
+            {
+              "id": "RPY002",
+              "shortDescription": {
+                "text": "Smart/curly quotes in code statement"
+              },
+              "fullDescription": {
+                "text": "Typographic smart quotes (“ ” ‘ ’ « ») copied from text editors like MS Word into Python code statements cause a fatal SyntaxError."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy002"
+            },
+            {
+              "id": "RPY101",
+              "shortDescription": {
+                "text": "Unresolved variable in dialogue interpolation"
+              },
+              "fullDescription": {
+                "text": "Using [variable] in dialogue when it is not declared via 'default' or 'define' will crash the game with KeyError during text rendering."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy101"
+            },
+            {
+              "id": "RPY102",
+              "shortDescription": {
+                "text": "Augmented assignment before 'default' declaration"
+              },
+              "fullDescription": {
+                "text": "Doing +=, -=, etc. to a variable before it has been initialized causes an immediate runtime NameError when entering the scene."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy102"
+            },
+            {
+              "id": "RPY103",
+              "shortDescription": {
+                "text": "Undeclared variable in condition"
+              },
+              "fullDescription": {
+                "text": "Evaluating 'if var:' or 'elif var:' crashes the engine with NameError if the variable was never declared."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy103"
+            },
+            {
+              "id": "RPY104",
+              "shortDescription": {
+                "text": "Dynamic assignment without top-level 'default'"
+              },
+              "fullDescription": {
+                "text": "Assigning variables on the fly ($ var = 1) without a top-level 'default' will corrupt save files upon game updates and cause NameError on other story branches."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy104"
+            },
+            {
+              "id": "RPY105",
+              "shortDescription": {
+                "text": "Direct mutation of 'define' constant"
+              },
+              "fullDescription": {
+                "text": "Variables declared with 'define' are static constants (characters, configurations). Modifying them breaks Ren'Py rollback and save persistence."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy105"
+            },
+            {
+              "id": "RPY106",
+              "shortDescription": {
+                "text": "Usage of non-revertable Python types (random / mutable set)"
+              },
+              "fullDescription": {
+                "text": "Standard Python 'import random' and mutable 'set()' are not tracked by Ren'Py's rollback engine. Players rolling back will experience save desynchronization."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy106"
+            },
+            {
+              "id": "RPY107",
+              "shortDescription": {
+                "text": "Usage of deprecated / obsolete Ren'Py API"
+              },
+              "fullDescription": {
+                "text": "Calling obsolete Ren'Py functions (LiveComposite, DynamicCharacter, im.*, ui.*) harms rendering performance (CPU vs GPU) or breaks on Ren'Py 7/8."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy107"
+            },
+            {
+              "id": "RPY201",
+              "shortDescription": {
+                "text": "Direct state mutation inside screen"
+              },
+              "fullDescription": {
+                "text": "Screens are evaluated continuously and predictively by the UI loop. Direct state mutations run repeatedly every frame and break rollback."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy201"
+            },
+            {
+              "id": "RPY202",
+              "shortDescription": {
+                "text": "Screen accesses variable without 'default'"
+              },
+              "fullDescription": {
+                "text": "Screens can be evaluated before story start (e.g. in the main menu or prediction loop). Reading undeclared variables crashes the game."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy202"
+            },
+            {
+              "id": "RPY203",
+              "shortDescription": {
+                "text": "Button without 'action' argument"
+              },
+              "fullDescription": {
+                "text": "Buttons (textbutton, imagebutton) without an 'action' property are non-interactive dead UI elements."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy203"
+            },
+            {
+              "id": "RPY204",
+              "shortDescription": {
+                "text": "Call/Show to non-existent screen"
+              },
+              "fullDescription": {
+                "text": "Calling or showing a screen that does not exist crashes the game with 'Exception: Screen is not known'."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy204"
+            },
+            {
+              "id": "RPY205",
+              "shortDescription": {
+                "text": "Imperative Python loop inside screen"
+              },
+              "fullDescription": {
+                "text": "Writing imperative for/while loops in Python blocks inside screens severely hurts UI prediction and causes frame drops."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy205"
+            },
+            {
+              "id": "RPY206",
+              "shortDescription": {
+                "text": "Direct function call in button action"
+              },
+              "fullDescription": {
+                "text": "Directly calling a function with parentheses in action executes it immediately during screen render, not upon user click."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy206"
+            },
+            {
+              "id": "RPY301",
+              "shortDescription": {
+                "text": "Unclosed or mismatched text tag in dialogue"
+              },
+              "fullDescription": {
+                "text": "Unclosed tags like {b} will bleed styles into all subsequent dialogues across the entire game."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy301"
+            },
+            {
+              "id": "RPY302",
+              "shortDescription": {
+                "text": "Jump or Call to non-existent label"
+              },
+              "fullDescription": {
+                "text": "Jumping to a label that does not exist immediately terminates the novel with ScriptError."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy302"
+            },
+            {
+              "id": "RPY303",
+              "shortDescription": {
+                "text": "Unreferenced / Dead label"
+              },
+              "fullDescription": {
+                "text": "Label is declared but never called or jumped to anywhere in the project. It might be dead code or a forgotten draft."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy303"
+            },
+            {
+              "id": "RPY304",
+              "shortDescription": {
+                "text": "Malformed color in {color} tag"
+              },
+              "fullDescription": {
+                "text": "Typo in hex code (e.g. #12345) or unknown color name causes the Ren'Py text renderer to crash."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy304"
+            },
+            {
+              "id": "RPY305",
+              "shortDescription": {
+                "text": "Unescaped quotes inside dialogue string"
+              },
+              "fullDescription": {
+                "text": "Quotes inside a dialogue string without escaping (\\\") break the string literal parser at startup."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy305"
+            },
+            {
+              "id": "RPY306",
+              "shortDescription": {
+                "text": "Called label without 'return' statement"
+              },
+              "fullDescription": {
+                "text": "Invoking a label via 'call' expects a 'return'. Without it, control flow accidentally bleeds into unrelated scenes."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy306"
+            },
+            {
+              "id": "RPY307",
+              "shortDescription": {
+                "text": "Duplicate label declaration"
+              },
+              "fullDescription": {
+                "text": "Declaring two labels with the same name across any project script causes a fatal ScriptError on startup."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy307"
+            },
+            {
+              "id": "RPY308",
+              "shortDescription": {
+                "text": "Label preceded by regular statements (Fallthrough hazard)"
+              },
+              "fullDescription": {
+                "text": "Ending a scene without 'jump' or 'return' before the next label causes control flow to unintentionally fall right through into the next scene."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy308"
+            },
+            {
+              "id": "RPY401",
+              "shortDescription": {
+                "text": "Variable defined in one menu choice but missing in another"
+              },
+              "fullDescription": {
+                "text": "If Choice A defines a variable but Choice B does not, choosing Choice B and later reading the variable causes a fatal NameError."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy401"
+            },
+            {
+              "id": "RPY402",
+              "shortDescription": {
+                "text": "Empty menu choice"
+              },
+              "fullDescription": {
+                "text": "A menu choice was defined without any body statements, causing the story to immediately fall through."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy402"
+            },
+            {
+              "id": "RPY403",
+              "shortDescription": {
+                "text": "Always-false or contradictory condition"
+              },
+              "fullDescription": {
+                "text": "Conditions like 'if False:' or 'if x and not x:' can never be true. The code block will never execute."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy403"
+            },
+            {
+              "id": "RPY501",
+              "shortDescription": {
+                "text": "Missing audio file"
+              },
+              "fullDescription": {
+                "text": "Audio file referenced in play/queue music/sound/voice does not exist on disk, in 'audio/', or inside .rpa archives."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy501"
+            },
+            {
+              "id": "RPY502",
+              "shortDescription": {
+                "text": "Missing or mistyped sprite / background"
+              },
+              "fullDescription": {
+                "text": "Sprite pose or background shown via 'show' or 'scene' is missing from image declarations, layered images, and asset folders."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy502"
+            },
+            {
+              "id": "RPY503",
+              "shortDescription": {
+                "text": "Unused media asset on disk"
+              },
+              "fullDescription": {
+                "text": "Image or audio files located in the project directory are never referenced in any script. Increases build distribution size."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy503"
+            },
+            {
+              "id": "RPY504",
+              "shortDescription": {
+                "text": "Duplicate / overridden image declaration"
+              },
+              "fullDescription": {
+                "text": "Declaring the same image tag twice (via 'image name = ...' or 'image name:') silently overrides the previous definition."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy504"
+            },
+            {
+              "id": "RPY601",
+              "shortDescription": {
+                "text": "Variable mismatch in translation string"
+              },
+              "fullDescription": {
+                "text": "If a translated string alters or misspells a dialogue variable ([var]), rendering the translation causes a fatal KeyError at runtime."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy601"
+            },
+            {
+              "id": "RPY602",
+              "shortDescription": {
+                "text": "Formatting tag mismatch in translation string"
+              },
+              "fullDescription": {
+                "text": "Missing or altered formatting tags ({b}, {color}, {i}) in translation strings cause unclosed text tags and visual glitches."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy602"
+            },
+            {
+              "id": "RPY603",
+              "shortDescription": {
+                "text": "Empty translation string ('new \"\"')"
+              },
+              "fullDescription": {
+                "text": "Leaving 'new \"\"' empty for a non-empty original line will display an empty, blank dialogue window to players in that language."
+              },
+              "helpUri": "https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy603"
+            },
+            {
+              "id": "RPY309",
+              "shortDescription": {
+                "text": "Rule RPY309"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'LiveComposite'. This function is obsolete or outdated. Use 'Composite' instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "cgs.rpy"
+                },
+                "region": {
+                  "startLine": 144,
+                  "startColumn": 20,
+                  "endColumn": 33
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'LiveComposite'. This function is obsolete or outdated. Use 'Composite' instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "cgs.rpy"
+                },
+                "region": {
+                  "startLine": 180,
+                  "startColumn": 16,
+                  "endColumn": 29
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label 'postcredits_loop' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "credits.rpy"
+                },
+                "region": {
+                  "startLine": 623,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY104",
+          "level": "warning",
+          "message": {
+            "text": "Variable 'my_fake_ghost_money' is assigned dynamically without a top-level 'default'. This will break save games and cause NameError on other story branches."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "day1a.rpy"
+                },
+                "region": {
+                  "startLine": 2,
+                  "startColumn": 7,
+                  "endColumn": 26
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY401",
+          "level": "warning",
+          "message": {
+            "text": "Menu branch asymmetry: variable 'quit' is assigned in choice 'Нет.' (line 41), but missing in 'Не активировать мод.'."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "day1a.rpy"
+                },
+                "region": {
+                  "startLine": 85,
+                  "startColumn": 2,
+                  "endColumn": 22
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label 'ch0a_main' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "day1a.rpy"
+                },
+                "region": {
+                  "startLine": 91,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY306",
+          "level": "warning",
+          "message": {
+            "text": "Static analysis could not find a 'return' path from called label 'poemresponse_start'. Verify that control flow returns correctly."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "day3a.rpy"
+                },
+                "region": {
+                  "startLine": 447,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY306",
+          "level": "warning",
+          "message": {
+            "text": "Static analysis could not find a 'return' path from called label 'poemresponse_start'. Verify that control flow returns correctly."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "day4.rpy"
+                },
+                "region": {
+                  "startLine": 384,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'LiveTile'. This function is obsolete or outdated. Use 'Tile' instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 215,
+                  "startColumn": 19,
+                  "endColumn": 27
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'LiveComposite'. This function is obsolete or outdated. Use 'Composite' instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 1072,
+                  "startColumn": 23,
+                  "endColumn": 36
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'LiveComposite'. This function is obsolete or outdated. Use 'Composite' instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 1386,
+                  "startColumn": 21,
+                  "endColumn": 34
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'LiveComposite'. This function is obsolete or outdated. Use 'Composite' instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 1415,
+                  "startColumn": 21,
+                  "endColumn": 34
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'LiveComposite'. This function is obsolete or outdated. Use 'Composite' instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 1445,
+                  "startColumn": 19,
+                  "endColumn": 32
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 4283,
+                  "startColumn": 13,
+                  "endColumn": 29
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 4284,
+                  "startColumn": 12,
+                  "endColumn": 28
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 4285,
+                  "startColumn": 12,
+                  "endColumn": 28
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 4286,
+                  "startColumn": 12,
+                  "endColumn": 28
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 4287,
+                  "startColumn": 12,
+                  "endColumn": 28
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 4304,
+                  "startColumn": 12,
+                  "endColumn": 28
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 4305,
+                  "startColumn": 12,
+                  "endColumn": 28
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 4306,
+                  "startColumn": 12,
+                  "endColumn": 28
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 4307,
+                  "startColumn": 12,
+                  "endColumn": 28
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 4308,
+                  "startColumn": 13,
+                  "endColumn": 29
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 4309,
+                  "startColumn": 13,
+                  "endColumn": 29
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 4310,
+                  "startColumn": 13,
+                  "endColumn": 29
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "definitions.rpy"
+                },
+                "region": {
+                  "startLine": 4324,
+                  "startColumn": 16,
+                  "endColumn": 32
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'LiveComposite'. This function is obsolete or outdated. Use 'Composite' instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "effects.rpy"
+                },
+                "region": {
+                  "startLine": 360,
+                  "startColumn": 14,
+                  "endColumn": 27
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label 'poemresponse_loop_hallow' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "halloween.rpy"
+                },
+                "region": {
+                  "startLine": 1880,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY501",
+          "level": "error",
+          "message": {
+            "text": "Audio asset '\"sfx/wind.ogg\"' not found in project, 'audio/' directory, or RPA archives."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "monika_act2.rpy"
+                },
+                "region": {
+                  "startLine": 30,
+                  "startColumn": 16,
+                  "endColumn": 30
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY502",
+          "level": "warning",
+          "message": {
+            "text": "Attribute 'corridor_night' is not defined for character 'bg' (did you mean attribute 'sayori_corridor_night' ?)."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "monika_act2.rpy"
+                },
+                "region": {
+                  "startLine": 176,
+                  "startColumn": 14,
+                  "endColumn": 28
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY402",
+          "level": "warning",
+          "message": {
+            "text": "Menu choice 'Что сказать Монике?' has no statements inside and will immediately fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "monika_act2.rpy"
+                },
+                "region": {
+                  "startLine": 678,
+                  "startColumn": 10,
+                  "endColumn": 29
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY501",
+          "level": "error",
+          "message": {
+            "text": "Audio asset 'door_open' not found in project, 'audio/' directory, or RPA archives."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "nat_act3.rpy"
+                },
+                "region": {
+                  "startLine": 10084,
+                  "startColumn": 16,
+                  "endColumn": 25
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label 'poemresponse_loop' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label 'poemresponse_start2' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 16,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label 'ch2_n_bad_sharedwithch3' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 880,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label 'ch1_y_shared' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 1794,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label 'ch2_y_shared' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 1923,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label 'ch2_y_good_shared' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 1980,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label 'ch3_y_shared' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 2104,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label 'ch3_y_good_shared' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 2215,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY107",
+          "level": "note",
+          "message": {
+            "text": "Deprecated Ren'Py API 'LiveComposite'. This function is obsolete or outdated. Use 'Composite' instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poems.rpy"
+                },
+                "region": {
+                  "startLine": 1354,
+                  "startColumn": 22,
+                  "endColumn": 35
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY502",
+          "level": "warning",
+          "message": {
+            "text": "Attribute 't11' is not defined for character 'young'."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "sayori_day13_16.rpy"
+                },
+                "region": {
+                  "startLine": 506,
+                  "startColumn": 19,
+                  "endColumn": 22
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY103",
+          "level": "error",
+          "message": {
+            "text": "Undeclared variable 'yuri_invite' in condition (did you mean 'yurinvl' ?). Evaluating this condition will crash with NameError."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "sayori_day8_11.rpy"
+                },
+                "region": {
+                  "startLine": 1850,
+                  "startColumn": 4,
+                  "endColumn": 15
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY502",
+          "level": "warning",
+          "message": {
+            "text": "Attribute 't11' is not defined for character 'yuri' (did you mean attribute '1y1' ?)."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "sayori_day8_11.rpy"
+                },
+                "region": {
+                  "startLine": 1927,
+                  "startColumn": 24,
+                  "endColumn": 27
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY502",
+          "level": "warning",
+          "message": {
+            "text": "Attribute 't11' is not defined for character 'yuri' (did you mean attribute '1y1' ?)."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "sayori_day8_11.rpy"
+                },
+                "region": {
+                  "startLine": 2025,
+                  "startColumn": 24,
+                  "endColumn": 27
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY201",
+          "level": "warning",
+          "message": {
+            "text": "Direct state mutation 'persistent.menu_bg_m' inside screen 'game_menu_m'. Screens are evaluated predictively. Use screen Actions instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "screens.rpy"
+                },
+                "region": {
+                  "startLine": 722,
+                  "startColumn": 7,
+                  "endColumn": 27
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label '_' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "screens.rpy"
+                },
+                "region": {
+                  "startLine": 1555,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label 'endgame' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "script.rpy"
+                },
+                "region": {
+                  "startLine": 149,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY308",
+          "level": "warning",
+          "message": {
+            "text": "Label 'after_load' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "splash.rpy"
+                },
+                "region": {
+                  "startLine": 340,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY502",
+          "level": "warning",
+          "message": {
+            "text": "Attribute 't21' is not defined for character 'natsuki' (did you mean attribute '21' ?)."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "yuri_act2_day1_6.rpy"
+                },
+                "region": {
+                  "startLine": 1389,
+                  "startColumn": 21,
+                  "endColumn": 24
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY502",
+          "level": "warning",
+          "message": {
+            "text": "Attribute 't' is not defined for character 'monika' (did you mean attribute '4t' ?)."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "yuri_act2_day8_15.rpy"
+                },
+                "region": {
+                  "startLine": 2969,
+                  "startColumn": 21,
+                  "endColumn": 22
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY502",
+          "level": "warning",
+          "message": {
+            "text": "Attribute 't43' is not defined for character 'sayori'."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "yuri_act3_day1_14.rpy"
+                },
+                "region": {
+                  "startLine": 231,
+                  "startColumn": 20,
+                  "endColumn": 23
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY502",
+          "level": "warning",
+          "message": {
+            "text": "Attribute 'thide' is not defined for character 'yuri'."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "yuri_act3_day1_14.rpy"
+                },
+                "region": {
+                  "startLine": 4203,
+                  "startColumn": 15,
+                  "endColumn": 20
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY502",
+          "level": "warning",
+          "message": {
+            "text": "Sprite or background 'momc' not found in assets or 'image' definitions (did you mean base tag 'mom' ?)."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "yuri_bad.rpy"
+                },
+                "region": {
+                  "startLine": 550,
+                  "startColumn": 10,
+                  "endColumn": 14
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY502",
+          "level": "warning",
+          "message": {
+            "text": "Attribute 's42' is not defined for character 'natsuki' (did you mean attribute '42' ?)."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "yuri_good.rpy"
+                },
+                "region": {
+                  "startLine": 878,
+                  "startColumn": 22,
+                  "endColumn": 25
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY306",
+          "level": "warning",
+          "message": {
+            "text": "Static analysis could not find a 'return' path from called label 'poemresponse_start'. Verify that control flow returns correctly."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "C:/Users/CE43~1/AppData/Local/Temp/tmp7f51m01j/day2a.rpy"
+                },
+                "region": {
+                  "startLine": 408,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY102",
+          "level": "error",
+          "message": {
+            "text": "Augmented assignment to 'm_relationship' before declaration via 'default' (did you mean 'y_relationship' ?). Causes runtime NameError."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "C:/Users/CE43~1/AppData/Local/Temp/tmp7f51m01j/day2a.rpy"
+                },
+                "region": {
+                  "startLine": 755,
+                  "startColumn": 7,
+                  "endColumn": 21
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'updateconsole' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "console.rpy"
+                },
+                "region": {
+                  "startLine": 21,
+                  "startColumn": 7,
+                  "endColumn": 20
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'updateconsole_clearall' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "console.rpy"
+                },
+                "region": {
+                  "startLine": 33,
+                  "startColumn": 7,
+                  "endColumn": 29
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'drawconsole' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "console.rpy"
+                },
+                "region": {
+                  "startLine": 69,
+                  "startColumn": 7,
+                  "endColumn": 18
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'updateconsolehistory' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "console.rpy"
+                },
+                "region": {
+                  "startLine": 73,
+                  "startColumn": 7,
+                  "endColumn": 27
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'hideconsole' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "console.rpy"
+                },
+                "region": {
+                  "startLine": 83,
+                  "startColumn": 7,
+                  "endColumn": 18
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'credits' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "credits.rpy"
+                },
+                "region": {
+                  "startLine": 378,
+                  "startColumn": 7,
+                  "endColumn": 14
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'credits2' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "credits.rpy"
+                },
+                "region": {
+                  "startLine": 467,
+                  "startColumn": 7,
+                  "endColumn": 15
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'postcredits_loop' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "credits.rpy"
+                },
+                "region": {
+                  "startLine": 623,
+                  "startColumn": 7,
+                  "endColumn": 23
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'n_night' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "day7.rpy"
+                },
+                "region": {
+                  "startLine": 662,
+                  "startColumn": 7,
+                  "endColumn": 14
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 's_night' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "day7.rpy"
+                },
+                "region": {
+                  "startLine": 909,
+                  "startColumn": 7,
+                  "endColumn": 14
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'sayori_ween_poem' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "halloween.rpy"
+                },
+                "region": {
+                  "startLine": 411,
+                  "startColumn": 7,
+                  "endColumn": 23
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'yuri_ween_poem' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "halloween.rpy"
+                },
+                "region": {
+                  "startLine": 507,
+                  "startColumn": 7,
+                  "endColumn": 21
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'natsuki_ween_poem' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "halloween.rpy"
+                },
+                "region": {
+                  "startLine": 572,
+                  "startColumn": 7,
+                  "endColumn": 24
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'monika_ween_poem' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "halloween.rpy"
+                },
+                "region": {
+                  "startLine": 618,
+                  "startColumn": 7,
+                  "endColumn": 23
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'mc_ween_poem' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "halloween.rpy"
+                },
+                "region": {
+                  "startLine": 676,
+                  "startColumn": 7,
+                  "endColumn": 19
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'poemresponse_loop_hallow' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "halloween.rpy"
+                },
+                "region": {
+                  "startLine": 1880,
+                  "startColumn": 7,
+                  "endColumn": 31
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'monika_exclusive_1' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "monika_exclusives.rpy"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 7,
+                  "endColumn": 25
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'monika_exclusive_2' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "monika_exclusives.rpy"
+                },
+                "region": {
+                  "startLine": 359,
+                  "startColumn": 7,
+                  "endColumn": 25
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch4_exclusive_monika' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "monika_exclusives.rpy"
+                },
+                "region": {
+                  "startLine": 845,
+                  "startColumn": 7,
+                  "endColumn": 27
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'poemresponse_loop' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 7,
+                  "endColumn": 24
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'poemresponse_sayori' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 65,
+                  "startColumn": 7,
+                  "endColumn": 26
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'poemresponse_natsuki' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 81,
+                  "startColumn": 7,
+                  "endColumn": 27
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'poemresponse_yuri' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 97,
+                  "startColumn": 7,
+                  "endColumn": 24
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'poemresponse_monika' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 113,
+                  "startColumn": 7,
+                  "endColumn": 26
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch3_y_end_special' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 246,
+                  "startColumn": 7,
+                  "endColumn": 24
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch3_n_end_special' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 431,
+                  "startColumn": 7,
+                  "endColumn": 24
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch3_m_end_special' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 728,
+                  "startColumn": 7,
+                  "endColumn": 24
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch2_n_bad_sharedwithch3' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 880,
+                  "startColumn": 7,
+                  "endColumn": 30
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch2_n_good_sharedwithch3' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 993,
+                  "startColumn": 7,
+                  "endColumn": 31
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch3_n_bad12_shared' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 1035,
+                  "startColumn": 7,
+                  "endColumn": 25
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch3_s_bad' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 1642,
+                  "startColumn": 7,
+                  "endColumn": 16
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch1_y_bad' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 1769,
+                  "startColumn": 7,
+                  "endColumn": 16
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch1_y_shared' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 1794,
+                  "startColumn": 7,
+                  "endColumn": 19
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch2_y_shared' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 1923,
+                  "startColumn": 7,
+                  "endColumn": 19
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch2_y_good_shared' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 1980,
+                  "startColumn": 7,
+                  "endColumn": 24
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch3_y_bad12_shared' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 2034,
+                  "startColumn": 7,
+                  "endColumn": 25
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch3_y_shared' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 2104,
+                  "startColumn": 7,
+                  "endColumn": 19
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'ch3_y_good_shared' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 2215,
+                  "startColumn": 7,
+                  "endColumn": 24
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'm_natsuki_2' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 2644,
+                  "startColumn": 7,
+                  "endColumn": 18
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'm_sayori_2' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 2699,
+                  "startColumn": 7,
+                  "endColumn": 17
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'm_yuri_2' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 2761,
+                  "startColumn": 7,
+                  "endColumn": 15
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'm_monika_2' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 2847,
+                  "startColumn": 7,
+                  "endColumn": 17
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'm_natsuki_3' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 2915,
+                  "startColumn": 7,
+                  "endColumn": 18
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'm_sayori_3' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 3000,
+                  "startColumn": 7,
+                  "endColumn": 17
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'm_yuri_3' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 3078,
+                  "startColumn": 7,
+                  "endColumn": 15
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'm_monika_3' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poemresponses.rpy"
+                },
+                "region": {
+                  "startLine": 3162,
+                  "startColumn": 7,
+                  "endColumn": 17
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'endnote_1' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poems_special.rpy"
+                },
+                "region": {
+                  "startLine": 102,
+                  "startColumn": 7,
+                  "endColumn": 16
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY309",
+          "level": "warning",
+          "message": {
+            "text": "Story island detected: label 'endnote_2' forms an isolated subgraph unreachable from 'start'. Project uses dynamic routing, verify reachability."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "poems_special.rpy"
+                },
+                "region": {
+                  "startLine": 109,
+                  "startColumn": 7,
+                  "endColumn": 16
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY503",
+          "level": "warning",
+          "message": {
+            "text": "Unused media asset 'mod_assets/momc/phonemomcallend.png' is never referenced in scripts. Increases distribution size."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "mod_assets/momc/phonemomcallend.png"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY503",
+          "level": "warning",
+          "message": {
+            "text": "Unused media asset 'mod_assets/phone/phonecall_momchibi.png' is never referenced in scripts. Increases distribution size."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "mod_assets/phone/phonecall_momchibi.png"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY603",
+          "level": "warning",
+          "message": {
+            "text": "Translation string is empty ('new \"\"'). Players will see blank text."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tl/None/screens.rpy"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1,
+                  "endColumn": 7
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY603",
+          "level": "warning",
+          "message": {
+            "text": "Translation string is empty ('new \"\"'). Players will see blank text."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tl/None/screens.rpy"
+                },
+                "region": {
+                  "startLine": 47,
+                  "startColumn": 1,
+                  "endColumn": 7
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY603",
+          "level": "warning",
+          "message": {
+            "text": "Translation string is empty ('new \"\"'). Players will see blank text."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tl/None/screens.rpy"
+                },
+                "region": {
+                  "startLine": 83,
+                  "startColumn": 1,
+                  "endColumn": 7
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY603",
+          "level": "warning",
+          "message": {
+            "text": "Translation string is empty ('new \"\"'). Players will see blank text."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tl/None/screens.rpy"
+                },
+                "region": {
+                  "startLine": 87,
+                  "startColumn": 1,
+                  "endColumn": 7
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY603",
+          "level": "warning",
+          "message": {
+            "text": "Translation string is empty ('new \"\"'). Players will see blank text."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tl/None/screens.rpy"
+                },
+                "region": {
+                  "startLine": 91,
+                  "startColumn": 1,
+                  "endColumn": 7
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY603",
+          "level": "warning",
+          "message": {
+            "text": "Translation string is empty ('new \"\"'). Players will see blank text."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tl/None/screens.rpy"
+                },
+                "region": {
+                  "startLine": 111,
+                  "startColumn": 1,
+                  "endColumn": 7
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY603",
+          "level": "warning",
+          "message": {
+            "text": "Translation string is empty ('new \"\"'). Players will see blank text."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tl/None/screens.rpy"
+                },
+                "region": {
+                  "startLine": 115,
+                  "startColumn": 1,
+                  "endColumn": 7
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY603",
+          "level": "warning",
+          "message": {
+            "text": "Translation string is empty ('new \"\"'). Players will see blank text."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tl/None/screens.rpy"
+                },
+                "region": {
+                  "startLine": 119,
+                  "startColumn": 1,
+                  "endColumn": 7
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY603",
+          "level": "warning",
+          "message": {
+            "text": "Translation string is empty ('new \"\"'). Players will see blank text."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tl/None/screens.rpy"
+                },
+                "region": {
+                  "startLine": 123,
+                  "startColumn": 1,
+                  "endColumn": 7
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "RPY603",
+          "level": "warning",
+          "message": {
+            "text": "Translation string is empty ('new \"\"'). Players will see blank text."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tl/None/screens.rpy"
+                },
+                "region": {
+                  "startLine": 151,
+                  "startColumn": 1,
+                  "endColumn": 7
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

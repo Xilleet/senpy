@@ -201,6 +201,41 @@ ignore = [
 ]
 ```
 
+## GitHub Actions Integration
+
+Senpy fully supports the standard **SARIF** output format, allowing you to automatically scan your visual novel for errors every time someone submits a Pull Request. GitHub will natively highlight bugs and crash risks directly in the code review interface!
+
+To enable this, simply create a file at `.github/workflows/senpy.yml` in your repository:
+
+```yaml
+name: Senpy Code Scanning
+
+on:
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python & Senpy
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install senpy-linter
+
+      - name: Run Senpy Analysis
+        run: senpy game/ --format sarif --output-file senpy.sarif
+        continue-on-error: true  # Prevents workflow from crashing before upload
+
+      - name: Upload SARIF report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: senpy.sarif
+```
+
 ### Inline Diagnostic Suppression (`# noqa`)
 
 Suppress specific warnings on individual lines using standard `# noqa` syntax:

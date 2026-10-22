@@ -203,6 +203,7 @@ class SenpyAnalyzer:
         self.label_outgoing_jumps: dict[str, set[str]] = {}
         self.declared_images: dict[str, tuple[str, int, str]] = {}
         self.declared_layeredimages: dict[str, set[str]] = {}
+        self.jump_sources: dict[str, list[tuple[str, int]]] = {}
         self.referenced_labels: set[str] = set()
         self.has_dynamic_jumps: bool = False
         self.diagnostics: list[Diagnostic] = []
@@ -264,6 +265,7 @@ class SenpyAnalyzer:
         self.label_outgoing_jumps.clear()
         self.declared_images.clear()
         self.declared_layeredimages.clear()
+        self.jump_sources.clear()
         self.defined_audio_map.clear()
         self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
         self.has_dynamic_jumps = False
@@ -506,6 +508,7 @@ class SenpyAnalyzer:
                         target_j = m_jump_in_label.group(1)
                         scope.label_outgoing_jumps.setdefault(current_label, set()).add(target_j)
                         self.label_outgoing_jumps.setdefault(current_label, set()).add(target_j)
+                        self.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
 
                 m_limg = RE_LAYEREDIMAGE_START.match(clean_line)
                 if m_limg:

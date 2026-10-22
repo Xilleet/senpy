@@ -339,4 +339,26 @@ class StoryFlowAnalyzer:
         lines.append("\n    classDef missing fill:#ff4d4f,stroke:#333,stroke-width:1px,color:#fff;")
         lines.append("    classDef fallthrough fill:#faad14,stroke:#333,stroke-width:1px,color:#fff;")
         lines.append("```")
+
+        # JSON-метаданные координат для интеграции с кликами в VS Code
+        import json
+        meta = {"locations": {}}
+        for lbl, (fpath, lnum, _) in declared.items():
+            meta["locations"][lbl] = {"file": fpath.replace("\\", "/"), "line": lnum, "type": "label"}
+
+        for src, targets in outgoing.items():
+            for tgt in targets:
+                if tgt not in declared and tgt in self.analyzer.jump_sources:
+                    sources = self.analyzer.jump_sources[tgt]
+                    if sources:
+                        meta["locations"][tgt] = {
+                            "file": sources[0][0].replace("\\", "/"),
+                            "line": sources[0][1],
+                            "type": "missing_jump",
+                        }
+
+        lines.append("\n```senpy-meta")
+        lines.append(json.dumps(meta, ensure_ascii=False))
+        lines.append("```")
+
         return "\n".join(lines)
