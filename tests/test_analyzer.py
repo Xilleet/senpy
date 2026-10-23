@@ -664,3 +664,93 @@ def test_autofix_preserves_crlf_line_endings(tmp_path: Path):
     raw_after_fix = script_file.read_bytes()
     assert b"\r\r\n" not in raw_after_fix
     assert b"\r\n" in raw_after_fix
+
+def test_type_tainting_catches_rpy108(tmp_path: Path):
+    """Verify RPY108 catches incompatible augmented assignment and type taint overwrites"""
+    code = """
+default player_name = "Eileen"
+default score = 100
+
+label start:
+    $ player_name += 1       # RPY108 [ERROR]: str += int -> fatal TypeError
+    $ score = "MAX"          # RPY108 [WARNING]: int = str -> type taint overwrite
+    $ valid_score = score + 5
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy108_diags = [d for d in result.diagnostics if d.code == "RPY108"]
+
+    # Стандарт 6.1: точное количество, строки, сообщения и строгость
+    assert len(rpy108_diags) == 2
+
+    # 1. Фатальный TypeError при +=
+    d_fatal = next(d for d in rpy108_diags if d.severity == "ERROR")
+    assert d_fatal.line_number == 6
+    assert "player_name" in d_fatal.message
+    assert "type 'str'" in d_fatal.message
+    assert "type 'int'" in d_fatal.message
+
+    # 2. Несовместимое присваивание
+    d_warn = next(d for d in rpy108_diags if d.severity == "WARNING")
+    assert d_warn.line_number == 7
+    assert "score" in d_warn.message
+    assert "incompatible type 'str'" in d_warn.message
+
+    # Negative case: валидный код даёт 0 ошибок RPY108
+    clean_code = """
+default player_name = "Eileen"
+default score = 100
+
+label start:
+    $ player_name += " Doe"
+    $ score += 50
+    $ score = 200
+    return
+"""
+    clean_result, _ = run_senpy_on_code(clean_code, tmp_path / "clean_proj")
+    clean_rpy108 = [d for d in clean_result.diagnostics if d.code == "RPY108"]
+    assert len(clean_rpy108) == 0
+
+def test_init_dependency_graph_rpy109(tmp_path: Path):
+    """Verify RPY109 catches functions called before they are loaded alphabetically"""
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+
+    # a_setup.rpy пытается вызвать функцию из z_utils.rpy
+    a_code = """
+init python:
+    # Исполняется сразу при загрузке:
+    setup_gui()
+"""
+    # z_utils.rpy загружается позже
+    z_code = """
+init python:
+    def setup_gui():
+        pass
+"""
+    (game_dir / "a_setup.rpy").write_text(a_code, encoding="utf-8")
+    (game_dir / "z_utils.rpy").write_text(z_code, encoding="utf-8")
+
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    result = analyzer.run(quiet=True)
+    
+    rpy109_diags = [d for d in result.diagnostics if d.code == "RPY109"]
+    
+    # 1. Поймали ошибку в a_setup.rpy
+    assert len(rpy109_diags) == 1
+    diag = rpy109_diags[0]
+    assert "a_setup.rpy" in diag.file_path
+    assert "setup_gui" in diag.message
+    assert "z_utils.rpy" in diag.message
+    assert diag.severity == "ERROR"
+    assert diag.line_number == 4
+
+    # Negative case: переименовываем файлы в правильном порядке
+    (game_dir / "a_setup.rpy").unlink()
+    (game_dir / "z_utils.rpy").unlink()
+    (game_dir / "m_utils.rpy").write_text(z_code, encoding="utf-8")
+    (game_dir / "z_setup.rpy").write_text(a_code, encoding="utf-8")
+
+    clean_analyzer = SenpyAnalyzer(str(tmp_path))
+    clean_result = clean_analyzer.run(quiet=True)
+    assert not any(d.code == "RPY109" for d in clean_result.diagnostics)

@@ -4,13 +4,14 @@ from dataclasses import dataclass, field
 
 
 @dataclass
+@dataclass
 class Diagnostic:
     file_path: str
     line_number: int
     line_content: str
     code: str
     message: str
-    severity: str = "ERROR"  # "ERROR", "WARNING", "INFO"
+    severity: str | None = None
     col: int = 0
     end_col: int = 0
     fix_title: str | None = None
@@ -47,6 +48,7 @@ class FileScope:
     label_signatures: dict = field(default_factory=dict)
     screen_signatures: dict = field(default_factory=dict)
     symbol_declarations: dict[str, tuple[str, int, str]] = field(default_factory=dict)
+    symbol_types: dict[str, str] = field(default_factory=dict)
 
 RULE_SEVERITY: dict[str, str] = {
     # 0xx: Синтаксис и форматирование (Критично для парсера)
@@ -61,6 +63,8 @@ RULE_SEVERITY: dict[str, str] = {
     "RPY105": "ERROR",    # Мутация define-константы -> ломает откат назад
     "RPY106": "WARNING",  # Использование random/set в игровом процессе
     "RPY107": "HINT",     # Устаревший API Ren'Py (LiveComposite и др. работают, но устарели)
+    "RPY108": "ERROR",    # Конфликт типов или несовместимый += -> TypeError
+    "RPY109": "ERROR",    # Нарушение порядка загрузки init python (вызов до объявления)
 
     # 2xx: Экраны и UI
     "RPY201": "WARNING",  # Глобальная мутация внутри screen -> ломает предсказание UI

@@ -498,10 +498,18 @@ def main():
         if any(term in rpa_base for term in ("script", "archive", "data", "game", "code")) or not raw_orphans:
             extracted = extract_scripts_from_rpa(rpa, rpa_sandbox)
             for item in extracted:
-                if item.endswith(".rpy"):
-                    extra_rpy_files.append(item)
-                elif item.endswith(".rpyc"):
-                    raw_orphans.append(item)
+                base_name = os.path.basename(item)
+                rpy_name = base_name[:-1] if base_name.endswith(".rpyc") else base_name
+                # Если такой .rpy уже есть в game/, пропускаем архивную копию
+                already_exists = any(
+                    os.path.basename(f) == rpy_name
+                    for f in [os.path.join(r, file) for r, _, files in os.walk(args.path) for file in files if file.endswith(".rpy")]
+                )
+                if not already_exists:
+                    if item.endswith(".rpy"):
+                        extra_rpy_files.append(item)
+                    elif item.endswith(".rpyc"):
+                        raw_orphans.append(item)
 
     # 3. Проверяем кэш декомпиляции для всех .rpyc (с диска и из .rpa)
     for rpyc in raw_orphans:

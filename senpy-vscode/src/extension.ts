@@ -27,7 +27,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     client.start();
 
-    // 2. Команда: Генерация и показ интерактивного графа
+    // 2. Фоновая проверка обновлений .vsix с GitHub Releases
+    checkForUpdates(context);
+
+    // 3. Команда: Генерация и показ интерактивного графа
     let graphCmd = vscode.commands.registerCommand('senpy.showStoryGraph', async () => {
         if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
             vscode.window.showErrorMessage("Senpy: Please open a Ren'Py project folder first.");
@@ -110,6 +113,88 @@ export function deactivate(): Thenable<void> | undefined {
         return undefined;
     }
     return client.stop();
+}
+
+/**
+ * Фоновая проверка наличия свежего релиза .vsix на GitHub
+ */
+async function checkForUpdates(context: vscode.ExtensionContext) {
+    const GITHUB_REPO = "Xilleet/senpy";
+    const currentVersion: string = context.extension.packageJSON.version || "0.0.0";
+
+    // Проверяем не чаще чем 1 раз в 6 часов, чтобы не упираться в лимиты GitHub API
+    const LAST_CHECK_KEY = "senpy_last_update_check";
+    const lastCheck = context.globalState.get<number>(LAST_CHECK_KEY, 0);
+    const now = Date.now();
+    const SIX_HOURS = 6 * 60 * 60 * 1000;
+
+    if (now - lastCheck < SIX_HOURS) {
+        return;
+    }
+    await context.globalState.update(LAST_CHECK_KEY, now);
+
+    try {
+        const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+            headers: { "User-Agent": "senpy-vscode-updater" }
+        });
+
+        if (!response.ok) {
+            return;
+        }
+
+        const release = await response.json() as { 
+            tag_name: string; 
+            html_url: string; 
+            assets: Array<{ name: string; browser_download_url: string }> 
+        };
+
+        // 1. Ищем .vsix файл в релизе
+        const vsixAsset = release.assets?.find(a => a.name.endsWith(".vsix"));
+        const downloadUrl = vsixAsset ? vsixAsset.browser_download_url : release.html_url;
+
+        // 2. Достаем версию сначала из имени файла (например, senpy-vscode-0.2.8.vsix -> 0.2.8),
+        // а если в имени файла версии нет — берем из тега релиза
+        const fileVersionMatch = vsixAsset?.name.match(/(\d+\.\d+\.\d+)/);
+        const latestVersion = fileVersionMatch ? fileVersionMatch[1] : release.tag_name.replace(/^v/, "").trim();
+
+        // 3. Сравниваем
+        if (isNewer(latestVersion, currentVersion)) {
+            const action = await vscode.window.showInformationMessage(
+                `Вышла новая версия Senpy v${latestVersion}! (у вас установлена v${currentVersion})`,
+                "Скачать .vsix",
+                "Что нового"
+            );
+
+            if (action === "Скачать .vsix") {
+                vscode.env.openExternal(vscode.Uri.parse(downloadUrl));
+            } else if (action === "Что нового") {
+                vscode.env.openExternal(vscode.Uri.parse(release.html_url));
+            }
+        }
+    } catch {
+        // Если нет интернета или гитхаб недоступен — тихо игнорируем
+    }
+}
+
+/**
+ * Сравнение версий формата semver (major.minor.patch)
+ */
+function isNewer(latest: string, current: string): boolean {
+    const l = latest.split('.').map(x => parseInt(x, 10) || 0);
+    const c = current.split('.').map(x => parseInt(x, 10) || 0);
+    const maxLen = Math.max(l.length, c.length);
+
+    for (let i = 0; i < maxLen; i++) {
+        const lPart = l[i] ?? 0;
+        const cPart = c[i] ?? 0;
+        if (lPart > cPart) {
+            return true;
+        }
+        if (lPart < cPart) {
+            return false;
+        }
+    }
+    return false;
 }
 
 function getWebviewContent(graphContent: string, metaJson: string): string {

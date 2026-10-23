@@ -12,6 +12,47 @@ from senpy.text_tags import get_utf16_range, suggest_similar_symbol
 if TYPE_CHECKING:
     from senpy.analyzer import SenpyAnalyzer
 
+def infer_ast_type(val_node: ast.AST | None) -> str | None:
+    """Определяет тип данных выражения по AST-узлу."""
+    if val_node is None:
+        return None
+    if isinstance(val_node, ast.Constant):
+        # bool проверяем ДО int, так как в Python isinstance(True, int) == True
+        if isinstance(val_node.value, bool):
+            return "bool"
+        if isinstance(val_node.value, int):
+            return "int"
+        if isinstance(val_node.value, float):
+            return "float"
+        if isinstance(val_node.value, str):
+            return "str"
+        if val_node.value is None:
+            return "None"
+    elif isinstance(val_node, (ast.List, ast.ListComp)):
+        return "list"
+    elif isinstance(val_node, (ast.Dict, ast.DictComp)):
+        return "dict"
+    elif isinstance(val_node, (ast.Set, ast.SetComp)):
+        return "set"
+    elif isinstance(val_node, ast.Call) and isinstance(val_node.func, ast.Name):
+        if val_node.func.id in ("list", "revertable_list"):
+            return "list"
+        if val_node.func.id in ("dict", "revertable_dict"):
+            return "dict"
+        if val_node.func.id in ("set", "revertable_set"):
+            return "set"
+    return None
+
+
+def infer_expr_type(expr_str: str | None) -> str | None:
+    """Выводит тип выражения из строки присваивания."""
+    if not expr_str or not expr_str.strip():
+        return None
+    try:
+        tree = ast.parse(expr_str.strip(), mode="eval")
+        return infer_ast_type(tree.body)
+    except (SyntaxError, ValueError, TypeError):
+        return None
 
 def infer_default_value(val_node: ast.AST | None) -> str:
     """Выводит безопасное дефолтное значение по AST-узлу."""
@@ -79,23 +120,88 @@ class PythonAstChecker:
     def __init__(self, analyzer: SenpyAnalyzer):
         self.analyzer = analyzer
 
-    def collect_from_python_block(self, code_lines: list[str]) -> tuple[set[str], set[str]]:
-        """Собирает функции, классы и переменные из init python блоков."""
-        names: set[str] = set()
+    def collect_from_python_block(self, code_lines: list[str]) -> tuple[dict[str, int], set[str]]:
+        """Собирает функции, классы и переменные из init python блоков вместе с номерами строк."""
+        names: dict[str, int] = {}
         refs: set[str] = set()
         code = textwrap.dedent("".join(code_lines))
         with contextlib.suppress(SyntaxError):
             tree = ast.parse(code)
             for node in ast.walk(tree):
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    names.add(node.name)
+                    names[node.name] = getattr(node, "lineno", 1)
                 elif isinstance(node, ast.Assign):
                     for target in node.targets:
                         if isinstance(target, ast.Name):
-                            names.add(target.id)
+                            names[target.id] = getattr(node, "lineno", 1)
                 elif isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.isidentifier():
                     refs.add(node.value)
         return names, refs
+
+    def check_init_dependency(
+        self,
+        py_code: str,
+        file_path: str,
+        start_line: int,
+        noqa_map: dict,
+        lines: list[str] | None = None,
+    ) -> None:
+        """RPY109: Проверяет вызовы функций в init python на алфавитный порядок файлов."""
+        import os
+        with contextlib.suppress(SyntaxError):
+            tree = ast.parse(py_code)
+
+            def walk_and_check(root_node: ast.AST):
+                for child in ast.walk(root_node):
+                    # Игнорируем тела функций и классов (они исполняются отложенно)
+                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and child is not root_node:
+                        continue
+                    
+                    if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
+                        name = child.id
+                        if name in self.analyzer.symbol_declarations:
+                            def_file, _def_line, _ = self.analyzer.symbol_declarations[name]
+                            if def_file != file_path:
+                                curr_rel = os.path.relpath(file_path, self.analyzer.project_path).replace("\\", "/").lower()
+                                def_rel = os.path.relpath(def_file, self.analyzer.project_path).replace("\\", "/").lower()
+                                
+                                # Если текущий файл загружается раньше файла с определением
+                                if curr_rel < def_rel:
+                                    real_line = start_line + getattr(child, "lineno", 1) - 1
+                                    raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+                                    start_c, end_c = get_utf16_range(raw_l, name)
+                                    self.analyzer._add_diagnostic(
+                                        Diagnostic(
+                                            file_path=file_path,
+                                            line_number=real_line,
+                                            line_content=raw_l.strip(),
+                                            code="RPY109",
+                                            message=(
+                                                f"Init phase dependency violation: '{name}' is evaluated here, "
+                                                f"but defined later in '{os.path.basename(def_file)}'. "
+                                                "Due to alphabetical load order, it will crash with NameError."
+                                            ),
+                                            severity="ERROR",
+                                            col=start_c,
+                                            end_col=end_c,
+                                        ),
+                                        noqa_map,
+                                    )
+
+            for stmt in tree.body:
+                if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    # У функций сразу при старте вычисляются только декораторы
+                    for dec in stmt.decorator_list:
+                        walk_and_check(dec)
+                elif isinstance(stmt, ast.ClassDef):
+                    # У классов вычисляются декораторы и базовые классы
+                    for dec in stmt.decorator_list:
+                        walk_and_check(dec)
+                    for base in stmt.bases:
+                        walk_and_check(base)
+                else:
+                    # Остальные стейтменты (вызовы, присваивания) выполняются сразу
+                    walk_and_check(stmt)
 
     def check_screen_mutation(
         self,
@@ -308,34 +414,33 @@ class PythonAstChecker:
                                 ),
                                 noqa_map,
                             )
-                # 2. Мутация по ключу константы: $ CONST["k"] += 1
-                elif isinstance(node.target, ast.Subscript):
-                    root_name = _get_root_name(node.target.value)
-                    if (
-                        root_name
-                        and root_name in self.analyzer.defined_constants
-                        and root_name not in self.analyzer.declared_characters
-                        and root_name not in SYSTEM_MUTABLE_NAMESPACES
-                        and root_name not in local_scope
-                    ):
-                        real_line = start_line + getattr(node, "lineno", 1) - 1
-                        raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
-                        start_c, end_c = get_utf16_range(raw_l, root_name)
-                        self.analyzer._add_diagnostic(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=real_line,
-                                line_content=raw_l.strip(),
-                                code="RPY105",
-                                message=(
-                                    f"In-place subscript mutation on constant '{root_name}' declared with 'define'. "
-                                    "Modifying mutable collections declared with 'define' silently breaks Ren'Py rollback! Use 'default' instead."
-                                ),
-                                col=start_c,
-                                end_col=end_c,
-                            ),
-                            noqa_map,
-                        )
+                        else:
+                            # RPY108: Проверка несовместимого типа при +=, -= и т.д.
+                            expected_t = self.analyzer.symbol_types.get(var_name)
+                            op_t = infer_ast_type(node.value)
+                            if expected_t and op_t:
+                                is_incompatible = False
+
+                                if expected_t == "str" and op_t != "str" or expected_t in ("int", "float") and op_t not in ("int", "float") or expected_t == "list" and op_t not in ("list",) or expected_t in ("dict", "bool"):
+                                    is_incompatible = True
+
+                                if is_incompatible:
+                                    self.analyzer._add_diagnostic(
+                                        Diagnostic(
+                                            file_path=file_path,
+                                            line_number=real_line,
+                                            line_content=raw_l.strip(),
+                                            code="RPY108",
+                                            message=(
+                                                f"Incompatible augmented assignment: variable '{var_name}' of type '{expected_t}' "
+                                                f"is modified with operand of type '{op_t}'. Will crash with TypeError at runtime!"
+                                            ),
+                                            severity="ERROR",
+                                            col=start_c,
+                                            end_col=end_c,
+                                        ),
+                                        noqa_map,
+                                    )
 
             elif isinstance(node, ast.Assign):
                 real_line = start_line + getattr(node, "lineno", 1) - 1
@@ -380,6 +485,32 @@ class PythonAstChecker:
                                 raw_line=raw_l,
                                 val_node=node.value,
                             )
+                            # RPY108: Проверка конфликта типов при присваивании ($ var = "High")
+                            expected_t = self.analyzer.symbol_types.get(target.id)
+                            new_t = infer_ast_type(node.value)
+                            if (
+                                expected_t
+                                and new_t
+                                and expected_t != new_t
+                                and not ({expected_t, new_t} <= {"int", "float"})
+                            ):
+                                start_c, end_c = get_utf16_range(raw_l, target.id)
+                                self.analyzer._add_diagnostic(
+                                    Diagnostic(
+                                        file_path=file_path,
+                                        line_number=real_line,
+                                        line_content=raw_l.strip(),
+                                        code="RPY108",
+                                        message=(
+                                            f"Type taint: variable '{target.id}' was declared as '{expected_t}', "
+                                            f"but reassigned value of incompatible type '{new_t}'. May cause runtime TypeError."
+                                        ),
+                                        severity="WARNING",
+                                        col=start_c,
+                                        end_col=end_c,
+                                    ),
+                                    noqa_map,
+                                )
                     # 3. Мутация по ключу/индексу: $ CONST["ключ"] = "значение"
                     elif isinstance(target, ast.Subscript):
                         root_name = _get_root_name(target.value)

@@ -344,7 +344,7 @@ class AssetChecker(BaseChecker):
                             f"Audio channel '{channel}' is not a built-in channel (music, sound, voice, audio) "
                             "and has not been registered via 'renpy.music.register_channel()'. Causes runtime Exception."
                         ),
-                        severity="ERROR",
+                        severity="WARNING",
                         col=start_c,
                         end_col=end_c,
                     ),

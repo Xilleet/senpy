@@ -73,6 +73,20 @@ RULES_DATABASE = {
         "bad": 'image natsuki = LiveComposite((960, 960), (0, 0), "base.png")\ndefine c = DynamicCharacter("char_name")',
         "good": 'image natsuki = Composite((960, 960), (0, 0), "base.png")\ndefine c = Character("[char_name]")',
     },
+    "RPY108": {
+        "title": "Type taint conflict or incompatible augmented assignment",
+        "severity": "ERROR",
+        "why": "Assigning incompatible types (e.g. str to int) or performing operations like 'str += int' causes fatal runtime TypeErrors.",
+        "bad": 'default player_name = "Eileen"\ndefault score = 0\nlabel start:\n    $ player_name += 1\n    $ score = "High"',
+        "good": 'default player_name = "Eileen"\ndefault score = 0\nlabel start:\n    $ player_name += "!"\n    $ score = 100',
+    },
+    "RPY109": {
+        "title": "Init phase dependency graph violation",
+        "severity": "ERROR",
+        "why": "Ren'Py loads files in alphabetical order. If 'a_file.rpy' calls a function in 'init python' that is defined in 'z_file.rpy', the game will crash on startup because 'z_file' hasn't loaded yet.",
+        "bad": '# a_setup.rpy\ninit python:\n    setup_gui()  # Crashes!\n\n# z_helpers.rpy\ninit python:\n    def setup_gui(): ...',
+        "good": '# a_helpers.rpy\ninit python:\n    def setup_gui(): ...\n\n# z_setup.rpy\ninit python:\n    setup_gui()',
+    },
     # ---------------- 200: Screen Language & UI ----------------
     "RPY201": {
         "title": "Direct state mutation inside screen",

@@ -8,7 +8,7 @@ from senpy.assets import AssetManager, find_orphaned_rpyc
 from senpy.cache import CachedFileEntry, CacheManager, CacheManifest
 from senpy.deprecated import DeprecationChecker
 from senpy.flow import StoryFlowAnalyzer
-from senpy.python_ast import PythonAstChecker
+from senpy.python_ast import PythonAstChecker, infer_expr_type
 from senpy.signature import SignatureInfo, parse_signature
 from senpy.text_tags import get_utf16_range, process_quoted_strings
 
@@ -231,6 +231,7 @@ class SenpyAnalyzer:
         self.declared_images: dict[str, tuple[str, int, str]] = {}
         self.declared_layeredimages: dict[str, set[str]] = {}
         self.symbol_declarations: dict[str, tuple[str, int, str]] = {}
+        self.symbol_types: dict[str, str] = {}
         self.jump_sources: dict[str, list[tuple[str, int]]] = {}
         self.referenced_labels: set[str] = set()
         self.has_dynamic_jumps: bool = False
@@ -299,6 +300,7 @@ class SenpyAnalyzer:
         self.defined_audio_map.clear()
         self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
         self.symbol_declarations.clear()
+        self.symbol_types.clear()
         self.has_dynamic_jumps = False
         self.total_lines = 0
         self.fixed_count = 0
@@ -436,6 +438,7 @@ class SenpyAnalyzer:
         self.label_signatures.clear()
         self.screen_signatures.clear()
         self.symbol_declarations.clear()
+        self.symbol_types.clear()
         self.jump_sources.clear()
 
         for scope in self.file_scopes.values():
@@ -447,6 +450,7 @@ class SenpyAnalyzer:
             self.declared_screens.update(scope.declared_screens)
             self.declared_images.update(scope.declared_images)
             self.symbol_declarations.update(getattr(scope, "symbol_declarations", {}))
+            self.symbol_types.update(getattr(scope, "symbol_types", {}))
             self.label_signatures.update(getattr(scope, "label_signatures", {}))
             self.screen_signatures.update(getattr(scope, "screen_signatures", {}))
             for tgt, locs in getattr(scope, "jump_sources", {}).items():
@@ -506,7 +510,7 @@ class SenpyAnalyzer:
                     lines = f.readlines()
 
             if file_path.endswith("_ren.py"):
-                self._collect_from_python_block(lines, scope)
+                self._collect_from_python_block(lines, scope, file_path, 1)
                 self.file_scopes[norm_path] = scope
                 return
 
@@ -523,12 +527,19 @@ class SenpyAnalyzer:
                 m_def = RE_DEFAULT.match(clean)
                 if m_def:
                     var = m_def.group(1)
+                    val_str = m_def.group(2)
                     scope.user_symbols.add(var)
                     scope.declared_symbols.add(var)
                     scope.symbol_declarations[var] = (file_path, idx + 1, clean)
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
                     self.symbol_declarations[var] = (file_path, idx + 1, clean)
+
+                    inferred_t = infer_expr_type(val_str)
+                    if inferred_t:
+                        scope.symbol_types[var] = inferred_t
+                        self.symbol_types[var] = inferred_t
+
                     idx = next_idx
                     continue
 
@@ -548,12 +559,17 @@ class SenpyAnalyzer:
                 m_define = RE_DEFINE.match(clean)
                 if m_define:
                     var = m_define.group(1)
+                    val_str = m_define.group(2)
                     scope.user_symbols.add(var)
                     scope.declared_symbols.add(var)
                     scope.symbol_declarations[var] = (file_path, idx + 1, clean)
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
                     self.symbol_declarations[var] = (file_path, idx + 1, clean)
+                    inferred_t = infer_expr_type(val_str)
+                    if inferred_t:
+                        scope.symbol_types[var] = inferred_t
+                        self.symbol_types[var] = inferred_t
                     # Если define настраивает свойство (config.xxx, gui.xxx, persistent.xxx), не считаем корень константой
                     if "." not in clean.split("=")[0]:
                         scope.defined_constants.add(var)
@@ -696,8 +712,9 @@ class SenpyAnalyzer:
                 m_init = RE_INIT_PYTHON_START.match(line)
                 if m_init:
                     indent = len(m_init.group(1))
-                    idx, block_lines = self._consume_block(lines, idx + 1, indent)
-                    self._collect_from_python_block(block_lines, scope)
+                    next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
+                    self._collect_from_python_block(block_lines, scope, file_path, idx + 2)
+                    idx = next_idx
                     continue
 
                 idx = next_idx
@@ -707,7 +724,9 @@ class SenpyAnalyzer:
         except (UnicodeDecodeError, OSError):
             pass
 
-    def _collect_from_python_block(self, code_lines: list[str], scope: FileScope | None = None) -> None:
+    def _collect_from_python_block(
+        self, code_lines: list[str], scope: FileScope | None = None, file_path: str = "", start_line: int = 1
+    ) -> None:
         full_code = "".join(code_lines)
         for m in re.finditer(r'renpy\.music\.register_channel\s*\(\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']', full_code):
             chan = m.group(1).lower()
@@ -716,12 +735,20 @@ class SenpyAnalyzer:
             self.registered_audio_channels.add(chan)
 
         names, refs = self.python_ast.collect_from_python_block(code_lines)
+        for name, line_offset in names.items():
+            real_line = start_line + line_offset - 1
+            if scope is not None:
+                scope.user_symbols.add(name)
+                scope.declared_symbols.add(name)
+                if file_path:
+                    scope.symbol_declarations[name] = (file_path, real_line, f"# definition of {name}")
+            self.user_symbols.add(name)
+            self.declared_symbols.add(name)
+            if file_path:
+                self.symbol_declarations[name] = (file_path, real_line, f"# definition of {name}")
+        
         if scope is not None:
-            scope.user_symbols.update(names)
-            scope.declared_symbols.update(names)
             scope.referenced_labels.update(refs)
-        self.user_symbols.update(names)
-        self.declared_symbols.update(names)
         self.referenced_labels.update(refs)
 
     def _consume_block(self, lines: list[str], start_idx: int, header_indent: int) -> tuple[int, list[str]]:
@@ -766,7 +793,8 @@ class SenpyAnalyzer:
             ignored_codes = noqa_map[diag.line_number]
             if ignored_codes is None or diag.code in ignored_codes:
                 return
-        diag.severity = RULE_SEVERITY.get(diag.code, "WARNING")
+        if not diag.severity:
+            diag.severity = RULE_SEVERITY.get(diag.code, "WARNING")
         self.diagnostics.append(diag)
 
     def _can_reach_return(self, label_name: str, visited: set[str] | None = None) -> bool:
@@ -831,7 +859,17 @@ class SenpyAnalyzer:
                 m_init = RE_INIT_PYTHON_START.match(raw_line)
                 if m_init:
                     indent = len(m_init.group(1))
-                    next_idx, _ = self._consume_block(lines, idx + 1, indent)
+                    next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
+                    if block_lines:
+                        import textwrap
+                        code = textwrap.dedent("".join(block_lines))
+                        self.python_ast.check_init_dependency(
+                            code, file_path, idx + 2, noqa_map, lines
+                        )
+                        # Также проверяем стандартные правила (устаревший API и т.д.)
+                        self.python_ast.check_python_ast(
+                            code, file_path, idx + 2, noqa_map, lines
+                        )
                     idx = next_idx
                     continue
 

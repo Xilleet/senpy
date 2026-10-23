@@ -55,7 +55,7 @@ BUILTIN_ACTIONS = {
     "ShowTransient", "FilePage"
 }
 
-SENPY_VERSION = "0.2.8"
+SENPY_VERSION = "0.2.9"
 
 IGNORED_DIRS = {
     ".git", ".svn", ".hg", "node_modules", ".venv", "venv", "env",
@@ -112,8 +112,8 @@ SCREEN_LOCAL_IGNORE = {
 }
 
 # Скомпилированные регулярные выражения
-RE_DEFAULT = re.compile(r"^\s*default\s+([a-zA-Z_][a-zA-Z0-9_]*)")
-RE_DEFINE = re.compile(r"^\s*define\s+([a-zA-Z_][a-zA-Z0-9_]*)")
+RE_DEFAULT = re.compile(r"^\s*default\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*=\s*(.*))?")
+RE_DEFINE = re.compile(r"^\s*define\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*=\s*(.*))?")
 RE_DEFINE_AUDIO = re.compile(
     r"^\s*define\s+(?:audio\.)?([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*[\"']([^\"']+)[\"']"
 )
@@ -131,7 +131,7 @@ RE_AUDIO_STATEMENT = re.compile(
     r"^\s*(play|queue)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(.+)",
     re.IGNORECASE,
 )
-RE_INTERPOLATION = re.compile(r"\[([a-zA-Z_][a-zA-Z0-9_]*)(?:![a-zA-Z]+)?\]")
+RE_INTERPOLATION = re.compile(r"\[([a-zA-Z_][a-zA-Z0-9_]*)[^\]]*\]")
 RE_CONDITION = re.compile(r"^\s*(?:if|elif)\s+(.+):$")
 RE_PYTHON_BLOCK_START = re.compile(r"^(\s*)python(?:\s+early)?\s*:\s*(?:#.*)?$")
 RE_INIT_PYTHON_START = re.compile(r"^(\s*)init(?:\s+-?\d+)?\s+python(?:\s+early)?\s*:\s*(?:#.*)?$")
@@ -146,10 +146,10 @@ RE_MENU_START = re.compile(r"^(\s*)menu(?:\s+[a-zA-Z0-9_]+)?\s*:")
 RE_MENU_CHOICE = re.compile(r"^(\s*)(\"[^\"]+\"|\'[^\']+\')(?:\s+if\s+.*)?\s*:")
 RE_TAG = re.compile(r"\{(/)?([a-zA-Z_]+)(?:=([^}]*))?\}")
 RE_STRING_MATCH = re.compile(
-    r'("""(?:\\.|[\s\S])*?""")|'
-    r"('''(?:\\[\s\S]|[\s\S])*?''')|"
-    r'("([^"\\]*(?:\\.[^"\\]*)*)")|'
-    r"('([^'\\]*(?:\\.[^'\\]*)*)')"
+    r'("""[\s\S]*?""")|'
+    r"('''[\s\S]*?''')|"
+    r'("(?:\\.|[^"\\\r\n])*")|'
+    r"('(?:\\.|[^'\\\r\n])*')"
 )
 RE_NOQA = re.compile(
     r"#\s*(?:noqa|senpy:\s*ignore)(?:\[([a-zA-Z0-9_,\s]+)\]|:\s*([a-zA-Z0-9_,\s]+))?",

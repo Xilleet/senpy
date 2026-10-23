@@ -19,7 +19,8 @@ from senpy.rpa import safe_load_rpa_index
 def find_orphaned_rpyc(project_path: str) -> list[str]:
     """Находит скомпилированные .rpyc файлы, у которых нет исходных .rpy."""
     orphans = []
-    for root, _, filenames in os.walk(project_path):
+    for root, dirs, filenames in os.walk(project_path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for f in filenames:
             if f.endswith(".rpyc"):
                 base_name = f[:-1]
