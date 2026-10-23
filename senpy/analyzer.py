@@ -5,6 +5,7 @@ import re
 import warnings
 
 from senpy.assets import AssetManager, find_orphaned_rpyc
+from senpy.cache import CachedFileEntry, CacheManager, CacheManifest
 from senpy.deprecated import DeprecationChecker
 from senpy.flow import StoryFlowAnalyzer
 from senpy.python_ast import PythonAstChecker
@@ -40,6 +41,7 @@ from senpy.constants import (
     RE_QUOTED_IDENTIFIER,
     RE_RETURN,
     RE_SCREEN_START,
+    SENPY_VERSION,
 )
 from senpy.models import RULE_SEVERITY, AnalysisResult, Diagnostic, FileScope
 from senpy.scope import ScopeStack, ScopeType
@@ -127,6 +129,7 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     """
     Склеивает многострочные конструкции (перенос через '\\' или незакрытые скобки).
     Возвращает (next_idx, raw_line, clean_line).
+    Отказоустойчив: предотвращает каскадное поглощение файла при незакрытых скобках.
     """
     first_raw = lines[idx]
     first_clean = _strip_comment(first_raw)
@@ -146,10 +149,29 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     bracket_depth = _count_bracket_delta(first_clean)
     curr_idx = idx
 
+    max_lookahead = 50  # Защита от бесконечного поглощения строк
+    lookahead_count = 0
+
     while curr_idx + 1 < len(lines):
         clean_stripped = clean_parts[-1].rstrip()
         ends_with_backslash = clean_stripped.endswith('\\')
         if not ends_with_backslash and bracket_depth <= 0:
+            break
+
+        lookahead_count += 1
+        if lookahead_count > max_lookahead:
+            break
+
+        peek_raw = lines[curr_idx + 1]
+        peek_clean = _strip_comment(peek_raw).strip()
+
+        # Граница блока: если нет явного обратного слэша '\', а следующая строка —
+        # новая ключевая конструкция верхнего уровня (label, screen, init, define, default),
+        # принудительно останавливаемся, чтобы не поглотить чужую сцену при сломанной скобке.
+        peek_indent = len(peek_raw) - len(peek_raw.lstrip(" "))
+        if not ends_with_backslash and peek_indent == 0 and peek_clean.startswith((
+            "label ", "screen ", "init ", "define ", "default "
+        )):
             break
 
         curr_idx += 1
@@ -182,8 +204,10 @@ class SenpyAnalyzer:
         extra_files: list[str] | None = None,
         fix: bool = False,
         in_memory_files: dict[str, str] | None = None,
+        no_cache: bool = False,
     ):
         self.project_path = os.path.abspath(project_path)
+        self.cache_manager = CacheManager(self.project_path, enabled=not no_cache)
         self.assets = AssetManager(self.project_path)
         self.python_ast = PythonAstChecker(self)
         self.flow = StoryFlowAnalyzer(self)
@@ -269,12 +293,12 @@ class SenpyAnalyzer:
         self.referenced_labels.clear()
         self.labels_with_return.clear()
         self.label_outgoing_jumps.clear()
+        self.jump_sources.clear()
         self.declared_images.clear()
         self.declared_layeredimages.clear()
-        self.symbol_declarations.clear()
-        self.jump_sources.clear()
         self.defined_audio_map.clear()
         self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
+        self.symbol_declarations.clear()
         self.has_dynamic_jumps = False
         self.total_lines = 0
         self.fixed_count = 0
@@ -285,24 +309,79 @@ class SenpyAnalyzer:
         self._index_assets()
         main_rpy, tl_rpy = self._get_rpy_files()
         rpy_files = main_rpy + self.extra_files
-
         total_files = len(rpy_files)
 
+        # 0. Загрузка кэша
+        old_manifest = self.cache_manager.load_manifest() if not self.fix else None
+        cached_files = old_manifest.files if old_manifest else {}
+        new_cached_entries: dict[str, CachedFileEntry] = {}
+
+        # [1/2] Сбор символов (Tier 1 Cache: восстановление неизмененных FileScope)
         for i, file_path in enumerate(rpy_files, 1):
             fname = os.path.basename(file_path)
-            if not quiet:
-                msg = f"\r[1/2] Сбор символов: {i}/{total_files} ({fname[:25]})"
-                print(msg.ljust(75), end="", flush=True)
-            self._collect_symbols(file_path)
+            norm_path = os.path.normcase(os.path.abspath(file_path))
+
+            mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else 0.0
+            size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+
+            # Проверяем Tier 1 hit
+            if norm_path in cached_files and cached_files[norm_path].mtime == mtime and cached_files[norm_path].size == size and norm_path not in self.in_memory_files:
+                cached_scope = cached_files[norm_path].scope
+                self.file_scopes[norm_path] = cached_scope
+            else:
+                if not quiet:
+                    msg = f"\r[1/2] Сбор символов: {i}/{total_files} ({fname[:25]})"
+                    print(msg.ljust(75), end="", flush=True)
+                self._collect_symbols(file_path)
+
         if not quiet:
             print()
 
+        self._rebuild_aggregates()
+
+        # [2/2] Анализ правил (Tier 2 Cache: если глобальные символы не изменились — мгновенно отдаем диагностики)
+        current_global_hash = self.cache_manager.compute_global_hash(self)
+        is_global_unchanged = (old_manifest is not None and old_manifest.global_symbol_hash == current_global_hash)
+
         for i, file_path in enumerate(rpy_files, 1):
             fname = os.path.basename(file_path)
-            if not quiet:
-                msg = f"\r[2/2] Анализ правил: {i}/{total_files} ({fname[:25]})"
-                print(msg.ljust(75), end="", flush=True)
-            self._analyze_file(file_path)
+            norm_path = os.path.normcase(os.path.abspath(file_path))
+
+            mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else 0.0
+            size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+
+            # Проверяем Tier 2 hit
+            if is_global_unchanged and norm_path in cached_files and cached_files[norm_path].mtime == mtime and cached_files[norm_path].size == size and norm_path not in self.in_memory_files and not self.fix:
+                entry = cached_files[norm_path]
+                self.diagnostics.extend(entry.diagnostics)
+                self.assets.used_asset_keys.update(entry.used_assets)
+                self.total_lines += entry.lines_count
+                new_cached_entries[norm_path] = entry
+            else:
+                if not quiet:
+                    msg = f"\r[2/2] Анализ правил: {i}/{total_files} ({fname[:25]})"
+                    print(msg.ljust(75), end="", flush=True)
+
+                diag_start = len(self.diagnostics)
+                lines_start = self.total_lines
+                used_start = set(self.assets.used_asset_keys)
+
+                self._analyze_file(file_path)
+
+                new_diags = self.diagnostics[diag_start:]
+                lines_added = self.total_lines - lines_start
+                new_used = self.assets.used_asset_keys - used_start
+
+                if norm_path in self.file_scopes and not self.fix:
+                    new_cached_entries[norm_path] = CachedFileEntry(
+                        mtime=mtime,
+                        size=size,
+                        lines_count=lines_added,
+                        scope=self.file_scopes[norm_path],
+                        diagnostics=new_diags,
+                        used_assets=new_used,
+                    )
+
         if not quiet:
             print()
 
@@ -312,6 +391,15 @@ class SenpyAnalyzer:
         # [3/3] Валидация файлов перевода (TL-Checker)
         for tl_file in tl_rpy:
             self._analyze_tl_file(tl_file)
+
+        # Сохранение обновленного манифеста
+        if not self.fix and new_cached_entries:
+            new_manifest = CacheManifest(
+                version=SENPY_VERSION,
+                global_symbol_hash=current_global_hash,
+                files=new_cached_entries,
+            )
+            self.cache_manager.save_manifest(new_manifest)
 
         return AnalysisResult(
             diagnostics=self.diagnostics,
@@ -345,6 +433,11 @@ class SenpyAnalyzer:
         self.referenced_labels.clear()
         self.labels_with_return.clear()
 
+        self.label_signatures.clear()
+        self.screen_signatures.clear()
+        self.symbol_declarations.clear()
+        self.jump_sources.clear()
+
         for scope in self.file_scopes.values():
             self.declared_symbols.update(scope.declared_symbols)
             self.user_symbols.update(scope.user_symbols)
@@ -353,6 +446,11 @@ class SenpyAnalyzer:
             self.declared_labels.update(scope.declared_labels)
             self.declared_screens.update(scope.declared_screens)
             self.declared_images.update(scope.declared_images)
+            self.symbol_declarations.update(getattr(scope, "symbol_declarations", {}))
+            self.label_signatures.update(getattr(scope, "label_signatures", {}))
+            self.screen_signatures.update(getattr(scope, "screen_signatures", {}))
+            for tgt, locs in getattr(scope, "jump_sources", {}).items():
+                self.jump_sources.setdefault(tgt, []).extend(locs)
             for tag, attrs in scope.declared_layeredimages.items():
                 self.declared_layeredimages.setdefault(tag, set()).update(attrs)
             self.defined_audio_map.update(scope.defined_audio_map)
@@ -383,18 +481,18 @@ class SenpyAnalyzer:
         main_files: list[str] = []
         tl_files: list[str] = []
         for root, dirs, filenames in os.walk(self.project_path):
-            dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
+            dirs[:] = sorted([d for d in dirs if d not in IGNORED_DIRS])
             rel_parts = os.path.relpath(root, self.project_path).replace("\\", "/").split("/")
             is_tl_dir = "tl" in rel_parts
 
-            for f in filenames:
+            for f in sorted(filenames):
                 if f.endswith((".rpy", "_ren.py")):
                     full_p = os.path.join(root, f)
                     if is_tl_dir:
                         tl_files.append(full_p)
                     else:
                         main_files.append(full_p)
-        return main_files, tl_files
+        return sorted(main_files), sorted(tl_files)
 
     def _collect_symbols(self, file_path: str):
         try:
@@ -404,7 +502,7 @@ class SenpyAnalyzer:
             if norm_path in self.in_memory_files:
                 lines = self.in_memory_files[norm_path].splitlines(keepends=True)
             else:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, "r", encoding="utf-8", newline="") as f:
                     lines = f.readlines()
 
             if file_path.endswith("_ren.py"):
@@ -427,6 +525,7 @@ class SenpyAnalyzer:
                     var = m_def.group(1)
                     scope.user_symbols.add(var)
                     scope.declared_symbols.add(var)
+                    scope.symbol_declarations[var] = (file_path, idx + 1, clean)
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
                     self.symbol_declarations[var] = (file_path, idx + 1, clean)
@@ -451,6 +550,7 @@ class SenpyAnalyzer:
                     var = m_define.group(1)
                     scope.user_symbols.add(var)
                     scope.declared_symbols.add(var)
+                    scope.symbol_declarations[var] = (file_path, idx + 1, clean)
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
                     self.symbol_declarations[var] = (file_path, idx + 1, clean)
@@ -470,9 +570,11 @@ class SenpyAnalyzer:
                 if m_screen_def:
                     s_name = m_screen_def.group(2)
                     s_params = m_screen_def.group(3)
+                    sig = parse_signature(s_params)
                     scope.declared_screens[s_name] = (file_path, idx + 1)
+                    scope.screen_signatures[s_name] = sig
                     self.declared_screens[s_name] = (file_path, idx + 1)
-                    self.screen_signatures[s_name] = parse_signature(s_params)
+                    self.screen_signatures[s_name] = sig
 
                 m_label = RE_LABEL.match(clean)
                 if m_label:
@@ -499,7 +601,9 @@ class SenpyAnalyzer:
                     self.label_outgoing_jumps[label_name] = set()
 
                     raw_params = m_label.group(2)
-                    self.label_signatures[label_name] = parse_signature(raw_params)
+                    sig = parse_signature(raw_params)
+                    scope.label_signatures[label_name] = sig
+                    self.label_signatures[label_name] = sig
                     if raw_params:
                         for p in raw_params.split(","):
                             p_clean = p.split("=")[0].strip()
@@ -521,6 +625,7 @@ class SenpyAnalyzer:
                         scope.label_outgoing_jumps.setdefault(current_label, set()).add(target_j)
                         self.label_outgoing_jumps.setdefault(current_label, set()).add(target_j)
                         self.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
+                        scope.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
 
                 m_limg = RE_LAYEREDIMAGE_START.match(clean_line)
                 if m_limg:
@@ -683,7 +788,7 @@ class SenpyAnalyzer:
             if norm_path in self.in_memory_files:
                 lines = self.in_memory_files[norm_path].splitlines(keepends=True)
             else:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, "r", encoding="utf-8", newline="") as f:
                     lines = f.readlines()
             if file_path.endswith("_ren.py"):
                 return
@@ -781,7 +886,7 @@ class SenpyAnalyzer:
                 idx = next_idx
 
             if file_modified and self.fix:
-                with open(file_path, "w", encoding="utf-8") as f:
+                with open(file_path, "w", encoding="utf-8", newline="") as f:
                     f.writelines(lines)
 
         except (UnicodeDecodeError, OSError):
@@ -902,7 +1007,7 @@ class SenpyAnalyzer:
             if norm_path in self.in_memory_files:
                 lines = self.in_memory_files[norm_path].splitlines(keepends=True)
             else:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, "r", encoding="utf-8", newline="") as f:
                     lines = f.readlines()
         except (UnicodeDecodeError, OSError):
             return

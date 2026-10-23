@@ -55,10 +55,12 @@ BUILTIN_ACTIONS = {
     "ShowTransient", "FilePage"
 }
 
+SENPY_VERSION = "0.2.8"
+
 IGNORED_DIRS = {
     ".git", ".svn", ".hg", "node_modules", ".venv", "venv", "env",
     "__pycache__", ".idea", ".vscode", "build", "dist", "out",
-    "renpy", "lib"
+    "renpy", "lib", ".senpy_cache"
 }
 
 SYSTEM_LABELS = {
@@ -131,10 +133,10 @@ RE_AUDIO_STATEMENT = re.compile(
 )
 RE_INTERPOLATION = re.compile(r"\[([a-zA-Z_][a-zA-Z0-9_]*)(?:![a-zA-Z]+)?\]")
 RE_CONDITION = re.compile(r"^\s*(?:if|elif)\s+(.+):$")
-RE_PYTHON_BLOCK_START = re.compile(r"^(\s*)python(?:\s+early)?\s*:$")
-RE_INIT_PYTHON_START = re.compile(r"^(\s*)init(?:\s+-?\d+)?\s+python(?:\s+early)?\s*:$")
+RE_PYTHON_BLOCK_START = re.compile(r"^(\s*)python(?:\s+early)?\s*:\s*(?:#.*)?$")
+RE_INIT_PYTHON_START = re.compile(r"^(\s*)init(?:\s+-?\d+)?\s+python(?:\s+early)?\s*:\s*(?:#.*)?$")
 RE_SCREEN_START = re.compile(
-    r"^(\s*)screen\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\((.*?)\))?\s*:"
+    r"^(\s*)screen\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\((.*?)\))?\s*:\s*(?:#.*)?$"
 )
 RE_SCREEN_CALL = re.compile(r"^\s*(?:show\s+screen|call\s+screen|use)\s+([a-zA-Z_][a-zA-Z0-9_]*)")
 RE_SHOW_SCENE = re.compile(r"^\s*(show|scene)\s+(?!expression\b|screen\b)([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)")

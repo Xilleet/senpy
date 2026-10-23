@@ -593,7 +593,7 @@ class StateChecker(BaseChecker):
         m_menu = RE_MENU_START.match(raw_line)
         if m_menu and not is_in_screen:
             menu_indent = len(m_menu.group(1))
-            consumed_idx, uninit_vars = self.analyzer._analyze_menu_flow(
+            consumed_idx, uninit_vars, _ = self.analyzer._analyze_menu_flow(
                 lines,
                 idx + 1,
                 menu_indent,

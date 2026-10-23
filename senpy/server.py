@@ -17,7 +17,7 @@ except ImportError:
 
 from senpy.analyzer import Diagnostic, SenpyAnalyzer
 
-server = LanguageServer("senpy-lsp", "v0.2.7")
+server = LanguageServer("senpy-lsp", "v0.2.8")
 
 
 def _uri_to_path(uri: str) -> str:
@@ -181,10 +181,11 @@ def did_open(ls: LanguageServer, params: lsp.DidOpenTextDocumentParams):
         schedule_full_diagnostics(ls, params.text_document.uri)
 
 
-@server.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
 @server.feature(lsp.WORKSPACE_DID_CHANGE_WATCHED_FILES)
 def did_change_watched_files(ls: LanguageServer, params: lsp.DidChangeWatchedFilesParams):
     """Гасит уведомления об изменении файлов от VS Code, предотвращая спам в Output лог."""
+
+@server.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
 def did_save(ls: LanguageServer, params: lsp.DidSaveTextDocumentParams):
     if params.text_document.uri.endswith(".rpy"):
         schedule_full_diagnostics(ls, params.text_document.uri)

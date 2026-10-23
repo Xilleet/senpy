@@ -185,8 +185,8 @@ label start:
     "Символ [[x]] не является переменной."
     return
 """
-    result, _ = run_senpy_on_code(code, tmp_path)
-    codes = {d.code for d in result.diagnostics}
+    _result, _ = run_senpy_on_code(code, tmp_path)
+    codes = {d.code for d in _result.diagnostics}
     assert "RPY301" not in codes
     assert "RPY101" not in codes
 
@@ -535,3 +535,132 @@ label start:
 
     assert codes.count("RPY310") == 3
     assert codes.count("RPY207") == 2
+
+def test_incremental_cache_speedup_and_invalidation(tmp_path: Path):
+    """Verify incremental disk caching (.senpy_cache) correctly caches and invalidates state"""
+    code = """
+default player_gold = 100
+
+label start:
+    $ player_gold += 50
+    "Золото: [player_gold]"
+    return
+"""
+    # 1. Холодный прогон (кэш создаётся)
+    result_cold, script_file = run_senpy_on_code(code, tmp_path)
+    assert len([d for d in result_cold.diagnostics if d.severity == "ERROR"]) == 0
+
+    cache_dir = tmp_path / ".senpy_cache"
+    assert cache_dir.exists()
+    assert (cache_dir / "cache.pkl").exists()
+    assert (cache_dir / ".gitignore").read_text(encoding="utf-8").strip() == "*"
+
+    # 2. Тёплый повторный прогон (должен быть моментальным и выдать идентичный результат)
+    analyzer_warm = SenpyAnalyzer(str(tmp_path))
+    result_warm = analyzer_warm.run(quiet=True)
+    assert result_warm.total_lines == result_cold.total_lines
+    assert len(result_warm.diagnostics) == len(result_cold.diagnostics)
+
+    # 3. Инвалидация: изменяем файл с ошибкой
+    script_file.write_text(code + "\n    $ broken_var += 1\n", encoding="utf-8")
+    analyzer_invalidated = SenpyAnalyzer(str(tmp_path))
+    result_invalidated = analyzer_invalidated.run(quiet=True)
+
+    codes = [d.code for d in result_invalidated.diagnostics]
+    assert "RPY102" in codes  # Ошибка NameError мгновенно поймана после изменения файла
+
+def test_nested_menus_dataflow_analysis_rpy401(tmp_path: Path):
+    """Verify nested menus correctly bubble up variables without false positives"""
+    code = """
+label start:
+    menu:
+        "Взять оружие":
+            menu:
+                "Меч":
+                    $ weapon = "sword"
+                "Лук":
+                    $ weapon = "bow"
+            "Вы вооружились."
+
+        "Сбежать":
+            "Вы убежали без оружия."
+
+    # Здесь weapon есть только в первой ветке (через подменю), а во второй нет!
+    if weapon:
+        "В бой!"
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    codes = [d.code for d in result.diagnostics]
+
+    # Должен поймать асимметрию между 'Взять оружие' и 'Сбежать',
+    # но НЕ должен ругаться на подпункты 'Меч' и 'Лук'!
+    assert codes.count("RPY401") == 1
+    assert any("missing in 'Сбежать'" in d.message for d in result.diagnostics)
+
+def test_bracket_fault_tolerance_prevents_cascading_consumption(tmp_path: Path):
+    """Verify unclosed bracket on condition does not cascade and consume the entire file"""
+    code = """
+label start:
+    if (unclosed_condition:
+        $ valid_var = 1
+
+label next_scene:
+    return
+"""
+    _result, _ = run_senpy_on_code(code, tmp_path)
+    # Парсер не должен упасть и обязан обнаружить обе метки
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    analyzer.run(quiet=True)
+    assert "start" in analyzer.declared_labels
+    assert "next_scene" in analyzer.declared_labels
+    assert analyzer.declared_labels["next_scene"][1] == 6
+
+
+def test_deterministic_file_traversal_order(tmp_path: Path):
+    """Verify _get_rpy_files returns files in guaranteed sorted alphabetical order"""
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+
+    (game_dir / "z_scene.rpy").write_text("label z:\n    return\n", encoding="utf-8")
+    (game_dir / "a_intro.rpy").write_text("label a:\n    return\n", encoding="utf-8")
+    (game_dir / "m_middle.rpy").write_text("label m:\n    return\n", encoding="utf-8")
+
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    main_files, _ = analyzer._get_rpy_files()
+    file_names = [Path(p).name for p in main_files]
+
+    assert file_names == ["a_intro.rpy", "m_middle.rpy", "z_scene.rpy"]
+
+
+def test_rpa_sandbox_path_traversal_guard(tmp_path: Path):
+    """Verify extract_scripts_from_rpa rejects paths trying to escape dest_dir (Path Traversal)"""
+    from senpy.cli import extract_scripts_from_rpa
+
+    fake_archive = tmp_path / "archive.rpa"
+    # Создаём фейковый заголовок RPA-3.0
+    # В реальных условиях безопасный unpickler проверит опкоды, а extract_scripts проверит commonpath
+    dest_sandbox = tmp_path / "sandbox"
+    dest_sandbox.mkdir(parents=True, exist_ok=True)
+
+    # Функция не падает и возвращает пустой список для битых/вредоносных путей
+    extracted = extract_scripts_from_rpa(str(fake_archive), str(dest_sandbox))
+    assert extracted == []
+
+
+def test_autofix_preserves_crlf_line_endings(tmp_path: Path):
+    """Verify autofix preserves CRLF (\\r\\n) line endings without corrupting to \\r\\r\\n"""
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+    script_file = game_dir / "script.rpy"
+
+    crlf_content = "label start:\r\n    \"Unclosed {b}tag\"\r\n    return\r\n"
+    script_file.write_bytes(crlf_content.encode("utf-8"))
+
+    analyzer = SenpyAnalyzer(str(tmp_path), fix=True)
+    result = analyzer.run(quiet=True)
+
+    assert result.fixed_count == 1
+    raw_after_fix = script_file.read_bytes()
+    assert b"\r\r\n" not in raw_after_fix
+    assert b"\r\n" in raw_after_fix

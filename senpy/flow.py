@@ -165,13 +165,22 @@ class StoryFlowAnalyzer:
         menu_indent: int,
         file_path: str = "",
         noqa_map: dict | None = None,
-    ) -> tuple[int, dict[str, tuple[str, str]]]:
-        """RPY402, RPY401: Разбирает пункты menu:, ловит пустые выборы и несбалансированные переменные."""
+    ) -> tuple[int, dict[str, tuple[str, ...]], set[str]]:
+        """
+        Рекурсивный разбор меню любой вложенности.
+        Возвращает:
+          - next_idx: следующая строка после меню
+          - uninitialized_vars: словарь переменных MAYBE_SET для RPY404
+          - guaranteed_vars: переменные, гарантированно определенные во всех выходящих ветках
+        """
         from senpy.analyzer import _strip_comment
+        from senpy.constants import RE_MENU_START
 
         idx = start_idx
         choices: list[dict] = []
         current_choice = None
+        choice_indent: int | None = None
+        uninitialized_vars: dict[str, tuple[str, ...]] = {}
         noqa_map = noqa_map or {}
 
         def check_empty_choice(choice_dict):
@@ -200,14 +209,26 @@ class StoryFlowAnalyzer:
                 idx += 1
                 continue
 
+            # Выход из текущего меню, если отступ вернулся на уровень menu: или левее
             if line_indent <= menu_indent:
                 break
 
             m_choice = RE_MENU_CHOICE.match(raw_line)
-            if m_choice and line_indent > menu_indent:
+            # Пункт принадлежит ДАННОМУ меню только если его отступ совпадает с первым пунктом
+            is_direct_choice = bool(
+                m_choice
+                and line_indent > menu_indent
+                and (choice_indent is None or line_indent == choice_indent)
+            )
+
+            if is_direct_choice:
+                if choice_indent is None:
+                    choice_indent = line_indent
+
                 if current_choice:
                     check_empty_choice(current_choice)
                     choices.append(current_choice)
+
                 current_choice = {
                     "title": m_choice.group(2).strip("\"'"),
                     "indent": line_indent,
@@ -221,11 +242,29 @@ class StoryFlowAnalyzer:
                 idx += 1
                 continue
 
+            # Обработка тела текущего пункта меню
             if current_choice and line_indent > current_choice["indent"]:
                 current_choice["statement_count"] += 1
+
+                # 1. Если внутри ветки встретилось ВЛОЖЕННОЕ меню!
+                if RE_MENU_START.match(raw_line):
+                    consumed_idx, sub_uninit, sub_guaranteed = self.analyze_menu_flow(
+                        lines,
+                        idx + 1,
+                        line_indent,
+                        file_path=file_path,
+                        noqa_map=noqa_map,
+                    )
+                    # Переменные, гарантированно созданные во вложенном меню, поднимаются в родительский выбор
+                    current_choice["defined"].update(sub_guaranteed)
+                    uninitialized_vars.update(sub_uninit)
+                    idx = consumed_idx
+                    continue
+
                 if stripped.startswith("$"):
                     py = stripped[1:].strip()
                     current_choice["defined"].update(extract_assigned_names(py))
+
                 if re.match(r"^\s*(jump\b|return\b)", stripped):
                     current_choice["terminates"] = True
 
@@ -236,7 +275,6 @@ class StoryFlowAnalyzer:
             choices.append(current_choice)
 
         merging_choices = [c for c in choices if not c["terminates"]]
-        uninitialized_vars: dict[str, tuple[str, str]] = {}
 
         if len(merging_choices) > 1:
             all_defined = set().union(*(c["defined"] for c in merging_choices))
@@ -254,7 +292,6 @@ class StoryFlowAnalyzer:
                 )
 
                 if missing_choice_dict and defined_choice_dict:
-                    # 1. RPY401: Предупреждаем прямо на строке выбора меню, где переменную забыли!
                     if file_path:
                         start_c, end_c = get_utf16_range(missing_choice_dict["raw"], missing_choice_dict["title"])
                         self.analyzer._add_diagnostic(
@@ -274,14 +311,20 @@ class StoryFlowAnalyzer:
                             noqa_map,
                         )
 
-                    # 2. Сохраняем статус MAYBE_SET для правила RPY404 (ловли крашей дальше по сюжету)
                     uninitialized_vars[var] = (
                         missing_choice_dict["title"],
                         defined_choice_dict["title"],
                         str(missing_choice_dict["line"]),
                     )
 
-        return idx, uninitialized_vars
+        # Переменные, которые гарантированно определены во ВСЕХ нетерминирующих ветках меню
+        guaranteed_vars = (
+            set.intersection(*(c["defined"] for c in merging_choices))
+            if merging_choices
+            else set()
+        )
+
+        return idx, uninitialized_vars, guaranteed_vars
 
     def generate_mermaid_graph(self) -> str:
         """Генерирует чистую Mermaid.js диаграмму графа сюжета новеллы."""

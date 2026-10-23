@@ -43,6 +43,10 @@ class FileScope:
     referenced_labels: set[str] = field(default_factory=set)
     labels_with_return: set[str] = field(default_factory=set)
     label_outgoing_jumps: dict[str, set[str]] = field(default_factory=dict)
+    jump_sources: dict[str, list[tuple[str, int]]] = field(default_factory=dict)
+    label_signatures: dict = field(default_factory=dict)
+    screen_signatures: dict = field(default_factory=dict)
+    symbol_declarations: dict[str, tuple[str, int, str]] = field(default_factory=dict)
 
 RULE_SEVERITY: dict[str, str] = {
     # 0xx: Синтаксис и форматирование (Критично для парсера)
