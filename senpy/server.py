@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import threading
 import warnings
 from urllib.parse import unquote, urlparse
@@ -16,7 +17,7 @@ except ImportError:
 
 from senpy.analyzer import Diagnostic, SenpyAnalyzer
 
-server = LanguageServer("senpy-lsp", "v0.2.6")
+server = LanguageServer("senpy-lsp", "v0.2.7")
 
 
 def _uri_to_path(uri: str) -> str:
@@ -380,6 +381,73 @@ def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location
                 end=lsp.Position(line=max(0, lnum - 1), character=len(word))
             )
         )
+
+    return None
+
+@server.feature(lsp.TEXT_DOCUMENT_HOVER)
+def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
+    """Семантические подсказки при наведении курсора мыши на переменные, метки и экраны."""
+    if _active_analyzer is None or not _is_initialized:
+        return None
+
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    if not doc:
+        return None
+
+    line = doc.lines[params.position.line]
+    col = params.position.character
+
+    # Ищем слово под курсором (включая точки для persistent.var и config.var)
+    word = None
+    for m in re.finditer(r'[a-zA-Z_][a-zA-Z0-9_\.]*', line):
+        if m.start() <= col <= m.end():
+            word = m.group(0)
+            break
+
+    if not word:
+        return None
+
+    # 1. Если навели на переменную (default / define)
+    target_var = word if word in _active_analyzer.symbol_declarations else word.split(".")[-1]
+    if target_var in _active_analyzer.symbol_declarations:
+        fpath, lnum, code = _active_analyzer.symbol_declarations[target_var]
+        fname = os.path.basename(fpath)
+        is_const = target_var in _active_analyzer.defined_constants
+        kind = "Constant (`define`)" if is_const else "Variable (`default`)"
+
+        content = (
+            f"**Ren'Py {kind}** — `{target_var}`\n\n"
+            f"*Declared at `{fname}:{lnum}`*\n"
+            f"```renpy\n{code}\n```"
+        )
+        return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
+
+    # 2. Если навели на метку сюжета (label)
+    if word in _active_analyzer.declared_labels:
+        fpath, lnum, code = _active_analyzer.declared_labels[word]
+        fname = os.path.basename(fpath)
+        has_return = word in _active_analyzer.labels_with_return
+        jumps = _active_analyzer.label_outgoing_jumps.get(word, set())
+        
+        info_lines = [f"**Ren'Py Label** — `{word}`\n\n*Declared at `{fname}:{lnum}`*"]
+        info_lines.append(f"```renpy\n{code}\n```")
+        
+        status = []
+        if has_return:
+            status.append("✔ Has return")
+        if jumps:
+            status.append(f"➔ Jumps to: {', '.join(f'`{j}`' for j in sorted(jumps)[:4])}")
+        if status:
+            info_lines.append("\n" + " • ".join(status))
+
+        return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value="\n".join(info_lines)))
+
+    # 3. Если навели на экран (screen)
+    if word in _active_analyzer.declared_screens:
+        fpath, lnum = _active_analyzer.declared_screens[word]
+        fname = os.path.basename(fpath)
+        content = f"**Ren'Py Screen** — `{word}`\n\n*Declared at `{fname}:{lnum}`*"
+        return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
 
     return None
 

@@ -511,3 +511,27 @@ label start:
     assert len(rpy505_diags) == 2
     assert any("mystery_channel" in d.message and d.severity == "WARNING" for d in rpy505_diags)
     assert any("voice" in d.message and d.severity == "WARNING" for d in rpy505_diags)
+
+def test_arity_checking_catches_rpy310_and_rpy207(tmp_path: Path):
+    """Verify arity checker catches invalid arguments in call (RPY310) and screen use (RPY207)"""
+    code = """
+label target_with_params(a, b, c=1):
+    return
+
+screen target_screen(item, count=1):
+    text "[item]"
+
+label start:
+    call target_with_params("only_one_arg")       # RPY310: не хватает аргумента b
+    call target_with_params(1, 2, 3, 4, 5)         # RPY310: слишком много аргументов
+    call target_with_params(1, 2, unknown_arg=9)   # RPY310: неизвестный именованный аргумент
+
+    use target_screen()                            # RPY207: пропущен обязательный параметр 'item'
+    use target_screen("sword", bad_param=True)     # RPY207: неизвестный параметр 'bad_param'
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    codes = [d.code for d in result.diagnostics]
+
+    assert codes.count("RPY310") == 3
+    assert codes.count("RPY207") == 2

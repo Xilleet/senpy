@@ -26,6 +26,7 @@ from senpy.constants import (
     SMART_QUOTES,
 )
 from senpy.models import Diagnostic
+from senpy.signature import validate_call_arguments
 
 if TYPE_CHECKING:
     from senpy.analyzer import SenpyAnalyzer
@@ -210,6 +211,27 @@ class ScreenChecker(BaseChecker):
                     ),
                     noqa_map,
                 )
+
+        # RPY207: Несовпадение аргументов при вызове экрана
+        if m_scr:
+            screen_target = m_scr.group(1)
+            if screen_target in self.analyzer.screen_signatures:
+                sig = self.analyzer.screen_signatures[screen_target]
+                m_scr_args = re.search(r'\b(?:show\s+screen|call\s+screen|use)\s+[a-zA-Z_][a-zA-Z0-9_]*\s*(?:\((.*?)\))?', stripped)
+                scr_args = m_scr_args.group(1) if m_scr_args and m_scr_args.group(1) is not None else None
+                err_msg = validate_call_arguments(sig, scr_args)
+                if err_msg:
+                    self.analyzer._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=idx + 1,
+                            line_content=stripped,
+                            code="RPY207",
+                            message=f"Invalid parameters in screen '{screen_target}': {err_msg}. Causes runtime Exception.",
+                            severity="ERROR",
+                        ),
+                        noqa_map,
+                    )
 
         return raw_line, False
 
@@ -484,17 +506,38 @@ class DialogueChecker(BaseChecker):
                     )
                 if cmd_type == "jump" and branch_uninitialized is not None:
                     branch_uninitialized.clear()
-                elif cmd_type == "call" and target_label in self.analyzer.declared_labels and not self.analyzer._can_reach_return(target_label):
-                    self.analyzer._add_diagnostic(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=idx + 1,
-                            line_content=stripped,
-                            code="RPY306",
-                            message=f"Static analysis could not find a 'return' path from called label '{target_label}'. Verify that control flow returns correctly.",
-                        ),
-                        noqa_map,
-                    )
+                elif cmd_type == "call":
+                    # 1. RPY310: Проверка сигнатуры аргументов вызова метки
+                    if target_label in self.analyzer.label_signatures:
+                        sig = self.analyzer.label_signatures[target_label]
+                        m_args = re.search(r'\bcall\s+(?!screen\b)[a-zA-Z_][a-zA-Z0-9_]*\s*(?:\((.*?)\))?', stripped)
+                        call_args = m_args.group(1) if m_args and m_args.group(1) is not None else None
+                        err_msg = validate_call_arguments(sig, call_args)
+                        if err_msg:
+                            self.analyzer._add_diagnostic(
+                                Diagnostic(
+                                    file_path=file_path,
+                                    line_number=idx + 1,
+                                    line_content=stripped,
+                                    code="RPY310",
+                                    message=f"Invalid arguments in 'call {target_label}': {err_msg}. Causes fatal TypeError.",
+                                    severity="ERROR",
+                                ),
+                                noqa_map,
+                            )
+
+                    # 2. RPY306: Проверка наличия пути к return
+                    if target_label in self.analyzer.declared_labels and not self.analyzer._can_reach_return(target_label):
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=idx + 1,
+                                line_content=stripped,
+                                code="RPY306",
+                                message=f"Static analysis could not find a 'return' path from called label '{target_label}'. Verify that control flow returns correctly.",
+                            ),
+                            noqa_map,
+                        )
 
         # RPY305: Неэкранированные кавычки в диалоге
         first_token = stripped.split()[0] if stripped.split() else ""

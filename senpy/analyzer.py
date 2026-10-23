@@ -8,6 +8,7 @@ from senpy.assets import AssetManager, find_orphaned_rpyc
 from senpy.deprecated import DeprecationChecker
 from senpy.flow import StoryFlowAnalyzer
 from senpy.python_ast import PythonAstChecker
+from senpy.signature import SignatureInfo, parse_signature
 from senpy.text_tags import get_utf16_range, process_quoted_strings
 
 warnings.filterwarnings("ignore", category=SyntaxWarning)
@@ -199,10 +200,13 @@ class SenpyAnalyzer:
         self.declared_characters: set[str] = set()
         self.declared_labels: dict[str, tuple[str, int, str]] = {}
         self.declared_screens: dict[str, tuple[str, int]] = {}
+        self.label_signatures: dict[str, SignatureInfo] = {}
+        self.screen_signatures: dict[str, SignatureInfo] = {}
         self.labels_with_return: set[str] = set()
         self.label_outgoing_jumps: dict[str, set[str]] = {}
         self.declared_images: dict[str, tuple[str, int, str]] = {}
         self.declared_layeredimages: dict[str, set[str]] = {}
+        self.symbol_declarations: dict[str, tuple[str, int, str]] = {}
         self.jump_sources: dict[str, list[tuple[str, int]]] = {}
         self.referenced_labels: set[str] = set()
         self.has_dynamic_jumps: bool = False
@@ -260,11 +264,14 @@ class SenpyAnalyzer:
         self.declared_symbols = set(BUILTIN_SYMBOLS)
         self.declared_labels.clear()
         self.declared_screens.clear()
+        self.label_signatures.clear()
+        self.screen_signatures.clear()
         self.referenced_labels.clear()
         self.labels_with_return.clear()
         self.label_outgoing_jumps.clear()
         self.declared_images.clear()
         self.declared_layeredimages.clear()
+        self.symbol_declarations.clear()
         self.jump_sources.clear()
         self.defined_audio_map.clear()
         self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
@@ -422,6 +429,7 @@ class SenpyAnalyzer:
                     scope.declared_symbols.add(var)
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
+                    self.symbol_declarations[var] = (file_path, idx + 1, clean)
                     idx = next_idx
                     continue
 
@@ -445,6 +453,7 @@ class SenpyAnalyzer:
                     scope.declared_symbols.add(var)
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
+                    self.symbol_declarations[var] = (file_path, idx + 1, clean)
                     # Если define настраивает свойство (config.xxx, gui.xxx, persistent.xxx), не считаем корень константой
                     if "." not in clean.split("=")[0]:
                         scope.defined_constants.add(var)
@@ -460,8 +469,10 @@ class SenpyAnalyzer:
                 m_screen_def = RE_SCREEN_START.match(line)
                 if m_screen_def:
                     s_name = m_screen_def.group(2)
+                    s_params = m_screen_def.group(3)
                     scope.declared_screens[s_name] = (file_path, idx + 1)
                     self.declared_screens[s_name] = (file_path, idx + 1)
+                    self.screen_signatures[s_name] = parse_signature(s_params)
 
                 m_label = RE_LABEL.match(clean)
                 if m_label:
@@ -488,6 +499,7 @@ class SenpyAnalyzer:
                     self.label_outgoing_jumps[label_name] = set()
 
                     raw_params = m_label.group(2)
+                    self.label_signatures[label_name] = parse_signature(raw_params)
                     if raw_params:
                         for p in raw_params.split(","):
                             p_clean = p.split("=")[0].strip()

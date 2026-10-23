@@ -65,6 +65,7 @@ RULE_SEVERITY: dict[str, str] = {
     "RPY204": "ERROR",    # Несуществующий экран -> ScriptError
     "RPY205": "WARNING",  # Циклы for/while внутри экрана (просадки FPS)
     "RPY206": "ERROR",    # Прямой вызов функции в action со скобками
+    "RPY207": "ERROR",    # Несовпадение параметров при вызове экрана (use / call screen)
 
     # 3xx: Диалоги и граф сюжета
     "RPY301": "ERROR",    # Незакрытый тег диалога {b}
@@ -76,6 +77,7 @@ RULE_SEVERITY: dict[str, str] = {
     "RPY307": "ERROR",    # Дубликат объявления label -> ScriptError
     "RPY308": "WARNING",  # Label fallthrough без return/jump
     "RPY309": "WARNING",  # Сюжетный остров / изолированный цикл сцен
+    "RPY310": "ERROR",    # Несовпадение аргументов вызова метки call (TypeError)
 
     # 4xx: Развилки сюжета и условия
     "RPY401": "WARNING",  # Развилка menu: переменная объявлена не везде

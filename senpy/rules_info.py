@@ -116,6 +116,13 @@ RULES_DATABASE = {
         "bad": "textbutton 'Heal' action heal_player()  # Executes on screen show!",
         "good": "textbutton 'Heal' action Function(heal_player)  # Executes on click",
     },
+    "RPY207": {
+        "title": "Invalid arguments when showing or using a screen",
+        "severity": "ERROR",
+        "why": "Calling or using a screen with missing required parameters or unknown arguments causes a fatal runtime Exception.",
+        "bad": "screen inv(sort_by):\n    ...\nuse inv()  # Missing required argument 'sort_by'!",
+        "good": "screen inv(sort_by='name'):\n    ...\nuse inv()",
+    },
     # ---------------- 300: Dialogue & Control Flow ----------------
     "RPY301": {
         "title": "Unclosed or mismatched text tag in dialogue",
@@ -172,6 +179,13 @@ RULES_DATABASE = {
         "why": "Ending a scene without 'jump' or 'return' before the next label causes control flow to unintentionally fall right through into the next scene.",
         "bad": 'label scene_a:\n    "End of scene A."\nlabel scene_b:\n    "Scene B starts immediately!"',
         "good": 'label scene_a:\n    "End of scene A."\n    return\nlabel scene_b:\n    "Scene B starts!"',
+    },
+    "RPY310": {
+        "title": "Invalid argument count or keyword in 'call' statement",
+        "severity": "ERROR",
+        "why": "Calling a label with too few, too many, or unknown keyword arguments crashes the game with an immediate TypeError.",
+        "bad": "label forest(time, weather):\n    ...\ncall forest('day')  # Missing 'weather' argument!",
+        "good": "label forest(time, weather='sunny'):\n    ...\ncall forest('day')",
     },
     # ---------------- 400: Branching & Conditions ----------------
     "RPY401": {

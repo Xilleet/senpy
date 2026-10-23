@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "senpy-linter"
-version = "0.2.6"
+version = "0.2.7"
 description = "Fast semantic linter for Ren'Py"
-authors = [{ name = "Your Name" }]
+authors = [{ name = "Xilleet" }]
 requires-python = ">=3.9"
 dependencies = [
     "rich>=13.0.0",
@@ -19,3 +19,13 @@ senpy = "senpy.cli:main"
 [tool.setuptools.packages.find]
 include = ["senpy"]
 exclude = ["senpy-vscode", "senpy-vscode.*", "test_game"]
+
+[tool.pytest.ini_options]
+# Игнорируем известное DeprecationWarning из внешней зависимости pygls (feature_manager.py:86).
+# В Python 3.12+ функция asyncio.iscoroutinefunction() объявлена устаревшей в пользу inspect.iscoroutinefunction()
+# и запланирована к удалению только в Python 3.16. На функционал не влияет.
+# Ждём официального минорного патча от мейнтейнеров pygls:
+# https://github.com/openlawlibrary/pygls/issues
+filterwarnings = [
+    "ignore::DeprecationWarning:pygls.*",
+]
