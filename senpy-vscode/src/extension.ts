@@ -30,7 +30,10 @@ export function activate(context: vscode.ExtensionContext) {
     // 2. Фоновая проверка обновлений .vsix с GitHub Releases
     checkForUpdates(context);
 
-    // 3. Команда: Генерация и показ интерактивного графа
+    // 3. Инспектор краш-логов: перехват traceback.txt во время игры (Пункт 8.6)
+    setupCrashWatcher(context);
+
+    // 4. Команда: Генерация и показ интерактивного графа
     let graphCmd = vscode.commands.registerCommand('senpy.showStoryGraph', async () => {
         if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
             vscode.window.showErrorMessage("Senpy: Please open a Ren'Py project folder first.");
@@ -52,11 +55,9 @@ export function activate(context: vscode.ExtensionContext) {
                         return;
                     }
 
-                    // 1. Извлекаем Mermaid граф
                     const mermaidMatch = stdout.match(/```mermaid\s*([\s\S]*?)\s*```/);
                     let graphText = mermaidMatch ? mermaidMatch[1].trim() : stdout.trim();
 
-                    // 2. Извлекаем метаданные координат узлов
                     const metaMatch = stdout.match(/```senpy-meta\s*([\s\S]*?)\s*```/);
                     let metaJson = metaMatch ? metaMatch[1].trim() : "{}";
 
@@ -76,7 +77,6 @@ export function activate(context: vscode.ExtensionContext) {
                         }
                     );
 
-                    // Обработка клика по узлу из Webview
                     panel.webview.onDidReceiveMessage(async (message) => {
                         if (message.command === 'openLocation') {
                             try {
@@ -116,13 +116,89 @@ export function deactivate(): Thenable<void> | undefined {
 }
 
 /**
+ * Перехватчик создания/обновления traceback.txt и errors.txt прямо во время плейтеста новеллы
+ */
+function setupCrashWatcher(context: vscode.ExtensionContext) {
+    const watcher = vscode.workspace.createFileSystemWatcher('**/{traceback,errors}.txt');
+    let lastHandledTime = 0;
+
+    const handleCrash = async (uri: vscode.Uri) => {
+        const now = Date.now();
+        if (now - lastHandledTime < 2500) {
+            return; // Защита от дублей уведомлений (2.5 сек)
+        }
+        lastHandledTime = now;
+
+        try {
+            const fileData = await vscode.workspace.fs.readFile(uri);
+            const content = Buffer.from(fileData).toString('utf-8');
+
+            // Извлекаем место сбоя и тип исключения
+            const locMatch = content.match(/File\s+["']([^"']+\.rpy)["'],\s+line\s+(\d+)/);
+            const excMatch = content.match(/([A-Za-z0-9_]*(?:Error|Exception)):\s*([^\n]+)/);
+
+            if (!locMatch) {
+                return;
+            }
+
+            const rpyRelPath = locMatch[1];
+            const lineNum = parseInt(locMatch[2], 10);
+            const excType = excMatch ? excMatch[1] : 'Runtime Error';
+            const excMsg = excMatch ? excMatch[2].trim() : '';
+
+            const isRu = vscode.env.language.startsWith('ru');
+            const fileName = rpyRelPath.split(/[\\/]/).pop() || rpyRelPath;
+
+            const jumpBtn = isRu ? `Перейти к ${fileName}:${lineNum}` : `Go to ${fileName}:${lineNum}`;
+            const reportBtn = isRu ? "Сообщить об ошибке на GitHub" : "Report Issue on GitHub";
+            const message = isRu
+                ? `💥 Обнаружен сбой игры (${excType})!`
+                : `💥 Ren'Py runtime crash detected (${excType})!`;
+
+            const action = await vscode.window.showErrorMessage(
+                `${message} ${excMsg ? `— ${excMsg}` : ''}`,
+                jumpBtn,
+                reportBtn
+            );
+
+            if (action === jumpBtn) {
+                const files = await vscode.workspace.findFiles(`**/${fileName}`);
+                const targetUri = files.find(f => f.fsPath.replace(/\\/g, '/').endsWith(rpyRelPath.replace(/\\/g, '/'))) || files[0];
+
+                if (targetUri) {
+                    const doc = await vscode.workspace.openTextDocument(targetUri);
+                    const editor = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
+                    const pos = new vscode.Position(Math.max(0, lineNum - 1), 0);
+                    editor.selection = new vscode.Selection(pos, pos);
+                    editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+                }
+            } else if (action === reportBtn) {
+                const title = encodeURIComponent(`[Runtime Crash] ${excType}: ${excMsg}`);
+                const body = encodeURIComponent(
+                    `### Runtime Crash Report\n\n` +
+                    `- **Exception:** \`${excType}: ${excMsg}\`\n` +
+                    `- **Location:** \`${fileName}:${lineNum}\`\n\n` +
+                    `### Traceback Snippet\n\`\`\`text\n${content.slice(0, 1500)}\n\`\`\``
+                );
+                vscode.env.openExternal(vscode.Uri.parse(`https://github.com/Xilleet/senpy/issues/new?title=${title}&body=${body}`));
+            }
+        } catch {
+            // Игнорируем ошибки чтения файла
+        }
+    };
+
+    watcher.onDidCreate(handleCrash);
+    watcher.onDidChange(handleCrash);
+    context.subscriptions.push(watcher);
+}
+
+/**
  * Фоновая проверка наличия свежего релиза .vsix на GitHub
  */
 async function checkForUpdates(context: vscode.ExtensionContext) {
     const GITHUB_REPO = "Xilleet/senpy";
     const currentVersion: string = context.extension.packageJSON.version || "0.0.0";
 
-    // Проверяем не чаще чем 1 раз в 6 часов, чтобы не упираться в лимиты GitHub API
     const LAST_CHECK_KEY = "senpy_last_update_check";
     const lastCheck = context.globalState.get<number>(LAST_CHECK_KEY, 0);
     const now = Date.now();
@@ -148,16 +224,12 @@ async function checkForUpdates(context: vscode.ExtensionContext) {
             assets: Array<{ name: string; browser_download_url: string }> 
         };
 
-        // 1. Ищем .vsix файл в релизе
         const vsixAsset = release.assets?.find(a => a.name.endsWith(".vsix"));
         const downloadUrl = vsixAsset ? vsixAsset.browser_download_url : release.html_url;
 
-        // 2. Достаем версию сначала из имени файла (например, senpy-vscode-0.2.8.vsix -> 0.2.8),
-        // а если в имени файла версии нет — берем из тега релиза
         const fileVersionMatch = vsixAsset?.name.match(/(\d+\.\d+\.\d+)/);
         const latestVersion = fileVersionMatch ? fileVersionMatch[1] : release.tag_name.replace(/^v/, "").trim();
 
-        // 3. Сравниваем
         if (isNewer(latestVersion, currentVersion)) {
             const action = await vscode.window.showInformationMessage(
                 `Вышла новая версия Senpy v${latestVersion}! (у вас установлена v${currentVersion})`,
@@ -172,13 +244,10 @@ async function checkForUpdates(context: vscode.ExtensionContext) {
             }
         }
     } catch {
-        // Если нет интернета или гитхаб недоступен — тихо игнорируем
+        // Игнорируем отсутствие сети
     }
 }
 
-/**
- * Сравнение версий формата semver (major.minor.patch)
- */
 function isNewer(latest: string, current: string): boolean {
     const l = latest.split('.').map(x => parseInt(x, 10) || 0);
     const c = current.split('.').map(x => parseInt(x, 10) || 0);
@@ -258,7 +327,6 @@ function getWebviewContent(graphContent: string, metaJson: string): string {
             height: 100% !important; 
         }
 
-        /* Интерактивность узлов */
         .node {
             cursor: pointer !important;
             transition: transform 0.1s ease, filter 0.15s ease;
@@ -284,7 +352,6 @@ function getWebviewContent(graphContent: string, metaJson: string): string {
         </div>
     </div>
 
-    <!-- Встраиваем метаданные в безопасный JSON контейнер -->
     <script id="senpy-metadata" type="application/json">
         ${metaJson}
     </script>
@@ -319,7 +386,6 @@ function getWebviewContent(graphContent: string, metaJson: string): string {
                 svgElement.setAttribute('width', '100%');
                 svgElement.setAttribute('height', '100%');
                 
-                // Навешиваем кликабельность на все узлы графа
                 target.addEventListener('click', (e) => {
                     const nodeElem = e.target.closest('.node');
                     if (!nodeElem) return;

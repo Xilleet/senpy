@@ -1,0 +1,8 @@
+- id: senpy
+  name: senpy
+  description: Fast semantic linter and control-flow analyzer for Ren'Py
+  entry: senpy
+  language: python
+  types_or: [python, text]
+  files: \.(rpy|rpym)$
+  pass_filenames: false

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import ctypes
 import json
 import os
 import shutil
@@ -23,73 +22,13 @@ from rich.text import Text
 from senpy.analyzer import SenpyAnalyzer
 from senpy.constants import IGNORED_DIRS
 from senpy.rpa import safe_load_rpa_index
+from senpy.traceback import find_latest_traceback
+from senpy.tsundere import IS_RU, TSUNDERE_FLAVORS, TSUNDERE_UI
 
 console = Console()
 
 SENPY_CACHE_DIR = os.path.expanduser("~/.senpy/tools/unrpyc")
 UNRPYC_GITHUB_ZIP = "https://github.com/CensoredUsername/unrpyc/archive/refs/heads/master.zip"
-
-
-def _is_russian_os() -> bool:
-    """Определяет, русский ли интерфейс у ОС пользователя."""
-    if "ru" in os.environ.get("LANG", "").lower():
-        return True
-    if os.name == "nt":
-        with contextlib.suppress(AttributeError, OSError):
-            return ctypes.windll.kernel32.GetUserDefaultUILanguage() == 1049
-    return False
-
-
-IS_RU = _is_russian_os()
-
-TSUNDERE_FLAVORS = {
-    "RPY001": "(╯°□°)╯︵ ┻━┻ «Ты посмел вставить табуляцию вместо пробелов?! Ren'Py такое не прощает, ленивый бака!»" if IS_RU else "(╯°□°)╯︵ ┻━┻ «Tabs instead of spaces in indentation?! Ren'Py does not forgive this, lazy baka!»",
-    "RPY002": "(｀ε´ ) «Ты копировал текст прямо из Word?! Эти фигурные кавычки сломают весь код, бака!»" if IS_RU else "(｀ε´ ) «Did you paste from Word?! Smart quotes break Python code, baka!»",
-    "RPY206": "(╬ Ò﹏Ó) «Ты вызвал функцию в action со скобками?! Она сработает ещё до клика, прямо при открытии экрана, идиот!»" if IS_RU else "(╬ Ò﹏Ó) «Calling a function directly in action?! It executes during screen render, not on click! Use Function(), dummy!»",
-    "RPY307": "(╬ Ò﹏Ó) «Эта метка уже была объявлена раньше! Игра упадёт на старте из-за дубликата, слепой!»" if IS_RU else "(╬ Ò﹏Ó) «Duplicate label declaration! The game will crash on startup, blind idiot!»",
-    "RPY308": "(；￣Д￣) «Сюжет в этой метке никуда не уходит и просто провалится в следующую сцену! Поставь return или jump, бестолочь!»" if IS_RU else "(；￣Д￣) «This label doesn't end with jump or return, it falls right through into the next scene, dummy!»",
-    "RPY503": "(눈_눈) «Этот файл ассета нигде не используется! Зря только место на диске жрёт, бака!»" if IS_RU else "(눈_눈) «Unused media asset found! It's just wasting disk space and build size, baka!»",
-    "RPY101": "(¬_¬ ) «Бака! Ты используешь переменную в диалоге, но даже не объявил её! О чем ты вообще думал?!»" if IS_RU else "(¬_¬ ) «B-Baka! You used a variable in dialogue without declaring it! What were you thinking?!»",
-    "RPY102": "(╬ Ò﹏Ó) «Ты делаешь += к переменной, которой НЕТ! Это же чистый NameError при запуске, идиот!»" if IS_RU else "(╬ Ò﹏Ó) «You're doing += to a variable that DOESN'T EXIST! That's a guaranteed NameError, idiot!»",
-    "RPY103": "( ﾟдﾟ) «Ты вставил в условие if переменную из воздуха! Игра вылетит, бестолочь!»" if IS_RU else "( ﾟдﾟ) «You put a phantom variable in an if-condition! The game will crash, dummy!»",
-    "RPY104": "(>_< ) «Создал переменную на лету без default?! Сохранения у игроков сломаются после патча, дурак!»" if IS_RU else "(>_< ) «Created a variable on the fly without a default?! You'll break player save files on the next patch, fool!»",
-    "RPY105": "(╬ Ò﹏Ó) «Ты меняешь переменную из define?! define — это КОНСТАНТА! Для меняющихся переменных есть default, идиот!»" if IS_RU else "(╬ Ò﹏Ó) «You mutated a variable from define?! define is for CONSTANTS! Use default for mutable state, idiot!»",
-    "RPY106": "(╬ Ò﹏Ó) «Ты импортировал стандартный random?! Откат назад и сохранения развалятся на куски, бестолочь! Используй renpy.random!»" if IS_RU else "(╬ Ò﹏Ó) «You imported standard random?! Rollback and save files will fall apart, dummy! Use renpy.random!»",
-    "RPY306": "(；￣Д￣) «Ты сделал call на метку, но пути к return не видно! Убедись, что сюжет не утечёт в чужие сцены!»" if IS_RU else "(；￣Д￣) «You called a label, but no clear return path was found! Make sure control flow doesn't bleed out!»",
-    "RPY504": "(눈_눈) «Эта картинка переопределяет или дублирует ранее объявленную! Надеюсь, ты сделал это намеренно, бака!»" if IS_RU else "(눈_눈) «This image overrides or duplicates an earlier declaration! I hope that was intentional, genius!»",
-    "RPY203": "(눈_눈) «Кнопка без действия action?! И на что игрок нажимать будет, на пустоту?!»" if IS_RU else "(눈_눈) «A button without an action?! What is the player supposed to click on, thin air?!»",
-    "RPY204": "( ﾟдﾟ) «Экран, который ты вызываешь, вообще не существует! Куда ты собрался переключать игрока, идиот?!»" if IS_RU else "( ﾟдﾟ) «The screen you are calling does not exist! Where are you trying to switch the player to, dummy?!»",
-    "RPY502": "(￣︿￣) «Спрайт или фон не найден! Персонаж растворится в воздухе прямо посреди сцены, слепой!»" if IS_RU else "(￣︿￣) «Sprite or background not found! The character will vanish into thin air, blind dummy!»",
-    "RPY205": "(╯°□°)╯︵ ┻━┻ «Ты впихнул Python-цикл for/while прямо в экран?! UI будет лагать как не в себя, дурак!»" if IS_RU else "(╯°□°)╯︵ ┻━┻ «A Python for/while loop inside a screen?! The UI is going to lag horribly, fool!»",
-    "RPY305": "(｀ε´ ) «Ты забыл экранировать кавычки внутри реплики! Поставь слэш \\\", иначе игра просто упадет!»" if IS_RU else "(｀ε´ ) «Unescaped quotes inside dialogue! Escape them with \\\", otherwise the game crashes!»",
-    "RPY403": "(￣︿￣) «Условие всегда False! Этот кусок сюжета вообще НИКОГДА не выполнится, гений!»" if IS_RU else "(￣︿￣) «Condition is always False! This branch will NEVER execute, genius!»",
-    "RPY402": "(；￣Д￣) «Ты создал пункт в меню, но внутри пусто?! Сюжет просто провалится вниз, бестолочь!»" if IS_RU else "(；￣Д￣) «You made a menu choice but left it completely empty?! The story will just fall through, dummy!»",
-    "RPY201": "(╯°□°)╯︵ ┻━┻ «Ты меняешь переменную ПРЯМО ВНУТРИ ЭКРАНА?! Экраны так не работают, тупица!»" if IS_RU else "(╯°□°)╯︵ ┻━┻ «Mutating variables DIRECTLY INSIDE A SCREEN?! Screens don't work like that, dummy!»",
-    "RPY202": "(눈_눈) «Экран читает переменную без default! В главном меню игра сразу рухнет, гений!»" if IS_RU else "(눈_눈) «A screen is reading a variable without a default! It's going to crash right in the main menu, genius!»",
-    "RPY301": "(；￣Д￣) «Открыл тег и забыл закрыть?! Весь дальнейший текст игры поплывет, глаза б мои тебя не видели!»" if IS_RU else "(；￣Д￣) «Opened a text tag and forgot to close it?! The whole game's text is going to bleed, I can't even look at it!»",
-    "RPY302": "( ﾟдﾟ) «Прыжок на метку, которой ВООБЩЕ НЕТ?! Куда ты собрался прыгать, в пустоту?!»" if IS_RU else "( ﾟдﾟ) «Jumping to a label that DOES NOT EXIST?! Where are you jumping to, the void?!»",
-    "RPY303": "(￣︿￣) «Не вижу прямых переходов на метку... Надеюсь, ты вызываешь её через динамический роутер, а не просто забросил!»" if IS_RU else "(￣︿￣) «No static references to this label... I hope you're calling it dynamically, and didn't just abandon it!»",
-    "RPY304": "(｀ε´ ) «Что это за цвет такой?! Ты даже в hex-кодах умудрился опечататься!»" if IS_RU else "(｀ε´ ) «What kind of color is that?! You even managed to make a typo in hex codes!»",
-    "RPY401": "(눈_눈) «В одном пункте меню ты переменную дал, а во втором забыл?! Выберут второй — и игра крашнется!»" if IS_RU else "(눈_눈) «You defined a variable in one menu choice but forgot it in another?! They pick the second one and it crashes!»",
-    "RPY501": "(￣︿￣) «Музыка не найдена! В этой сцене будет гробовая тишина, глупый!»" if IS_RU else "(￣︿￣) «Music file not found! There will be dead silence in this scene, stupid!»",
-    "RPY601": "(╬ Ò﹏Ó) «Ты сломал переменную в переводе! Оригинал ждёт [var], а у тебя опечатка! Игра вылетит с KeyError, идиот!»" if IS_RU else "(╬ Ò﹏Ó) «Variable mismatch in translation! The original expects [var], but you made a typo! The game will crash with KeyError, dummy!»",
-    "RPY602": "(；￣Д￣) «Теги форматирования в переводе не совпадают с оригиналом! Текст игры поплывёт, бестолочь!»" if IS_RU else "(；￣Д￣) «Formatting tags in translation don't match the original! Text styling will break, idiot!»",
-    "RPY603": "(￣︿￣) «Ты оставил строку перевода пустой! У игроков там будет пустота вместо текста!»" if IS_RU else "(￣︿￣) «You left the translation string empty! Players will see blank air instead of text!»",
-    "RPY107": "(눈_눈) «Ты используешь замшелую функцию из каменного века Ren'Py! Обнови код на современный аналог, дед!»" if IS_RU else "(눈_눈) «Using an obsolete Ren'Py function from the stone age! Update your code to modern APIs, boomer!»",
-}
-
-TSUNDERE_UI = {
-    "intro": "П-подумаешь! Сканирую твою директорию: {path}... Н-не то чтобы мне был интересен твой сценарий, бака!" if IS_RU else "H-Hmph! Scanning your directory: {path}... I-It's not like I'm interested in your script, baka!",
-    "clean_title": "Н-не то чтобы мне нравился твой сценарий... но сюжетных дыр и крашей я не нашла, бака!" if IS_RU else "I-It's not like I like your script... but I didn't find any plot holes or crashes, baka!",
-    "clean_sub": "Проверено {lines:,} строк за {elapsed:.3f}с. Д-доволен?!" if IS_RU else "Checked {lines:,} lines in {elapsed:.3f}s. A-Are you happy now?!",
-    "summary": "Твои позорные ошибки" if IS_RU else "Your shameful mistakes",
-    "fixed": "Я... я закрыла за тобой {count} открытых ошибок! Н-но не думай, что ты мне нравишься, идиот!" if IS_RU else "I... I closed {count} open tags for you! B-But don't think I like you or anything, idiot!",
-    "fixable": "Там есть {count} ошибок, которые я могла бы починить за тебя через --fix... если вежливо попросишь, бака!" if IS_RU else "There are {count} tags I could fix for you with --fix... if you ask nicely, baka!",
-    "errors": "Найдено {summary_str}! Иди и исправляй, я не буду играть в такую сломанную новеллу! ({elapsed:.3f}s)" if IS_RU else "Found {summary_str}! Go fix them, I'm not playing such a broken novel! ({elapsed:.3f}s)",
-    "warnings": "Найдено {summary_str}... Жить можно, но я за тобой слежу, бака! ({elapsed:.3f}s)" if IS_RU else "Found {summary_str}... It's playable, but I'm watching you, baka! ({elapsed:.3f}s)",
-    "defaults_generated": "Я... я сгенерировала за тебя файл {path} с {count} переменными! Т-только не думай, что мне не всё равно на твои сохранения, бака!" if IS_RU else "I... I generated {path} with {count} variables for you! D-Don't think I care about your save files, baka!",
-    "info_omitted": "Я заметила ещё {count} мелких нюансов, но не покажу их, пока не попросишь через --info, бака!" if IS_RU else "I noticed {count} minor things, but I won't show them unless you ask with --info, baka!",
-}
 
 SEVERITY_STYLES = {
     "ERROR": ("bold red", "red dim"),
@@ -257,6 +196,9 @@ def extract_scripts_from_rpa(rpa_path: str, dest_dir: str) -> list[str]:
 
 def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: str) -> list[str]:
     total = len(orphans)
+    prep_label = "[Подготовка]" if IS_RU else "[Preparing]"
+    decomp_label = "[Декомпиляция]" if IS_RU else "[Decompiling]"
+    done_word = "готово" if IS_RU else "done"
 
     temp_rpyc_files = []
     for i, f in enumerate(orphans, 1):
@@ -265,7 +207,7 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: st
         if os.path.exists(f) and os.path.normcase(os.path.abspath(f)) != os.path.normcase(os.path.abspath(dest)):
             shutil.copy2(f, dest)
         temp_rpyc_files.append(dest)
-        msg = f"\r[Подготовка] {i}/{total} ({base_name[:25]})"
+        msg = f"\r{prep_label} {i}/{total} ({base_name[:25]})"
         print(msg.ljust(75), end="", flush=True)
     print()
 
@@ -292,13 +234,14 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: st
                             curr_file = os.path.basename(clean_part)
                             break
                     if not curr_file:
-                        curr_file = "готово" if done == total else "..."
-                    msg = f"\r[Декомпиляция] {done}/{total} ({curr_file[:25]})"
+                        curr_file = done_word if done == total else "..."
+                    msg = f"\r{decomp_label} {done}/{total} ({curr_file[:25]})"
                     print(msg.ljust(75), end="", flush=True)
         process.wait()
         print()
     except (subprocess.SubprocessError, OSError) as e:
-        console.print(f"[bold red]Ошибка декомпиляции:[/bold red] {e}")
+        err_msg = "Ошибка декомпиляции" if IS_RU else "Decompilation error"
+        console.print(f"[bold red]{err_msg}:[/bold red] {e}")
 
     decompiled_rpy = []
     for root, _, files in os.walk(temp_dir):
@@ -306,7 +249,12 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: st
             if file.endswith(".rpy"):
                 decompiled_rpy.append(os.path.join(root, file))
 
-    console.print(f"[bold green]✔ Успешно декомпилировано {len(decompiled_rpy)} файл(ов) в песочницу![/bold green]\n")
+    success_msg = (
+        f"✔ Успешно декомпилировано {len(decompiled_rpy)} файл(ов) в песочницу!"
+        if IS_RU else
+        f"✔ Successfully decompiled {len(decompiled_rpy)} file(s) into sandbox!"
+    )
+    console.print(f"[bold green]{success_msg}[/bold green]\n")
     return decompiled_rpy
 
 
@@ -347,7 +295,12 @@ def main():
         help="Automatically fix safe errors (unclosed tags RPY301, smart quotes RPY002, tabs RPY001)"
     )
     g_lint.add_argument(
-        "--generate-defaults",
+        "--coverage",
+        action="store_true",
+        help="Display translation coverage metrics and completion percentages for game/tl/"
+    )
+    g_lint.add_argument(
+        "--defaults",
         action="store_true",
         help="Generate 'senpy_defaults.rpy' containing 'default' declarations for all RPY104 variables"
     )
@@ -394,6 +347,13 @@ def main():
         help="Generate a standalone HTML report with an interactive story map and diagnostics"
     )
     g_export.add_argument(
+        "--export-wiki",
+        nargs="?",
+        const="PROJECT_WIKI.md",
+        metavar="FILE",
+        help="Generate project documentation (characters, variables, endings) in Markdown (default: PROJECT_WIKI.md)"
+    )
+    g_export.add_argument(
         "--graph",
         action="store_true",
         help="Generate a Mermaid.js diagram of the story flow and label transitions"
@@ -423,6 +383,25 @@ def main():
         "--lsp",
         action="store_true",
         help="Run Senpy as a Language Server (LSP) for editors like VS Code / Neovim"
+    )
+    g_tools.add_argument(
+        "--init-ci",
+        action="store_true",
+        help="Generate a GitHub Actions workflow (.github/workflows/senpy.yml) with automated SARIF scanning"
+    )
+    g_tools.add_argument(
+        "--traceback",
+        nargs="?",
+        const="traceback.txt",
+        metavar="FILE",
+        help="Inspect runtime crash log (traceback.txt or errors.txt) and explain the crash using Senpy rules"
+    )
+    g_tools.add_argument(
+        "--stubs",
+        nargs="?",
+        const="typings",
+        metavar="DIR",
+        help="Generate Python type stubs (.pyi) for Pylance / MyPy in VS Code (default: typings/)"
     )
     g_tools.add_argument(
         "--decompile",
@@ -456,6 +435,70 @@ def main():
         sys.exit(0)
 
     config = load_config(args.path)
+    is_tsundere = args.tsundere or config.get("tsundere", False)
+
+    if args.traceback:
+        from senpy.traceback import parse_traceback_file
+        crash = parse_traceback_file(args.traceback)
+        if not crash:
+            console.print(f"[yellow]Could not find or parse crash log at '[bold]{args.traceback}[/bold]'.[/yellow]\n")
+            sys.exit(0)
+
+        t_text = Text()
+        t_text.append("Runtime Crash Report (Post-Mortem Analysis)\n\n", style="bold red")
+        t_text.append(f"Location:  {crash.file_path}:{crash.line_number}\n", style="bold cyan")
+        if crash.code_line:
+            t_text.append(f"Code:      {crash.code_line}\n", style="bright_white")
+        t_text.append(f"Exception: {crash.exception_type}: {crash.exception_message}\n\n", style="bold yellow")
+        t_text.append(f"Rule [{crash.rule_code}]: ", style="bold red")
+        t_text.append(f"{crash.explanation}\n", style="bright_white")
+
+        console.print(Panel(t_text, title="Traceback Inspector", border_style="red"))
+        sys.exit(0)
+
+    if args.init_ci:
+        from senpy.ci import init_ci_workflow
+        out_path, _created = init_ci_workflow(args.path)
+        rel_out = os.path.relpath(out_path, os.getcwd())
+        if is_tsundere:
+            console.print(f"[bold magenta]{TSUNDERE_UI['init_ci'].format(path=rel_out)}[/bold magenta]\n")
+        else:
+            console.print(
+                f"[bold green]✔ Successfully created GitHub Actions workflow:[/bold green] [bold cyan]{rel_out}[/bold cyan]\n"
+                "[dim]Commit and push this file to enable automatic GitHub Code Scanning on every Pull Request![/dim]\n"
+            )
+        sys.exit(0)
+
+    if args.coverage:
+        from senpy.coverage import calculate_translation_coverage
+        coverage_data = calculate_translation_coverage(args.path)
+
+        if not coverage_data:
+            console.print("[yellow]No translations found in game/tl/ directory.[/yellow]\n")
+            sys.exit(0)
+
+        table = Table(title="Localization Coverage (game/tl/)", border_style="dim")
+        table.add_column("Language", style="bold cyan")
+        table.add_column("Total Strings", justify="right", style="bold white")
+        table.add_column("Translated", justify="right", style="bold green")
+        table.add_column("Missing / Empty", justify="right", style="bold red")
+        table.add_column("Completion", justify="right")
+
+        for lang, stats in sorted(coverage_data.items()):
+            pct = stats.coverage_percent
+            pct_style = "bold green" if pct >= 95.0 else "bold yellow" if pct >= 70.0 else "bold red"
+            table.add_row(
+                lang,
+                f"{stats.total_strings:,}",
+                f"{stats.translated_strings:,}",
+                f"{stats.empty_strings:,}",
+                f"[{pct_style}]{pct}%[/{pct_style}]"
+            )
+
+        console.print(table)
+        if is_tsundere:
+            console.print(f"\n[bold magenta]{TSUNDERE_UI['coverage']}[/bold magenta]\n")
+        sys.exit(0)
 
     if args.clear_cache:
         from senpy.cache import CacheManager
@@ -465,8 +508,6 @@ def main():
         else:
             console.print("[dim]Cache directory does not exist, nothing to clear.[/dim]")
         sys.exit(0)
-
-    is_tsundere = args.tsundere or config.get("tsundere", False)
 
     cfg_ignore = set(config.get("ignore", []))
     cli_ignore = set(args.ignore) if args.ignore is not None else set()
@@ -554,10 +595,33 @@ def main():
         else:
             console.print(f"[bold cyan]Scanning directory:[/bold cyan] {args.path}...\n")
 
+        recent_tb = find_latest_traceback(args.path)
+        if recent_tb:
+            auto_crash = parse_traceback_file(recent_tb)
+            if auto_crash:
+                tb_name = os.path.basename(recent_tb)
+                tb_text = Text()
+                tb_text.append(f"Recent crash log detected ({tb_name})!\n", style="bold red")
+                tb_text.append(f"Crashed at: {auto_crash.file_path}:{auto_crash.line_number} — {auto_crash.exception_type}\n", style="yellow")
+                tb_text.append(f"[{auto_crash.rule_code}] {auto_crash.explanation}", style="bright_white")
+                console.print(Panel(tb_text, border_style="red dim", expand=False))
+                console.print()
+
     start_time = time.perf_counter()
     analyzer = SenpyAnalyzer(args.path, extra_files=extra_rpy_files, fix=args.fix, no_cache=args.no_cache)
     result = analyzer.run(quiet=is_quiet_mode)
     elapsed = time.perf_counter() - start_time
+    if args.export_wiki:
+        from senpy.wiki import generate_project_wiki
+        wiki_md = generate_project_wiki(analyzer)
+        target_wiki = args.export_wiki
+        with open(target_wiki, "w", encoding="utf-8", newline="\n") as f:
+            f.write(wiki_md)
+        if is_tsundere:
+            console.print(f"\n[bold magenta]{TSUNDERE_UI['export_wiki'].format(path=target_wiki)}[/bold magenta]\n")
+        else:
+            console.print(f"\n[bold green]✔ Project documentation exported to [bold]{target_wiki}[/bold]![/bold green]\n")
+        sys.exit(0)
     if args.export_html:
         from senpy.html_report import generate_html_report
         # Отфильтруем предварительно диагностики как для терминала
@@ -600,6 +664,21 @@ def main():
                 console.print(f"\n[bold green]✔ Successfully generated [bold]{out_file}[/bold] with [bold]{gen_count}[/bold] default declaration(s)![/bold green]\n")
         else:
             console.print("\n[bold green]✔ All variables are already properly declared via 'default'![/bold green]\n")
+        sys.exit(0)
+
+    if args.generate_stubs:
+        from senpy.stubs import generate_stubs
+        out_dir, count = generate_stubs(analyzer, out_dir=args.generate_stubs)
+        rel_out = os.path.relpath(out_dir, os.getcwd())
+        if is_tsundere:
+            console.print(
+                f"\n[bold magenta](//∇//) «{TSUNDERE_UI['generate_stubs'].format(path=rel_out, count=count)}»[/bold magenta]\n"
+            )
+        else:
+            console.print(
+                f"\n[bold green]✔ Successfully generated Python type stubs in [bold]{rel_out}/[/bold] ({count} symbols exported)![/bold green]\n"
+                "[dim]Pylance and MyPy in VS Code will now natively autocomplete and type-check your Ren'Py store.[/dim]\n"
+            )
         sys.exit(0)
 
     # Фильтруем ошибки по кодам из --ignore и --errors-only

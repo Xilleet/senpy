@@ -55,7 +55,7 @@ BUILTIN_ACTIONS = {
     "ShowTransient", "FilePage"
 }
 
-SENPY_VERSION = "0.2.9"
+SENPY_VERSION = "0.2.10"
 
 IGNORED_DIRS = {
     ".git", ".svn", ".hg", "node_modules", ".venv", "venv", "env",

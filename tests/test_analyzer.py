@@ -754,3 +754,171 @@ init python:
     clean_analyzer = SenpyAnalyzer(str(tmp_path))
     clean_result = clean_analyzer.run(quiet=True)
     assert not any(d.code == "RPY109" for d in clean_result.diagnostics)
+
+def test_init_ci_generates_workflow_file(tmp_path: Path):
+    """Verify --init-ci generates a valid .github/workflows/senpy.yml workflow"""
+    from senpy.ci import init_ci_workflow
+
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+
+    workflow_path, created = init_ci_workflow(str(game_dir))
+    assert created is True
+
+    wf_file = Path(workflow_path)
+    assert wf_file.exists()
+    assert wf_file.name == "senpy.yml"
+    assert wf_file.parent.name == "workflows"
+    assert wf_file.parent.parent.name == ".github"
+
+    content = wf_file.read_text(encoding="utf-8")
+    assert "upload-sarif@v3" in content
+    assert "security-events: write" in content
+    assert "senpy game/ --format sarif" in content
+
+def test_translation_coverage_calculation(tmp_path: Path):
+    """Verify --coverage accurately computes translation progress percentages across languages"""
+    from senpy.coverage import calculate_translation_coverage
+
+    game_dir = tmp_path / "game"
+    tl_ru = game_dir / "tl" / "russian"
+    tl_es = game_dir / "tl" / "spanish"
+    tl_ru.mkdir(parents=True, exist_ok=True)
+    tl_es.mkdir(parents=True, exist_ok=True)
+
+    # Русский: 3 строки, 2 переведено, 1 пустая (66.7%)
+    ru_script = """
+translate russian strings:
+    old "Start"
+    new "Начать"
+
+    old "Quit"
+    new "Выход"
+
+    old "Options"
+    new ""
+"""
+    # Испанский: 2 строки, 2 переведено (100.0%)
+    es_script = """
+translate spanish strings:
+    old "Start"
+    new "Iniciar"
+
+    old "Quit"
+    new "Salir"
+"""
+    (tl_ru / "common.rpy").write_text(ru_script, encoding="utf-8")
+    (tl_es / "common.rpy").write_text(es_script, encoding="utf-8")
+
+    stats = calculate_translation_coverage(str(tmp_path))
+
+    assert "russian" in stats
+    assert "spanish" in stats
+
+    assert stats["russian"].total_strings == 3
+    assert stats["russian"].translated_strings == 2
+    assert stats["russian"].empty_strings == 1
+    assert stats["russian"].coverage_percent == 66.7
+
+    assert stats["spanish"].total_strings == 2
+    assert stats["spanish"].translated_strings == 2
+    assert stats["spanish"].empty_strings == 0
+    assert stats["spanish"].coverage_percent == 100.0
+
+def test_export_wiki_generation(tmp_path: Path):
+    """Verify --export-wiki extracts characters, typed variables, and terminal endings"""
+    from senpy.wiki import generate_project_wiki
+
+    code = """
+define e = Character("Eileen")
+default player_gold = 100
+define MAX_HP = 50
+
+label start:
+    $ player_gold += 10
+    jump good_end
+
+label good_end:
+    "Победа!"
+    return
+"""
+    _result, _script_file = run_senpy_on_code(code, tmp_path)
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    analyzer.run(quiet=True)
+
+    wiki_content = generate_project_wiki(analyzer)
+
+    # 1. Проверяем персонажей
+    assert "## Characters" in wiki_content
+    assert "`e`" in wiki_content
+
+    # 2. Проверяем переменные и их типы
+    assert "## State & Variables" in wiki_content
+    assert "`player_gold`" in wiki_content
+    assert "`int`" in wiki_content
+    assert "`MAX_HP`" in wiki_content
+
+    # 3. Проверяем концовку
+    assert "## Story Endings" in wiki_content
+    assert "`good_end`" in wiki_content
+
+def test_generate_stubs_creates_valid_pyi_files(tmp_path: Path):
+    """Verify --generate-stubs creates store.pyi and renpy.pyi with accurate types"""
+    from senpy.stubs import generate_stubs
+
+    code = """
+default player_gold = 100
+default player_name = "Eileen"
+default is_quest_active = False
+
+label start:
+    return
+"""
+    _result, _script_file = run_senpy_on_code(code, tmp_path)
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    analyzer.run(quiet=True)
+
+    out_dir, count = generate_stubs(analyzer, out_dir="custom_typings")
+    stubs_path = Path(out_dir)
+
+    assert stubs_path.exists()
+    assert count >= 3
+
+    # 1. Проверяем renpy.pyi
+    renpy_pyi = (stubs_path / "renpy.pyi").read_text(encoding="utf-8")
+    assert "def jump(label: str)" in renpy_pyi
+    assert "class _Music:" in renpy_pyi
+
+    # 2. Проверяем типизированный store.pyi
+    store_pyi = (stubs_path / "store.pyi").read_text(encoding="utf-8")
+    assert "player_gold: int" in store_pyi
+    assert "player_name: str" in store_pyi
+    assert "is_quest_active: bool" in store_pyi
+    assert "persistent: Any" in store_pyi
+
+def test_traceback_inspector_parses_crash_log(tmp_path: Path):
+    """Verify Traceback Inspector parses traceback.txt and maps runtime crashes to Senpy rules"""
+    from senpy.traceback import parse_traceback_file
+
+    fake_traceback = """
+I'm sorry, but an uncaught exception occurred.
+
+While running game code:
+  File "game/script.rpy", line 42, in script
+    $ player_gold += 10
+NameError: name 'player_gold' is not defined
+
+-- Full Traceback ------------------------------------------------------------
+...
+"""
+    tb_file = tmp_path / "traceback.txt"
+    tb_file.write_text(fake_traceback, encoding="utf-8")
+
+    crash = parse_traceback_file(str(tb_file))
+    assert crash is not None
+    assert crash.file_path == "game/script.rpy"
+    assert crash.line_number == 42
+    assert crash.exception_type == "NameError"
+    assert "player_gold" in crash.exception_message
+    assert crash.rule_code == "RPY104"
+    assert "default player_gold = ..." in crash.explanation
