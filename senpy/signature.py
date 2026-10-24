@@ -14,6 +14,7 @@ class SignatureInfo:
     required_names: set[str] = field(default_factory=set)
     all_names: set[str] = field(default_factory=set)
     has_params: bool = False
+    pos_names: list[str] = field(default_factory=list)
 
 
 def parse_signature(param_str: str | None) -> SignatureInfo:
@@ -40,6 +41,7 @@ def parse_signature(param_str: str | None) -> SignatureInfo:
         has_varkwargs = args_node.kwarg is not None
         max_args = float("inf") if has_varargs else float(pos_args_len)
 
+        pos_names = [a.arg for a in args_node.args]
         return SignatureInfo(
             min_args=num_required_pos,
             max_args=max_args,
@@ -48,6 +50,7 @@ def parse_signature(param_str: str | None) -> SignatureInfo:
             required_names=required_names,
             all_names=all_names,
             has_params=True,
+            pos_names=pos_names,
         )
 
     return SignatureInfo(has_params=True, max_args=float("inf"), has_varargs=True, has_varkwargs=True)
@@ -103,9 +106,17 @@ def validate_call_arguments(sig: SignatureInfo, args_str: str | None) -> str | N
             first = min(unexpected)
             return f"got unexpected keyword argument '{first}'"
 
-    # 3. Недостаточно обязательных аргументов
-    total_provided = num_pos + len(kwargs)
-    if total_provided < sig.min_args:
-        return f"missing required argument(s) (requires at least {sig.min_args}, but {total_provided} given)"
+    # 3. Проверка покрытия обязательных параметров
+    covered_by_pos = set(sig.pos_names[:num_pos])
+    all_provided = covered_by_pos | kwargs
+    missing = sig.required_names - all_provided
+    if missing:
+        missing_sorted = sorted(missing)
+        return f"missing required argument '{missing_sorted[0]}'"
+
+    # 4. Проверка дублирования позиционного аргумента через keyword
+    duplicated = covered_by_pos & kwargs
+    if duplicated:
+        return f"got multiple values for argument '{min(duplicated)}'"
 
     return None

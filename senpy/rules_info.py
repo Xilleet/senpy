@@ -194,6 +194,13 @@ RULES_DATABASE = {
         "bad": 'label scene_a:\n    "End of scene A."\nlabel scene_b:\n    "Scene B starts immediately!"',
         "good": 'label scene_a:\n    "End of scene A."\n    return\nlabel scene_b:\n    "Scene B starts!"',
     },
+    "RPY309": {
+        "title": "Story island / isolated subgraph unreachable from 'start'",
+        "severity": "WARNING",
+        "why": "A group of scenes references each other in a loop, but no entry point exists from 'start', 'splashscreen', or main menus. This represents unreachable dead content or orphaned story routes.",
+        "bad": 'label route_a:\n    jump route_b\nlabel route_b:\n    jump route_a',
+        "good": '# Connect route to story flow via jump or call from start',
+    },
     "RPY310": {
         "title": "Invalid argument count or keyword in 'call' statement",
         "severity": "ERROR",
@@ -222,6 +229,13 @@ RULES_DATABASE = {
         "why": "Conditions like 'if False:' or 'if x and not x:' can never be true. The code block will never execute.",
         "bad": "if False:\n    'This story branch is dead.'",
         "good": "if has_secret_item:\n    'Secret branch!'",
+    },
+    "RPY404": {
+        "title": "Variable in MAYBE_SET state evaluated after menu branch",
+        "severity": "WARNING",
+        "why": "If a variable is only defined in one choice of a menu, choosing an alternate path and subsequently evaluating the variable or interpolating it will crash with NameError or KeyError.",
+        "bad": 'menu:\n    "Take torch":\n        $ torch = True\n    "Wait":\n        pass\nif torch: ...',
+        "good": 'default torch = False\nmenu:\n    "Take torch":\n        $ torch = True\n    "Wait":\n        pass\nif torch: ...',
     },
     # ---------------- 500: Assets & Media ----------------
     "RPY501": {
@@ -252,6 +266,13 @@ RULES_DATABASE = {
         "bad": 'image bg room = "day.png"\nimage bg room = "night.png"  # Silently overrides daytime room!',
         "good": 'image bg room_day = "day.png"\nimage bg room_night = "night.png"',
     },
+    "RPY505": {
+        "title": "Unregistered audio channel or voice loop",
+        "severity": "WARNING",
+        "why": "Playing audio on a channel not registered via renpy.music.register_channel() causes a runtime Exception. Looping the voice channel causes audio overlap glitches.",
+        "bad": 'play ambient "rain.ogg"\nplay voice "clip.ogg" loop',
+        "good": 'init python:\n    renpy.music.register_channel("ambient", mixer="sfx", loop=True)\nplay ambient "rain.ogg"',
+    },
     # ---------------- 600: Translations & Localization ----------------
     "RPY601": {
         "title": "Variable mismatch in translation string",
@@ -278,7 +299,7 @@ RULES_DATABASE = {
 
 
 def show_rules_table():
-    table = Table(title="Senpy Linter Rules Reference (All 33 Rules)", border_style="dim")
+    table = Table(title="Senpy Linter Rules Reference (All 40 Rules)", border_style="dim")
     table.add_column("Rule", style="bold cyan")
     table.add_column("Severity", justify="center")
     table.add_column("Description", style="bright_white")

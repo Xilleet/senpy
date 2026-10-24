@@ -620,12 +620,6 @@ class SenpyAnalyzer:
                     sig = parse_signature(raw_params)
                     scope.label_signatures[label_name] = sig
                     self.label_signatures[label_name] = sig
-                    if raw_params:
-                        for p in raw_params.split(","):
-                            p_clean = p.split("=")[0].strip()
-                            if p_clean and p_clean.isidentifier():
-                                scope.declared_symbols.add(p_clean)
-                                self.declared_symbols.add(p_clean)
 
                     idx = next_idx
                     continue
@@ -878,6 +872,12 @@ class SenpyAnalyzer:
                 if m_label:
                     scope_stack.push(ScopeType.LABEL, m_label.group(1), line_indent)
                     state_checker.reset()
+                    raw_params = m_label.group(2)
+                    if raw_params:
+                        for p in raw_params.split(","):
+                            p_clean = p.split("=")[0].strip()
+                            if p_clean and p_clean.isidentifier():
+                                scope_stack.add_symbol(p_clean)
 
                 # Scope: Screens
                 m_screen = RE_SCREEN_START.match(raw_line)

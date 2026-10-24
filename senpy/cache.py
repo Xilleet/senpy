@@ -98,8 +98,16 @@ class CacheManager:
 
         for sym in sorted(analyzer.declared_symbols):
             hasher.update(sym.encode("utf-8"))
+            if sym in analyzer.symbol_types:
+                hasher.update(analyzer.symbol_types[sym].encode("utf-8"))
 
         for const in sorted(analyzer.defined_constants):
             hasher.update(const.encode("utf-8"))
+
+        for img in sorted(analyzer.declared_images.keys()):
+            hasher.update(img.encode("utf-8"))
+
+        for chan in sorted(analyzer.registered_audio_channels):
+            hasher.update(chan.encode("utf-8"))
 
         return hasher.hexdigest()

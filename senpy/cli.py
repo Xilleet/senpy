@@ -279,7 +279,7 @@ def main():
     g_rules.add_argument(
         "--rules",
         action="store_true",
-        help="List all 33 available Senpy rules and their descriptions"
+        help="List all 40 available Senpy rules and their descriptions"
     )
     g_rules.add_argument(
         "--rule",
@@ -655,7 +655,7 @@ def main():
         sys.exit(0)
 
     # Генерация файла senpy_defaults.rpy
-    if args.generate_defaults:
+    if args.defaults:
         out_file, gen_count = analyzer.generate_defaults_file()
         if gen_count > 0:
             if is_tsundere:
@@ -666,9 +666,9 @@ def main():
             console.print("\n[bold green]✔ All variables are already properly declared via 'default'![/bold green]\n")
         sys.exit(0)
 
-    if args.generate_stubs:
+    if args.stubs:
         from senpy.stubs import generate_stubs
-        out_dir, count = generate_stubs(analyzer, out_dir=args.generate_stubs)
+        out_dir, count = generate_stubs(analyzer, out_dir=args.stubs)
         rel_out = os.path.relpath(out_dir, os.getcwd())
         if is_tsundere:
             console.print(

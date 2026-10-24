@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 
 
 @dataclass
-@dataclass
 class Diagnostic:
     file_path: str
     line_number: int
