@@ -40,6 +40,10 @@ BUILTIN_SYMBOLS = {
     "who",
     "what",
     "prefix_",
+    "dissolve", "fade", "pixellate", "vpunch", "hpunch", "pushright",
+    "pushleft", "pushup", "pushdown", "wipeleft", "wiperight", "wipeup",
+    "wipedown", "slideleft", "slideright", "slideup", "slidedown",
+    "zoomin", "zoomout", "zoominout", "blinds", "squares", "irisin", "irisout",
     *dir(builtins),
 }
 
@@ -55,7 +59,7 @@ BUILTIN_ACTIONS = {
     "ShowTransient", "FilePage"
 }
 
-SENPY_VERSION = "0.4.0"
+SENPY_VERSION = "0.4.1"
 
 IGNORED_DIRS = {
     ".git", ".svn", ".hg", "node_modules", ".venv", "venv", "env",

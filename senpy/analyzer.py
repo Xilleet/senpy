@@ -507,6 +507,10 @@ class SenpyAnalyzer:
                 m_def = RE_DEFAULT.match(clean)
                 if m_def:
                     var = m_def.group(1)
+                    # Если настраивается атрибут (config.xxx, gui.xxx, persistent.xxx), пропускаем
+                    if "." in clean.split("=")[0]:
+                        idx = next_idx
+                        continue
                     val_str = m_def.group(2)
                     scope.user_symbols.add(var)
                     scope.declared_symbols.add(var)
@@ -540,6 +544,10 @@ class SenpyAnalyzer:
                 m_define = RE_DEFINE.match(clean)
                 if m_define:
                     var = m_define.group(1)
+                    # Если настраивается атрибут (config.xxx, gui.xxx, persistent.xxx), пропускаем
+                    if "." in clean.split("=")[0]:
+                        idx = next_idx
+                        continue
                     val_str = m_define.group(2)
                     scope.user_symbols.add(var)
                     scope.declared_symbols.add(var)

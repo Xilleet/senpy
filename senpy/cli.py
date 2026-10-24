@@ -24,7 +24,7 @@ from rich.text import Text
 from senpy.analyzer import SenpyAnalyzer
 from senpy.constants import IGNORED_DIRS
 from senpy.rpa import safe_load_rpa_index
-from senpy.traceback import find_latest_traceback
+from senpy.traceback import find_latest_traceback, parse_traceback_file
 from senpy.tsundere import IS_RU, TSUNDERE_FLAVORS, TSUNDERE_UI
 
 console = Console()
@@ -440,7 +440,6 @@ def main():
     is_tsundere = args.tsundere or config.get("tsundere", False)
 
     if args.traceback:
-        from senpy.traceback import parse_traceback_file
         crash = parse_traceback_file(args.traceback)
         if not crash:
             console.print(f"[yellow]Could not find or parse crash log at '[bold]{args.traceback}[/bold]'.[/yellow]\n")

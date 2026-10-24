@@ -5,7 +5,7 @@ import contextlib
 import textwrap
 from typing import TYPE_CHECKING
 
-from senpy.constants import SCREEN_LOCAL_IGNORE
+from senpy.constants import BUILTIN_SYMBOLS, SCREEN_LOCAL_IGNORE
 from senpy.models import Diagnostic
 from senpy.text_tags import get_utf16_range, suggest_similar_symbol
 
@@ -159,6 +159,8 @@ class PythonAstChecker:
                     
                     if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
                         name = child.id
+                        if name in BUILTIN_SYMBOLS:
+                            continue
                         if name in self.analyzer.variables:
                             def_file = self.analyzer.variables[name].file_path
                             if def_file != file_path:
@@ -493,6 +495,7 @@ class PythonAstChecker:
                                 expected_t
                                 and new_t
                                 and expected_t != new_t
+                                and expected_t != "None"  # None -> любой_тип разрешён!
                                 and not ({expected_t, new_t} <= {"int", "float"})
                             ):
                                 start_c, end_c = get_utf16_range(raw_l, target.id)
