@@ -922,3 +922,140 @@ NameError: name 'player_gold' is not defined
     assert "player_gold" in crash.exception_message
     assert crash.rule_code == "RPY104"
     assert "default player_gold = ..." in crash.explanation
+
+def test_signature_missing_required_keyword_arg(tmp_path: Path):
+    """Verify validate_call_arguments catches missing positional argument even if optional kwarg is passed"""
+    code = """
+label quest(item, count=1):
+    return
+
+label start:
+    call quest(count=5)  # Missing required 'item'!
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy310 = [d for d in result.diagnostics if d.code == "RPY310"]
+    assert len(rpy310) == 1
+    assert "missing required argument 'item'" in rpy310[0].message
+    assert rpy310[0].line_number == 6
+
+
+def test_label_parameters_do_not_leak_into_global_scope(tmp_path: Path):
+    """Verify parameters of one label do not leak into global symbols for other labels"""
+    code = """
+label battle(target_enemy, power=10):
+    if target_enemy:
+        "Атака!"
+    return
+
+label explore:
+    if target_enemy:  # RPY103: переменная не объявлена в этой метке!
+        "Враг найден!"
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy103 = [d for d in result.diagnostics if d.code == "RPY103"]
+    assert len(rpy103) == 1
+    assert "target_enemy" in rpy103[0].message
+    assert rpy103[0].line_number == 8
+
+
+def test_call_screen_does_not_create_dummy_jump_target(tmp_path: Path):
+    """Verify 'call screen' does not register a jump to a label named 'screen'"""
+    code = """
+screen test_scr():
+    text "Hello"
+
+label start:
+    call screen test_scr
+    return
+"""
+    _result, _ = run_senpy_on_code(code, tmp_path)
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    analyzer.run(quiet=True)
+    assert "screen" not in analyzer.label_outgoing_jumps.get("start", set())
+
+
+def test_rules_database_completeness():
+    """Verify RULES_DATABASE contains all 40 rules declared in RULE_SEVERITY"""
+    from senpy.models import RULE_SEVERITY
+    from senpy.rules_info import RULES_DATABASE
+    missing = set(RULE_SEVERITY.keys()) - set(RULES_DATABASE.keys())
+    assert not missing, f"RULES_DATABASE is missing rules: {missing}"
+    assert len(RULES_DATABASE) == 40
+
+def test_if_branch_flow_sensitive_uninitialized_variable(tmp_path: Path):
+    """Verify RPY404 detects variables defined only in 'if' branch without 'else'"""
+    code = """
+label start:
+    if quest_started:
+        $ secret_code = 1234
+
+    if secret_code == 1234:
+        "Код введен: [secret_code]"
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy404_diags = [d for d in result.diagnostics if d.code == "RPY404"]
+
+    # Должно поймать дважды: в условии (line 6) и в реплике (line 7)
+    assert len(rpy404_diags) == 2
+    assert any(d.line_number == 6 and "secret_code" in d.message and "condition is False" in d.message for d in rpy404_diags)
+    assert any(d.line_number == 7 and "[secret_code]" in d.message and "condition is False" in d.message for d in rpy404_diags)
+
+
+def test_if_else_asymmetry_flow_sensitive(tmp_path: Path):
+    """Verify RPY404 detects variable defined in 'if' but missing in 'else'"""
+    code = """
+label start:
+    if quest_started:
+        $ secret_token = "ABC"
+    else:
+        $ dummy = 1
+
+    if secret_token:
+        "Успех"
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy404_diags = [d for d in result.diagnostics if d.code == "RPY404"]
+    assert len(rpy404_diags) == 1
+    assert rpy404_diags[0].line_number == 8
+    assert "secret_token" in rpy404_diags[0].message
+    assert "else branch was taken" in rpy404_diags[0].message
+
+
+def test_if_else_both_branches_define_variable_is_safe(tmp_path: Path):
+    """Verify zero RPY404 when variable is assigned in both 'if' and 'else' branches"""
+    code = """
+label start:
+    if quest_started:
+        $ secret_token = "ABC"
+    else:
+        $ secret_token = "DEF"
+
+    if secret_token == "ABC":
+        "Успех: [secret_token]"
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy404_diags = [d for d in result.diagnostics if d.code == "RPY404"]
+    assert len(rpy404_diags) == 0
+
+
+def test_if_branch_variable_with_default_is_safe(tmp_path: Path):
+    """Verify variable declared via top-level 'default' never triggers RPY404 in 'if'"""
+    code = """
+default secret_token = "DEFAULT"
+
+label start:
+    if quest_started:
+        $ secret_token = "ABC"
+
+    if secret_token == "ABC":
+        "Токен: [secret_token]"
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy404_diags = [d for d in result.diagnostics if d.code == "RPY404"]
+    assert len(rpy404_diags) == 0

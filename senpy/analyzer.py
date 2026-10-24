@@ -923,6 +923,8 @@ class SenpyAnalyzer:
 
                 idx = next_idx
 
+            state_checker._pop_and_merge_all_if()
+
             if file_modified and self.fix:
                 with open(file_path, "w", encoding="utf-8", newline="") as f:
                     f.writelines(lines)

@@ -26,6 +26,7 @@ from senpy.constants import (
     SMART_QUOTES,
 )
 from senpy.models import Diagnostic
+from senpy.python_ast import extract_assigned_names
 from senpy.signature import validate_call_arguments
 
 if TYPE_CHECKING:
@@ -564,10 +565,64 @@ class StateChecker(BaseChecker):
 
     def __init__(self, analyzer: SenpyAnalyzer):
         super().__init__(analyzer)
-        self.branch_uninitialized: dict[str, tuple[str, str]] = {}
+        self.branch_uninitialized: dict[str, tuple[str, ...]] = {}
+        self.guaranteed_vars: set[str] = set()
+        self.if_stack: list[dict] = []
 
     def reset(self) -> None:
         self.branch_uninitialized.clear()
+        self.guaranteed_vars.clear()
+        self.if_stack.clear()
+
+    def _pop_and_merge_all_if(self) -> None:
+        while self.if_stack:
+            self._merge_if_context(self.if_stack.pop())
+
+    def _merge_if_context(self, ctx: dict) -> None:
+        branches = ctx["branches"]
+        has_else = any(b["kind"] == "else" for b in branches)
+        non_terminating = [b for b in branches if not b["terminates"]]
+
+        if not non_terminating:
+            return
+
+        if has_else and len(branches) > 1:
+            guaranteed_in_if = set.intersection(*(b["defined_vars"] for b in non_terminating))
+        else:
+            guaranteed_in_if = set()
+
+        all_defined = set().union(*(b["defined_vars"] for b in branches))
+        maybe_set = all_defined - guaranteed_in_if
+
+        if self.if_stack:
+            self.if_stack[-1]["current_branch"]["defined_vars"].update(guaranteed_in_if)
+        else:
+            self.guaranteed_vars.update(guaranteed_in_if)
+
+        for var in sorted(maybe_set):
+            if var in self.analyzer.user_symbols or var in self.guaranteed_vars:
+                continue
+
+            missing_branch = next((b for b in branches if var not in b["defined_vars"]), None)
+            defined_branch = next((b for b in branches if var in b["defined_vars"]), None)
+
+            if not has_else:
+                missing_desc = "condition is False (no else branch)"
+                missing_line = ctx["line"]
+            elif missing_branch:
+                missing_desc = f"{missing_branch['kind']} branch was taken"
+                missing_line = missing_branch["line"]
+            else:
+                missing_desc = "alternate branch was taken"
+                missing_line = ctx["line"]
+
+            defined_desc = f"{defined_branch['kind']} branch" if defined_branch else "if branch"
+
+            self.branch_uninitialized[var] = (
+                missing_desc,
+                defined_desc,
+                str(missing_line),
+            )
 
     def check_line(
         self,
@@ -582,9 +637,59 @@ class StateChecker(BaseChecker):
     ) -> tuple[int, bool]:
         file_modified = False
         stripped = clean_line.strip()
+        line_indent = len(raw_line) - len(raw_line.lstrip(" "))
         is_in_screen = scope_stack.current_screen_name() is not None
 
-        # RPY401: Проверка интерполяций [var] после развилок menu
+        # Управление стеком if/elif/else ветвлений вне экранов
+        if not is_in_screen:
+            is_if = bool(re.match(r"^if\s+", stripped) and stripped.endswith(":"))
+            is_elif = bool(re.match(r"^elif\s+", stripped) and stripped.endswith(":"))
+            is_else = bool(stripped == "else:" or re.match(r"^else\s*:", stripped))
+
+            # Закрываем завершившиеся блоки if при уменьшении отступа
+            while self.if_stack:
+                top = self.if_stack[-1]
+                if line_indent < top["indent"]:
+                    self._merge_if_context(self.if_stack.pop())
+                elif line_indent == top["indent"]:
+                    if is_elif or is_else:
+                        break
+                    self._merge_if_context(self.if_stack.pop())
+                else:
+                    break
+
+            # Переключение на ветку elif или else
+            if (is_elif or is_else) and self.if_stack and line_indent == self.if_stack[-1]["indent"]:
+                b_kind = "elif" if is_elif else "else"
+                new_branch = {
+                    "kind": b_kind,
+                    "defined_vars": set(),
+                    "terminates": False,
+                    "line": idx + 1,
+                }
+                self.if_stack[-1]["branches"].append(new_branch)
+                self.if_stack[-1]["current_branch"] = new_branch
+
+            # Открытие нового if-блока
+            elif is_if:
+                new_ctx = {
+                    "indent": line_indent,
+                    "line": idx + 1,
+                    "branches": [{
+                        "kind": "if",
+                        "defined_vars": set(),
+                        "terminates": False,
+                        "line": idx + 1,
+                    }],
+                }
+                new_ctx["current_branch"] = new_ctx["branches"][0]
+                self.if_stack.append(new_ctx)
+
+            # Отслеживание завершения ветки через jump или return
+            if self.if_stack and re.match(r"^\s*(jump\b|return\b)", stripped):
+                self.if_stack[-1]["current_branch"]["terminates"] = True
+
+        # RPY404: Проверка интерполяций [var] после развилок
         self.analyzer._check_cfg_interpolations(
             file_path, idx + 1, stripped, self.branch_uninitialized, noqa_map
         )
@@ -622,6 +727,11 @@ class StateChecker(BaseChecker):
                     py_code, file_path, start_line=idx + 1, noqa_map=noqa_map, lines=lines
                 )
                 self.analyzer._clear_safe_cfg_vars(py_code, self.branch_uninitialized)
+                assigned_names = extract_assigned_names(py_code)
+                if self.if_stack:
+                    self.if_stack[-1]["current_branch"]["defined_vars"].update(assigned_names)
+                else:
+                    self.guaranteed_vars.update(assigned_names)
             return idx + 1, file_modified
 
         # python: block
@@ -647,6 +757,11 @@ class StateChecker(BaseChecker):
                         code, file_path, start_line=idx + 2, noqa_map=noqa_map, lines=lines
                     )
                     self.analyzer._clear_safe_cfg_vars(code, self.branch_uninitialized)
+                    assigned_names = extract_assigned_names(code)
+                    if self.if_stack:
+                        self.if_stack[-1]["current_branch"]["defined_vars"].update(assigned_names)
+                    else:
+                        self.guaranteed_vars.update(assigned_names)
             return consumed_idx, file_modified
 
         # if / elif condition

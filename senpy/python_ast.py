@@ -766,6 +766,7 @@ class PythonAstChecker:
                     missing_choice = info[0]
                     menu_line = info[2] if len(info) > 2 else "earlier"
                     start_c, end_c = get_utf16_range(line_content, node.id)
+                    reason = missing_choice if ("branch" in missing_choice or "condition" in missing_choice) else f"player took choice '{missing_choice}'"
                     self.analyzer._add_diagnostic(
                         Diagnostic(
                             file_path=file_path,
@@ -773,8 +774,8 @@ class PythonAstChecker:
                             line_content=line_content,
                             code="RPY404",
                             message=(
-                                f"Variable '{node.id}' may be uninitialized (MAYBE_SET) if player took choice "
-                                f"'{missing_choice}' on line {menu_line}. Condition will crash with NameError."
+                                f"Variable '{node.id}' may be uninitialized (MAYBE_SET) if "
+                                f"{reason} on line {menu_line}. Condition will crash with NameError."
                             ),
                             col=start_c,
                             end_col=end_c,

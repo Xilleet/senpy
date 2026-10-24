@@ -16,8 +16,10 @@ except ImportError:
     from pygls.server import LanguageServer
 
 from senpy.analyzer import Diagnostic, SenpyAnalyzer
+from senpy.constants import CLAUSE_KEYWORDS
+from senpy.renpy_api import get_renpy_api_hover
 
-server = LanguageServer("senpy-lsp", "v0.2.11")
+server = LanguageServer("senpy-lsp", "v0.3.0")
 
 
 def _uri_to_path(uri: str) -> str:
@@ -339,21 +341,85 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
 
 @server.feature(lsp.TEXT_DOCUMENT_DEFINITION)
 def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location | None:
-    """Нативный переход по F12 / Ctrl+Click к месту объявления метки или экрана."""
+    """Нативный переход по F12 к меткам, экранам, переменным, спрайтам и файлам ассетов."""
     if _active_analyzer is None or not _is_initialized:
         return None
 
     doc = ls.workspace.get_text_document(params.text_document.uri)
-    if not doc:
+    if not doc or not doc.lines:
         return None
 
-    line = doc.lines[params.position.line]
-    col = params.position.character
+    line_idx = params.position.line
+    if line_idx >= len(doc.lines):
+        return None
 
-    # Извлекаем слово под курсором
-    import re
+    line = doc.lines[line_idx]
+    col = params.position.character
+    stripped = line.strip()
+
+    # 1. Проверяем клик внутри кавычек (путь к аудио или графическому файлу на диске)
+    for qm in re.finditer(r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')', line):
+        if qm.start() <= col <= qm.end():
+            raw_path = qm.group(0)[1:-1].strip()
+            norm_q = raw_path.replace("\\", "/").lower()
+            norm_q = re.sub(r"^<[^>]+>\s*", "", norm_q)
+            base_q = os.path.basename(norm_q)
+
+            for rel_path, full_path in _active_analyzer.media_disk_files.items():
+                clean_rel = rel_path.removeprefix("game/")
+                if rel_path == norm_q or clean_rel == norm_q or os.path.basename(rel_path) == base_q:
+                    return lsp.Location(
+                        uri=_path_to_uri(full_path),
+                        range=lsp.Range(start=lsp.Position(0, 0), end=lsp.Position(0, 0)),
+                    )
+
+    # 2. Проверяем клик по спрайтам/фонам в строках show, scene, hide
+    if stripped.startswith(("show ", "scene ", "hide ")):
+        parts = stripped.split()[1:]
+        img_tokens = []
+        for p in parts:
+            clean_p = p.rstrip(":")
+            if clean_p in CLAUSE_KEYWORDS:
+                break
+            img_tokens.append(clean_p)
+            if p.endswith(":"):
+                break
+
+        if img_tokens:
+            full_tag = " ".join(img_tokens)
+            base_tag = img_tokens[0]
+            tag_start = line.find(base_tag)
+            tag_end = tag_start + len(full_tag) if tag_start != -1 else -1
+
+            if tag_start != -1 and tag_start <= col <= tag_end:
+                # 2.1. Ищем явное объявление image / layeredimage в коде
+                for candidate in (full_tag, base_tag):
+                    if candidate in _active_analyzer.declared_images:
+                        fpath, lnum, _ = _active_analyzer.declared_images[candidate]
+                        return lsp.Location(
+                            uri=_path_to_uri(fpath),
+                            range=lsp.Range(
+                                start=lsp.Position(line=max(0, lnum - 1), character=0),
+                                end=lsp.Position(line=max(0, lnum - 1), character=len(candidate)),
+                            ),
+                        )
+
+                # 2.2. Если в коде нет, ищем файл спрайта на диске в images/
+                for candidate in (full_tag, base_tag):
+                    cand_norm = candidate.lower()
+                    for rel_path, full_path in _active_analyzer.media_disk_files.items():
+                        clean_rel = rel_path.removeprefix("game/")
+                        clean_no_ext = os.path.splitext(clean_rel)[0]
+                        tokenized = clean_no_ext.removeprefix("images/").replace("/", " ").replace("_", " ")
+                        if tokenized == cand_norm or os.path.basename(clean_no_ext) == cand_norm:
+                            return lsp.Location(
+                                uri=_path_to_uri(full_path),
+                                range=lsp.Range(start=lsp.Position(0, 0), end=lsp.Position(0, 0)),
+                            )
+
+    # 3. Извлекаем идентификатор под курсором (с учётом точек: persistent.var)
     word = None
-    for m in re.finditer(r'[a-zA-Z_][a-zA-Z0-9_]*', line):
+    for m in re.finditer(r'[a-zA-Z_][a-zA-Z0-9_\.]*', line):
         if m.start() <= col <= m.end():
             word = m.group(0)
             break
@@ -361,26 +427,49 @@ def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location
     if not word:
         return None
 
-    # Если кликнули по метке сюжета (jump/call)
+    # 3.1. Метка сюжета (jump/call)
     if word in _active_analyzer.declared_labels:
         fpath, lnum, _ = _active_analyzer.declared_labels[word]
         return lsp.Location(
             uri=_path_to_uri(fpath),
             range=lsp.Range(
                 start=lsp.Position(line=max(0, lnum - 1), character=0),
-                end=lsp.Position(line=max(0, lnum - 1), character=len(word))
-            )
+                end=lsp.Position(line=max(0, lnum - 1), character=len(word)),
+            ),
         )
 
-    # Если кликнули по экрану (screen)
+    # 3.2. Экран (screen)
     if word in _active_analyzer.declared_screens:
         fpath, lnum = _active_analyzer.declared_screens[word]
         return lsp.Location(
             uri=_path_to_uri(fpath),
             range=lsp.Range(
                 start=lsp.Position(line=max(0, lnum - 1), character=0),
-                end=lsp.Position(line=max(0, lnum - 1), character=len(word))
-            )
+                end=lsp.Position(line=max(0, lnum - 1), character=len(word)),
+            ),
+        )
+
+    # 3.3. Переменная или константа (default / define / Character)
+    target_var = word if word in _active_analyzer.symbol_declarations else word.split(".")[-1]
+    if target_var in _active_analyzer.symbol_declarations:
+        fpath, lnum, _ = _active_analyzer.symbol_declarations[target_var]
+        return lsp.Location(
+            uri=_path_to_uri(fpath),
+            range=lsp.Range(
+                start=lsp.Position(line=max(0, lnum - 1), character=0),
+                end=lsp.Position(line=max(0, lnum - 1), character=len(target_var)),
+            ),
+        )
+
+    # 3.4. Имя изображения (image) вне строк show/scene
+    if word in _active_analyzer.declared_images:
+        fpath, lnum, _ = _active_analyzer.declared_images[word]
+        return lsp.Location(
+            uri=_path_to_uri(fpath),
+            range=lsp.Range(
+                start=lsp.Position(line=max(0, lnum - 1), character=0),
+                end=lsp.Position(line=max(0, lnum - 1), character=len(word)),
+            ),
         )
 
     return None
@@ -407,6 +496,11 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
 
     if not word:
         return None
+
+    # 0. Если навели на функцию или экшен Ren'Py API
+    api_content = get_renpy_api_hover(word)
+    if api_content:
+        return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=api_content))
 
     # 1. Если навели на переменную (default / define)
     target_var = word if word in _active_analyzer.symbol_declarations else word.split(".")[-1]
@@ -451,6 +545,99 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
         return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
 
     return None
+
+@server.feature(lsp.TEXT_DOCUMENT_DOCUMENT_SYMBOL)
+def document_symbols(ls: LanguageServer, params: lsp.DocumentSymbolParams) -> list[lsp.DocumentSymbol]:
+    """Генерирует нативное дерево символов для Outline (Структура), Breadcrumbs и Ctrl+Shift+O."""
+    symbols: list[lsp.DocumentSymbol] = []
+    if _active_analyzer is None:
+        return symbols
+
+    uri = params.text_document.uri
+    file_path = _uri_to_path(uri)
+    norm_path = os.path.normcase(os.path.abspath(file_path))
+
+    scope = _active_analyzer.file_scopes.get(norm_path)
+    if not scope:
+        _active_analyzer._collect_symbols(file_path)
+        scope = _active_analyzer.file_scopes.get(norm_path)
+
+    if not scope:
+        return symbols
+
+    doc = ls.workspace.get_text_document(uri)
+    lines = doc.lines if doc and doc.lines else []
+    total_lines = len(lines) if lines else 1000
+
+    # Промежуточная структура: (start_line_0based, name, kind, detail, is_block)
+    raw_entries: list[tuple[int, str, lsp.SymbolKind, str, bool]] = []
+
+    # 1. Метки сюжета (label)
+    for lbl_name, (_, lnum, _) in scope.declared_labels.items():
+        if not lbl_name.startswith("_"):
+            raw_entries.append((max(0, lnum - 1), lbl_name, lsp.SymbolKind.Function, "Label", True))
+
+    # 2. Экраны (screen)
+    for scr_name, (_, lnum) in scope.declared_screens.items():
+        raw_entries.append((max(0, lnum - 1), scr_name, lsp.SymbolKind.Interface, "Screen", True))
+
+    # 3. Layeredimage
+    layered_tags = set(scope.declared_layeredimages.keys())
+    for tag in layered_tags:
+        if tag in scope.declared_images:
+            lnum = scope.declared_images[tag][1]
+            raw_entries.append((max(0, lnum - 1), tag, lsp.SymbolKind.Class, "Layered Image", True))
+
+    # 4. Изображения (image, исключая layeredimage)
+    for img_name, (_, lnum, _) in scope.declared_images.items():
+        if img_name not in layered_tags:
+            raw_entries.append((max(0, lnum - 1), img_name, lsp.SymbolKind.Field, "Image", False))
+
+    # 5. Константы и переменные (define / default)
+    for var_name, (_, lnum, _) in getattr(scope, "symbol_declarations", {}).items():
+        if var_name.startswith("_") or var_name in scope.declared_characters:
+            continue
+        is_const = var_name in scope.defined_constants
+        kind = lsp.SymbolKind.Constant if is_const else lsp.SymbolKind.Variable
+        detail = "Constant (define)" if is_const else "Variable (default)"
+        raw_entries.append((max(0, lnum - 1), var_name, kind, detail, False))
+
+    # Сортируем все символы по номеру строки в файле
+    raw_entries.sort(key=lambda x: x[0])
+
+    # Вычисляем диапазоны (Range) для точной подсветки в Breadcrumbs при скролле
+    for i, (start_line, name, kind, detail, is_block) in enumerate(raw_entries):
+        line_text = lines[start_line] if start_line < len(lines) else ""
+        col_idx = line_text.find(name)
+        start_char = max(0, col_idx) if col_idx != -1 else 0
+
+        if is_block:
+            # Блок продолжается до следующего крупного блока или до конца файла
+            next_block = next((e for e in raw_entries[i + 1:] if e[4]), None)
+            end_line = max(start_line, next_block[0] - 1) if next_block else max(start_line, total_lines - 1)
+        else:
+            end_line = start_line
+
+        end_char = len(lines[end_line].rstrip()) if end_line < len(lines) else 0
+
+        symbols.append(
+            lsp.DocumentSymbol(
+                name=name,
+                kind=kind,
+                range=lsp.Range(
+                    start=lsp.Position(line=start_line, character=0),
+                    end=lsp.Position(line=end_line, character=end_char),
+                ),
+                selection_range=lsp.Range(
+                    start=lsp.Position(line=start_line, character=start_char),
+                    end=lsp.Position(line=start_line, character=start_char + len(name)),
+                ),
+                detail=detail,
+            )
+        )
+
+    return symbols
+
 
 def start_lsp():
     server.start_io()
