@@ -7,7 +7,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/Ren'Py-6.99%20%7C%207%20%7C%208-ff69b4?logo=renpy&logoColor=white" alt="Ren'Py 6.99 / 7 / 8">
-  <img src="https://img.shields.io/badge/Rules-40%20Правил-orange" alt="40 Правил">
+  <img src="https://img.shields.io/badge/Rules-40%20Правил-orange" alt="40+ Правил">
   <img src="https://img.shields.io/badge/Speed-77k%20строк%20за%200.04с%20(кэш)-brightgreen" alt="77k строк за 0.04с">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
   <img src="https://img.shields.io/badge/Code%20Style-Ruff-000000.svg" alt="Ruff">

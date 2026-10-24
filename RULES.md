@@ -204,8 +204,8 @@ label start:
 
 ---
 
-a id="rpy109"></a>
-RPY109: Init phase dependency graph violation
+<a id="rpy109"></a>
+### RPY109: Init phase dependency graph violation
 Severity: ERROR
 Why: Ren'Py loads scripts in ascending alphabetical order of filenames during initialization. Evaluating functions or classes in a.rpy that are defined in z.rpy inside init python: causes an immediate crash with NameError on startup.
 
@@ -515,7 +515,7 @@ label route_draft_b:
 ---
 
 <a id="rpy310"></a>
-RPY310: Invalid argument count or keyword in 'call' statement
+### RPY310: Invalid argument count or keyword in 'call' statement
 Severity: ERROR
 Why: Invoking a label via call my_label(...) with missing positional parameters or invalid keyword arguments triggers an immediate runtime TypeError.
 
