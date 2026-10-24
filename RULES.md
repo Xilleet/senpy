@@ -6,11 +6,11 @@ Comprehensive guide to all semantic and static rules implemented in the **Senpy*
 
 ### Navigation
 - **Indentation & Code (RPY0xx)**: [RPY001](#rpy001) | [RPY002](#rpy002)
-- **Variables & State (RPY1xx)**: [RPY101](#rpy101) | [RPY102](#rpy102) | [RPY103](#rpy103) | [RPY104](#rpy104) | [RPY105](#rpy105) | [RPY106](#rpy106) | [RPY107](#rpy107)
-- **Screens & UI (RPY2xx)**: [RPY201](#rpy201) | [RPY202](#rpy202) | [RPY203](#rpy203) | [RPY204](#rpy204) | [RPY205](#rpy205) | [RPY206](#rpy206)
-- **Story Flow & Dialogue (RPY3xx)**: [RPY301](#rpy301) | [RPY302](#rpy302) | [RPY303](#rpy303) | [RPY304](#rpy304) | [RPY305](#rpy305) | [RPY306](#rpy306) | [RPY307](#rpy307) | [RPY308](#rpy308)
-- **Branching & Conditions (RPY4xx)**: [RPY401](#rpy401) | [RPY402](#rpy402) | [RPY403](#rpy403)
-- **Assets & Media (RPY5xx)**: [RPY501](#rpy501) | [RPY502](#rpy502) | [RPY503](#rpy503) | [RPY504](#rpy504)
+- **Variables & State (RPY1xx)**: [RPY101](#rpy101) | [RPY102](#rpy102) | [RPY103](#rpy103) | [RPY104](#rpy104) | [RPY105](#rpy105) | [RPY106](#rpy106) | [RPY107](#rpy107) | [RPY108](#rpy108) | [RPY109](#rpy109)
+- **Screens & UI (RPY2xx)**: [RPY201](#rpy201) | [RPY202](#rpy202) | [RPY203](#rpy203) | [RPY204](#rpy204) | [RPY205](#rpy205) | [RPY206](#rpy206) | [RPY207](#rpy207)
+- **Story Flow & Dialogue (RPY3xx)**: [RPY301](#rpy301) | [RPY302](#rpy302) | [RPY303](#rpy303) | [RPY304](#rpy304) | [RPY305](#rpy305) | [RPY306](#rpy306) | [RPY307](#rpy307) | [RPY308](#rpy308) | [RPY309](#rpy309) | [RPY310](#rpy310)
+- **Branching & Conditions (RPY4xx)**: [RPY401](#rpy401) | [RPY402](#rpy402) | [RPY403](#rpy403) | [RPY404](#rpy404)
+- **Assets & Media (RPY5xx)**: [RPY501](#rpy501) | [RPY502](#rpy502) | [RPY503](#rpy503) | [RPY504](#rpy504) | [RPY505](#rpy505)
 - **Translations & Localization (RPY6xx)**: [RPY601](#rpy601) | [RPY602](#rpy602) | [RPY603](#rpy603)
 
 ---
@@ -181,6 +181,56 @@ define c = Character("[char_name]")
 
 ---
 
+<a id="rpy108"></a>
+### RPY108: Type taint conflict or incompatible augmented assignment
+- **Severity**: `ERROR` (for invalid `+=`) / `WARNING` (for type overwrites)
+- **Why**: Reassigning incompatible types (e.g. `int` variable reassigned to `str`) or performing illegal augmented operations (e.g. `$ str_var += 1`) causes fatal runtime `TypeError`.
+
+```renpy
+# Bad
+default score = 0
+default player_name = "Eileen"
+label start:
+    $ player_name += 1       # Fatal TypeError: can only concatenate str to str!
+    $ score = "High"         # Type taint: breaks subsequent numerical comparisons!
+
+# Good
+default score = 0
+default player_name = "Eileen"
+label start:
+    $ player_name += "!"
+    $ score = 100
+```
+
+---
+
+a id="rpy109"></a>
+RPY109: Init phase dependency graph violation
+Severity: ERROR
+Why: Ren'Py loads scripts in ascending alphabetical order of filenames during initialization. Evaluating functions or classes in a.rpy that are defined in z.rpy inside init python: causes an immediate crash with NameError on startup.
+
+```renpy
+# Bad
+# game/a_setup.rpy
+init python:
+    configure_interface()   # Crashes with NameError: 'configure_interface' is not defined!
+
+# game/z_helpers.rpy
+init python:
+    def configure_interface(): ...
+
+# Good
+# game/a_helpers.rpy
+init python:
+    def configure_interface(): ...
+
+# game/z_setup.rpy
+init python:
+    configure_interface()
+```
+
+---
+
 ## Screens and UI (RPY2xx)
 
 <a id="rpy201"></a>
@@ -285,6 +335,23 @@ textbutton "Heal" action Function(heal_player)
 ```
 
 ---
+
+<a id="rpy207"></a>
+### RPY207: Invalid parameters in screen call / use
+- **Severity**: `ERROR`
+- **Why**: Passing missing required parameters or unknown keyword arguments to `use screen` or `call screen` causes a fatal runtime `Exception`.
+
+```renpy
+# Bad
+screen inventory(category, sort_by="name"):
+    ...
+
+# Calling without required 'category' argument:
+use inventory()
+
+# Good
+use inventory("weapons")
+```
 
 ## Story Flow and Tags (RPY3xx)
 
@@ -427,6 +494,47 @@ label scene_b:
 
 ---
 
+<a id="rpy309"></a>
+### RPY309: Story island / isolated subgraph unreachable from 'start'
+- **Severity**: `WARNING`
+- **Why**: A group of scenes or labels references each other in a loop, but no entry point exists from `start`, `splashscreen`, or main menus. This represents unreachable dead content or orphaned story routes.
+
+```renpy
+# Bad: Loops into each other, but unreachable from start!
+label route_draft_a:
+    "Draft scene A"
+    jump route_draft_b
+
+label route_draft_b:
+    "Draft scene B"
+    jump route_draft_a
+
+# Good: Connect route to story flow via jump/call
+```
+
+---
+
+<a id="rpy310"></a>
+RPY310: Invalid argument count or keyword in 'call' statement
+Severity: ERROR
+Why: Invoking a label via call my_label(...) with missing positional parameters or invalid keyword arguments triggers an immediate runtime TypeError.
+
+```renpy
+# Bad
+label dungeon(difficulty, party_size=4):
+    ...
+
+label start:
+    call dungeon()                     # Missing required 'difficulty' argument!
+    call dungeon("hard", invalid=True) # Unexpected keyword argument!
+
+# Good
+label start:
+    call dungeon("hard", party_size=2)
+```
+
+---
+
 ## Control Flow and Branching (RPY4xx)
 
 <a id="rpy401"></a>
@@ -494,6 +602,33 @@ if has_secret_item:
 
 ---
 
+<a id="rpy404"></a>
+### RPY404: Variable in MAYBE_SET state evaluated after menu branch
+- **Severity**: `WARNING`
+- **Why**: If a variable is only defined in one choice of a `menu:`, picking an alternate choice and subsequently evaluating `if var:` or interpolating `[var]` will crash with `NameError` or `KeyError`.
+
+```renpy
+# Bad
+menu:
+    "Look into the chest":
+        $ found_gem = True
+    "Walk past":
+        pass
+
+if found_gem:   # RPY404: Crashes with NameError if player walked past!
+    "You admire the gem."
+
+# Good
+default found_gem = False
+menu:
+    "Look into the chest":
+        $ found_gem = True
+    "Walk past":
+        pass
+```
+
+---
+
 ## Assets and Media (RPY5xx)
 
 <a id="rpy501"></a>
@@ -553,6 +688,25 @@ image bg room = "night.png"  # Silently overrides daytime room!
 # Good
 image bg room_day = "day.png"
 image bg room_night = "night.png"
+```
+
+---
+
+<a id="rpy505"></a>
+### RPY505: Unregistered audio channel or voice loop
+- **Severity**: `WARNING` (for voice loop) / `ERROR` (for unregistered channel)
+- **Why**: Playing audio on a custom channel not registered via `renpy.music.register_channel()` causes a runtime `Exception`. Looping the `voice` channel causes audio overlap glitches during dialogue progression.
+
+```renpy
+# Bad
+play ambient "rain.ogg"   # 'ambient' was never registered!
+play voice "clip.ogg" loop # Voice channel should not loop!
+
+# Good
+init python:
+    renpy.music.register_channel("ambient", mixer="sfx", loop=True)
+
+play ambient "rain.ogg"
 ```
 
 ---

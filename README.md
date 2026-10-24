@@ -1,18 +1,16 @@
-[English](README.md) | [Русский](README_ru.md)
+<p align="center">
+  <a href="README.md"><b>English</b></a> | <a href="README_ru.md"><b>Русский</b></a>
+</p>
 
 # Senpy (`senpy-linter`)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/Ren'Py-6.99%20%7C%207%20%7C%208-ff69b4?logo=renpy&logoColor=white" alt="Ren'Py 6.99 / 7 / 8">
-  <img src="https://img.shields.io/badge/Rules-33%20Semantic%20Rules-orange" alt="33 Rules">
-  <img src="https://img.shields.io/badge/Speed-77k%20lines%20in%203.5s-brightgreen" alt="Speed: 77k lines in 3.5s">
+  <img src="https://img.shields.io/badge/Rules-40%20Semantic%20Rules-orange" alt="40 Rules">
+  <img src="https://img.shields.io/badge/Speed-77k%20lines%20in%200.04s%20(cached)-brightgreen" alt="Speed: 77k lines in 0.04s">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
   <img src="https://img.shields.io/badge/Code%20Style-Ruff-000000.svg" alt="Ruff">
-</p>
-
-<p align="center">
-  <a href="README.md"><b>English</b></a> | <a href="README_ru.md"><b>Русский</b></a>
 </p>
 
 <p align="center">
@@ -28,16 +26,15 @@ The standard built-in `renpy lint` command only checks for basic syntax errors a
 
 **Senpy** provides comprehensive static semantic analysis without requiring the Ren'Py SDK runtime:
 
-* **High Throughput:** Analyzes **77,000+ lines across 50 files in ~3.5 seconds** on commercial-scale visual novels with cold start, and responds in **10–15 ms** incrementally in editor sessions.
-* **Save Game & Rollback Safety:** Catches dangerous `define` constant mutations (`RPY105`), non-revertable Python types (`RPY106`), and assignments missing top-level `default` declarations (`RPY104`).
-* **Branching Dataflow Analysis:** Traces `menu:` choices to ensure variables are consistently defined across all possible story paths, preventing runtime crashes on alternative routes (`RPY401`).
-* **Screen Safety Guard:** Flags direct state mutations and imperative Python loops inside reactive screens that cause lag, redraw loops, and broken rollbacks (`RPY201`, `RPY205`).
-* **Modern & Legacy Image Semantics:** Fully validates both modern Ren'Py 7/8 `layeredimage` constructs (arbitrary attribute order, attribute removal syntax like `-coat`, ATL property separation) and classic Ren'Py 6.99 `image` definitions (`RPY502`).
-* **Translation Validator (TL-Checker):** Audits `game/tl/` localization files using state-machine pair matching to detect broken interpolation variables (`[var]`), tag mismatches, and blank translated strings (`RPY601`–`RPY603`).
-* **Deprecated API Detection:** Identifies obsolete Ren'Py calls (`LiveComposite`, `DynamicCharacter`, software-rendered `im.*`, legacy `ui.*`) and provides one-click modern replacements (`RPY107`).
-* **Hardened RPA Sandbox:** Safely inspects `.rpa` archive indexes using pickle opcode whitelisting to prevent arbitrary code execution (RCE) and decompression bombs when auditing third-party mods.
-* **Interactive Story Graph:** Builds a directed control-flow graph (CFG) of scenes, detecting dead ends (fallthrough hazards), and renders an interactive, zoomable graph in VS Code.
-* **LSP & Editor Integration:** Full Language Server Protocol support for VS Code and Cursor, providing live diagnostics, exact character ranges, and automated Quick Fixes (`Ctrl+.`).
+* **High Throughput & Disk Serialization:** Analyzes **77,000+ lines in ~3.5s on cold start and 0.04s incrementally** via two-tier `.senpy_cache/` disk serialization.
+* **Save Game & Rollback Safety:** Catches dangerous `define` mutations (`RPY105`), non-revertable types (`RPY106`), dynamic assignments missing `default` (`RPY104`), and type-taint conflicts (`RPY108`).
+* **Init Phase Dependency Graph:** Analyzes alphabetical file loading order in `init python:` to prevent runtime `NameError` crashes on startup (`RPY109`).
+* **Arity & Signature Checking:** Verifies parameter counts and keyword arguments on `call label(...)` (`RPY310`) and `use screen(...)` (`RPY207`).
+* **Branching Dataflow Analysis:** Traces nested `menu:` branches to ensure variables aren't evaluated in an uninitialized `MAYBE_SET` state (`RPY401`, `RPY404`).
+* **Screen Safety Guard:** Flags predictive state mutations and imperative Python loops in screens (`RPY201`, `RPY205`).
+* **Translation Validator & Coverage:** Audits `game/tl/` formatting and calculates localization completion percentages via `senpy --coverage` (`RPY601`–`RPY603`).
+* **Runtime Crash Inspector:** Parses `traceback.txt` post-mortem crash logs, explaining failures in human-readable terms (`senpy --traceback`).
+* **LSP & VS Code Superpowers:** Live diagnostics, Go-to-Definition (`F12`), semantic hover, interactive story map, and live crash watchers.
 
 ---
 
@@ -74,26 +71,31 @@ senpy "path/to/game"
 # Automatically apply safe fixes (unclosed tags, smart quotes, tab indents)
 senpy "path/to/game" --fix
 
-# Generate 'senpy_defaults.rpy' to declare all missing default variables
-senpy "path/to/game" --generate-defaults
+# Calculate translation completion metrics across all languages in game/tl/
+senpy "path/to/game" --coverage
 
-# Export story flow as a Mermaid.js diagram to terminal or file
-senpy "path/to/game" --graph
+# Generate project documentation (GDD / Wiki) covering characters, state, and endings
+senpy "path/to/game" --export-wiki "PROJECT_WIKI.md"
+
+# Generate Python type stubs (.pyi) for Pylance / MyPy in VS Code
+senpy "path/to/game" --stubs
+
+# Inspect a Ren'Py runtime crash log (traceback.txt or errors.txt)
+senpy --traceback "path/to/traceback.txt"
+
+# One-click GitHub Actions workflow generator with CodeQL SARIF scanning
+senpy --init-ci
+
+# Generate 'senpy_defaults.rpy' to declare all missing default variables
+senpy "path/to/game" --defaults
+
+# Export story flow as an interactive Mermaid.js diagram
 senpy "path/to/game" --graph-file "story_graph.md"
 
-# Output diagnostics in JSON format for CI/CD pipelines
-senpy "path/to/game" --format json --output-file report.json
+# Clear disk cache (.senpy_cache)
+senpy --clear-cache
 
-# Auto-decompile orphaned .rpyc files in an isolated temporary sandbox
-senpy "path/to/game" --decompile
-
-# Ignore specific rule codes
-senpy "path/to/game" --ignore RPY104 RPY303
-
-# Show detailed documentation and code examples for a specific rule
-senpy --rule RPY107
-
-# List all 33 available rules
+# List all 40 available rules
 senpy --rules
 
 # Enable anime-style tsundere diagnostic messages
@@ -104,17 +106,17 @@ senpy "path/to/game" --tsundere
 
 ## Rules Overview
 
-Senpy includes **33 specialized semantic rules** tailored to Ren'Py scripting:
+Senpy includes **40 specialized semantic rules** tailored to Ren'Py scripting:
 
 | Series | Category | Description |
 | :--- | :--- | :--- |
 | **RPY0xx** | Indentation & Formatting | Tab characters in indents (`RPY001`), typographic smart quotes in code (`RPY002`). |
-| **RPY1xx** | Variables, State & APIs | Missing `[var]` references, NameError on `+=`, undeclared variables in `if`, `define` mutations, non-revertable types, deprecated APIs (`RPY107`). |
-| **RPY2xx** | Screens & UI Performance | Predictive state mutations, variables without `default` in screens, dead buttons, missing screens, imperative loops, function calls in `action` (`RPY206`). |
-| **RPY3xx** | Dialogue & Story Flow | Unclosed `{b}` tags, broken jump/call targets, dead labels, malformed hex colors, unescaped dialogue quotes, missing returns, duplicate labels, fallthroughs (`RPY308`). |
-| **RPY4xx** | Branching & Logic | Inconsistent variables in `menu:` choices (`RPY401`), empty choices, always-false or contradictory conditions. |
-| **RPY5xx** | Assets & Media | Missing audio files, unresolved sprites/layered image attributes, unused assets on disk (`RPY503`), duplicate image declarations. |
-| **RPY6xx** | Translations & Localization | Variable mismatches in `game/tl/` (`RPY601`), formatting tag mismatches, blank translation strings. |
+| **RPY1xx** | Variables, State & APIs | Missing `[var]` references, NameError on `+=`, undeclared variables in `if`, `define` mutations, non-revertable types, deprecated APIs (`RPY107`), type taints (`RPY108`), init load order (`RPY109`). |
+| **RPY2xx** | Screens & UI Performance | Predictive state mutations, variables without `default` in screens, dead buttons, missing screens, imperative loops, function calls in `action` (`RPY206`), screen parameter mismatches (`RPY207`). |
+| **RPY3xx** | Dialogue & Story Flow | Unclosed `{b}` tags, broken jump/call targets, dead labels, malformed hex colors, unescaped quotes, missing returns, duplicate labels, fallthroughs (`RPY308`), story islands (`RPY309`), call parameter mismatches (`RPY310`). |
+| **RPY4xx** | Branching & Logic | Inconsistent variables in `menu:` choices (`RPY401`), empty choices (`RPY402`), contradictory conditions (`RPY403`), reading uninitialized `MAYBE_SET` variables (`RPY404`). |
+| **RPY5xx** | Assets & Media | Missing audio files, unresolved sprites/layered image attributes, unused assets on disk (`RPY503`), duplicate image declarations, unregistered audio channels (`RPY505`). |
+| **RPY6xx** | Translations & Localization | Variable mismatches in `game/tl/` (`RPY601`), formatting tag mismatches, blank translation strings (`RPY603`). |
 
 For full descriptions, rationale, and bad/good examples, read the complete **[Rules Documentation](RULES.md)**.
 
@@ -205,7 +207,13 @@ ignore = [
 
 Senpy fully supports the standard **SARIF** output format, allowing you to automatically scan your visual novel for errors every time someone submits a Pull Request. GitHub will natively highlight bugs and crash risks directly in the code review interface!
 
-To enable this, simply create a file at `.github/workflows/senpy.yml` in your repository:
+To enable this in one click, run:
+
+```bash
+senpy --init-ci
+```
+
+Or manually create `.github/workflows/senpy.yml`:
 
 ```yaml
 name: Senpy Code Scanning
@@ -217,6 +225,9 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -228,7 +239,7 @@ jobs:
 
       - name: Run Senpy Analysis
         run: senpy game/ --format sarif --output-file senpy.sarif
-        continue-on-error: true  # Prevents workflow from crashing before upload
+        continue-on-error: true
 
       - name: Upload SARIF report
         uses: github/codeql-action/upload-sarif@v3
