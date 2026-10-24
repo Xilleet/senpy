@@ -19,7 +19,7 @@ from senpy.analyzer import Diagnostic, SenpyAnalyzer
 from senpy.constants import CLAUSE_KEYWORDS
 from senpy.renpy_api import get_renpy_api_hover
 
-server = LanguageServer("senpy-lsp", "v0.3.0")
+server = LanguageServer("senpy-lsp", "v0.4.0")
 
 
 def _uri_to_path(uri: str) -> str:
@@ -293,41 +293,38 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
 
     # 1. Автокомплит меток для jump / call
     if prefix.startswith(("jump ", "call ")):
-        for label_name, (fpath, lnum, _) in sorted(_active_analyzer.declared_labels.items()):
+        for label_name, lbl in sorted(_active_analyzer.labels.items()):
             if label_name.startswith("_"):
                 continue
             items.append(lsp.CompletionItem(
                 label=label_name,
                 kind=lsp.CompletionItemKind.Reference,
-                detail=f"Label ({os.path.basename(fpath)}:{lnum})"
+                detail=f"Label ({os.path.basename(lbl.file_path)}:{lbl.line_number})"
             ))
 
     # 2. Автокомплит экранов для show screen / call screen / use
     elif prefix.startswith(("show screen ", "call screen ", "use ")):
-        for screen_name, (fpath, lnum) in sorted(_active_analyzer.declared_screens.items()):
+        for screen_name, scr in sorted(_active_analyzer.screens.items()):
             items.append(lsp.CompletionItem(
                 label=screen_name,
                 kind=lsp.CompletionItemKind.Interface,
-                detail=f"Screen ({os.path.basename(fpath)}:{lnum})"
+                detail=f"Screen ({os.path.basename(scr.file_path)}:{scr.line_number})"
             ))
 
     # 3. Автокомплит спрайтов и атрибутов layeredimage для show / scene
     elif prefix.startswith(("show ", "scene ")):
         tokens = prefix.split()
-        # Если только начали писать имя спрайта: `show `
         if len(tokens) == 1 or (len(tokens) == 2 and not prefix.endswith(" ")):
-            all_tags = {img.split()[0] for img in _active_analyzer.declared_images}
-            all_tags.update(_active_analyzer.declared_layeredimages)
+            all_tags = {img.split()[0] for img in _active_analyzer.images}
             for tag in sorted(all_tags):
                 items.append(lsp.CompletionItem(
                     label=tag,
                     kind=lsp.CompletionItemKind.Class,
                     detail="Sprite Tag"
                 ))
-        # Если базовый тег уже введён и выбираем эмоции/атрибуты: `show sayori `
         elif len(tokens) >= 2:
             base_tag = tokens[1]
-            all_valid = _active_analyzer.valid_images.union(_active_analyzer.declared_images.keys())
+            all_valid = _active_analyzer.valid_images.union(_active_analyzer.images.keys())
             attrs = _active_analyzer._get_tag_known_attributes(base_tag, all_valid)
             for attr in sorted(attrs):
                 items.append(lsp.CompletionItem(
@@ -392,19 +389,17 @@ def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location
             tag_end = tag_start + len(full_tag) if tag_start != -1 else -1
 
             if tag_start != -1 and tag_start <= col <= tag_end:
-                # 2.1. Ищем явное объявление image / layeredimage в коде
                 for candidate in (full_tag, base_tag):
-                    if candidate in _active_analyzer.declared_images:
-                        fpath, lnum, _ = _active_analyzer.declared_images[candidate]
+                    if candidate in _active_analyzer.images:
+                        img = _active_analyzer.images[candidate]
                         return lsp.Location(
-                            uri=_path_to_uri(fpath),
+                            uri=_path_to_uri(img.file_path),
                             range=lsp.Range(
-                                start=lsp.Position(line=max(0, lnum - 1), character=0),
-                                end=lsp.Position(line=max(0, lnum - 1), character=len(candidate)),
+                                start=lsp.Position(line=max(0, img.line_number - 1), character=0),
+                                end=lsp.Position(line=max(0, img.line_number - 1), character=len(candidate)),
                             ),
                         )
 
-                # 2.2. Если в коде нет, ищем файл спрайта на диске в images/
                 for candidate in (full_tag, base_tag):
                     cand_norm = candidate.lower()
                     for rel_path, full_path in _active_analyzer.media_disk_files.items():
@@ -417,7 +412,7 @@ def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location
                                 range=lsp.Range(start=lsp.Position(0, 0), end=lsp.Position(0, 0)),
                             )
 
-    # 3. Извлекаем идентификатор под курсором (с учётом точек: persistent.var)
+    # 3. Извлекаем идентификатор под курсором
     word = None
     for m in re.finditer(r'[a-zA-Z_][a-zA-Z0-9_\.]*', line):
         if m.start() <= col <= m.end():
@@ -428,51 +423,52 @@ def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location
         return None
 
     # 3.1. Метка сюжета (jump/call)
-    if word in _active_analyzer.declared_labels:
-        fpath, lnum, _ = _active_analyzer.declared_labels[word]
+    if word in _active_analyzer.labels:
+        lbl = _active_analyzer.labels[word]
         return lsp.Location(
-            uri=_path_to_uri(fpath),
+            uri=_path_to_uri(lbl.file_path),
             range=lsp.Range(
-                start=lsp.Position(line=max(0, lnum - 1), character=0),
-                end=lsp.Position(line=max(0, lnum - 1), character=len(word)),
+                start=lsp.Position(line=max(0, lbl.line_number - 1), character=0),
+                end=lsp.Position(line=max(0, lbl.line_number - 1), character=len(word)),
             ),
         )
 
     # 3.2. Экран (screen)
-    if word in _active_analyzer.declared_screens:
-        fpath, lnum = _active_analyzer.declared_screens[word]
+    if word in _active_analyzer.screens:
+        scr = _active_analyzer.screens[word]
         return lsp.Location(
-            uri=_path_to_uri(fpath),
+            uri=_path_to_uri(scr.file_path),
             range=lsp.Range(
-                start=lsp.Position(line=max(0, lnum - 1), character=0),
-                end=lsp.Position(line=max(0, lnum - 1), character=len(word)),
+                start=lsp.Position(line=max(0, scr.line_number - 1), character=0),
+                end=lsp.Position(line=max(0, scr.line_number - 1), character=len(word)),
             ),
         )
 
-    # 3.3. Переменная или константа (default / define / Character)
-    target_var = word if word in _active_analyzer.symbol_declarations else word.split(".")[-1]
-    if target_var in _active_analyzer.symbol_declarations:
-        fpath, lnum, _ = _active_analyzer.symbol_declarations[target_var]
+    # 3.3. Переменная или константа
+    target_var = word if word in _active_analyzer.variables else word.split(".")[-1]
+    if target_var in _active_analyzer.variables:
+        var = _active_analyzer.variables[target_var]
         return lsp.Location(
-            uri=_path_to_uri(fpath),
+            uri=_path_to_uri(var.file_path),
             range=lsp.Range(
-                start=lsp.Position(line=max(0, lnum - 1), character=0),
-                end=lsp.Position(line=max(0, lnum - 1), character=len(target_var)),
+                start=lsp.Position(line=max(0, var.line_number - 1), character=0),
+                end=lsp.Position(line=max(0, var.line_number - 1), character=len(target_var)),
             ),
         )
 
     # 3.4. Имя изображения (image) вне строк show/scene
-    if word in _active_analyzer.declared_images:
-        fpath, lnum, _ = _active_analyzer.declared_images[word]
+    if word in _active_analyzer.images:
+        img = _active_analyzer.images[word]
         return lsp.Location(
-            uri=_path_to_uri(fpath),
+            uri=_path_to_uri(img.file_path),
             range=lsp.Range(
-                start=lsp.Position(line=max(0, lnum - 1), character=0),
-                end=lsp.Position(line=max(0, lnum - 1), character=len(word)),
+                start=lsp.Position(line=max(0, img.line_number - 1), character=0),
+                end=lsp.Position(line=max(0, img.line_number - 1), character=len(word)),
             ),
         )
 
     return None
+
 
 @server.feature(lsp.TEXT_DOCUMENT_HOVER)
 def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
@@ -487,7 +483,6 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
     line = doc.lines[params.position.line]
     col = params.position.character
 
-    # Ищем слово под курсором (включая точки для persistent.var и config.var)
     word = None
     for m in re.finditer(r'[a-zA-Z_][a-zA-Z0-9_\.]*', line):
         if m.start() <= col <= m.end():
@@ -497,54 +492,48 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
     if not word:
         return None
 
-    # 0. Если навели на функцию или экшен Ren'Py API
     api_content = get_renpy_api_hover(word)
     if api_content:
         return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=api_content))
 
-    # 1. Если навели на переменную (default / define)
-    target_var = word if word in _active_analyzer.symbol_declarations else word.split(".")[-1]
-    if target_var in _active_analyzer.symbol_declarations:
-        fpath, lnum, code = _active_analyzer.symbol_declarations[target_var]
-        fname = os.path.basename(fpath)
-        is_const = target_var in _active_analyzer.defined_constants
-        kind = "Constant (`define`)" if is_const else "Variable (`default`)"
+    target_var = word if word in _active_analyzer.variables else word.split(".")[-1]
+    if target_var in _active_analyzer.variables:
+        var = _active_analyzer.variables[target_var]
+        fname = os.path.basename(var.file_path)
+        kind = "Constant (`define`)" if var.is_constant else "Variable (`default`)"
 
         content = (
             f"**Ren'Py {kind}** — `{target_var}`\n\n"
-            f"*Declared at `{fname}:{lnum}`*\n"
-            f"```renpy\n{code}\n```"
+            f"*Declared at `{fname}:{var.line_number}`*\n"
+            f"```renpy\n{var.code_line}\n```"
         )
         return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
 
-    # 2. Если навели на метку сюжета (label)
-    if word in _active_analyzer.declared_labels:
-        fpath, lnum, code = _active_analyzer.declared_labels[word]
-        fname = os.path.basename(fpath)
-        has_return = word in _active_analyzer.labels_with_return
-        jumps = _active_analyzer.label_outgoing_jumps.get(word, set())
+    if word in _active_analyzer.labels:
+        lbl = _active_analyzer.labels[word]
+        fname = os.path.basename(lbl.file_path)
         
-        info_lines = [f"**Ren'Py Label** — `{word}`\n\n*Declared at `{fname}:{lnum}`*"]
-        info_lines.append(f"```renpy\n{code}\n```")
+        info_lines = [f"**Ren'Py Label** — `{word}`\n\n*Declared at `{fname}:{lbl.line_number}`*"]
+        info_lines.append(f"```renpy\n{lbl.code_line}\n```")
         
         status = []
-        if has_return:
+        if lbl.has_return:
             status.append("✔ Has return")
-        if jumps:
-            status.append(f"➔ Jumps to: {', '.join(f'`{j}`' for j in sorted(jumps)[:4])}")
+        if lbl.outgoing_jumps:
+            status.append(f"➔ Jumps to: {', '.join(f'`{j}`' for j in sorted(lbl.outgoing_jumps)[:4])}")
         if status:
             info_lines.append("\n" + " • ".join(status))
 
         return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value="\n".join(info_lines)))
 
-    # 3. Если навели на экран (screen)
-    if word in _active_analyzer.declared_screens:
-        fpath, lnum = _active_analyzer.declared_screens[word]
-        fname = os.path.basename(fpath)
-        content = f"**Ren'Py Screen** — `{word}`\n\n*Declared at `{fname}:{lnum}`*"
+    if word in _active_analyzer.screens:
+        scr = _active_analyzer.screens[word]
+        fname = os.path.basename(scr.file_path)
+        content = f"**Ren'Py Screen** — `{word}`\n\n*Declared at `{fname}:{scr.line_number}`*"
         return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
 
     return None
+
 
 @server.feature(lsp.TEXT_DOCUMENT_DOCUMENT_SYMBOL)
 def document_symbols(ls: LanguageServer, params: lsp.DocumentSymbolParams) -> list[lsp.DocumentSymbol]:
@@ -569,50 +558,36 @@ def document_symbols(ls: LanguageServer, params: lsp.DocumentSymbolParams) -> li
     lines = doc.lines if doc and doc.lines else []
     total_lines = len(lines) if lines else 1000
 
-    # Промежуточная структура: (start_line_0based, name, kind, detail, is_block)
     raw_entries: list[tuple[int, str, lsp.SymbolKind, str, bool]] = []
 
-    # 1. Метки сюжета (label)
-    for lbl_name, (_, lnum, _) in scope.declared_labels.items():
+    for lbl_name, lbl_sym in scope.labels.items():
         if not lbl_name.startswith("_"):
-            raw_entries.append((max(0, lnum - 1), lbl_name, lsp.SymbolKind.Function, "Label", True))
+            raw_entries.append((max(0, lbl_sym.line_number - 1), lbl_name, lsp.SymbolKind.Function, "Label", True))
 
-    # 2. Экраны (screen)
-    for scr_name, (_, lnum) in scope.declared_screens.items():
-        raw_entries.append((max(0, lnum - 1), scr_name, lsp.SymbolKind.Interface, "Screen", True))
+    for scr_name, scr_sym in scope.screens.items():
+        raw_entries.append((max(0, scr_sym.line_number - 1), scr_name, lsp.SymbolKind.Interface, "Screen", True))
 
-    # 3. Layeredimage
-    layered_tags = set(scope.declared_layeredimages.keys())
-    for tag in layered_tags:
-        if tag in scope.declared_images:
-            lnum = scope.declared_images[tag][1]
-            raw_entries.append((max(0, lnum - 1), tag, lsp.SymbolKind.Class, "Layered Image", True))
+    for img_name, img_sym in scope.images.items():
+        if img_sym.is_layered:
+            raw_entries.append((max(0, img_sym.line_number - 1), img_name, lsp.SymbolKind.Class, "Layered Image", True))
+        else:
+            raw_entries.append((max(0, img_sym.line_number - 1), img_name, lsp.SymbolKind.Field, "Image", False))
 
-    # 4. Изображения (image, исключая layeredimage)
-    for img_name, (_, lnum, _) in scope.declared_images.items():
-        if img_name not in layered_tags:
-            raw_entries.append((max(0, lnum - 1), img_name, lsp.SymbolKind.Field, "Image", False))
-
-    # 5. Константы и переменные (define / default)
-    for var_name, (_, lnum, _) in getattr(scope, "symbol_declarations", {}).items():
-        if var_name.startswith("_") or var_name in scope.declared_characters:
+    for var_name, var_sym in scope.variables.items():
+        if var_name.startswith("_") or var_sym.is_character:
             continue
-        is_const = var_name in scope.defined_constants
-        kind = lsp.SymbolKind.Constant if is_const else lsp.SymbolKind.Variable
-        detail = "Constant (define)" if is_const else "Variable (default)"
-        raw_entries.append((max(0, lnum - 1), var_name, kind, detail, False))
+        kind = lsp.SymbolKind.Constant if var_sym.is_constant else lsp.SymbolKind.Variable
+        detail = "Constant (define)" if var_sym.is_constant else "Variable (default)"
+        raw_entries.append((max(0, var_sym.line_number - 1), var_name, kind, detail, False))
 
-    # Сортируем все символы по номеру строки в файле
     raw_entries.sort(key=lambda x: x[0])
 
-    # Вычисляем диапазоны (Range) для точной подсветки в Breadcrumbs при скролле
     for i, (start_line, name, kind, detail, is_block) in enumerate(raw_entries):
         line_text = lines[start_line] if start_line < len(lines) else ""
         col_idx = line_text.find(name)
         start_char = max(0, col_idx) if col_idx != -1 else 0
 
         if is_block:
-            # Блок продолжается до следующего крупного блока или до конца файла
             next_block = next((e for e in raw_entries[i + 1:] if e[4]), None)
             end_line = max(start_line, next_block[0] - 1) if next_block else max(start_line, total_lines - 1)
         else:

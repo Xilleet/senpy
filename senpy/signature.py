@@ -23,7 +23,7 @@ def parse_signature(param_str: str | None) -> SignatureInfo:
         return SignatureInfo()
 
     clean = param_str.strip()
-    with contextlib.suppress(Exception):
+    with contextlib.suppress(SyntaxError, ValueError, TypeError):
         tree = ast.parse(f"def _d({clean}): pass")
         args_node = tree.body[0].args  # type: ignore
 
@@ -59,7 +59,7 @@ def parse_signature(param_str: str | None) -> SignatureInfo:
 def parse_call_args(args_str: str) -> tuple[int, set[str], bool, bool] | None:
     """Парсит переданные аргументы вызова: (кол-во_позиционных, переданные_kwargs, есть_*args, есть_**kwargs)."""
     clean = args_str.strip()
-    with contextlib.suppress(Exception):
+    with contextlib.suppress(SyntaxError, ValueError, TypeError):
         tree = ast.parse(f"_d({clean})")
         call = tree.body[0].value  # type: ignore
         if isinstance(call, ast.Call):

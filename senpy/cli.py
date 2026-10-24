@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import json
 import os
+import pickle
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,7 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
+import zlib
 from collections import Counter
 
 import tomllib
@@ -147,7 +149,7 @@ def extract_scripts_from_rpa(rpa_path: str, dest_dir: str) -> list[str]:
     rpa_mtime = os.path.getmtime(rpa_path) if os.path.exists(rpa_path) else 0.0
     dest_dir_abs = os.path.abspath(dest_dir)
 
-    with contextlib.suppress(Exception), open(rpa_path, "rb") as f:
+    with contextlib.suppress(OSError, ValueError, TypeError, zlib.error, pickle.PickleError), open(rpa_path, "rb") as f:
         header = f.read(50)
         parts = header.split()
         if not parts or not parts[0].startswith((b"RPA-3.0", b"RPA-2.0")):
@@ -526,6 +528,14 @@ def main():
     orphaned_rpyc = []
     extra_rpy_files = []
 
+    # Предварительно собираем список существующих .rpy строго без учета .senpy_cache
+    existing_rpy_files = set()
+    for root, dirs, files in os.walk(args.path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
+        for f in files:
+            if f.endswith(".rpy"):
+                existing_rpy_files.add(f)
+
     # 2. Умная работа с RPA: ищем скрипты в архивах (для релизных сборок и модов)
     rpa_files = []
     for root, dirs, files in os.walk(args.path):
@@ -542,19 +552,25 @@ def main():
                 base_name = os.path.basename(item)
                 rpy_name = base_name[:-1] if base_name.endswith(".rpyc") else base_name
                 # Если такой .rpy уже есть в game/, пропускаем архивную копию
-                already_exists = any(
-                    os.path.basename(f) == rpy_name
-                    for f in [os.path.join(r, file) for r, _, files in os.walk(args.path) for file in files if file.endswith(".rpy")]
-                )
-                if not already_exists:
+                if rpy_name not in existing_rpy_files:
                     if item.endswith(".rpy"):
                         extra_rpy_files.append(item)
                     elif item.endswith(".rpyc"):
                         raw_orphans.append(item)
 
-    # 3. Проверяем кэш декомпиляции для всех .rpyc (с диска и из .rpa)
+    # 3. Синхронизируем исходники для дедупликации (не декомпилируем .rpyc, если уже найден .rpy)
+    for f in extra_rpy_files:
+        existing_rpy_files.add(os.path.basename(f))
+
+    # 4. Проверяем кэш декомпиляции для всех .rpyc (с диска и из .rpa)
     for rpyc in raw_orphans:
-        cached_rpy = os.path.join(decomp_sandbox, os.path.basename(rpyc)[:-1])
+        rpy_name = os.path.basename(rpyc)[:-1]
+        
+        # Если .rpy исходник уже найден в папке или вытащен из архива — игнорируем его .rpyc
+        if rpy_name in existing_rpy_files:
+            continue
+
+        cached_rpy = os.path.join(decomp_sandbox, rpy_name)
         if os.path.exists(cached_rpy) and os.path.getmtime(cached_rpy) >= os.path.getmtime(rpyc):
             if cached_rpy not in extra_rpy_files:
                 extra_rpy_files.append(cached_rpy)
@@ -562,7 +578,7 @@ def main():
             if rpyc not in orphaned_rpyc:
                 orphaned_rpyc.append(rpyc)
 
-    # 4. Если появились новые/изменённые .rpyc — декомпилируем в песочницу
+    # 5. Если появились новые/изменённые .rpyc — декомпилируем в песочницу
     if orphaned_rpyc:
         should_decompile = auto_decompile
         is_interactive = hasattr(sys.stdin, "isatty") and sys.stdin.isatty()

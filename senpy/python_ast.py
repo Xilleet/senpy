@@ -159,8 +159,8 @@ class PythonAstChecker:
                     
                     if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
                         name = child.id
-                        if name in self.analyzer.symbol_declarations:
-                            def_file, _def_line, _ = self.analyzer.symbol_declarations[name]
+                        if name in self.analyzer.variables:
+                            def_file = self.analyzer.variables[name].file_path
                             if def_file != file_path:
                                 curr_rel = os.path.relpath(file_path, self.analyzer.project_path).replace("\\", "/").lower()
                                 def_rel = os.path.relpath(def_file, self.analyzer.project_path).replace("\\", "/").lower()
@@ -386,8 +386,9 @@ class PythonAstChecker:
                             raw_l = lines[start_line - 1]
                         start_c, end_c = get_utf16_range(raw_l, var_name)
 
-                        if var_name in self.analyzer.defined_constants:
-                            if var_name not in self.analyzer.declared_characters:
+                        var_sym = self.analyzer.variables.get(var_name)
+                        if var_sym and var_sym.is_constant:
+                            if not var_sym.is_character:
                                 self.analyzer._add_diagnostic(
                                     Diagnostic(
                                         file_path=file_path,
@@ -416,7 +417,7 @@ class PythonAstChecker:
                             )
                         else:
                             # RPY108: Проверка несовместимого типа при +=, -= и т.д.
-                            expected_t = self.analyzer.symbol_types.get(var_name)
+                            expected_t = var_sym.type_name if var_sym else None
                             op_t = infer_ast_type(node.value)
                             if expected_t and op_t:
                                 is_incompatible = False
@@ -486,7 +487,7 @@ class PythonAstChecker:
                                 val_node=node.value,
                             )
                             # RPY108: Проверка конфликта типов при присваивании ($ var = "High")
-                            expected_t = self.analyzer.symbol_types.get(target.id)
+                            expected_t = self.analyzer.variables[target.id].type_name if target.id in self.analyzer.variables else None
                             new_t = infer_ast_type(node.value)
                             if (
                                 expected_t
@@ -514,10 +515,11 @@ class PythonAstChecker:
                     # 3. Мутация по ключу/индексу: $ CONST["ключ"] = "значение"
                     elif isinstance(target, ast.Subscript):
                         root_name = _get_root_name(target.value)
+                        root_var = self.analyzer.variables.get(root_name) if root_name else None
                         if (
-                            root_name
-                            and root_name in self.analyzer.defined_constants
-                            and root_name not in self.analyzer.declared_characters
+                            root_var
+                            and root_var.is_constant
+                            and not root_var.is_character
                             and root_name not in SYSTEM_MUTABLE_NAMESPACES
                             and root_name not in local_scope
                         ):
@@ -556,10 +558,11 @@ class PythonAstChecker:
                         method_name = sub.func.attr
                         if method_name in MUTATING_METHODS:
                             root_name = _get_root_name(sub.func.value)
+                            root_var = self.analyzer.variables.get(root_name) if root_name else None
                             if (
-                                root_name
-                                and root_name in self.analyzer.defined_constants
-                                and root_name not in self.analyzer.declared_characters
+                                root_var
+                                and root_var.is_constant
+                                and not root_var.is_character
                                 and root_name not in SYSTEM_MUTABLE_NAMESPACES
                                 and root_name not in local_scope
                             ):
@@ -618,12 +621,13 @@ class PythonAstChecker:
         raw_line: str = "",
         val_node: ast.AST | None = None,
     ) -> None:
-        if var_name.startswith("_") or var_name in self.analyzer.declared_characters or var_name in SYSTEM_MUTABLE_NAMESPACES:
+        var_sym = self.analyzer.variables.get(var_name)
+        if var_name.startswith("_") or (var_sym and var_sym.is_character) or var_name in SYSTEM_MUTABLE_NAMESPACES:
             return
 
         start_c, end_c = get_utf16_range(raw_line, var_name) if raw_line else (0, 0)
 
-        if var_name in self.analyzer.defined_constants:
+        if var_sym and var_sym.is_constant:
             self.analyzer._add_diagnostic(
                 Diagnostic(
                     file_path=file_path,

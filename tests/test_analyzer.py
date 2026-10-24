@@ -612,9 +612,9 @@ label next_scene:
     # Парсер не должен упасть и обязан обнаружить обе метки
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    assert "start" in analyzer.declared_labels
-    assert "next_scene" in analyzer.declared_labels
-    assert analyzer.declared_labels["next_scene"][1] == 6
+    assert "start" in analyzer.labels
+    assert "next_scene" in analyzer.labels
+    assert analyzer.labels["next_scene"].line_number == 6
 
 
 def test_deterministic_file_traversal_order(tmp_path: Path):
@@ -973,7 +973,7 @@ label start:
     _result, _ = run_senpy_on_code(code, tmp_path)
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    assert "screen" not in analyzer.label_outgoing_jumps.get("start", set())
+    assert "screen" not in analyzer.labels["start"].outgoing_jumps
 
 
 def test_rules_database_completeness():

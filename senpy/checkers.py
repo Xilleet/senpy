@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from senpy.analyzer import SenpyAnalyzer
     from senpy.scope import ScopeStack
 
+
 class BaseChecker:
     def __init__(self, analyzer: SenpyAnalyzer):
         self.analyzer = analyzer
@@ -129,6 +130,7 @@ class FormattingChecker(BaseChecker):
 
         return new_raw_line, file_modified
 
+
 class ScreenChecker(BaseChecker):
     def check_line(
         self,
@@ -191,12 +193,12 @@ class ScreenChecker(BaseChecker):
                             noqa_map,
                         )
 
-        # RPY204: Вызов несуществующего экрана
+        # RPY204: Вызов несуществующего экрана (проверяем по self.analyzer.screens)
         m_scr = RE_SCREEN_CALL.match(stripped) if stripped.startswith(("show screen", "call screen", "use ")) else None
         if m_scr:
             screen_target = m_scr.group(1)
-            if screen_target not in self.analyzer.declared_screens and screen_target not in BUILTIN_SCREENS:
-                all_screens = list(self.analyzer.declared_screens.keys()) + list(BUILTIN_SCREENS)
+            if screen_target not in self.analyzer.screens and screen_target not in BUILTIN_SCREENS:
+                all_screens = list(self.analyzer.screens.keys()) + list(BUILTIN_SCREENS)
                 matches = difflib.get_close_matches(screen_target, all_screens, n=1, cutoff=0.6)
                 hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
                 start_c, end_c = self.analyzer._get_utf16_range(raw_line, screen_target)
@@ -216,8 +218,8 @@ class ScreenChecker(BaseChecker):
         # RPY207: Несовпадение аргументов при вызове экрана
         if m_scr:
             screen_target = m_scr.group(1)
-            if screen_target in self.analyzer.screen_signatures:
-                sig = self.analyzer.screen_signatures[screen_target]
+            if screen_target in self.analyzer.screens and self.analyzer.screens[screen_target].signature:
+                sig = self.analyzer.screens[screen_target].signature
                 m_scr_args = re.search(r'\b(?:show\s+screen|call\s+screen|use)\s+[a-zA-Z_][a-zA-Z0-9_]*\s*(?:\((.*?)\))?', stripped)
                 scr_args = m_scr_args.group(1) if m_scr_args and m_scr_args.group(1) is not None else None
                 err_msg = validate_call_arguments(sig, scr_args)
@@ -235,6 +237,7 @@ class ScreenChecker(BaseChecker):
                     )
 
         return raw_line, False
+
 
 class AssetChecker(BaseChecker):
     def check_line(
@@ -267,10 +270,10 @@ class AssetChecker(BaseChecker):
                 full_img_tag = " ".join(img_tokens)
                 self.analyzer._mark_asset_used(full_img_tag)
                 base_tag = img_tokens[0]
-                all_valid = self.analyzer.valid_images.union(self.analyzer.declared_images.keys())
+                all_valid = self.analyzer.valid_images.union(self.analyzer.images.keys())
 
                 has_base = (
-                    base_tag in self.analyzer.declared_layeredimages
+                    (base_tag in self.analyzer.images and self.analyzer.images[base_tag].is_layered)
                     or any(img.startswith(base_tag + " ") or img == base_tag for img in all_valid)
                 )
                 is_single_tag = len(img_tokens) == 1 and m_show.group(1) == "show"
@@ -307,7 +310,9 @@ class AssetChecker(BaseChecker):
                             noqa_map,
                         )
                 else:
-                    all_tags = {img.split()[0] for img in all_valid}.union(self.analyzer.declared_layeredimages.keys())
+                    all_tags = {img.split()[0] for img in all_valid}.union(
+                        k for k, v in self.analyzer.images.items() if v.is_layered
+                    )
                     matched_tags = difflib.get_close_matches(base_tag, list(all_tags), n=1, cutoff=0.7)
                     hint = f" (did you mean base tag '{matched_tags[0]}' ?)" if matched_tags else ""
                     start_c, end_c = self.analyzer._get_utf16_range(raw_line, base_tag)
@@ -370,7 +375,6 @@ class AssetChecker(BaseChecker):
                 )
 
             # 3. RPY501: Проверка существования самого аудиофайла
-            # Извлекаем первый токен или строку в кавычках
             m_target = re.match(r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\'|[^\s]+)', rest)
             if m_target:
                 raw_audio_target = m_target.group(1).strip()
@@ -413,6 +417,7 @@ class AssetChecker(BaseChecker):
                     )
 
         return raw_line, False
+
 
 class DialogueChecker(BaseChecker):
     """RPY3xx — Диалоги, проверка кавычек, переходов jump/call и падений в метки."""
@@ -478,7 +483,7 @@ class DialogueChecker(BaseChecker):
                         )
             self.in_label_context = True
 
-        # RPY302 & RPY306: Переходы jump и call
+        # RPY302 & RPY306: Переходы jump и call (проверяем по self.analyzer.labels)
         m_jump = RE_JUMP_CALL.match(stripped) if stripped.startswith(("jump ", "call ")) else None
         if m_jump:
             cmd_type, target_label = m_jump.group(1), m_jump.group(2)
@@ -486,8 +491,8 @@ class DialogueChecker(BaseChecker):
                 self.analyzer.has_dynamic_jumps = True
             else:
                 self.analyzer.referenced_labels.add(target_label)
-                if target_label not in self.analyzer.declared_labels:
-                    matches = difflib.get_close_matches(target_label, list(self.analyzer.declared_labels.keys()), n=1, cutoff=0.6)
+                if target_label not in self.analyzer.labels:
+                    matches = difflib.get_close_matches(target_label, list(self.analyzer.labels.keys()), n=1, cutoff=0.6)
                     best_match = matches[0] if matches else None
                     hint = f" (did you mean '{best_match}' ?)" if best_match else ""
                     start_c, end_c = self.analyzer._get_utf16_range(raw_line, target_label)
@@ -509,8 +514,8 @@ class DialogueChecker(BaseChecker):
                     branch_uninitialized.clear()
                 elif cmd_type == "call":
                     # 1. RPY310: Проверка сигнатуры аргументов вызова метки
-                    if target_label in self.analyzer.label_signatures:
-                        sig = self.analyzer.label_signatures[target_label]
+                    if target_label in self.analyzer.labels and self.analyzer.labels[target_label].signature:
+                        sig = self.analyzer.labels[target_label].signature
                         m_args = re.search(r'\bcall\s+(?!screen\b)[a-zA-Z_][a-zA-Z0-9_]*\s*(?:\((.*?)\))?', stripped)
                         call_args = m_args.group(1) if m_args and m_args.group(1) is not None else None
                         err_msg = validate_call_arguments(sig, call_args)
@@ -528,7 +533,7 @@ class DialogueChecker(BaseChecker):
                             )
 
                     # 2. RPY306: Проверка наличия пути к return
-                    if target_label in self.analyzer.declared_labels and not self.analyzer._can_reach_return(target_label):
+                    if target_label in self.analyzer.labels and not self.analyzer._can_reach_return(target_label):
                         self.analyzer._add_diagnostic(
                             Diagnostic(
                                 file_path=file_path,
@@ -559,6 +564,7 @@ class DialogueChecker(BaseChecker):
                 )
 
         return raw_line, False
+
 
 class StateChecker(BaseChecker):
     """RPY1xx, RPY4xx — Проверка переменных, типов, условий, мутаций и развилок menu."""

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from senpy.symbols import ImageSymbol, LabelSymbol, ScreenSymbol, VariableSymbol
 
 
 @dataclass
@@ -32,22 +36,18 @@ class AnalysisResult:
 class FileScope:
     user_symbols: set[str] = field(default_factory=set)
     declared_symbols: set[str] = field(default_factory=set)
-    defined_constants: set[str] = field(default_factory=set)
-    declared_characters: set[str] = field(default_factory=set)
-    declared_labels: dict[str, tuple[str, int, str]] = field(default_factory=dict)
-    declared_screens: dict[str, tuple[str, int]] = field(default_factory=dict)
-    declared_images: dict[str, tuple[str, int, str]] = field(default_factory=dict)
-    declared_layeredimages: dict[str, set[str]] = field(default_factory=dict)
     defined_audio_map: dict[str, str] = field(default_factory=dict)
     registered_audio_channels: set[str] = field(default_factory=set)
     referenced_labels: set[str] = field(default_factory=set)
-    labels_with_return: set[str] = field(default_factory=set)
-    label_outgoing_jumps: dict[str, set[str]] = field(default_factory=dict)
+
+    # --- Новая чистая объектная модель ---
+    variables: dict[str, VariableSymbol] = field(default_factory=dict)
+    labels: dict[str, LabelSymbol] = field(default_factory=dict)
+    screens: dict[str, ScreenSymbol] = field(default_factory=dict)
+    images: dict[str, ImageSymbol] = field(default_factory=dict)
+    
     jump_sources: dict[str, list[tuple[str, int]]] = field(default_factory=dict)
-    label_signatures: dict = field(default_factory=dict)
-    screen_signatures: dict = field(default_factory=dict)
-    symbol_declarations: dict[str, tuple[str, int, str]] = field(default_factory=dict)
-    symbol_types: dict[str, str] = field(default_factory=dict)
+
 
 RULE_SEVERITY: dict[str, str] = {
     # 0xx: Синтаксис и форматирование (Критично для парсера)

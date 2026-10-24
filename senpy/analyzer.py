@@ -9,7 +9,8 @@ from senpy.cache import CachedFileEntry, CacheManager, CacheManifest
 from senpy.deprecated import DeprecationChecker
 from senpy.flow import StoryFlowAnalyzer
 from senpy.python_ast import PythonAstChecker, infer_expr_type
-from senpy.signature import SignatureInfo, parse_signature
+from senpy.signature import parse_signature
+from senpy.symbols import ImageSymbol, LabelSymbol, ScreenSymbol, VariableSymbol
 from senpy.text_tags import get_utf16_range, process_quoted_strings
 
 warnings.filterwarnings("ignore", category=SyntaxWarning)
@@ -218,33 +219,30 @@ class SenpyAnalyzer:
             os.path.normcase(os.path.abspath(k)): v
             for k, v in (in_memory_files or {}).items()
         }
+        
+        # Базовые множества
         self.user_symbols: set[str] = set()
         self.declared_symbols: set[str] = set(BUILTIN_SYMBOLS)
-        self.defined_constants: set[str] = set()
-        self.declared_characters: set[str] = set()
-        self.declared_labels: dict[str, tuple[str, int, str]] = {}
-        self.declared_screens: dict[str, tuple[str, int]] = {}
-        self.label_signatures: dict[str, SignatureInfo] = {}
-        self.screen_signatures: dict[str, SignatureInfo] = {}
-        self.labels_with_return: set[str] = set()
-        self.label_outgoing_jumps: dict[str, set[str]] = {}
-        self.declared_images: dict[str, tuple[str, int, str]] = {}
-        self.declared_layeredimages: dict[str, set[str]] = {}
-        self.symbol_declarations: dict[str, tuple[str, int, str]] = {}
-        self.symbol_types: dict[str, str] = {}
-        self.jump_sources: dict[str, list[tuple[str, int]]] = {}
         self.referenced_labels: set[str] = set()
+        self.defined_audio_map: dict[str, str] = {}
+        self.registered_audio_channels: set[str] = set(BUILTIN_AUDIO_CHANNELS)
+        
+        # --- Новые объектные реестры (заменяют 13 старых словарей) ---
+        self.variables: dict[str, VariableSymbol] = {}
+        self.labels: dict[str, LabelSymbol] = {}
+        self.screens: dict[str, ScreenSymbol] = {}
+        self.images: dict[str, ImageSymbol] = {}
+        
+        # Остальные структуры и метаданные сканирования
+        self.jump_sources: dict[str, list[tuple[str, int]]] = {}
         self.has_dynamic_jumps: bool = False
         self.diagnostics: list[Diagnostic] = []
         self.missing_defaults: dict[str, str] = {}
         self.total_lines: int = 0
         self.fixed_count: int = 0
         self.fixable_count: int = 0
-        self.defined_audio_map: dict[str, str] = {}
-        self.registered_audio_channels: set[str] = set(BUILTIN_AUDIO_CHANNELS)
         self.file_scopes: dict[str, FileScope] = {}
         
-
     @staticmethod
     def _get_utf16_range(line: str, sub: str | None = None) -> tuple[int, int]:
         return get_utf16_range(line, sub)
@@ -285,28 +283,26 @@ class SenpyAnalyzer:
         self.file_scopes.clear()
         self.missing_defaults.clear()
         self.diagnostics.clear()
+        
+        # Сброс базовых множеств
         self.user_symbols.clear()
         self.declared_symbols = set(BUILTIN_SYMBOLS)
-        self.declared_labels.clear()
-        self.declared_screens.clear()
-        self.label_signatures.clear()
-        self.screen_signatures.clear()
         self.referenced_labels.clear()
-        self.labels_with_return.clear()
-        self.label_outgoing_jumps.clear()
-        self.jump_sources.clear()
-        self.declared_images.clear()
-        self.declared_layeredimages.clear()
         self.defined_audio_map.clear()
         self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
-        self.symbol_declarations.clear()
-        self.symbol_types.clear()
+        
+        # Очистка новых объектных реестров
+        self.variables.clear()
+        self.labels.clear()
+        self.screens.clear()
+        self.images.clear()
+        self.jump_sources.clear()
+        
+        # Сброс флагов и счётчиков
         self.has_dynamic_jumps = False
         self.total_lines = 0
         self.fixed_count = 0
         self.fixable_count = 0
-        self.defined_constants.clear()
-        self.declared_characters.clear()
 
         self._index_assets()
         main_rpy, tl_rpy = self._get_rpy_files()
@@ -326,14 +322,15 @@ class SenpyAnalyzer:
             mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else 0.0
             size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
+            if not quiet:
+                msg = f"\r[1/2] Сбор символов: {i}/{total_files} ({fname[:25]})"
+                print(msg.ljust(75), end="", flush=True)
+
             # Проверяем Tier 1 hit
             if norm_path in cached_files and cached_files[norm_path].mtime == mtime and cached_files[norm_path].size == size and norm_path not in self.in_memory_files:
                 cached_scope = cached_files[norm_path].scope
                 self.file_scopes[norm_path] = cached_scope
             else:
-                if not quiet:
-                    msg = f"\r[1/2] Сбор символов: {i}/{total_files} ({fname[:25]})"
-                    print(msg.ljust(75), end="", flush=True)
                 self._collect_symbols(file_path)
 
         if not quiet:
@@ -352,6 +349,10 @@ class SenpyAnalyzer:
             mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else 0.0
             size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
+            if not quiet:
+                msg = f"\r[2/2] Анализ правил: {i}/{total_files} ({fname[:25]})"
+                print(msg.ljust(75), end="", flush=True)
+
             # Проверяем Tier 2 hit
             if is_global_unchanged and norm_path in cached_files and cached_files[norm_path].mtime == mtime and cached_files[norm_path].size == size and norm_path not in self.in_memory_files and not self.fix:
                 entry = cached_files[norm_path]
@@ -360,10 +361,6 @@ class SenpyAnalyzer:
                 self.total_lines += entry.lines_count
                 new_cached_entries[norm_path] = entry
             else:
-                if not quiet:
-                    msg = f"\r[2/2] Анализ правил: {i}/{total_files} ({fname[:25]})"
-                    print(msg.ljust(75), end="", flush=True)
-
                 diag_start = len(self.diagnostics)
                 lines_start = self.total_lines
                 used_start = set(self.assets.used_asset_keys)
@@ -419,49 +416,32 @@ class SenpyAnalyzer:
 
     def _rebuild_aggregates(self) -> None:
         """Пересобирает глобальные множества символов на основе scopes всех остальных файлов."""
-        self.label_outgoing_jumps.clear()
         self.declared_symbols = set(BUILTIN_SYMBOLS)
         self.user_symbols.clear()
-        self.defined_constants.clear()
-        self.declared_characters.clear()
-        self.declared_labels.clear()
-        self.declared_screens.clear()
-        self.declared_images.clear()
-        self.declared_layeredimages.clear()
-        self.defined_audio_map.clear()
         self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
-        for scope in self.file_scopes.values():
-            self.registered_audio_channels.update(scope.registered_audio_channels)
+        self.defined_audio_map.clear()
         self.referenced_labels.clear()
-        self.labels_with_return.clear()
 
-        self.label_signatures.clear()
-        self.screen_signatures.clear()
-        self.symbol_declarations.clear()
-        self.symbol_types.clear()
+        self.variables.clear()
+        self.labels.clear()
+        self.screens.clear()
+        self.images.clear()
         self.jump_sources.clear()
 
         for scope in self.file_scopes.values():
             self.declared_symbols.update(scope.declared_symbols)
             self.user_symbols.update(scope.user_symbols)
-            self.defined_constants.update(scope.defined_constants)
-            self.declared_characters.update(scope.declared_characters)
-            self.declared_labels.update(scope.declared_labels)
-            self.declared_screens.update(scope.declared_screens)
-            self.declared_images.update(scope.declared_images)
-            self.symbol_declarations.update(getattr(scope, "symbol_declarations", {}))
-            self.symbol_types.update(getattr(scope, "symbol_types", {}))
-            self.label_signatures.update(getattr(scope, "label_signatures", {}))
-            self.screen_signatures.update(getattr(scope, "screen_signatures", {}))
-            for tgt, locs in getattr(scope, "jump_sources", {}).items():
-                self.jump_sources.setdefault(tgt, []).extend(locs)
-            for tag, attrs in scope.declared_layeredimages.items():
-                self.declared_layeredimages.setdefault(tag, set()).update(attrs)
+            self.registered_audio_channels.update(scope.registered_audio_channels)
             self.defined_audio_map.update(scope.defined_audio_map)
             self.referenced_labels.update(scope.referenced_labels)
-            self.labels_with_return.update(scope.labels_with_return)
-            for lbl, targets in scope.label_outgoing_jumps.items():
-                self.label_outgoing_jumps.setdefault(lbl, set()).update(targets)
+
+            self.variables.update(scope.variables)
+            self.labels.update(scope.labels)
+            self.screens.update(scope.screens)
+            self.images.update(scope.images)
+
+            for tgt, locs in scope.jump_sources.items():
+                self.jump_sources.setdefault(tgt, []).extend(locs)
 
     def analyze_file_only(self, file_path: str) -> list[Diagnostic]:
         """Быстрый анализ только одного измененного файла для LSP без утечки состояния."""
@@ -530,15 +510,16 @@ class SenpyAnalyzer:
                     val_str = m_def.group(2)
                     scope.user_symbols.add(var)
                     scope.declared_symbols.add(var)
-                    scope.symbol_declarations[var] = (file_path, idx + 1, clean)
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
-                    self.symbol_declarations[var] = (file_path, idx + 1, clean)
 
                     inferred_t = infer_expr_type(val_str)
-                    if inferred_t:
-                        scope.symbol_types[var] = inferred_t
-                        self.symbol_types[var] = inferred_t
+                    var_sym = VariableSymbol(
+                        name=var, file_path=file_path, line_number=idx + 1, code_line=clean,
+                        type_name=inferred_t, is_constant=False, is_character=False
+                    )
+                    scope.variables[var] = var_sym
+                    self.variables[var] = var_sym
 
                     idx = next_idx
                     continue
@@ -562,22 +543,18 @@ class SenpyAnalyzer:
                     val_str = m_define.group(2)
                     scope.user_symbols.add(var)
                     scope.declared_symbols.add(var)
-                    scope.symbol_declarations[var] = (file_path, idx + 1, clean)
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
-                    self.symbol_declarations[var] = (file_path, idx + 1, clean)
-                    inferred_t = infer_expr_type(val_str)
-                    if inferred_t:
-                        scope.symbol_types[var] = inferred_t
-                        self.symbol_types[var] = inferred_t
-                    # Если define настраивает свойство (config.xxx, gui.xxx, persistent.xxx), не считаем корень константой
-                    if "." not in clean.split("=")[0]:
-                        scope.defined_constants.add(var)
-                        self.defined_constants.add(var)
 
-                    if "Character" in clean or "DynamicCharacter" in clean:
-                        scope.declared_characters.add(var)
-                        self.declared_characters.add(var)
+                    inferred_t = infer_expr_type(val_str)
+                    is_const = "." not in clean.split("=")[0]
+                    is_char = "Character" in clean or "DynamicCharacter" in clean
+                    var_sym = VariableSymbol(
+                        name=var, file_path=file_path, line_number=idx + 1, code_line=clean,
+                        type_name=inferred_t, is_constant=is_const, is_character=is_char
+                    )
+                    scope.variables[var] = var_sym
+                    self.variables[var] = var_sym
 
                     idx = next_idx
                     continue
@@ -587,17 +564,19 @@ class SenpyAnalyzer:
                     s_name = m_screen_def.group(2)
                     s_params = m_screen_def.group(3)
                     sig = parse_signature(s_params)
-                    scope.declared_screens[s_name] = (file_path, idx + 1)
-                    scope.screen_signatures[s_name] = sig
-                    self.declared_screens[s_name] = (file_path, idx + 1)
-                    self.screen_signatures[s_name] = sig
+                    scr_sym = ScreenSymbol(
+                        name=s_name, file_path=file_path, line_number=idx + 1, signature=sig
+                    )
+                    scope.screens[s_name] = scr_sym
+                    self.screens[s_name] = scr_sym
 
                 m_label = RE_LABEL.match(clean)
                 if m_label:
                     label_name = m_label.group(1)
-                    if label_name in self.declared_labels:
+                    if label_name in self.labels:
                         if not label_name.startswith("_"):
-                            prev_file, prev_line, _ = self.declared_labels[label_name]
+                            prev_file = self.labels[label_name].file_path
+                            prev_line = self.labels[label_name].line_number
                             self.diagnostics.append(
                                 Diagnostic(
                                     file_path=file_path,
@@ -609,31 +588,29 @@ class SenpyAnalyzer:
                                 )
                             )
                     else:
-                        scope.declared_labels[label_name] = (file_path, idx + 1, clean)
-                        self.declared_labels[label_name] = (file_path, idx + 1, clean)
+                        sig = parse_signature(m_label.group(2))
+                        lbl_sym = LabelSymbol(
+                            name=label_name, file_path=file_path, line_number=idx + 1,
+                            code_line=clean, signature=sig
+                        )
+                        scope.labels[label_name] = lbl_sym
+                        self.labels[label_name] = lbl_sym
 
                     current_label = label_name
-                    scope.label_outgoing_jumps[label_name] = set()
-                    self.label_outgoing_jumps[label_name] = set()
-
-                    raw_params = m_label.group(2)
-                    sig = parse_signature(raw_params)
-                    scope.label_signatures[label_name] = sig
-                    self.label_signatures[label_name] = sig
-
                     idx = next_idx
                     continue
 
                 if current_label:
                     if RE_RETURN.match(clean):
-                        scope.labels_with_return.add(current_label)
-                        self.labels_with_return.add(current_label)
+                        scope.labels[current_label].has_return = True
+                        self.labels[current_label].has_return = True
 
                     m_jump_in_label = RE_JUMP_TARGET.match(clean)
                     if m_jump_in_label:
                         target_j = m_jump_in_label.group(1)
-                        scope.label_outgoing_jumps.setdefault(current_label, set()).add(target_j)
-                        self.label_outgoing_jumps.setdefault(current_label, set()).add(target_j)
+                        scope.labels[current_label].outgoing_jumps.add(target_j)
+                        self.labels[current_label].outgoing_jumps.add(target_j)
+                        
                         self.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
                         scope.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
 
@@ -650,11 +627,12 @@ class SenpyAnalyzer:
                         if m_attr:
                             attrs.add(m_attr.group(1).strip())
 
-                    scope.declared_layeredimages[limg_tag] = attrs
-                    self.declared_layeredimages[limg_tag] = attrs
-                    # Регистрируем базовый тег как валидный спрайт
-                    scope.declared_images[limg_tag] = (file_path, idx + 1, "layeredimage")
-                    self.declared_images[limg_tag] = (file_path, idx + 1, "layeredimage")
+                    img_sym = ImageSymbol(
+                        name=limg_tag, file_path=file_path, line_number=idx + 1,
+                        body="layeredimage", is_layered=True, attributes=attrs
+                    )
+                    scope.images[limg_tag] = img_sym
+                    self.images[limg_tag] = img_sym
 
                     idx = next_block_idx
                     continue
@@ -664,8 +642,10 @@ class SenpyAnalyzer:
                     img_name = m_img.group(1).strip()
                     img_body = m_img.group(2).strip()
 
-                    if img_name in self.declared_images:
-                        prev_file, prev_line, prev_body = self.declared_images[img_name]
+                    if img_name in self.images:
+                        prev_file = self.images[img_name].file_path
+                        prev_line = self.images[img_name].line_number
+                        prev_body = self.images[img_name].body
                         is_exact_dup = (img_body == prev_body)
                         msg = (
                             f"Duplicate image declaration '{img_name}'. Identical to declaration at {os.path.basename(prev_file)}:{prev_line}."
@@ -682,8 +662,12 @@ class SenpyAnalyzer:
                                 severity="WARNING" if not is_exact_dup else "INFO",
                             )
                         )
-                    scope.declared_images[img_name] = (file_path, idx + 1, img_body)
-                    self.declared_images[img_name] = (file_path, idx + 1, img_body)
+                    img_sym = ImageSymbol(
+                        name=img_name, file_path=file_path, line_number=idx + 1,
+                        body=img_body, is_layered=False
+                    )
+                    scope.images[img_name] = img_sym
+                    self.images[img_name] = img_sym
                     idx = next_idx
                     continue
 
@@ -734,12 +718,16 @@ class SenpyAnalyzer:
             if scope is not None:
                 scope.user_symbols.add(name)
                 scope.declared_symbols.add(name)
-                if file_path:
-                    scope.symbol_declarations[name] = (file_path, real_line, f"# definition of {name}")
             self.user_symbols.add(name)
             self.declared_symbols.add(name)
             if file_path:
-                self.symbol_declarations[name] = (file_path, real_line, f"# definition of {name}")
+                var_sym = VariableSymbol(
+                    name=name, file_path=file_path, line_number=real_line,
+                    code_line=f"# definition of {name}", is_constant=False
+                )
+                if scope is not None:
+                    scope.variables[name] = var_sym
+                self.variables[name] = var_sym
         
         if scope is not None:
             scope.referenced_labels.update(refs)
@@ -796,7 +784,9 @@ class SenpyAnalyzer:
 
     def _get_tag_known_attributes(self, base_tag: str, all_valid: set[str]) -> set[str]:
         """Возвращает все известные атрибуты для тега (из layeredimage и файловой структуры)."""
-        attrs = set(self.declared_layeredimages.get(base_tag, set()))
+        attrs = set()
+        if base_tag in self.images and self.images[base_tag].is_layered:
+            attrs.update(self.images[base_tag].attributes)
         prefix = base_tag + " "
         for valid_img in all_valid:
             if valid_img.startswith(prefix):

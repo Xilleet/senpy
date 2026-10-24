@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
+from collections import deque
 from typing import TYPE_CHECKING
 
 from senpy.constants import RE_MENU_CHOICE, RE_STRING_MATCH, SYSTEM_LABELS
@@ -20,7 +22,8 @@ class StoryFlowAnalyzer:
 
     def can_reach_return(self, label_name: str, visited: set[str] | None = None) -> bool:
         """RPY306: DFS-поиск пути от вызванной метки до оператора return."""
-        if label_name in self.analyzer.labels_with_return:
+        lbl = self.analyzer.labels.get(label_name)
+        if lbl and lbl.has_return:
             return True
         if visited is None:
             visited = set()
@@ -28,7 +31,8 @@ class StoryFlowAnalyzer:
             return False
         visited.add(label_name)
 
-        for target in self.analyzer.label_outgoing_jumps.get(label_name, set()):
+        outgoing = lbl.outgoing_jumps if lbl else set()
+        for target in outgoing:
             if self.can_reach_return(target, visited):
                 return True
         return False
@@ -36,7 +40,7 @@ class StoryFlowAnalyzer:
     def check_unreachable_labels(self) -> list[Diagnostic]:
         """RPY303: Выявляет метки, на которые нет статических ссылок (возможный dead code)."""
         diagnostics: list[Diagnostic] = []
-        for label_name, (file_path, line_idx, content) in self.analyzer.declared_labels.items():
+        for label_name, lbl in self.analyzer.labels.items():
             clean_name = label_name.strip().lower()
             if clean_name.startswith("_") or clean_name in SYSTEM_LABELS:
                 continue
@@ -47,12 +51,12 @@ class StoryFlowAnalyzer:
                 else:
                     msg += " Verify if it is dead code or invoked dynamically."
 
-                start_c, end_c = get_utf16_range(content, label_name)
+                start_c, end_c = get_utf16_range(lbl.code_line, label_name)
                 diagnostics.append(
                     Diagnostic(
-                        file_path=file_path,
-                        line_number=line_idx,
-                        line_content=content,
+                        file_path=lbl.file_path,
+                        line_number=lbl.line_number,
+                        line_content=lbl.code_line,
                         code="RPY303",
                         message=msg,
                         severity="INFO",
@@ -64,58 +68,49 @@ class StoryFlowAnalyzer:
 
     def check_story_islands(self) -> list[Diagnostic]:
         """RPY309: Находит изолированные подграфы (острова) и циклы, недостижимые из системных точек входа."""
-        from collections import deque
+        labels = self.analyzer.labels
 
-        declared = self.analyzer.declared_labels
-        outgoing = self.analyzer.label_outgoing_jumps
-
-        # 1. Находим все точки входа в новеллу (start, splashscreen, main_menu и служебные _*)
         root_labels = {
-            lbl for lbl in declared
+            lbl for lbl in labels
             if lbl.lower() in SYSTEM_LABELS or lbl.startswith("_")
         }
 
-        # Если в проекте вообще нет системных меток (например, это подмодуль), не спамим
         if not root_labels:
             return []
 
-        # 2. Обход в ширину (BFS) от всех точек входа по графу переходов (jump/call)
         reachable: set[str] = set()
         queue = deque(root_labels)
         reachable.update(root_labels)
 
         while queue:
             curr = queue.popleft()
-            for target in outgoing.get(curr, set()):
-                if target in declared and target not in reachable:
+            lbl_sym = labels.get(curr)
+            outgoing = lbl_sym.outgoing_jumps if lbl_sym else set()
+            for target in outgoing:
+                if target in labels and target not in reachable:
                     reachable.add(target)
                     queue.append(target)
 
-        # 3. Любая объявленная метка, до которой нельзя дойти от корней:
-        # Если на неё вообще нет ссылок — это RPY303 (одиночка).
-        # А вот если на неё ССЫЛАЮТСЯ (например, по кругу), но она вне графа — это СЮЖЕТНЫЙ ОСТРОВ (RPY309)!
         diagnostics: list[Diagnostic] = []
-        for label_name, (file_path, line_idx, content) in declared.items():
+        for label_name, lbl in labels.items():
             if label_name in reachable:
                 continue
             if label_name.startswith("_") or label_name.lower() in SYSTEM_LABELS:
                 continue
 
-            # Проверяем, есть ли на эту метку ссылки внутри изолированного подграфа
-            has_incoming_jump = any(label_name in targets for targets in outgoing.values())
+            has_incoming_jump = any(label_name in l.outgoing_jumps for l in labels.values())
             has_reference = label_name in self.analyzer.referenced_labels
 
-            # Если на метку есть ссылки (то есть это не просто одиночная метка из RPY303), но от start не дойти:
             if has_incoming_jump or has_reference:
                 msg = f"Story island detected: label '{label_name}' forms an isolated subgraph unreachable from 'start'."
                 if self.analyzer.has_dynamic_jumps:
                     msg += " Project uses dynamic routing, verify reachability."
-                start_c, end_c = get_utf16_range(content, label_name)
+                start_c, end_c = get_utf16_range(lbl.code_line, label_name)
                 diagnostics.append(
                     Diagnostic(
-                        file_path=file_path,
-                        line_number=line_idx,
-                        line_content=content,
+                        file_path=lbl.file_path,
+                        line_number=lbl.line_number,
+                        line_content=lbl.code_line,
                         code="RPY309",
                         message=msg,
                         severity="WARNING",
@@ -167,13 +162,6 @@ class StoryFlowAnalyzer:
         file_path: str = "",
         noqa_map: dict | None = None,
     ) -> tuple[int, dict[str, tuple[str, ...]], set[str]]:
-        """
-        Рекурсивный разбор меню любой вложенности.
-        Возвращает:
-          - next_idx: следующая строка после меню
-          - uninitialized_vars: словарь переменных MAYBE_SET для RPY404
-          - guaranteed_vars: переменные, гарантированно определенные во всех выходящих ветках
-        """
         from senpy.analyzer import _strip_comment
         from senpy.constants import RE_MENU_START
 
@@ -210,12 +198,10 @@ class StoryFlowAnalyzer:
                 idx += 1
                 continue
 
-            # Выход из текущего меню, если отступ вернулся на уровень menu: или левее
             if line_indent <= menu_indent:
                 break
 
             m_choice = RE_MENU_CHOICE.match(raw_line)
-            # Пункт принадлежит ДАННОМУ меню только если его отступ совпадает с первым пунктом
             is_direct_choice = bool(
                 m_choice
                 and line_indent > menu_indent
@@ -243,11 +229,9 @@ class StoryFlowAnalyzer:
                 idx += 1
                 continue
 
-            # Обработка тела текущего пункта меню
             if current_choice and line_indent > current_choice["indent"]:
                 current_choice["statement_count"] += 1
 
-                # 1. Если внутри ветки встретилось ВЛОЖЕННОЕ меню!
                 if RE_MENU_START.match(raw_line):
                     consumed_idx, sub_uninit, sub_guaranteed = self.analyze_menu_flow(
                         lines,
@@ -256,7 +240,6 @@ class StoryFlowAnalyzer:
                         file_path=file_path,
                         noqa_map=noqa_map,
                     )
-                    # Переменные, гарантированно созданные во вложенном меню, поднимаются в родительский выбор
                     current_choice["defined"].update(sub_guaranteed)
                     uninitialized_vars.update(sub_uninit)
                     idx = consumed_idx
@@ -318,7 +301,6 @@ class StoryFlowAnalyzer:
                         str(missing_choice_dict["line"]),
                     )
 
-        # Переменные, которые гарантированно определены во ВСЕХ нетерминирующих ветках меню
         guaranteed_vars = (
             set.intersection(*(c["defined"] for c in merging_choices))
             if merging_choices
@@ -335,21 +317,18 @@ class StoryFlowAnalyzer:
             "    %% Generated by Senpy Linter (Story Flow Graph)",
         ]
 
-        declared = self.analyzer.declared_labels
-        outgoing = self.analyzer.label_outgoing_jumps
+        labels = self.analyzer.labels
 
-        # Объявляем узлы и ищем тупики (Fallthrough)
-        for label in sorted(declared.keys()):
+        for label, lbl_sym in sorted(labels.items()):
             if label.startswith("_"):
                 continue
             
-            has_return = label in self.analyzer.labels_with_return
-            has_jumps = len(outgoing.get(label, set())) > 0
+            has_return = lbl_sym.has_return
+            has_jumps = len(lbl_sym.outgoing_jumps) > 0
             
             if has_return:
                 shape_start, shape_end = ("([", "])")
             elif not has_jumps:
-                # Если нет ни возврата, ни переходов - это тупик (Fallthrough hazard)
                 shape_start, shape_end = ("[[", "]]:::fallthrough")
             else:
                 shape_start, shape_end = ('["', '"]')
@@ -358,41 +337,36 @@ class StoryFlowAnalyzer:
 
         lines.append("")
 
-        # Добавляем ребра (переходы)
         edges_added = False
-        for src, targets in sorted(outgoing.items()):
+        for src, lbl_sym in sorted(labels.items()):
             if src.startswith("_"):
                 continue
-            for tgt in sorted(targets):
-                # Простейшая эвристика: если целевая метка имеет return, скорее всего это был call
-                is_call = tgt in self.analyzer.labels_with_return
+            for tgt in sorted(lbl_sym.outgoing_jumps):
+                tgt_sym = labels.get(tgt)
+                is_call = tgt_sym.has_return if tgt_sym else False
                 arrow = "-- call -->" if is_call else "-->"
 
-                if tgt in declared:
+                if tgt in labels:
                     lines.append(f"    {src} {arrow} {tgt}")
                     edges_added = True
                 else:
-                    # Прыжок на несуществующую метку выделяем красным
                     lines.append(f"    {src} -. jump .-> {tgt}:::missing")
                     edges_added = True
 
         if not edges_added:
             lines.append("    %% No static jumps detected")
 
-        # Стили для отсутствующих меток и тупиков
         lines.append("\n    classDef missing fill:#ff4d4f,stroke:#333,stroke-width:1px,color:#fff;")
         lines.append("    classDef fallthrough fill:#faad14,stroke:#333,stroke-width:1px,color:#fff;")
         lines.append("```")
 
-        # JSON-метаданные координат для интеграции с кликами в VS Code
-        import json
         meta = {"locations": {}}
-        for lbl, (fpath, lnum, _) in declared.items():
-            meta["locations"][lbl] = {"file": fpath.replace("\\", "/"), "line": lnum, "type": "label"}
+        for lbl_name, lbl_sym in labels.items():
+            meta["locations"][lbl_name] = {"file": lbl_sym.file_path.replace("\\", "/"), "line": lbl_sym.line_number, "type": "label"}
 
-        for src, targets in outgoing.items():
-            for tgt in targets:
-                if tgt not in declared and tgt in self.analyzer.jump_sources:
+        for src, lbl_sym in labels.items():
+            for tgt in lbl_sym.outgoing_jumps:
+                if tgt not in labels and tgt in self.analyzer.jump_sources:
                     sources = self.analyzer.jump_sources[tgt]
                     if sources:
                         meta["locations"][tgt] = {

@@ -119,7 +119,7 @@ def test_lsp_go_to_definition(tmp_path: Path):
         position=lsp.Position(line=1, character=12),
     ))
     assert loc_lbl is not None
-    assert loc_lbl.range.start.line == analyzer.declared_labels["forest_scene"][1] - 1
+    assert loc_lbl.range.start.line == analyzer.labels["forest_scene"].line_number - 1
 
     # 2. Переход к переменной default
     doc_var = MockDocument(uri, "$ player_gold += 20")
@@ -129,7 +129,7 @@ def test_lsp_go_to_definition(tmp_path: Path):
         position=lsp.Position(line=0, character=4),
     ))
     assert loc_var is not None
-    assert loc_var.range.start.line == analyzer.symbol_declarations["player_gold"][1] - 1
+    assert loc_var.range.start.line == analyzer.variables["player_gold"].line_number - 1
 
     # 3. Переход к layeredimage
     doc_img = MockDocument(uri, "show sayori happy")
@@ -139,7 +139,7 @@ def test_lsp_go_to_definition(tmp_path: Path):
         position=lsp.Position(line=0, character=6),  # Курсор на слове "sayori"
     ))
     assert loc_img is not None
-    assert loc_img.range.start.line == analyzer.declared_images["sayori"][1] - 1
+    assert loc_img.range.start.line == analyzer.images["sayori"].line_number - 1
 
     # 4. Переход к аудиофайлу на диске
     audio_path = tmp_path / "game" / "audio" / "click.ogg"

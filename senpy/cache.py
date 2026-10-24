@@ -84,28 +84,31 @@ class CacheManager:
     def compute_global_hash(analyzer: SenpyAnalyzer) -> str:
         """Вычисляет хэш глобального состояния проекта (метки, экраны, сигнатуры, переменные)."""
         hasher = hashlib.md5()
-        for lbl in sorted(analyzer.declared_labels.keys()):
-            hasher.update(lbl.encode("utf-8"))
-            if lbl in analyzer.label_signatures:
-                sig = analyzer.label_signatures[lbl]
+        for lbl_name in sorted(analyzer.labels.keys()):
+            hasher.update(lbl_name.encode("utf-8"))
+            lbl = analyzer.labels[lbl_name]
+            if lbl.signature:
+                sig = lbl.signature
                 hasher.update(str((sig.min_args, sig.max_args, sorted(sig.all_names))).encode("utf-8"))
 
-        for scr in sorted(analyzer.declared_screens.keys()):
-            hasher.update(scr.encode("utf-8"))
-            if scr in analyzer.screen_signatures:
-                sig = analyzer.screen_signatures[scr]
+        for scr_name in sorted(analyzer.screens.keys()):
+            hasher.update(scr_name.encode("utf-8"))
+            scr = analyzer.screens[scr_name]
+            if scr.signature:
+                sig = scr.signature
                 hasher.update(str((sig.min_args, sig.max_args, sorted(sig.all_names))).encode("utf-8"))
 
         for sym in sorted(analyzer.declared_symbols):
             hasher.update(sym.encode("utf-8"))
-            if sym in analyzer.symbol_types:
-                hasher.update(analyzer.symbol_types[sym].encode("utf-8"))
+            if sym in analyzer.variables and analyzer.variables[sym].type_name:
+                hasher.update(analyzer.variables[sym].type_name.encode("utf-8"))
 
-        for const in sorted(analyzer.defined_constants):
-            hasher.update(const.encode("utf-8"))
+        for var in sorted(analyzer.variables.values(), key=lambda v: v.name):
+            if var.is_constant:
+                hasher.update(var.name.encode("utf-8"))
 
-        for img in sorted(analyzer.declared_images.keys()):
-            hasher.update(img.encode("utf-8"))
+        for img_name in sorted(analyzer.images.keys()):
+            hasher.update(img_name.encode("utf-8"))
 
         for chan in sorted(analyzer.registered_audio_channels):
             hasher.update(chan.encode("utf-8"))
