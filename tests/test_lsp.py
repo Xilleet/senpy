@@ -355,3 +355,59 @@ def test_lsp_code_action_quick_fixes(tmp_path: Path):
     )
     actions_clean = server_mod.code_action(mock_ls, params_clean)
     assert len(actions_clean) == 0
+
+
+def test_lsp_transform_navigation_and_symbols(tmp_path: Path):
+    """[LSP] F12 Go-to-Definition, Document Symbols, and Autocomplete support for ATL transforms."""
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+
+    content = (
+        "transform custom_bounce:\n"
+        "    yoffset 0\n"
+        "    easein 0.2 yoffset -20\n"
+        "\n"
+        "label start:\n"
+        "    show sayori at custom_bounce\n"
+        "    return\n"
+    )
+    script_file = game_dir / "transform_test.rpy"
+    script_file.write_text(content, encoding="utf-8")
+    uri = server_mod._path_to_uri(str(script_file))
+
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    analyzer.run(quiet=True)
+
+    server_mod._active_analyzer = analyzer
+    server_mod._is_initialized = True
+
+    mock_ls = MagicMock()
+    mock_doc = MockDocument(uri, content)
+    mock_ls.workspace = MockWorkspace(mock_doc)
+
+    # 1. Проверка F12 Go-to-Definition на имени трансформа
+    loc = server_mod.definition(mock_ls, lsp.DefinitionParams(
+        text_document=lsp.TextDocumentIdentifier(uri=uri),
+        position=lsp.Position(line=5, character=22),  # Курсор внутри "custom_bounce"
+    ))
+    assert loc is not None, "F12 failed to resolve location for ATL transform 'custom_bounce'"
+    assert loc.range.start.line == 0, f"Expected definition on line 0, got line {loc.range.start.line}"
+
+    # 2. Проверка Document Symbols (Outline / Ctrl+Shift+O)
+    symbols = server_mod.document_symbols(mock_ls, lsp.DocumentSymbolParams(
+        text_document=lsp.TextDocumentIdentifier(uri=uri)
+    ))
+    trans_sym = next((s for s in symbols if s.name == "custom_bounce"), None)
+    assert trans_sym is not None, "Document symbols outline is missing ATL transform 'custom_bounce'"
+    assert trans_sym.detail == "Transform"
+
+    # 3. Проверка автокомплита после 'at '
+    doc_comp = MockDocument(uri, "show sayori at ")
+    mock_ls.workspace = MockWorkspace(doc_comp)
+    comp_res = server_mod.completions(mock_ls, lsp.CompletionParams(
+        text_document=lsp.TextDocumentIdentifier(uri=uri),
+        position=lsp.Position(line=0, character=15),
+    ))
+    comp_labels = {item.label for item in comp_res.items}
+    assert "custom_bounce" in comp_labels, "Autocomplete missing user-defined transform 'custom_bounce'"
+    assert "center" in comp_labels, "Autocomplete missing built-in position 'center'"

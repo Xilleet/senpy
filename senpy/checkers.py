@@ -154,6 +154,63 @@ class ScreenChecker(BaseChecker):
             if m_for:
                 scope_stack.add_symbol(m_for.group(1))
 
+            # RPY202: Проверка переменных в screen Actions (SetVariable, ToggleVariable)
+            if "SetVariable" in stripped or "ToggleVariable" in stripped:
+                for m_var_act in re.finditer(r'\b(?:SetVariable|ToggleVariable)\s*\(\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']', stripped):
+                    target_var = m_var_act.group(1)
+                    if (
+                        target_var not in self.analyzer.declared_symbols
+                        and target_var not in self.analyzer.user_symbols
+                        and target_var not in scope_stack.get_local_symbols()
+                        and not target_var.startswith("_")
+                    ):
+                        matches = difflib.get_close_matches(target_var, list(self.analyzer.user_symbols), n=1, cutoff=0.6)
+                        hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
+                        start_c, end_c = self.analyzer._get_utf16_range(raw_line, target_var)
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=idx + 1,
+                                line_content=stripped,
+                                code="RPY202",
+                                message=(
+                                    f"Screen action references undeclared variable '{target_var}'{hint}. "
+                                    "Variable must be declared with 'default' at top-level to ensure save persistence."
+                                ),
+                                severity="WARNING",
+                                col=start_c,
+                                end_col=end_c,
+                                fix_title=f"Change to '{matches[0]}'" if matches else None,
+                                fix_replacement=matches[0] if matches else None,
+                            ),
+                            noqa_map,
+                        )
+
+            # RPY204: Проверка экранов в screen Actions (Show, ShowMenu, Hide)
+            if any(act in stripped for act in ("Show", "ShowMenu", "Hide")):
+                for m_scr_act in re.finditer(r'\b(?:Show|ShowMenu|Hide)\s*\(\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']', stripped):
+                    target_scr = m_scr_act.group(1)
+                    if target_scr not in self.analyzer.screens and target_scr not in BUILTIN_SCREENS:
+                        all_screens = list(self.analyzer.screens.keys()) + list(BUILTIN_SCREENS)
+                        matches = difflib.get_close_matches(target_scr, all_screens, n=1, cutoff=0.6)
+                        hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
+                        start_c, end_c = self.analyzer._get_utf16_range(raw_line, target_scr)
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=idx + 1,
+                                line_content=stripped,
+                                code="RPY204",
+                                message=f"Screen action references non-existent screen '{target_scr}'{hint}. Causes runtime ScriptError.",
+                                severity="ERROR",
+                                col=start_c,
+                                end_col=end_c,
+                                fix_title=f"Change to '{matches[0]}'" if matches else None,
+                                fix_replacement=matches[0] if matches else None,
+                            ),
+                            noqa_map,
+                        )
+
             m_btn = RE_BUTTON_LINE.match(stripped)
             if m_btn:
                 # RPY203: кнопка без действия action
@@ -240,6 +297,43 @@ class ScreenChecker(BaseChecker):
 
 
 class AssetChecker(BaseChecker):
+    def _validate_transition_expr(
+        self,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        stripped: str,
+        expr_str: str,
+        noqa_map: dict[int, set[str] | None],
+    ) -> None:
+        clean_expr = expr_str.strip().rstrip(",")
+        m_name = re.match(r"^([a-zA-Z_][a-zA-Z0-9_]*)", clean_expr)
+        if not m_name:
+            return
+        trans_name = m_name.group(1)
+        if (
+            trans_name not in self.analyzer.declared_symbols
+            and trans_name not in self.analyzer.user_symbols
+        ):
+            all_candidates = [s for s in self.analyzer.declared_symbols if s.isidentifier()]
+            matches = difflib.get_close_matches(trans_name, all_candidates, n=1, cutoff=0.6)
+            hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
+            start_c, end_c = self.analyzer._get_utf16_range(raw_line, trans_name)
+            self.analyzer._add_diagnostic(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=idx + 1,
+                    line_content=stripped,
+                    code="RPY502",
+                    message=f"Transition '{trans_name}' is not defined{hint}. Causes runtime NameError.",
+                    col=start_c,
+                    end_col=end_c,
+                    fix_title=f"Change to '{matches[0]}'" if matches else None,
+                    fix_replacement=matches[0] if matches else None,
+                ),
+                noqa_map,
+            )
+
     def check_line(
         self,
         file_path: str,
@@ -330,6 +424,75 @@ class AssetChecker(BaseChecker):
                         ),
                         noqa_map,
                     )
+
+            # RPY502: Проверка валидности ATL-трансформаций в конструкции 'show ... at ...'
+            m_at = re.search(r'\bat\s+([^:]+?)(?:\s+(?:with|as|zorder|behind|onlayer)\b|:|$)', stripped)
+            if m_at:
+                at_clause = m_at.group(1)
+                parts: list[str] = []
+                curr: list[str] = []
+                paren_depth = 0
+                for ch in at_clause:
+                    if ch == '(':
+                        paren_depth += 1
+                    elif ch == ')':
+                        paren_depth -= 1
+                    elif ch == ',' and paren_depth == 0:
+                        parts.append("".join(curr).strip())
+                        curr = []
+                        continue
+                    curr.append(ch)
+                if curr:
+                    parts.append("".join(curr).strip())
+
+                for part in parts:
+                    m_name = re.match(r"^([a-zA-Z_][a-zA-Z0-9_]*)", part)
+                    if not m_name:
+                        continue
+                    trans_name = m_name.group(1)
+                    if (
+                        trans_name not in self.analyzer.declared_symbols
+                        and trans_name not in self.analyzer.user_symbols
+                    ):
+                        all_candidates = [s for s in self.analyzer.declared_symbols if s.isidentifier()]
+                        matches = difflib.get_close_matches(trans_name, all_candidates, n=1, cutoff=0.6)
+                        hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
+                        start_c, end_c = self.analyzer._get_utf16_range(raw_line, trans_name)
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=idx + 1,
+                                line_content=stripped,
+                                code="RPY502",
+                                message=f"Transform or position '{trans_name}' is not defined{hint}. Causes runtime NameError.",
+                                col=start_c,
+                                end_col=end_c,
+                                fix_title=f"Change to '{matches[0]}'" if matches else None,
+                                fix_replacement=matches[0] if matches else None,
+                            ),
+                            noqa_map,
+                        )
+
+        # RPY502: Проверка переходов в конструкции 'with <transition>'
+        if not is_in_screen and not stripped.startswith(("$", "python")):
+            trans_expr: str | None = None
+            if stripped.startswith(("show ", "scene ")):
+                m_sw = re.search(r'\bwith\s+([^:#]+?)(?:\s+(?:onlayer|zorder|behind|as)\b|:|$)', stripped)
+                if m_sw:
+                    trans_expr = m_sw.group(1)
+            elif stripped.startswith(("with ", "with\t")) and not stripped.endswith(":") and not re.search(r'\bas\b', stripped):
+                m_w = re.match(r"^with\s+([^:#]+)", stripped)
+                if m_w:
+                    trans_expr = m_w.group(1)
+            elif re.search(r'["\']\s+with\s+([^:#]+)$', stripped):
+                m_dw = re.search(r'["\']\s+with\s+([^:#]+)$', stripped)
+                if m_dw:
+                    trans_expr = m_dw.group(1)
+
+            if trans_expr:
+                self._validate_transition_expr(
+                    file_path, idx, raw_line, stripped, trans_expr, noqa_map
+                )
 
         # RPY501 & RPY505: Проверка play / queue (каналы и файлы)
         m_audio = RE_AUDIO_STATEMENT.match(stripped) if stripped.startswith(("play ", "queue ")) else None
@@ -566,6 +729,36 @@ class DialogueChecker(BaseChecker):
                             ),
                             noqa_map,
                         )
+
+        # RPY302: Переходы через UI Actions и Python (Jump, Call, renpy.jump, renpy.call)
+        if any(kw in stripped for kw in ("Jump", "Call", "renpy.jump", "renpy.call")):
+            for m_dyn in re.finditer(r'\b(?:Jump|Call|renpy\.jump|renpy\.call)\s*\(\s*["\']([^"\']+)["\']', stripped):
+                raw_target = m_dyn.group(1)
+                if raw_target.startswith("."):
+                    target_label = f"{self.current_global_label}{raw_target}" if self.current_global_label else raw_target
+                else:
+                    target_label = raw_target
+                    
+                self.analyzer.referenced_labels.add(target_label)
+                if target_label not in self.analyzer.labels:
+                    matches = difflib.get_close_matches(target_label, list(self.analyzer.labels.keys()), n=1, cutoff=0.6)
+                    best_match = matches[0] if matches else None
+                    hint = f" (did you mean '{best_match}' ?)" if best_match else ""
+                    start_c, end_c = self.analyzer._get_utf16_range(raw_line, raw_target)
+                    self.analyzer._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=idx + 1,
+                            line_content=stripped,
+                            code="RPY302",
+                            message=f"Jump/Call action to non-existent label '{raw_target}'{hint}. Causes ScriptError.",
+                            col=start_c,
+                            end_col=end_c,
+                            fix_title=f"Change to '{best_match}'" if best_match else None,
+                            fix_replacement=best_match,
+                        ),
+                        noqa_map,
+                    )
 
         # RPY305: Неэкранированные кавычки в диалоге
         first_token = stripped.split()[0] if stripped.split() else ""

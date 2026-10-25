@@ -23,6 +23,16 @@ class CachedFileEntry:
     scope: FileScope
     diagnostics: list[Diagnostic] = field(default_factory=list)
     used_assets: set[str] = field(default_factory=set)
+    content_hash: str = ""
+
+
+def compute_file_hash(file_path: str) -> str:
+    """Вычисляет быстрый MD5-хэш содержимого файла для защиты кэша от коллизий."""
+    try:
+        with open(file_path, "rb") as f:
+            return hashlib.md5(f.read()).hexdigest()
+    except OSError:
+        return ""
 
 
 @dataclass
@@ -109,6 +119,9 @@ class CacheManager:
 
         for img_name in sorted(analyzer.images.keys()):
             hasher.update(img_name.encode("utf-8"))
+
+        for trans_name in sorted(analyzer.transforms.keys()):
+            hasher.update(trans_name.encode("utf-8"))
 
         for chan in sorted(analyzer.registered_audio_channels):
             hasher.update(chan.encode("utf-8"))

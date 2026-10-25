@@ -19,7 +19,7 @@ from senpy.analyzer import Diagnostic, SenpyAnalyzer
 from senpy.constants import CLAUSE_KEYWORDS
 from senpy.renpy_api import get_renpy_api_hover
 
-server = LanguageServer("senpy-lsp", "v0.4.2")
+server = LanguageServer("senpy-lsp", "v0.4.3")
 
 
 def _uri_to_path(uri: str) -> str:
@@ -311,27 +311,45 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
                 detail=f"Screen ({os.path.basename(scr.file_path)}:{scr.line_number})"
             ))
 
-    # 3. Автокомплит спрайтов и атрибутов layeredimage для show / scene
+    # 3. Автокомплит спрайтов, атрибутов и трансформаций для show / scene
     elif prefix.startswith(("show ", "scene ")):
-        tokens = prefix.split()
-        if len(tokens) == 1 or (len(tokens) == 2 and not prefix.endswith(" ")):
-            all_tags = {img.split()[0] for img in _active_analyzer.images}
-            for tag in sorted(all_tags):
+        if " at " in prefix or prefix.endswith(" at"):
+            standard_positions = [
+                "center", "truecenter", "left", "right", "top", "topleft", "topright",
+                "offscreenleft", "offscreenright", "reset", "default",
+            ]
+            for pos in standard_positions:
                 items.append(lsp.CompletionItem(
-                    label=tag,
-                    kind=lsp.CompletionItemKind.Class,
-                    detail="Sprite Tag"
-                ))
-        elif len(tokens) >= 2:
-            base_tag = tokens[1]
-            all_valid = _active_analyzer.valid_images.union(_active_analyzer.images.keys())
-            attrs = _active_analyzer._get_tag_known_attributes(base_tag, all_valid)
-            for attr in sorted(attrs):
-                items.append(lsp.CompletionItem(
-                    label=attr,
+                    label=pos,
                     kind=lsp.CompletionItemKind.EnumMember,
-                    detail=f"Attribute for '{base_tag}'"
+                    detail="Position (Built-in)",
                 ))
+            for trans_name, trans_sym in sorted(_active_analyzer.transforms.items()):
+                items.append(lsp.CompletionItem(
+                    label=trans_name,
+                    kind=lsp.CompletionItemKind.Function,
+                    detail=f"Transform ({os.path.basename(trans_sym.file_path)}:{trans_sym.line_number})",
+                ))
+        else:
+            tokens = prefix.split()
+            if len(tokens) == 1 or (len(tokens) == 2 and not prefix.endswith(" ")):
+                all_tags = {img.split()[0] for img in _active_analyzer.images}
+                for tag in sorted(all_tags):
+                    items.append(lsp.CompletionItem(
+                        label=tag,
+                        kind=lsp.CompletionItemKind.Class,
+                        detail="Sprite Tag",
+                    ))
+            elif len(tokens) >= 2:
+                base_tag = tokens[1]
+                all_valid = _active_analyzer.valid_images.union(_active_analyzer.images.keys())
+                attrs = _active_analyzer._get_tag_known_attributes(base_tag, all_valid)
+                for attr in sorted(attrs):
+                    items.append(lsp.CompletionItem(
+                        label=attr,
+                        kind=lsp.CompletionItemKind.EnumMember,
+                        detail=f"Attribute for '{base_tag}'",
+                    ))
 
     return lsp.CompletionList(is_incomplete=False, items=items)
 
@@ -467,6 +485,17 @@ def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location
             ),
         )
 
+    # 3.5. ATL трансформация (transform)
+    if word in _active_analyzer.transforms:
+        trans = _active_analyzer.transforms[word]
+        return lsp.Location(
+            uri=_path_to_uri(trans.file_path),
+            range=lsp.Range(
+                start=lsp.Position(line=max(0, trans.line_number - 1), character=0),
+                end=lsp.Position(line=max(0, trans.line_number - 1), character=len(word)),
+            ),
+        )
+
     return None
 
 
@@ -572,6 +601,9 @@ def document_symbols(ls: LanguageServer, params: lsp.DocumentSymbolParams) -> li
             raw_entries.append((max(0, img_sym.line_number - 1), img_name, lsp.SymbolKind.Class, "Layered Image", True))
         else:
             raw_entries.append((max(0, img_sym.line_number - 1), img_name, lsp.SymbolKind.Field, "Image", False))
+
+    for trans_name, trans_sym in scope.transforms.items():
+        raw_entries.append((max(0, trans_sym.line_number - 1), trans_name, lsp.SymbolKind.Function, "Transform", True))
 
     for var_name, var_sym in scope.variables.items():
         if var_name.startswith("_") or var_sym.is_character:

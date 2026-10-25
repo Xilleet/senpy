@@ -30,11 +30,13 @@ The standard built-in `renpy lint` command only checks for basic syntax errors a
 * **Save Game & Rollback Safety:** Catches dangerous `define` mutations (`RPY105`), non-revertable types (`RPY106`), dynamic assignments missing `default` (`RPY104`), and type-taint conflicts (`RPY108`).
 * **Init Phase Dependency Graph:** Analyzes alphabetical file loading order in `init python:` to prevent runtime `NameError` crashes on startup (`RPY109`).
 * **Arity & Signature Checking:** Verifies parameter counts and keyword arguments on `call label(...)` (`RPY310`) and `use screen(...)` (`RPY207`).
-* **Branching Dataflow Analysis:** Traces nested `menu:` branches to ensure variables aren't evaluated in an uninitialized `MAYBE_SET` state (`RPY401`, `RPY404`).
-* **Screen Safety Guard:** Flags predictive state mutations and imperative Python loops in screens (`RPY201`, `RPY205`).
-* **Translation Validator & Coverage:** Audits `game/tl/` formatting and calculates localization completion percentages via `senpy --coverage` (`RPY601`–`RPY603`).
+* **Branching Dataflow Analysis:** Traces nested `if/elif/else` and `menu:` branches to ensure variables aren't evaluated in an uninitialized `MAYBE_SET` state (`RPY401`, `RPY404`).
+* **Screen & UI Action Inspector:** Catches predictive state mutations (`RPY201`), imperative loops (`RPY205`), dead buttons (`RPY203`), function calls in actions (`RPY206`), and inspects string targets in screen Actions (`SetVariable`, `ToggleVariable`, `Show`, `ShowMenu`, `Hide`) for typos and missing declarations (`RPY202`, `RPY204`).
+* **ATL Transforms & Transitions:** Validates custom and built-in positions/transforms in `show ... at <transform>` and transitions in `with <transition>`, catching runtime `NameError` typos with QuickFix suggestions (`RPY502`).
+* **Collection Method Guard:** Detects incompatible method invocations on known types (`list.add()` ➔ `.append()`, `dict.append()`, `str.pop()`) before runtime `AttributeError` crashes occur (`RPY108`).
+* **Translation Validator & Coverage:** Audits `game/tl/` formatting, catches broken interpolation variables (`RPY601`), and calculates localization completion metrics via `senpy --coverage`.
 * **Runtime Crash Inspector:** Parses `traceback.txt` post-mortem crash logs, explaining failures in human-readable terms (`senpy --traceback`).
-* **LSP & VS Code Superpowers:** Live diagnostics, Go-to-Definition (`F12`), semantic hover, interactive story map, and live crash watchers.
+* **LSP & VS Code Superpowers:** Real-time diagnostics (~0.04s incremental cache), full-spectrum Go-to-Definition (`F12`), Document Symbols / Breadcrumbs (`Ctrl+Shift+O`), hover docs for 220+ Ren'Py APIs, QuickFix (`Ctrl+.`), and interactive story maps.
 
 ---
 
@@ -92,6 +94,9 @@ senpy "path/to/game" --defaults
 # Export story flow as an interactive Mermaid.js diagram
 senpy "path/to/game" --graph-file "story_graph.md"
 
+# Generate an autonomous HTML report with pan/zoom story graph and diagnostics
+senpy "path/to/game" --export-html "report.html"
+
 # Clear disk cache (.senpy_cache)
 senpy --clear-cache
 
@@ -111,12 +116,12 @@ Senpy includes **40 specialized semantic rules** tailored to Ren'Py scripting:
 | Series | Category | Description |
 | :--- | :--- | :--- |
 | **RPY0xx** | Indentation & Formatting | Tab characters in indents (`RPY001`), typographic smart quotes in code (`RPY002`). |
-| **RPY1xx** | Variables, State & APIs | Missing `[var]` references, NameError on `+=`, undeclared variables in `if`, `define` mutations, non-revertable types, deprecated APIs (`RPY107`), type taints (`RPY108`), init load order (`RPY109`). |
-| **RPY2xx** | Screens & UI Performance | Predictive state mutations, variables without `default` in screens, dead buttons, missing screens, imperative loops, function calls in `action` (`RPY206`), screen parameter mismatches (`RPY207`). |
+| **RPY1xx** | Variables, State & APIs | Missing `[var]` references, NameError on `+=`, undeclared variables in `if`, `define` mutations, non-revertable types, deprecated APIs (`RPY107`), type taints & invalid collection methods (`RPY108`), init load order (`RPY109`). |
+| **RPY2xx** | Screens & UI Performance | Predictive state mutations, undeclared variables in conditions & actions (`RPY202`), dead buttons, missing screens in calls & UI actions (`RPY204`), imperative loops, direct function calls in `action` (`RPY206`), screen parameter mismatches (`RPY207`). |
 | **RPY3xx** | Dialogue & Story Flow | Unclosed `{b}` tags, broken jump/call targets, dead labels, malformed hex colors, unescaped quotes, missing returns, duplicate labels, fallthroughs (`RPY308`), story islands (`RPY309`), call parameter mismatches (`RPY310`). |
-| **RPY4xx** | Branching & Logic | Inconsistent variables in `menu:` choices (`RPY401`), empty choices (`RPY402`), contradictory conditions (`RPY403`), reading uninitialized `MAYBE_SET` variables (`RPY404`). |
-| **RPY5xx** | Assets & Media | Missing audio files, unresolved sprites/layered image attributes, unused assets on disk (`RPY503`), duplicate image declarations, unregistered audio channels (`RPY505`). |
-| **RPY6xx** | Translations & Localization | Variable mismatches in `game/tl/` (`RPY601`), formatting tag mismatches, blank translation strings (`RPY603`). |
+| **RPY4xx** | Branching & Logic | Branch asymmetry in menus & if/else (`RPY401`), empty choices (`RPY402`), contradictory conditions (`RPY403`), reading uninitialized `MAYBE_SET` variables (`RPY404`). |
+| **RPY5xx** | Assets & Media | Missing audio files, unresolved sprites, layered image attributes, undefined transforms (`at`) & transitions (`with`) (`RPY502`), unused assets (`RPY503`), duplicate image declarations, unregistered audio channels (`RPY505`). |
+| **RPY6xx** | Translations & Localization | Variable mismatches in `game/tl/` (`RPY601`), formatting tag mismatches (`RPY602`), blank translation strings (`RPY603`). |
 
 For full descriptions, rationale, and bad/good examples, read the complete **[Rules Documentation](RULES.md)**.
 
@@ -201,6 +206,11 @@ ignore = [
     "RPY104",  # Dynamic assignments without default
     "RPY303",  # Unreferenced labels (e.g. invoked via dynamic routers)
 ]
+
+# Override rule severity levels to fit your studio standards or CI policies (ERROR, WARNING, HINT, INFO)
+[tool.senpy.severity]
+RPY104 = "ERROR"   # Elevate missing defaults to build-breaking errors
+RPY308 = "INFO"    # Demote label fallthrough to informational notices
 ```
 
 ## GitHub Actions Integration

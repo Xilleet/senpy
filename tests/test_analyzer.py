@@ -1059,3 +1059,390 @@ label start:
     result, _ = run_senpy_on_code(code, tmp_path)
     rpy404_diags = [d for d in result.diagnostics if d.code == "RPY404"]
     assert len(rpy404_diags) == 0
+
+
+def test_incompatible_method_calls_on_known_types_rpy108(tmp_path: Path):
+    """Verify RPY108 catches calling invalid methods on known collection types (list.add, dict.append, str.pop)."""
+    code = """
+default inventory = ["potion"]
+default quest_flags = {"started": True}
+default player_name = "Eileen"
+
+label start:
+    # 1. Позитивные случаи (ошибки):
+    $ inventory.add("sword")          # Ошибка: у list нет .add(), нужен .append() (line 8)
+    $ quest_flags.append("finished")  # Ошибка: у dict нет .append(), нужен .update() (line 9)
+    $ player_name.pop()               # Ошибка: у str нет .pop() (line 10)
+
+    # 2. Негативные случаи (валидный код - 0 ошибок):
+    $ inventory.append("shield")
+    $ inventory.extend(["herb"])
+    $ quest_flags.update({"act1": True})
+    $ quest_flags.get("started")
+    $ clean_name = player_name.upper()
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy108_diags = [d for d in result.diagnostics if d.code == "RPY108" and "AttributeError" in d.message]
+
+    # Ровно 3 ошибки, точные строки 8, 9, 10, уровень ERROR
+    assert len(rpy108_diags) == 3, f"Expected 3 method call diagnostics, got: {rpy108_diags}"
+
+    # Проверка 1: inventory.add -> подсказка append
+    d_list = next(d for d in rpy108_diags if d.line_number == 8)
+    assert d_list.severity == "ERROR"
+    assert "inventory" in d_list.message
+    assert "list" in d_list.message
+    assert ".add()" in d_list.message
+    assert ".append()" in d_list.message
+
+    # Проверка 2: quest_flags.append
+    d_dict = next(d for d in rpy108_diags if d.line_number == 9)
+    assert d_dict.severity == "ERROR"
+    assert "quest_flags" in d_dict.message
+    assert "dict" in d_dict.message
+    assert ".append()" in d_dict.message
+
+    # Проверка 3: player_name.pop
+    d_str = next(d for d in rpy108_diags if d.line_number == 10)
+    assert d_str.severity == "ERROR"
+    assert "player_name" in d_str.message
+    assert "str" in d_str.message
+    assert ".pop()" in d_str.message
+
+
+def test_unresolved_transform_in_show_at_rpy502(tmp_path: Path):
+    """Verify RPY502 catches typos and unresolved transforms/positions in 'show ... at' clauses."""
+    code = """
+image sayori 1a = "sayori_1a.png"
+
+transform custom_bounce:
+    yoffset 0
+    easein 0.2 yoffset -20
+    easeout 0.2 yoffset 0
+
+label start:
+    # 1. Позитивные случаи (ошибки):
+    show sayori 1a at cneter                # Опечатка в позиции 'center' (line 11)
+    show sayori at missing_transform        # Необъявленный трансформ (line 12)
+    show sayori at missing_anim(0.5)        # Необъявленный трансформ с параметрами (line 13)
+
+    # 2. Негативные случаи (валидный код - 0 ошибок):
+    show sayori 1a at center
+    show sayori 1a at left, custom_bounce with dissolve
+    show sayori at truecenter
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    transform_diags = [d for d in result.diagnostics if d.code == "RPY502" and "Transform" in d.message]
+
+    # Ожидаем ровно 3 диагностики на строках 11, 12, 13
+    assert len(transform_diags) == 3, f"Expected 3 transform diagnostics, got: {transform_diags}"
+
+    # Ошибка 1: опечатка в center с подсказкой и автофиксом
+    d_typo = next(d for d in transform_diags if d.line_number == 11)
+    assert "cneter" in d_typo.message
+    assert "center" in d_typo.message
+    assert d_typo.fix_replacement == "center"
+
+    # Ошибка 2: отсутствующий трансформ
+    d_missing = next(d for d in transform_diags if d.line_number == 12)
+    assert "missing_transform" in d_missing.message
+
+    # Ошибка 3: отсутствующий трансформ с аргументами
+    d_param = next(d for d in transform_diags if d.line_number == 13)
+    assert "missing_anim" in d_param.message
+
+
+def test_unresolved_transition_in_with_clause_rpy502(tmp_path: Path):
+    """Verify RPY502 catches typos and unresolved transitions in 'with' clauses."""
+    code = """
+image sayori 1a = "sayori_1a.png"
+define custom_fade = Fade(0.5, 0.0, 0.5)
+
+label start:
+    # 1. Позитивные случаи (ошибки):
+    show sayori 1a with disolve            # Опечатка в 'dissolve' (line 8)
+    with fdae                              # Опечатка в 'fade' на отдельной строке (line 9)
+    with missing_transition                # Несуществующий переход (line 10)
+    show sayori with missing_wipe(0.5)     # Несуществующий переход с аргументами (line 11)
+
+    # 2. Негативные случаи (валидный код - 0 ошибок):
+    show sayori 1a with dissolve
+    with fade
+    with None
+    with custom_fade
+    with Dissolve(1.0)
+    "Диалог с переходом" with dissolve
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    transition_diags = [d for d in result.diagnostics if d.code == "RPY502" and "Transition" in d.message]
+
+    # Ожидаем ровно 4 диагностики на строках 7, 8, 9, 10
+    assert len(transition_diags) == 4, f"Expected 4 transition diagnostics, got: {transition_diags}"
+
+    # Ошибка 1: опечатка в dissolve (строка 7)
+    d_dissolve = next(d for d in transition_diags if d.line_number == 7)
+    assert "disolve" in d_dissolve.message
+    assert "dissolve" in d_dissolve.message
+    assert d_dissolve.fix_replacement == "dissolve"
+
+    # Ошибка 2: опечатка в fade (строка 8)
+    d_fade = next(d for d in transition_diags if d.line_number == 8)
+    assert "fdae" in d_fade.message
+    assert "fade" in d_fade.message
+    assert d_fade.fix_replacement == "fade"
+
+    # Ошибка 3: отсутствующий переход (строка 9)
+    d_missing = next(d for d in transition_diags if d.line_number == 9)
+    assert "missing_transition" in d_missing.message
+
+    # Ошибка 4: отсутствующий переход с параметрами (строка 10)
+    d_param = next(d for d in transition_diags if d.line_number == 10)
+    assert "missing_wipe" in d_param.message
+
+def test_screen_action_setvariable_undeclared_rpy202(tmp_path: Path):
+    """Verify RPY202 catches undeclared variables in SetVariable and ToggleVariable screen actions."""
+    code = """
+default player_gold = 100
+default sound_muted = False
+
+screen shop():
+    # 1. Позитивные случаи (ошибки / опечатки):
+    textbutton "Buy" action SetVariable("plater_gold", 50)     # Опечатка в player_gold (строка 7)
+    textbutton "Mute" action ToggleVariable("snd_muted")       # Опечатка в sound_muted (строка 8)
+
+    # 2. Негативные случаи (валидный код - 0 ошибок):
+    textbutton "Legit Buy" action SetVariable("player_gold", 90)
+    textbutton "Legit Mute" action ToggleVariable("sound_muted")
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy202_diags = [d for d in result.diagnostics if d.code == "RPY202" and "action references" in d.message]
+
+    # Ожидаем ровно 2 диагностики на строках 7 и 8
+    assert len(rpy202_diags) == 2, f"Expected 2 RPY202 action diagnostics, got: {rpy202_diags}"
+
+    d_gold = next(d for d in rpy202_diags if d.line_number == 7)
+    assert "plater_gold" in d_gold.message
+    assert "player_gold" in d_gold.message
+
+    d_sound = next(d for d in rpy202_diags if d.line_number == 8)
+    assert "snd_muted" in d_sound.message
+    assert "sound_muted" in d_sound.message
+
+
+def test_screen_action_show_non_existent_screen_rpy204(tmp_path: Path):
+    """Verify RPY204 catches non-existent screens referenced in Show/ShowMenu/Hide actions."""
+    code = """
+screen inventory_hud():
+    text "Inventory"
+
+screen main_ui():
+    # 1. Позитивные случаи (ошибки / опечатки):
+    textbutton "Open" action Show("inventroy_hud")          # Опечатка в inventory_hud (строка 7)
+    textbutton "Custom" action ShowMenu("ghost_menu")       # Несуществующий экран (строка 8)
+
+    # 2. Негативные случаи (валидный код - 0 ошибок):
+    textbutton "Legit" action Show("inventory_hud")
+    textbutton "Save" action ShowMenu("save")
+    textbutton "Close" action Hide()
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy204_action_diags = [d for d in result.diagnostics if d.code == "RPY204" and "action" in d.message]
+
+    # Ожидаем ровно 2 диагностики на строках 7 и 8
+    assert len(rpy204_action_diags) == 2, f"Expected 2 RPY204 action diagnostics, got: {rpy204_action_diags}"
+
+    # Ошибка 1: опечатка в inventory_hud с подсказкой и заменой
+    d_typo = next(d for d in rpy204_action_diags if d.line_number == 7)
+    assert "inventroy_hud" in d_typo.message
+    assert "inventory_hud" in d_typo.message
+    assert d_typo.fix_replacement == "inventory_hud"
+
+    # Ошибка 2: несуществующий экран в ShowMenu
+    d_missing = next(d for d in rpy204_action_diags if d.line_number == 8)
+    assert "ghost_menu" in d_missing.message
+
+
+def test_conflict_define_and_default_declaration_rpy105(tmp_path: Path):
+    """Verify RPY105 catches variables declared with both 'define' and 'default'."""
+    code = """
+# 1. Позитивные случаи (конфликты объявлений):
+define karma = 0
+default karma = 0       # Ошибка: karma уже объявлена через define! (line 4)
+
+default affection = 10
+define affection = 10   # Ошибка: affection уже объявлена через default! (line 7)
+
+# 2. Негативные случаи (валидный код - 0 ошибок):
+default player_gold = 100
+define MAX_GOLD = 9999
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    conflict_diags = [d for d in result.diagnostics if d.code == "RPY105" and "both 'define' and 'default'" in d.message]
+
+    # Ожидаем ровно 2 диагностики на строках 4 и 7, уровень ERROR
+    assert len(conflict_diags) == 2, f"Expected 2 conflicting declaration diagnostics, got: {conflict_diags}"
+
+    d_karma = next(d for d in conflict_diags if d.line_number == 4)
+    assert d_karma.severity == "ERROR"
+    assert "karma" in d_karma.message
+    assert "define" in d_karma.message
+    assert "default" in d_karma.message
+
+    d_affection = next(d for d in conflict_diags if d.line_number == 7)
+    assert d_affection.severity == "ERROR"
+    assert "affection" in d_affection.message
+
+
+def test_jump_call_in_actions_and_python_rpy302(tmp_path: Path):
+    """Verify RPY302 catches invalid labels in Jump/Call actions and renpy.jump/call."""
+    code = """
+label start:
+    return
+
+screen nav():
+    # 1. Позитивные случаи в экранах:
+    textbutton "1" action Jump("strt")       # RPY302 (line 7)
+    textbutton "2" action Call("btle")       # RPY302 (line 8)
+
+label test_py:
+    # 2. Позитивные случаи в Python-коде:
+    $ renpy.jump("edning")                   # RPY302 (line 12)
+    $ renpy.call("chpter2")                  # RPY302 (line 13)
+
+    # 3. Негативные случаи (валидный код - 0 ошибок):
+    $ renpy.jump("start")
+    $ renpy.call("start")
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy302_diags = [d for d in result.diagnostics if d.code == "RPY302"]
+
+    # Ожидаем ровно 4 ошибки (строки 7, 8, 12, 13)
+    assert len(rpy302_diags) == 4, f"Expected 4 RPY302 diagnostics, got: {rpy302_diags}"
+
+    assert any(d.line_number == 7 and "strt" in d.message for d in rpy302_diags)
+    assert any(d.line_number == 8 and "btle" in d.message for d in rpy302_diags)
+    assert any(d.line_number == 12 and "edning" in d.message for d in rpy302_diags)
+    assert any(d.line_number == 13 and "chpter2" in d.message for d in rpy302_diags)
+
+
+def test_dynamic_jumps_do_not_trigger_false_positives_rpy302(tmp_path: Path):
+    """Verify dynamic transitions (variables, expressions) do not trigger false RPY302."""
+    code = """
+label start:
+    $ target_label = "ending"
+    jump expression target_label
+    call expression target_label
+
+    $ renpy.jump(target_label)
+    $ renpy.call(target_label)
+    return
+
+screen dynamic_nav(target):
+    textbutton "Go" action Jump(target)
+    textbutton "Do" action Call(target)
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy302_diags = [d for d in result.diagnostics if d.code == "RPY302"]
+    
+    # Линтер не должен выдать ни одной ошибки RPY302 на переменные без кавычек!
+    assert len(rpy302_diags) == 0, f"False RPY302 on dynamic routing: {rpy302_diags}"
+
+
+def test_undeclared_variables_in_subscripts_and_methods_rpy102(tmp_path: Path):
+    """Verify RPY102 catches undeclared variables mutated via subscripts and methods."""
+    code = """
+label start:
+    # 1. Позитивные случаи (переменные не объявлены, будет NameError):
+    $ missing_dict["key"] = 1           # RPY102 (line 4)
+    $ missing_list.append("sword")      # RPY102 (line 5)
+    $ missing_stats["hp"] += 10         # RPY102 (line 6)
+
+    # 2. Негативные случаи (переменные объявлены, 0 ошибок):
+    $ valid_dict = {}
+    $ valid_dict["key"] = 1
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy102_diags = [d for d in result.diagnostics if d.code == "RPY102" and "before declaration" in d.message]
+
+    # Строгость по правилу 1.2: ожидаем ровно 3 диагностики на строках 4, 5 и 6
+    assert len(rpy102_diags) == 3, f"Expected 3 RPY102 diagnostics, got: {rpy102_diags}"
+
+    assert any(d.line_number == 4 and "missing_dict" in d.message for d in rpy102_diags)
+    assert any(d.line_number == 5 and "missing_list" in d.message for d in rpy102_diags)
+    assert any(d.line_number == 6 and "missing_stats" in d.message for d in rpy102_diags)
+
+
+def test_cache_invalidates_on_same_size_same_mtime_content_change(tmp_path: Path):
+    """Verify incremental cache invalidates via content_hash even when size and mtime are identical."""
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+    script_file = game_dir / "script.rpy"
+
+    # Шаг 1: файл версии 1 (пишем байты напрямую)
+    code_v1 = b"default hero_gold = 100\n"
+    script_file.write_bytes(code_v1)
+    orig_size = script_file.stat().st_size
+
+    # Холодный прогон: кэш создан
+    analyzer_1 = SenpyAnalyzer(str(tmp_path))
+    analyzer_1.run(quiet=True)
+    assert "hero_gold" in analyzer_1.declared_symbols
+
+    # Запоминаем исходный mtime
+    orig_mtime = script_file.stat().st_mtime
+
+    # Шаг 2: файл версии 2 (размер идентичен, но переменная другая!)
+    code_v2 = b"default hero_mana = 100\n"
+    script_file.write_bytes(code_v2)
+    assert script_file.stat().st_size == orig_size
+
+    # Принудительно возвращаем точный старый mtime, имитируя коллизию метаданных
+    import os
+    os.utime(str(script_file), (orig_mtime, orig_mtime))
+
+    # Шаг 3: тёплый повторный запуск
+    analyzer_2 = SenpyAnalyzer(str(tmp_path))
+    analyzer_2.run(quiet=True)
+
+    # На старом коде этот ассерт обязан упасть, так как кэш выдаст устаревший hero_gold!
+    assert "hero_mana" in analyzer_2.declared_symbols, "Cache served stale scope: new variable 'hero_mana' was missed!"
+    assert "hero_gold" not in analyzer_2.declared_symbols, "Cache served stale scope: old variable 'hero_gold' retained!"
+
+
+def test_per_rule_severity_override(tmp_path: Path):
+    """Verify severity_overrides elevates RPY104 to ERROR and demotes RPY308 to INFO."""
+    code = """
+label start:
+    $ uninit_var = 100   # RPY104 (default: WARNING)
+
+label next_scene:        # RPY308: fallthrough (default: WARNING)
+    return
+"""
+    # 1. Дефолтное поведение: оба правила имеют уровень WARNING
+    res_default, _ = run_senpy_on_code(code, tmp_path / "default_proj")
+    d104_def = next(d for d in res_default.diagnostics if d.code == "RPY104")
+    d308_def = next(d for d in res_default.diagnostics if d.code == "RPY308")
+    assert d104_def.severity == "WARNING"
+    assert d308_def.severity == "WARNING"
+
+    # 2. Переопределяем строгость: RPY104 -> ERROR, RPY308 -> INFO
+    game_dir = tmp_path / "custom_proj" / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+    (game_dir / "script.rpy").write_text(code, encoding="utf-8")
+
+    analyzer = SenpyAnalyzer(
+        str(tmp_path / "custom_proj"),
+        severity_overrides={"RPY104": "ERROR", "RPY308": "INFO"},
+    )
+    res_custom = analyzer.run(quiet=True)
+
+    d104_custom = next(d for d in res_custom.diagnostics if d.code == "RPY104")
+    d308_custom = next(d for d in res_custom.diagnostics if d.code == "RPY308")
+
+    assert d104_custom.severity == "ERROR"
+    assert d308_custom.severity == "INFO"

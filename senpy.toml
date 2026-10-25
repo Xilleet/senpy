@@ -39,8 +39,14 @@ tsundere = false
 
 
 # -----------------------------------------------------------------------------
-# 2. RULE SUPPRESSION / ИГНОРИРОВАНИЕ ПРАВИЛ
+# 2. RULE SUPPRESSION & SEVERITY / НАСТРОЙКА СТРОГОСТИ И ИГНОРИРОВАНИЕ ПРАВИЛ
 # -----------------------------------------------------------------------------
+
+# [EN] Custom severity overrides for specific rules (ERROR, WARNING, HINT, INFO).
+# [RU] Переопределение уровней строгости правил под стандарты вашего проекта/CI (ERROR, WARNING, HINT, INFO).
+# [tool.senpy.severity]
+# RPY104 = "ERROR"   # [EN] Elevate dynamic assignments to critical build-breaking errors
+# RPY308 = "INFO"    # [EN] Demote label fallthrough to informational notices
 
 # [EN] List of diagnostic codes to completely ignore across the whole project.
 # [RU] Список кодов ошибок, которые нужно полностью игнорировать во всём проекте.

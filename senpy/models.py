@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from senpy.symbols import ImageSymbol, LabelSymbol, ScreenSymbol, VariableSymbol
+    from senpy.symbols import ImageSymbol, LabelSymbol, ScreenSymbol, TransformSymbol, VariableSymbol
 
 
 @dataclass
@@ -45,6 +45,7 @@ class FileScope:
     labels: dict[str, LabelSymbol] = field(default_factory=dict)
     screens: dict[str, ScreenSymbol] = field(default_factory=dict)
     images: dict[str, ImageSymbol] = field(default_factory=dict)
+    transforms: dict[str, TransformSymbol] = field(default_factory=dict)
     
     jump_sources: dict[str, list[tuple[str, int]]] = field(default_factory=dict)
 

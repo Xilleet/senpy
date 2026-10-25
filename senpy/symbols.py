@@ -50,3 +50,12 @@ class ImageSymbol:
     body: str
     is_layered: bool = False
     attributes: set[str] = field(default_factory=set)
+
+
+@dataclass
+class TransformSymbol:
+    """Представляет ATL-трансформацию (transform)."""
+    name: str
+    file_path: str
+    line_number: int
+    code_line: str

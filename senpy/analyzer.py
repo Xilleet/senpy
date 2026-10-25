@@ -5,12 +5,12 @@ import re
 import warnings
 
 from senpy.assets import AssetManager, find_orphaned_rpyc
-from senpy.cache import CachedFileEntry, CacheManager, CacheManifest
+from senpy.cache import CachedFileEntry, CacheManager, CacheManifest, compute_file_hash
 from senpy.deprecated import DeprecationChecker
 from senpy.flow import StoryFlowAnalyzer
 from senpy.python_ast import PythonAstChecker, infer_expr_type
 from senpy.signature import parse_signature
-from senpy.symbols import ImageSymbol, LabelSymbol, ScreenSymbol, VariableSymbol
+from senpy.symbols import ImageSymbol, LabelSymbol, ScreenSymbol, TransformSymbol, VariableSymbol
 from senpy.text_tags import get_utf16_range, process_quoted_strings
 
 warnings.filterwarnings("ignore", category=SyntaxWarning)
@@ -42,6 +42,7 @@ from senpy.constants import (
     RE_QUOTED_IDENTIFIER,
     RE_RETURN,
     RE_SCREEN_START,
+    RE_TRANSFORM,
     SENPY_VERSION,
 )
 from senpy.models import RULE_SEVERITY, AnalysisResult, Diagnostic, FileScope
@@ -206,6 +207,7 @@ class SenpyAnalyzer:
         fix: bool = False,
         in_memory_files: dict[str, str] | None = None,
         no_cache: bool = False,
+        severity_overrides: dict[str, str] | None = None,
     ):
         self.project_path = os.path.abspath(project_path)
         self.cache_manager = CacheManager(self.project_path, enabled=not no_cache)
@@ -219,6 +221,20 @@ class SenpyAnalyzer:
             os.path.normcase(os.path.abspath(k)): v
             for k, v in (in_memory_files or {}).items()
         }
+
+        # Настройка уровней строгости: переданные аргументы или секция [tool.senpy.severity] из конфига
+        if severity_overrides is not None:
+            self.severity_overrides = {
+                k.strip().upper(): v.strip().upper()
+                for k, v in severity_overrides.items()
+            }
+        else:
+            from senpy.cli import load_config
+            cfg = load_config(self.project_path)
+            self.severity_overrides = {
+                k.strip().upper(): v.strip().upper()
+                for k, v in cfg.get("severity", {}).items()
+            }
         
         # Базовые множества
         self.user_symbols: set[str] = set()
@@ -232,6 +248,7 @@ class SenpyAnalyzer:
         self.labels: dict[str, LabelSymbol] = {}
         self.screens: dict[str, ScreenSymbol] = {}
         self.images: dict[str, ImageSymbol] = {}
+        self.transforms: dict[str, TransformSymbol] = {}
         
         # Остальные структуры и метаданные сканирования
         self.jump_sources: dict[str, list[tuple[str, int]]] = {}
@@ -296,6 +313,7 @@ class SenpyAnalyzer:
         self.labels.clear()
         self.screens.clear()
         self.images.clear()
+        self.transforms.clear()
         self.jump_sources.clear()
         
         # Сброс флагов и счётчиков
@@ -315,6 +333,7 @@ class SenpyAnalyzer:
         new_cached_entries: dict[str, CachedFileEntry] = {}
 
         # [1/2] Сбор символов (Tier 1 Cache: восстановление неизмененных FileScope)
+        file_hashes: dict[str, str] = {}
         for i, file_path in enumerate(rpy_files, 1):
             fname = os.path.basename(file_path)
             norm_path = os.path.normcase(os.path.abspath(file_path))
@@ -326,11 +345,24 @@ class SenpyAnalyzer:
                 msg = f"\r[1/2] Сбор символов: {i}/{total_files} ({fname[:25]})"
                 print(msg.ljust(75), end="", flush=True)
 
-            # Проверяем Tier 1 hit
-            if norm_path in cached_files and cached_files[norm_path].mtime == mtime and cached_files[norm_path].size == size and norm_path not in self.in_memory_files:
-                cached_scope = cached_files[norm_path].scope
-                self.file_scopes[norm_path] = cached_scope
-            else:
+            # Проверяем Tier 1 hit с контролем content_hash
+            is_tier1_hit = False
+            if (
+                norm_path in cached_files
+                and cached_files[norm_path].mtime == mtime
+                and cached_files[norm_path].size == size
+                and norm_path not in self.in_memory_files
+            ):
+                cached_entry = cached_files[norm_path]
+                f_hash = compute_file_hash(file_path)
+                file_hashes[norm_path] = f_hash
+                if cached_entry.content_hash and f_hash == cached_entry.content_hash:
+                    self.file_scopes[norm_path] = cached_entry.scope
+                    is_tier1_hit = True
+
+            if not is_tier1_hit:
+                f_hash = file_hashes.get(norm_path) or compute_file_hash(file_path)
+                file_hashes[norm_path] = f_hash
                 self._collect_symbols(file_path)
 
         if not quiet:
@@ -353,14 +385,26 @@ class SenpyAnalyzer:
                 msg = f"\r[2/2] Анализ правил: {i}/{total_files} ({fname[:25]})"
                 print(msg.ljust(75), end="", flush=True)
 
-            # Проверяем Tier 2 hit
-            if is_global_unchanged and norm_path in cached_files and cached_files[norm_path].mtime == mtime and cached_files[norm_path].size == size and norm_path not in self.in_memory_files and not self.fix:
+            # Проверяем Tier 2 hit с контролем content_hash
+            is_tier2_hit = False
+            if (
+                is_global_unchanged
+                and norm_path in cached_files
+                and cached_files[norm_path].mtime == mtime
+                and cached_files[norm_path].size == size
+                and norm_path not in self.in_memory_files
+                and not self.fix
+            ):
                 entry = cached_files[norm_path]
-                self.diagnostics.extend(entry.diagnostics)
-                self.assets.used_asset_keys.update(entry.used_assets)
-                self.total_lines += entry.lines_count
-                new_cached_entries[norm_path] = entry
-            else:
+                f_hash = file_hashes.get(norm_path) or compute_file_hash(file_path)
+                if entry.content_hash and f_hash == entry.content_hash:
+                    self.diagnostics.extend(entry.diagnostics)
+                    self.assets.used_asset_keys.update(entry.used_assets)
+                    self.total_lines += entry.lines_count
+                    new_cached_entries[norm_path] = entry
+                    is_tier2_hit = True
+
+            if not is_tier2_hit:
                 diag_start = len(self.diagnostics)
                 lines_start = self.total_lines
                 used_start = set(self.assets.used_asset_keys)
@@ -372,6 +416,7 @@ class SenpyAnalyzer:
                 new_used = self.assets.used_asset_keys - used_start
 
                 if norm_path in self.file_scopes and not self.fix:
+                    f_hash = file_hashes.get(norm_path) or compute_file_hash(file_path)
                     new_cached_entries[norm_path] = CachedFileEntry(
                         mtime=mtime,
                         size=size,
@@ -379,6 +424,7 @@ class SenpyAnalyzer:
                         scope=self.file_scopes[norm_path],
                         diagnostics=new_diags,
                         used_assets=new_used,
+                        content_hash=f_hash,
                     )
 
         if not quiet:
@@ -390,6 +436,12 @@ class SenpyAnalyzer:
         # [3/3] Валидация файлов перевода (TL-Checker)
         for tl_file in tl_rpy:
             self._analyze_tl_file(tl_file)
+
+        # Применяем переопределения строгости ко всем собранным диагностикам (включая граф и ассеты)
+        if self.severity_overrides:
+            for d in self.diagnostics:
+                if d.code in self.severity_overrides:
+                    d.severity = self.severity_overrides[d.code]
 
         # Сохранение обновленного манифеста
         if not self.fix and new_cached_entries:
@@ -439,6 +491,7 @@ class SenpyAnalyzer:
             self.labels.update(scope.labels)
             self.screens.update(scope.screens)
             self.images.update(scope.images)
+            self.transforms.update(scope.transforms)
 
             for tgt, locs in scope.jump_sources.items():
                 self.jump_sources.setdefault(tgt, []).extend(locs)
@@ -518,6 +571,29 @@ class SenpyAnalyzer:
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
 
+                    # RPY105: Проверка конфликта — переменная уже была объявлена через define
+                    prev_var = self.variables.get(var)
+                    if prev_var and prev_var.is_constant and not prev_var.is_character:
+                        prev_file = os.path.basename(prev_var.file_path)
+                        prev_line = prev_var.line_number
+                        start_c, end_c = self._get_utf16_range(line, var)
+                        self.diagnostics.append(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=idx + 1,
+                                line_content=clean,
+                                code="RPY105",
+                                message=(
+                                    f"Variable '{var}' is declared with both 'define' and 'default'. "
+                                    f"Previously declared with 'define' at {prev_file}:{prev_line}. "
+                                    "Define is for constants and default is for mutable state; choose one to prevent save and rollback corruption."
+                                ),
+                                severity="ERROR",
+                                col=start_c,
+                                end_col=end_c,
+                            )
+                        )
+
                     inferred_t = infer_expr_type(val_str)
                     var_sym = VariableSymbol(
                         name=var, file_path=file_path, line_number=idx + 1, code_line=clean,
@@ -555,6 +631,29 @@ class SenpyAnalyzer:
                     self.user_symbols.add(var)
                     self.declared_symbols.add(var)
 
+                    # RPY105: Проверка конфликта — переменная уже была объявлена через default
+                    prev_var = self.variables.get(var)
+                    if prev_var and not prev_var.is_constant:
+                        prev_file = os.path.basename(prev_var.file_path)
+                        prev_line = prev_var.line_number
+                        start_c, end_c = self._get_utf16_range(line, var)
+                        self.diagnostics.append(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=idx + 1,
+                                line_content=clean,
+                                code="RPY105",
+                                message=(
+                                    f"Variable '{var}' is declared with both 'define' and 'default'. "
+                                    f"Previously declared with 'default' at {prev_file}:{prev_line}. "
+                                    "Define is for constants and default is for mutable state; choose one to prevent save and rollback corruption."
+                                ),
+                                severity="ERROR",
+                                col=start_c,
+                                end_col=end_c,
+                            )
+                        )
+
                     inferred_t = infer_expr_type(val_str)
                     is_const = "." not in clean.split("=")[0]
                     is_char = "Character" in clean or "DynamicCharacter" in clean
@@ -578,6 +677,22 @@ class SenpyAnalyzer:
                     )
                     scope.screens[s_name] = scr_sym
                     self.screens[s_name] = scr_sym
+
+                m_trans = RE_TRANSFORM.match(clean)
+                if m_trans:
+                    trans_name = m_trans.group(1)
+                    trans_sym = TransformSymbol(
+                        name=trans_name,
+                        file_path=file_path,
+                        line_number=idx + 1,
+                        code_line=clean,
+                    )
+                    scope.transforms[trans_name] = trans_sym
+                    self.transforms[trans_name] = trans_sym
+                    scope.user_symbols.add(trans_name)
+                    scope.declared_symbols.add(trans_name)
+                    self.user_symbols.add(trans_name)
+                    self.declared_symbols.add(trans_name)
 
                 m_label = RE_LABEL.match(clean)
                 if m_label:
@@ -788,13 +903,19 @@ class SenpyAnalyzer:
             return True, codes
         return True, None
 
+    def _apply_severity(self, diag: Diagnostic) -> None:
+        """Применяет переопределения строгости из конфига или дефолтные уровни."""
+        if self.severity_overrides and diag.code in self.severity_overrides:
+            diag.severity = self.severity_overrides[diag.code]
+        elif not diag.severity:
+            diag.severity = RULE_SEVERITY.get(diag.code, "WARNING")
+
     def _add_diagnostic(self, diag: Diagnostic, noqa_map: dict[int, set[str] | None]):
         if diag.line_number in noqa_map:
             ignored_codes = noqa_map[diag.line_number]
             if ignored_codes is None or diag.code in ignored_codes:
                 return
-        if not diag.severity:
-            diag.severity = RULE_SEVERITY.get(diag.code, "WARNING")
+        self._apply_severity(diag)
         self.diagnostics.append(diag)
 
     def _can_reach_return(self, label_name: str, visited: set[str] | None = None) -> bool:

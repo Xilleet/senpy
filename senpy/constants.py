@@ -44,6 +44,12 @@ BUILTIN_SYMBOLS = {
     "pushleft", "pushup", "pushdown", "wipeleft", "wiperight", "wipeup",
     "wipedown", "slideleft", "slideright", "slideup", "slidedown",
     "zoomin", "zoomout", "zoominout", "blinds", "squares", "irisin", "irisout",
+    # Стандартные позиции и базовые трансформы Ren'Py
+    "center", "truecenter", "left", "right", "top", "topleft", "topright",
+    "offscreenleft", "offscreenright", "reset", "default",
+    # Встроенные классы переходов Ren'Py (для вызовов с параметрами: Dissolve(1.0), Fade(...))
+    "Dissolve", "Fade", "Pixellate", "MoveTransition", "MultipleTransition",
+    "CropMove", "PushMove", "ImageDissolve", "AlphaDissolve", "ComposeTransition", "Pause",
     *dir(builtins),
 }
 
@@ -59,7 +65,7 @@ BUILTIN_ACTIONS = {
     "ShowTransient", "FilePage"
 }
 
-SENPY_VERSION = "0.4.2"
+SENPY_VERSION = "0.4.3"
 
 IGNORED_DIRS = {
     ".git", ".svn", ".hg", "node_modules", ".venv", "venv", "env",
@@ -139,6 +145,7 @@ RE_INTERPOLATION = re.compile(r"\[([a-zA-Z_][a-zA-Z0-9_]*)[^\]]*\]")
 RE_CONDITION = re.compile(r"^\s*(?:if|elif)\s+(.+):$")
 RE_PYTHON_BLOCK_START = re.compile(r"^(\s*)python(?:\s+early)?\s*:\s*(?:#.*)?$")
 RE_INIT_PYTHON_START = re.compile(r"^(\s*)init(?:\s+-?\d+)?\s+python(?:\s+early)?\s*:\s*(?:#.*)?$")
+RE_TRANSFORM = re.compile(r"^\s*transform\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\(.*?\))?\s*:")
 RE_SCREEN_START = re.compile(
     r"^(\s*)screen\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\((.*?)\))?\s*:\s*(?:#.*)?$"
 )
