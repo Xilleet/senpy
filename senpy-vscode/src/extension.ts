@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node';
 import * as cp from 'child_process';
+import * as path from 'path';
+import * as fs from 'fs';
 
 let client: LanguageClient;
 
 export function activate(context: vscode.ExtensionContext) {
     const config = vscode.workspace.getConfiguration("senpy");
-    let serverCmd = config.get<string>("executablePath") || "senpy";
+    let serverCmd = resolveServerCommand(context);
 
     // 1. Инициализация LSP Сервера
     const serverOptions: ServerOptions = {
@@ -106,6 +108,12 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(graphCmd);
+    
+// Пробрасываем папку bin/ расширения в PATH встроенного терминала VS Code
+    const binDir = path.join(context.extensionPath, 'bin');
+    if (fs.existsSync(binDir)) {
+        context.environmentVariableCollection.prepend('PATH', `${binDir}${path.delimiter}`);
+    }
 }
 
 export function deactivate(): Thenable<void> | undefined {
@@ -153,8 +161,8 @@ function setupCrashWatcher(context: vscode.ExtensionContext) {
             const jumpBtn = isRu ? `Перейти к ${fileName}:${lineNum}` : `Go to ${fileName}:${lineNum}`;
             const reportBtn = isRu ? "Сообщить об ошибке на GitHub" : "Report Issue on GitHub";
             const message = isRu
-                ? `💥 Обнаружен сбой игры (${excType})!`
-                : `💥 Ren'Py runtime crash detected (${excType})!`;
+                ? `Обнаружен сбой игры (${excType})!`
+                : `Ren'Py runtime crash detected (${excType})!`;
 
             const action = await vscode.window.showErrorMessage(
                 `${message} ${excMsg ? `— ${excMsg}` : ''}`,
@@ -163,31 +171,80 @@ function setupCrashWatcher(context: vscode.ExtensionContext) {
             );
 
             if (action === jumpBtn) {
-                // 2. Безопасное разрешение пути: прямой переход по относительному пути от корня проекта
-                const normRel = rpyRelPath.replace(/\\/g, '/').replace(/^\/+/, '');
+                // 1. Проверяем, не является ли путь абсолютным и существующим на диске
                 let targetUri: vscode.Uri | undefined;
+                try {
+                    const absCandidate = vscode.Uri.file(rpyRelPath);
+                    await vscode.workspace.fs.stat(absCandidate);
+                    targetUri = absCandidate;
+                } catch {
+                    // Путь относительный или не существует по абсолютному адресу
+                }
 
-                if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+                // Нормализуем путь: унифицируем слэши и срезаем ведущие /
+                const normRel = rpyRelPath.replace(/\\/g, '/').replace(/^\/+/, '');
+                const normRelClean = normRel.replace(/^game\//i, '');
+                const fileNameOnly = normRel.split('/').pop() || normRel;
+
+                // 2. Прямой поиск в папках рабочей области с учётом вариаций (game/ и без)
+                if (!targetUri && vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
                     for (const folder of vscode.workspace.workspaceFolders) {
-                        const candidate = vscode.Uri.joinPath(folder.uri, normRel);
-                        try {
-                            await vscode.workspace.fs.stat(candidate);
-                            targetUri = candidate;
+                        const candidates = [
+                            vscode.Uri.joinPath(folder.uri, normRel),
+                            vscode.Uri.joinPath(folder.uri, 'game', normRelClean),
+                            vscode.Uri.joinPath(folder.uri, normRelClean)
+                        ];
+
+                        for (const candidate of candidates) {
+                            try {
+                                await vscode.workspace.fs.stat(candidate);
+                                targetUri = candidate;
+                                break;
+                            } catch {
+                                // Файл не найден по этому варианту пути
+                            }
+                        }
+                        if (targetUri) {
                             break;
-                        } catch {
-                            // Файл не в этой папке рабочей области, продолжаем проверку
                         }
                     }
                 }
 
-                // Fallback через findFiles со строгим сопоставлением нормализованного относительного пути
+                // 3. Фолбэк через findFiles с сопоставлением по максимальному совпадению сегментов пути
                 if (!targetUri) {
-                    const files = await vscode.workspace.findFiles(`**/${fileName}`);
-                    const normRelLower = normRel.toLowerCase();
-                    targetUri = files.find(f => {
-                        const p = f.fsPath.replace(/\\/g, '/').toLowerCase();
-                        return p.endsWith('/' + normRelLower) || p.endsWith(normRelLower);
-                    }) || files[0];
+                    const files = await vscode.workspace.findFiles(`**/${fileNameOnly}`);
+
+                    if (files.length === 1) {
+                        targetUri = files[0];
+                    } else if (files.length > 1) {
+                        // Если найдено несколько файлов с одинаковым именем (например, route_a/script.rpy и route_b/script.rpy)
+                        // Выбираем тот, у которого совпадает максимальное количество сегментов пути с конца
+                        const targetSegments = normRel.toLowerCase().split('/').filter(Boolean);
+                        let bestMatch: vscode.Uri | undefined;
+                        let maxMatchingSegments = -1;
+
+                        for (const file of files) {
+                            const relPath = vscode.workspace.asRelativePath(file, false).replace(/\\/g, '/').toLowerCase();
+                            const fileSegments = relPath.split('/').filter(Boolean);
+
+                            let matchingCount = 0;
+                            const minLen = Math.min(targetSegments.length, fileSegments.length);
+                            for (let i = 1; i <= minLen; i++) {
+                                if (targetSegments[targetSegments.length - i] === fileSegments[fileSegments.length - i]) {
+                                    matchingCount++;
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            if (matchingCount > maxMatchingSegments) {
+                                maxMatchingSegments = matchingCount;
+                                bestMatch = file;
+                            }
+                        }
+
+                        targetUri = bestMatch || files[0];
+                    }
                 }
 
                 if (targetUri) {
@@ -198,7 +255,7 @@ function setupCrashWatcher(context: vscode.ExtensionContext) {
                     editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
                 }
             } else if (action === reportBtn) {
-                // 3. Формирование лога: сохраняем шапку с версией и хвост с реальным падением
+                // 4. Формирование лога: сохраняем шапку с версией и хвост с реальным падением
                 let tracebackSnippet = content.trim();
                 if (tracebackSnippet.length > 2000) {
                     const header = tracebackSnippet.split(/\r?\n/).slice(0, 4).join('\n');
@@ -279,6 +336,28 @@ async function checkForUpdates(context: vscode.ExtensionContext) {
     } catch {
         // Игнорируем отсутствие сети
     }
+}
+
+function resolveServerCommand(context: vscode.ExtensionContext): string {
+    const config = vscode.workspace.getConfiguration("senpy");
+    const customPath = config.get<string>("executablePath");
+    
+    // 1. Приоритет: явный путь из настроек пользователя
+    if (customPath && customPath.trim().length > 0) {
+        return customPath.trim();
+    }
+
+    // 2. Приоритет: вшитый бинарник внутри папки расширения
+    const isWin = process.platform === 'win32';
+    const binName = isWin ? 'senpy.exe' : 'senpy';
+    const bundledBinary = path.join(context.extensionPath, 'bin', binName);
+
+    if (fs.existsSync(bundledBinary)) {
+        return bundledBinary;
+    }
+
+    // 3. Fallback: глобальная команда в системе (pip install senpy-linter)
+    return "senpy";
 }
 
 function isNewer(latest: string, current: string): boolean {

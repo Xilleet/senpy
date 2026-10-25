@@ -23,6 +23,7 @@ senpy-vscode/dist/
 *.rpyb
 *.rpymc
 saves/
+*.vscode-test/
 
 # 5. Тестовый мусор
 report.json
@@ -89,3 +90,6 @@ roadmap.txt
 senpy.sarif
 пост для реддита.txt
 report.txt
+senpy-vscode/src/test/extension.test.ts
+senpy.spec
+senpy-vscode/bin/senpy.exe

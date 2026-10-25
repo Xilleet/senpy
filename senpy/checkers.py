@@ -906,8 +906,8 @@ class StateChecker(BaseChecker):
                 new_ctx["current_branch"] = new_ctx["branches"][0]
                 self.if_stack.append(new_ctx)
 
-            # Отслеживание завершения ветки через jump или return
-            if self.if_stack and re.match(r"^\s*(jump\b|return\b)", stripped):
+            # распознаём jump, return и терминирующие вызовы renpy.*
+            if self.if_stack and re.match(r"^\s*(?:jump\b|return\b|\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b)", stripped):
                 self.if_stack[-1]["current_branch"]["terminates"] = True
 
         # RPY404: Проверка интерполяций [var] после развилок
@@ -931,6 +931,7 @@ class StateChecker(BaseChecker):
 
         # $ python code
         if stripped.startswith("$"):
+            self.analyzer._scan_python_assets(raw_line)
             py_code = stripped[1:].strip()
             if is_in_screen:
                 self.analyzer._check_screen_mutation(
@@ -961,6 +962,7 @@ class StateChecker(BaseChecker):
             indent = len(m_py.group(1))
             consumed_idx, block_lines = self.analyzer._consume_block(lines, idx + 1, indent)
             if block_lines:
+                self.analyzer._scan_python_assets(block_lines)
                 code = textwrap.dedent("".join(block_lines))
                 if is_in_screen:
                     self.analyzer._check_screen_mutation(
@@ -981,6 +983,8 @@ class StateChecker(BaseChecker):
                     assigned_names = extract_assigned_names(code)
                     if self.if_stack:
                         self.if_stack[-1]["current_branch"]["defined_vars"].update(assigned_names)
+                        if re.search(r"\brenpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\s*\(", code):
+                            self.if_stack[-1]["current_branch"]["terminates"] = True
                     else:
                         self.guaranteed_vars.update(assigned_names)
             return consumed_idx, file_modified

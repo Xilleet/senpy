@@ -69,7 +69,8 @@
   "scripts": {
     "vscode:prepublish": "node esbuild.js --production",
     "compile": "node esbuild.js --production",
-    "watch": "node esbuild.js --watch"
+    "watch": "node esbuild.js --watch",
+    "test": "vscode-test"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

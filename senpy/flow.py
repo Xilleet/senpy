@@ -249,7 +249,7 @@ class StoryFlowAnalyzer:
                     py = stripped[1:].strip()
                     current_choice["defined"].update(extract_assigned_names(py))
 
-                if re.match(r"^\s*(jump\b|return\b)", stripped):
+                if re.match(r"^\s*(?:jump\b|return\b|\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b)", stripped):
                     current_choice["terminates"] = True
 
             idx += 1

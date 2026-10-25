@@ -6,11 +6,18 @@ import warnings
 
 from senpy.assets import AssetManager, find_orphaned_rpyc
 from senpy.cache import CachedFileEntry, CacheManager, CacheManifest, compute_file_hash
+from senpy.constants import MEDIA_EXTENSIONS, RE_STRING_MATCH
 from senpy.deprecated import DeprecationChecker
 from senpy.flow import StoryFlowAnalyzer
 from senpy.python_ast import PythonAstChecker, infer_expr_type
 from senpy.signature import parse_signature
-from senpy.symbols import ImageSymbol, LabelSymbol, ScreenSymbol, TransformSymbol, VariableSymbol
+from senpy.symbols import (
+    ImageSymbol,
+    LabelSymbol,
+    ScreenSymbol,
+    TransformSymbol,
+    VariableSymbol,
+)
 from senpy.text_tags import get_utf16_range, process_quoted_strings
 
 warnings.filterwarnings("ignore", category=SyntaxWarning)
@@ -908,6 +915,19 @@ class SenpyAnalyzer:
             return True, codes
         return True, None
 
+    def _scan_python_assets(self, code_lines: list[str] | str) -> None:
+        """Точечный поиск медиа-файлов в блоках Python (защита от ложных RPY503 без оверхеда)."""
+        if isinstance(code_lines, str):
+            code_lines = [code_lines]
+        for line in code_lines:
+            if '"' in line or "'" in line:  # Fast-path: сверхбыстрая отсечка
+                for match in RE_STRING_MATCH.finditer(line):
+                    inner = match.group(0).strip("\"'")
+                    val_clean = inner.replace("\\", "/").lower().strip()
+                    if any(val_clean.endswith(ext) for ext in MEDIA_EXTENSIONS):
+                        self._mark_asset_used(val_clean)
+                        self._mark_asset_used(os.path.basename(val_clean))
+
     def _apply_severity(self, diag: Diagnostic) -> None:
         """Применяет переопределения строгости из конфига или дефолтные уровни."""
         if self.severity_overrides and diag.code in self.severity_overrides:
@@ -989,6 +1009,7 @@ class SenpyAnalyzer:
                     indent = len(m_init.group(1))
                     next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
                     if block_lines:
+                        self._scan_python_assets(block_lines)
                         import textwrap
                         code = textwrap.dedent("".join(block_lines))
                         self.python_ast.check_init_dependency(

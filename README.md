@@ -26,6 +26,7 @@ The standard built-in `renpy lint` command only checks for basic syntax errors a
 
 **Senpy** provides comprehensive static semantic analysis without requiring the Ren'Py SDK runtime:
 
+* **Zero-Setup Standalone VSIX:** Windows extension packages bundle a self-contained runtime—writers and narrative designers don't need Python, virtual environments, or `pip` installed.
 * **High Throughput & Disk Serialization:** Analyzes **77,000+ lines in ~3.5s on cold start and 0.04s incrementally** via two-tier `.senpy_cache/` disk serialization.
 * **Save Game & Rollback Safety:** Catches dangerous `define` mutations (`RPY105`), non-revertable types (`RPY106`), dynamic assignments missing `default` (`RPY104`), and type-taint conflicts (`RPY108`).
 * **Init Phase Dependency Graph:** Analyzes alphabetical file loading order in `init python:` to prevent runtime `NameError` crashes on startup (`RPY109`).
@@ -42,23 +43,28 @@ The standard built-in `renpy lint` command only checks for basic syntax errors a
 
 ## Installation
 
-Senpy consists of the core Python CLI/LSP analyzer and an optional VS Code extension.
+Senpy can be used either as an **all-in-one standalone VS Code extension** (zero Python setup required on Windows) or as a **Python CLI / CI tool**.
 
-### 1. Core Analyzer (CLI / LSP)
+### Option A: VS Code Extension (Recommended for VN Writers)
 
-Install the package via pip:
+> **No Python installation or terminal setup required on Windows!** The VSIX package bundles a fully self-contained Senpy engine.
+
+1. Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github.com/Xilleet/senpy/releases) page.
+2. In VS Code, open the Extensions panel (`Ctrl+Shift+X`).
+3. Click the `...` menu (Views and More Actions) in the top-right corner of the Extensions panel.
+4. Select **Install from VSIX...** and pick the downloaded file.
+5. *(Bonus)* All `senpy` commands (like `senpy --coverage` or `senpy --export-wiki`) will automatically work directly inside VS Code's integrated terminal!
+
+---
+
+### Option B: Standalone CLI & CI/CD (pip)
+
+For Linux/macOS users, command-line power users, or automated GitHub Actions workflows:
 
 ```bash
 pip install senpy-linter
 ```
 
-### 2. VS Code Extension
-
-1. Navigate to the [Releases](https://github.com/Xilleet/senpy/releases) page.
-2. Download the latest `senpy-vscode-X.X.X.vsix` package.
-3. Open VS Code, open the Extensions tab (`Ctrl+Shift+X`).
-4. Click the `...` menu (Views and More Actions) at the top right of the Extensions panel.
-5. Select **Install from VSIX...** and pick the downloaded file.
 
 ---
 
