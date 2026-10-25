@@ -444,6 +444,35 @@ class PythonAstChecker:
                                         ),
                                         noqa_map,
                                     )
+                                    
+                elif isinstance(node.target, ast.Subscript):
+                    root_name = _get_root_name(node.target.value)
+                    root_var = self.analyzer.variables.get(root_name) if root_name else None
+                    if (
+                        root_var
+                        and root_var.is_constant
+                        and not root_var.is_character
+                        and root_name not in SYSTEM_MUTABLE_NAMESPACES
+                        and root_name not in local_scope
+                    ):
+                        real_line = start_line + getattr(node, "lineno", 1) - 1
+                        raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+                        start_c, end_c = get_utf16_range(raw_l, root_name)
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=real_line,
+                                line_content=raw_l.strip(),
+                                code="RPY105",
+                                message=(
+                                    f"In-place augmented assignment on constant '{root_name}' declared with 'define'. "
+                                    "Modifying mutable collections declared with 'define' breaks rollback and save persistence! Use 'default' instead."
+                                ),
+                                col=start_c,
+                                end_col=end_c,
+                            ),
+                            noqa_map,
+                        )
 
             elif isinstance(node, ast.Assign):
                 real_line = start_line + getattr(node, "lineno", 1) - 1
@@ -495,7 +524,8 @@ class PythonAstChecker:
                                 expected_t
                                 and new_t
                                 and expected_t != new_t
-                                and expected_t != "None"  # None -> любой_тип разрешён!
+                                and expected_t != "None"  # None -> любой_тип разрешён (первичная инициализация)
+                                and new_t != "None"       # любой_тип -> None разрешён (сброс в sentinel)
                                 and not ({expected_t, new_t} <= {"int", "float"})
                             ):
                                 start_c, end_c = get_utf16_range(raw_l, target.id)

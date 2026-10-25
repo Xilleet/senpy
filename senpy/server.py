@@ -19,7 +19,7 @@ from senpy.analyzer import Diagnostic, SenpyAnalyzer
 from senpy.constants import CLAUSE_KEYWORDS
 from senpy.renpy_api import get_renpy_api_hover
 
-server = LanguageServer("senpy-lsp", "v0.4.1")
+server = LanguageServer("senpy-lsp", "v0.4.2")
 
 
 def _uri_to_path(uri: str) -> str:
@@ -272,7 +272,7 @@ def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.Co
             )
             actions.append(action)
 
-    except Exception as e: # noqa: BLE001
+    except (KeyError, IndexError, ValueError, AttributeError) as e:
         ls.show_message_log(f"Error in code_action: {e}")
 
     return actions

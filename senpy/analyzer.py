@@ -496,6 +496,7 @@ class SenpyAnalyzer:
 
             idx = 0
             current_label: str | None = None
+            current_global_label: str | None = None
 
             while idx < len(lines):
                 next_idx, line, clean_line = _get_logical_line(lines, idx)
@@ -580,7 +581,12 @@ class SenpyAnalyzer:
 
                 m_label = RE_LABEL.match(clean)
                 if m_label:
-                    label_name = m_label.group(1)
+                    raw_name = m_label.group(1)
+                    if raw_name.startswith("."):
+                        label_name = f"{current_global_label}{raw_name}" if current_global_label else raw_name
+                    else:
+                        label_name = raw_name
+                        current_global_label = label_name
                     if label_name in self.labels:
                         if not label_name.startswith("_"):
                             prev_file = self.labels[label_name].file_path
@@ -615,7 +621,11 @@ class SenpyAnalyzer:
 
                     m_jump_in_label = RE_JUMP_TARGET.match(clean)
                     if m_jump_in_label:
-                        target_j = m_jump_in_label.group(1)
+                        raw_target_j = m_jump_in_label.group(1)
+                        if raw_target_j.startswith("."):
+                            target_j = f"{current_global_label}{raw_target_j}" if current_global_label else raw_target_j
+                        else:
+                            target_j = raw_target_j
                         scope.labels[current_label].outgoing_jumps.add(target_j)
                         self.labels[current_label].outgoing_jumps.add(target_j)
                         
@@ -907,12 +917,14 @@ class SenpyAnalyzer:
                 )
 
                 # 5. Проверка кавычек, интерполяций и тегов (RPY101, RPY301, RPY304)
-                new_line, modified = self._check_and_fix_quoted_strings(
-                    file_path, idx + 1, raw_line, scope_stack.get_local_symbols(), noqa_map
-                )
-                if modified:
-                    lines[idx] = new_line
-                    file_modified = True
+                # Выполняется только для диалогов и экранов, но не для строк чистого Python ($ / python:)
+                if not stripped.startswith(("$", "python")):
+                    new_line, modified = self._check_and_fix_quoted_strings(
+                        file_path, idx + 1, raw_line, scope_stack.get_local_symbols(), noqa_map
+                    )
+                    if modified:
+                        lines[idx] = new_line
+                        file_modified = True
 
                 # 6. StateChecker (RPY102-106, RPY201, RPY205, RPY401-403)
                 next_idx, _ = state_checker.check_line(

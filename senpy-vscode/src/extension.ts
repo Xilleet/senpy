@@ -133,9 +133,10 @@ function setupCrashWatcher(context: vscode.ExtensionContext) {
             const fileData = await vscode.workspace.fs.readFile(uri);
             const content = Buffer.from(fileData).toString('utf-8');
 
-            // Извлекаем место сбоя и тип исключения
+            // 1. Извлекаем место сбоя и тип исключения (ловит и стандартные, и кастомные классы исключений)
             const locMatch = content.match(/File\s+["']([^"']+\.rpy)["'],\s+line\s+(\d+)/);
-            const excMatch = content.match(/([A-Za-z0-9_]*(?:Error|Exception)):\s*([^\n]+)/);
+            const excMatch = content.match(/^([A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|[A-Z][a-zA-Z0-9]+)):\s*([^\r\n]+)/m) ||
+                             content.match(/([A-Za-z0-9_]*(?:Error|Exception)):\s*([^\r\n]+)/);
 
             if (!locMatch) {
                 return;
@@ -162,8 +163,32 @@ function setupCrashWatcher(context: vscode.ExtensionContext) {
             );
 
             if (action === jumpBtn) {
-                const files = await vscode.workspace.findFiles(`**/${fileName}`);
-                const targetUri = files.find(f => f.fsPath.replace(/\\/g, '/').endsWith(rpyRelPath.replace(/\\/g, '/'))) || files[0];
+                // 2. Безопасное разрешение пути: прямой переход по относительному пути от корня проекта
+                const normRel = rpyRelPath.replace(/\\/g, '/').replace(/^\/+/, '');
+                let targetUri: vscode.Uri | undefined;
+
+                if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+                    for (const folder of vscode.workspace.workspaceFolders) {
+                        const candidate = vscode.Uri.joinPath(folder.uri, normRel);
+                        try {
+                            await vscode.workspace.fs.stat(candidate);
+                            targetUri = candidate;
+                            break;
+                        } catch {
+                            // Файл не в этой папке рабочей области, продолжаем проверку
+                        }
+                    }
+                }
+
+                // Fallback через findFiles со строгим сопоставлением нормализованного относительного пути
+                if (!targetUri) {
+                    const files = await vscode.workspace.findFiles(`**/${fileName}`);
+                    const normRelLower = normRel.toLowerCase();
+                    targetUri = files.find(f => {
+                        const p = f.fsPath.replace(/\\/g, '/').toLowerCase();
+                        return p.endsWith('/' + normRelLower) || p.endsWith(normRelLower);
+                    }) || files[0];
+                }
 
                 if (targetUri) {
                     const doc = await vscode.workspace.openTextDocument(targetUri);
@@ -173,12 +198,20 @@ function setupCrashWatcher(context: vscode.ExtensionContext) {
                     editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
                 }
             } else if (action === reportBtn) {
+                // 3. Формирование лога: сохраняем шапку с версией и хвост с реальным падением
+                let tracebackSnippet = content.trim();
+                if (tracebackSnippet.length > 2000) {
+                    const header = tracebackSnippet.split(/\r?\n/).slice(0, 4).join('\n');
+                    const tail = tracebackSnippet.slice(-1600);
+                    tracebackSnippet = `${header}\n\n[... truncated ...]\n\n${tail}`;
+                }
+
                 const title = encodeURIComponent(`[Runtime Crash] ${excType}: ${excMsg}`);
                 const body = encodeURIComponent(
                     `### Runtime Crash Report\n\n` +
                     `- **Exception:** \`${excType}: ${excMsg}\`\n` +
                     `- **Location:** \`${fileName}:${lineNum}\`\n\n` +
-                    `### Traceback Snippet\n\`\`\`text\n${content.slice(0, 1500)}\n\`\`\``
+                    `### Traceback Snippet\n\`\`\`text\n${tracebackSnippet}\n\`\`\``
                 );
                 vscode.env.openExternal(vscode.Uri.parse(`https://github.com/Xilleet/senpy/issues/new?title=${title}&body=${body}`));
             }

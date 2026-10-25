@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -47,13 +48,13 @@ def fetch_text(url: str) -> str | None:
         req = urllib.request.Request(url, headers=HEADERS)
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.read().decode("utf-8", errors="replace")
-    except Exception:
+    except (urllib.error.URLError, TimeoutError, OSError):
         try:
             res = subprocess.run(["curl", "-sSL", url], capture_output=True, text=True, check=False)
             if res.returncode == 0 and res.stdout:
                 return res.stdout
-        except Exception:
-            pass
+        except (subprocess.SubprocessError, OSError):
+            return None
     return None
 
 
@@ -66,7 +67,7 @@ def get_latest_version() -> str | None:
             tag = data.get("tag_name", "").lstrip("v").strip()
             if tag:
                 return tag
-        except Exception:
+        except (json.JSONDecodeError, TypeError, AttributeError):
             pass
 
     try:
@@ -75,7 +76,7 @@ def get_latest_version() -> str | None:
             tag = resp.geturl().rstrip("/").split("/")[-1].lstrip("v").strip()
             if tag and tag[0].isdigit():
                 return tag
-    except Exception:
+    except (urllib.error.URLError, TimeoutError, OSError):
         pass
     return None
 
@@ -150,7 +151,7 @@ def fetch_all_export_sources(ref: str) -> list[str]:
                     if name.endswith(".py") and not name.startswith("__"):
                         dl_url = item.get("download_url") or RAW_BASE_URL.format(ref=ref, filename=name)
                         file_targets.append((name, dl_url))
-        except Exception:
+        except (json.JSONDecodeError, TypeError, KeyError):
             pass
 
     if not file_targets:
@@ -202,7 +203,7 @@ def serialize_api_module(version: str, docs: dict[str, dict[str, str]]) -> str:
         item = docs[key]
         lines.append(f'    "{key}": {{')
         for field in ("signature", "doc", "details", "example", "url"):
-            if field in item and item[field]:
+            if item.get(field):
                 val = repr(item[field])
                 lines.append(f'        "{field}": {val},')
         lines.append('    },')
@@ -303,6 +304,8 @@ def run_updater():
 if __name__ == "__main__":
     try:
         run_updater()
-    except Exception as e:
+    except KeyboardInterrupt:
+        print("\n[*] Обновление прервано пользователем.")
+    except (urllib.error.URLError, OSError, json.JSONDecodeError, RuntimeError) as e:
         print(f"\n[!] Ошибка: {e}")
     input("Нажмите Enter, чтобы закрыть...")

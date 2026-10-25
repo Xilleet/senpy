@@ -74,7 +74,14 @@ def process_quoted_strings(
     used_assets: list[str] = []
 
     matches = list(RE_STRING_MATCH.finditer(raw_line))
-    for match in reversed(matches):
+    if not matches:
+        return raw_line, False, [], 0, 0, []
+
+    # Стек открытых тегов диалога общий на всю строку (поддержка переносов через \)
+    stack: list[str] = []
+    first_unclosed_match = None
+
+    for match in matches:
         full_str = match.group(0)
         if full_str.startswith(('"""', "'''")):
             quote_len = 3
@@ -84,15 +91,12 @@ def process_quoted_strings(
             quote_char = full_str[0]
         inner_content = full_str[quote_len:-quote_len]
 
-        # Регистрация ассета, если в кавычках указан путь к медиафайлу
         val_clean = inner_content.replace("\\", "/").lower().strip()
         if any(val_clean.endswith(ext) for ext in MEDIA_EXTENSIONS):
             used_assets.append(val_clean)
             used_assets.append(os.path.basename(val_clean))
 
-        # Маскируем любые экранированные символы (\", \[, \{, \\) и удвоенные {{, }}, [[, ]],
-        # сохраняя UTF-16 смещения 1:1, чтобы экранирование не вызывало ложных RPY101 и RPY301
-        masked_content = re.sub(r"\\.|(\{\{|\}\}|\[\[|\]\])", lambda m: " " * len(m.group(0)), inner_content)
+        masked_content = re.sub(r"\\.|(\{\{|\[\[)", lambda m: " " * len(m.group(0)), inner_content)
 
         # RPY101: Переменные в интерполяции диалога [var]
         for var in RE_INTERPOLATION.findall(masked_content):
@@ -111,7 +115,6 @@ def process_quoted_strings(
                     )
                 )
 
-        stack: list[str] = []
         in_place_replacements: list[tuple[int, int, str]] = []
 
         for t_match in RE_TAG.finditer(masked_content):
@@ -177,7 +180,6 @@ def process_quoted_strings(
                                 )
                             )
                 else:
-                    # Умная проверка: дубликат открывающего тега вместо закрывающего
                     if tag_name in non_nestable_tags and tag_name in stack:
                         stack.remove(tag_name)
                         replacement_tag = f"{{/{tag_name}}}"
@@ -204,9 +206,10 @@ def process_quoted_strings(
                             )
                         )
                     else:
+                        if not stack and first_unclosed_match is None:
+                            first_unclosed_match = match
                         stack.append(tag_name)
 
-        # 1. Применяем замены опечаток внутри строки ({i} -> {/i})
         if in_place_replacements:
             fixable_count += len(in_place_replacements)
             if fix:
@@ -214,45 +217,51 @@ def process_quoted_strings(
                     inner_content = inner_content[:s] + repl + inner_content[e:]
                 modified = True
                 fixed_count += len(in_place_replacements)
-
-        # 2. Если остались реально незакрытые теги в конце строки
-        if stack:
-            closing_tags = "".join(f"{{/{t}}}" for t in reversed(stack))
-            if fix:
-                inner_content = inner_content + closing_tags
-                modified = True
-                fixed_count += len(stack)
-            else:
-                fixable_count += 1
-                unclosed = ", ".join(f"'{{{t}}}'" for t in stack)
-                first_unclosed_tag = f"{{{stack[0]}}}"
-                start_c, end_c = get_utf16_range(raw_line, first_unclosed_tag)
-
-                insert_idx = match.end() - quote_len
-                ins_char = len(raw_line[:insert_idx].encode("utf-16-le")) // 2
-
-                diagnostics.append(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=line_idx,
-                        line_content=raw_line.strip(),
-                        code="RPY301",
-                        message=f"Unclosed text tag(s) in dialogue: {unclosed}.",
-                        col=start_c,
-                        end_col=end_c,
-                        fix_title=f"Auto-close tag(s) with '{closing_tags}'",
-                        fix_replacement=closing_tags,
-                        fix_start_col=ins_char,
-                        fix_end_col=ins_char,
-                    )
+                start, end = match.span()
+                reconstructed_line = (
+                    reconstructed_line[:start]
+                    + f"{quote_char}{inner_content}{quote_char}"
+                    + reconstructed_line[end:]
                 )
 
-        if modified and fix:
-            start, end = match.span()
+    # После обработки всех строковых частей реплики проверяем незакрытые теги
+    if stack:
+        last_match = matches[-1]
+        closing_tags = "".join(f"{{/{t}}}" for t in reversed(stack))
+        if fix:
+            quote_len = 3 if last_match.group(0).startswith(('"""', "'''")) else 1
+            insert_pos = last_match.end() - quote_len
             reconstructed_line = (
-                reconstructed_line[:start]
-                + f"{quote_char}{inner_content}{quote_char}"
-                + reconstructed_line[end:]
+                reconstructed_line[:insert_pos]
+                + closing_tags
+                + reconstructed_line[insert_pos:]
+            )
+            modified = True
+            fixed_count += len(stack)
+        else:
+            fixable_count += 1
+            unclosed = ", ".join(f"'{{{t}}}'" for t in stack)
+            first_unclosed_tag = f"{{{stack[0]}}}"
+            start_c, end_c = get_utf16_range(raw_line, first_unclosed_tag)
+
+            quote_len = 3 if last_match.group(0).startswith(('"""', "'''")) else 1
+            insert_idx = last_match.end() - quote_len
+            ins_char = len(raw_line[:insert_idx].encode("utf-16-le")) // 2
+
+            diagnostics.append(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=line_idx,
+                    line_content=raw_line.strip(),
+                    code="RPY301",
+                    message=f"Unclosed text tag(s) in dialogue: {unclosed}.",
+                    col=start_c,
+                    end_col=end_c,
+                    fix_title=f"Auto-close tag(s) with '{closing_tags}'",
+                    fix_replacement=closing_tags,
+                    fix_start_col=ins_char,
+                    fix_end_col=ins_char,
+                )
             )
 
     return reconstructed_line, modified, diagnostics, fixed_count, fixable_count, used_assets

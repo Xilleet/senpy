@@ -59,7 +59,7 @@ BUILTIN_ACTIONS = {
     "ShowTransient", "FilePage"
 }
 
-SENPY_VERSION = "0.4.1"
+SENPY_VERSION = "0.4.2"
 
 IGNORED_DIRS = {
     ".git", ".svn", ".hg", "node_modules", ".venv", "venv", "env",
@@ -127,9 +127,9 @@ RE_LAYEREDIMAGE_START = re.compile(
 )
 RE_LAYEREDIMAGE_ATTR = re.compile(r"^\s*attribute\s+([a-zA-Z_][a-zA-Z0-9_]*)")
 RE_RETURN = re.compile(r"^\s*return\b")
-RE_LABEL = re.compile(r"^\s*label\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\((.*?)\))?\s*:")
+RE_LABEL = re.compile(r"^\s*label\s+(\.?[a-zA-Z_][a-zA-Z0-9_\.]*)\s*(?:\((.*?)\))?\s*:")
 RE_JUMP_CALL = re.compile(
-    r"^\s*(jump|call)\s+(?!screen\b)([a-zA-Z_][a-zA-Z0-9_]*|\bexpression\b)"
+    r"^\s*(jump|call)\s+(?!screen\b)(\.?[a-zA-Z_][a-zA-Z0-9_\.]*|\bexpression\b)"
 )
 RE_AUDIO_STATEMENT = re.compile(
     r"^\s*(play|queue)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(.+)",
@@ -147,7 +147,9 @@ RE_SHOW_SCENE = re.compile(r"^\s*(show|scene)\s+(?!expression\b|screen\b)([a-zA-
 RE_BUTTON_LINE = re.compile(r"^\s*(textbutton|imagebutton)\b")
 RE_FOR_LOOP = re.compile(r"^\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+")
 RE_MENU_START = re.compile(r"^(\s*)menu(?:\s+[a-zA-Z0-9_]+)?\s*:")
-RE_MENU_CHOICE = re.compile(r"^(\s*)(\"[^\"]+\"|\'[^\']+\')(?:\s+if\s+.*)?\s*:")
+RE_MENU_CHOICE = re.compile(
+    r"^(\s*)(\"[^\"]+\"|\'[^\']+\')(?:\s*\([^)]*\))?(?:\s+if\s+.*)?\s*:"
+)
 RE_TAG = re.compile(r"\{(/)?([a-zA-Z_]+)(?:=([^}]*))?\}")
 RE_STRING_MATCH = re.compile(
     r'("""[\s\S]*?""")|'
@@ -159,5 +161,5 @@ RE_NOQA = re.compile(
     r"#\s*(?:noqa|senpy:\s*ignore)(?:\[([a-zA-Z0-9_,\s]+)\]|:\s*([a-zA-Z0-9_,\s]+))?",
     re.IGNORECASE,
 )
-RE_JUMP_TARGET = re.compile(r"^\s*(?:jump|call)\s+(?!screen\b)([a-zA-Z_][a-zA-Z0-9_]*)")
+RE_JUMP_TARGET = re.compile(r"^\s*(?:jump|call)\s+(?!screen\b)(\.?[a-zA-Z_][a-zA-Z0-9_\.]*)")
 RE_QUOTED_IDENTIFIER = re.compile(r'["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']')

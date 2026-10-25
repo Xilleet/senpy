@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -271,3 +272,86 @@ def test_lsp_hover_renpy_api_docs(tmp_path: Path):
     assert h_action is not None
     assert "SetVariable" in h_action.contents.value
     assert "Screen Action" in h_action.contents.value
+
+
+def test_lsp_code_action_quick_fixes(tmp_path: Path):
+    """[LSP] Code Action generates QuickFix WorkspaceEdit for RPY001, RPY002, and RPY301"""
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+
+    # Строка 1: табуляция в отступе (RPY001)
+    # Строка 2: фигурные кавычки в коде (RPY002)
+    # Строка 3: незакрытый тег в диалоге (RPY301)
+    # Строка 4: чистая строка без ошибок (отрицательный случай)
+    content = (
+        "label start:\n"
+        "\t$ gold = 10\n"
+        "    $ status = “active”\n"
+        '    "Warning: {b}danger ahead!"\n'
+        "    return\n"
+    )
+    script_file = game_dir / "quickfix_test.rpy"
+    script_file.write_text(content, encoding="utf-8")
+    uri = server_mod._path_to_uri(str(script_file))
+
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    result = analyzer.run(quiet=True)
+
+    server_mod._active_analyzer = analyzer
+    server_mod._is_initialized = True
+
+    # Регистрируем диагностики файла в кэше LSP сервера
+    norm_path = os.path.normcase(os.path.abspath(str(script_file)))
+    pairs = []
+    for diag in result.diagnostics:
+        if os.path.normcase(os.path.abspath(diag.file_path)) == norm_path:
+            lsp_diag = server_mod._create_lsp_diagnostic(diag)
+            pairs.append((diag, lsp_diag))
+    server_mod._latest_diagnostics_by_path[norm_path] = pairs
+
+    mock_ls = MagicMock()
+    mock_doc = MockDocument(uri, content)
+    mock_ls.workspace = MockWorkspace(mock_doc)
+
+    # 1. Запрос CodeAction для строки 1 (RPY001 — замена табов на 4 пробела)
+    params_rpy001 = lsp.CodeActionParams(
+        text_document=lsp.TextDocumentIdentifier(uri=uri),
+        range=lsp.Range(start=lsp.Position(line=1, character=0), end=lsp.Position(line=1, character=5)),
+        context=lsp.CodeActionContext(diagnostics=[]),
+    )
+    actions_rpy001 = server_mod.code_action(mock_ls, params_rpy001)
+    assert len(actions_rpy001) == 1
+    assert "Replace tabs with 4 spaces" in actions_rpy001[0].title
+    assert actions_rpy001[0].kind == lsp.CodeActionKind.QuickFix
+    assert actions_rpy001[0].edit.changes[uri][0].new_text == "    "
+
+    # 2. Запрос CodeAction для строки 2 (RPY002 — замена типографских кавычек)
+    params_rpy002 = lsp.CodeActionParams(
+        text_document=lsp.TextDocumentIdentifier(uri=uri),
+        range=lsp.Range(start=lsp.Position(line=2, character=0), end=lsp.Position(line=2, character=10)),
+        context=lsp.CodeActionContext(diagnostics=[]),
+    )
+    actions_rpy002 = server_mod.code_action(mock_ls, params_rpy002)
+    assert len(actions_rpy002) == 1
+    assert "Replace smart quotes" in actions_rpy002[0].title
+    assert '"active"' in actions_rpy002[0].edit.changes[uri][0].new_text
+
+    # 3. Запрос CodeAction для строки 3 (RPY301 — автозакрытие тега {b})
+    params_rpy301 = lsp.CodeActionParams(
+        text_document=lsp.TextDocumentIdentifier(uri=uri),
+        range=lsp.Range(start=lsp.Position(line=3, character=0), end=lsp.Position(line=3, character=10)),
+        context=lsp.CodeActionContext(diagnostics=[]),
+    )
+    actions_rpy301 = server_mod.code_action(mock_ls, params_rpy301)
+    assert len(actions_rpy301) == 1
+    assert "Auto-close tag(s)" in actions_rpy301[0].title
+    assert "{/b}" in actions_rpy301[0].edit.changes[uri][0].new_text
+
+    # 4. Отрицательный случай: курсор на чистой строке 4 ('return') — никаких действий быть не должно
+    params_clean = lsp.CodeActionParams(
+        text_document=lsp.TextDocumentIdentifier(uri=uri),
+        range=lsp.Range(start=lsp.Position(line=4, character=0), end=lsp.Position(line=4, character=5)),
+        context=lsp.CodeActionContext(diagnostics=[]),
+    )
+    actions_clean = server_mod.code_action(mock_ls, params_clean)
+    assert len(actions_clean) == 0

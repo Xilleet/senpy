@@ -374,10 +374,22 @@ class AssetChecker(BaseChecker):
                     noqa_map,
                 )
 
-            # 3. RPY501: Проверка существования самого аудиофайла
-            m_target = re.match(r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\'|[^\s]+)', rest)
-            if m_target:
-                raw_audio_target = m_target.group(1).strip()
+            # 3. RPY501: Проверка существования аудиофайла (с поддержкой плейлистов [track1, track2])
+            audio_targets = []
+            clean_rest = rest.strip()
+            if clean_rest.startswith("["):
+                b_end = clean_rest.find("]")
+                sub_content = clean_rest[1:b_end] if b_end != -1 else clean_rest[1:]
+                for m_item in re.finditer(r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\'|[^\s,]+)', sub_content):
+                    t = m_item.group(1).strip()
+                    if t and t not in (",", "[", "]"):
+                        audio_targets.append(t)
+            else:
+                m_target = re.match(r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\'|[^\s]+)', clean_rest)
+                if m_target:
+                    audio_targets.append(m_target.group(1).strip())
+
+            for raw_audio_target in audio_targets:
                 audio_found = False
 
                 if raw_audio_target.startswith(('"', "'")) and raw_audio_target.endswith(('"', "'")):
@@ -424,9 +436,11 @@ class DialogueChecker(BaseChecker):
     def __init__(self, analyzer: SenpyAnalyzer):
         super().__init__(analyzer)
         self.in_label_context = False
+        self.current_global_label: str | None = None
 
     def reset(self) -> None:
         self.in_label_context = False
+        self.current_global_label = None
 
     def check_line(
         self,
@@ -451,6 +465,9 @@ class DialogueChecker(BaseChecker):
         # RPY308: Проверка на падение сюжета (fallthrough) перед меткой
         m_label = RE_LABEL.match(clean_line)
         if m_label:
+            raw_lbl = m_label.group(1)
+            if not raw_lbl.startswith("."):
+                self.current_global_label = raw_lbl
             if self.in_label_context and idx > 0:
                 prev_idx = idx - 1
                 while prev_idx >= 0 and not lines[prev_idx].strip():
@@ -486,23 +503,28 @@ class DialogueChecker(BaseChecker):
         # RPY302 & RPY306: Переходы jump и call (проверяем по self.analyzer.labels)
         m_jump = RE_JUMP_CALL.match(stripped) if stripped.startswith(("jump ", "call ")) else None
         if m_jump:
-            cmd_type, target_label = m_jump.group(1), m_jump.group(2)
-            if target_label == "expression":
+            cmd_type, raw_target = m_jump.group(1), m_jump.group(2)
+            if raw_target == "expression":
                 self.analyzer.has_dynamic_jumps = True
             else:
+                if raw_target.startswith("."):
+                    target_label = f"{self.current_global_label}{raw_target}" if self.current_global_label else raw_target
+                else:
+                    target_label = raw_target
+
                 self.analyzer.referenced_labels.add(target_label)
                 if target_label not in self.analyzer.labels:
                     matches = difflib.get_close_matches(target_label, list(self.analyzer.labels.keys()), n=1, cutoff=0.6)
                     best_match = matches[0] if matches else None
                     hint = f" (did you mean '{best_match}' ?)" if best_match else ""
-                    start_c, end_c = self.analyzer._get_utf16_range(raw_line, target_label)
+                    start_c, end_c = self.analyzer._get_utf16_range(raw_line, raw_target)
                     self.analyzer._add_diagnostic(
                         Diagnostic(
                             file_path=file_path,
                             line_number=idx + 1,
                             line_content=stripped,
                             code="RPY302",
-                            message=f"{cmd_type.capitalize()} to non-existent label '{target_label}'{hint}. Causes ScriptError.",
+                            message=f"{cmd_type.capitalize()} to non-existent label '{raw_target}'{hint}. Causes ScriptError.",
                             col=start_c,
                             end_col=end_c,
                             fix_title=f"Change to '{best_match}'" if best_match else None,
