@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY401",
+    "severity": "WARNING",
+    "line": 6,
+    "message_fragment": "Menu branch asymmetry: variable 'weapon' is assigned in choice 'Взять меч' (line 3), but missing in "
+  }
+]

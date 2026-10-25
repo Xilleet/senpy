@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY401",
+    "severity": "WARNING",
+    "line": 10,
+    "message_fragment": "Menu branch asymmetry: variable 'got_excalibur' is assigned in choice 'Buy Excalibur' (line 6), but "
+  }
+]

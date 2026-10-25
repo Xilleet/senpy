@@ -1,0 +1,20 @@
+[
+  {
+    "code": "RPY502",
+    "severity": "WARNING",
+    "line": 9,
+    "message_fragment": "Transform or position 'cneter' is not defined (did you mean 'center' ?). Causes runtime NameError."
+  },
+  {
+    "code": "RPY502",
+    "severity": "WARNING",
+    "line": 10,
+    "message_fragment": "Transform or position 'missing_transform' is not defined. Causes runtime NameError."
+  },
+  {
+    "code": "RPY502",
+    "severity": "WARNING",
+    "line": 11,
+    "message_fragment": "Transform or position 'missing_anim' is not defined. Causes runtime NameError."
+  }
+]

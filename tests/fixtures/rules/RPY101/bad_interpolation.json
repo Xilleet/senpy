@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY101",
+    "severity": "ERROR",
+    "line": 3,
+    "message_fragment": "Variable '[player_name]' is not declared via 'default' or 'define'."
+  }
+]

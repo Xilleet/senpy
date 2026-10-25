@@ -1,0 +1,20 @@
+[
+  {
+    "code": "RPY102",
+    "severity": "ERROR",
+    "line": 3,
+    "message_fragment": "Subscript assignment to undeclared variable 'missing_dict' before declaration. Causes runtime NameEr"
+  },
+  {
+    "code": "RPY102",
+    "severity": "ERROR",
+    "line": 4,
+    "message_fragment": "Method call '.append()' on undeclared variable 'missing_list' before declaration. Causes runtime Nam"
+  },
+  {
+    "code": "RPY102",
+    "severity": "ERROR",
+    "line": 5,
+    "message_fragment": "Augmented assignment to subscript of undeclared variable 'missing_stats' before declaration. Causes "
+  }
+]

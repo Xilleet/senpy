@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY502",
+    "severity": "WARNING",
+    "line": 11,
+    "message_fragment": "Attribute 'shocked' is not defined for character 'august'."
+  }
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "code": "RPY207",
+    "severity": "ERROR",
+    "line": 5,
+    "message_fragment": "Invalid parameters in screen 'target_screen': requires at least 1 argument(s), but none were given. "
+  },
+  {
+    "code": "RPY207",
+    "severity": "ERROR",
+    "line": 6,
+    "message_fragment": "Invalid parameters in screen 'target_screen': got unexpected keyword argument 'bad_param'. Causes ru"
+  }
+]

@@ -106,3 +106,16 @@ def pytest_sessionfinish(session, exitstatus):
             txt_lines.append("-" * 40)
 
     Path("test_report.txt").write_text("\n".join(txt_lines), encoding="utf-8")
+
+def pytest_addoption(parser):
+    """Добавляем флаг для автоматического обновления JSON-снимков."""
+    parser.addoption(
+        "--update-snapshots",
+        action="store_true",
+        default=False,
+        help="Update JSON snapshots for fixture tests"
+    )
+
+@pytest.fixture
+def update_snapshots(request):
+    return request.config.getoption("--update-snapshots")

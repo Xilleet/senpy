@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY206",
+    "severity": "ERROR",
+    "line": 3,
+    "message_fragment": "Direct function call 'heal_player()' in action. It executes immediately during screen render! Use 'a"
+  }
+]

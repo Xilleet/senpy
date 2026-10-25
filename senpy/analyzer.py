@@ -731,8 +731,10 @@ class SenpyAnalyzer:
 
                 if current_label:
                     if RE_RETURN.match(clean):
-                        scope.labels[current_label].has_return = True
-                        self.labels[current_label].has_return = True
+                        if current_label in scope.labels:
+                            scope.labels[current_label].has_return = True
+                        if current_label in self.labels:
+                            self.labels[current_label].has_return = True
 
                     m_jump_in_label = RE_JUMP_TARGET.match(clean)
                     if m_jump_in_label:
@@ -741,8 +743,11 @@ class SenpyAnalyzer:
                             target_j = f"{current_global_label}{raw_target_j}" if current_global_label else raw_target_j
                         else:
                             target_j = raw_target_j
-                        scope.labels[current_label].outgoing_jumps.add(target_j)
-                        self.labels[current_label].outgoing_jumps.add(target_j)
+                        
+                        if current_label in scope.labels:
+                            scope.labels[current_label].outgoing_jumps.add(target_j)
+                        if current_label in self.labels:
+                            self.labels[current_label].outgoing_jumps.add(target_j)
                         
                         self.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
                         scope.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))

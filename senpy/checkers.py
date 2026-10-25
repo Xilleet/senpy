@@ -986,7 +986,7 @@ class StateChecker(BaseChecker):
             return consumed_idx, file_modified
 
         # if / elif condition
-        m_cond = RE_CONDITION.match(stripped) if stripped.startswith(("if ", "elif ")) else None
+        m_cond = RE_CONDITION.match(stripped) if stripped.startswith(("if ", "elif ", "while ")) else None
         if m_cond:
             expr = m_cond.group(1)
             self.analyzer._check_condition(

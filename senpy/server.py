@@ -19,7 +19,7 @@ from senpy.analyzer import Diagnostic, SenpyAnalyzer
 from senpy.constants import CLAUSE_KEYWORDS
 from senpy.renpy_api import get_renpy_api_hover
 
-server = LanguageServer("senpy-lsp", "v0.4.3")
+server = LanguageServer("senpy-lsp", "v0.4.4")
 
 
 def _uri_to_path(uri: str) -> str:

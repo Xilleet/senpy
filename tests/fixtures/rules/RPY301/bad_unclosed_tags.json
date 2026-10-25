@@ -1,0 +1,14 @@
+[
+  {
+    "code": "RPY301",
+    "severity": "ERROR",
+    "line": 2,
+    "message_fragment": "Unclosed text tag(s) in dialogue: '{b}'."
+  },
+  {
+    "code": "RPY301",
+    "severity": "ERROR",
+    "line": 3,
+    "message_fragment": "Unclosed text tag(s) in dialogue: '{b}', '{i}'."
+  }
+]

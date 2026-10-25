@@ -1,0 +1,14 @@
+[
+  {
+    "code": "RPY202",
+    "severity": "WARNING",
+    "line": 5,
+    "message_fragment": "Screen action references undeclared variable 'plater_gold' (did you mean 'player_gold' ?). Variable "
+  },
+  {
+    "code": "RPY202",
+    "severity": "WARNING",
+    "line": 6,
+    "message_fragment": "Screen action references undeclared variable 'snd_muted' (did you mean 'sound_muted' ?). Variable mu"
+  }
+]

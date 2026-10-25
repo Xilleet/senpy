@@ -1,0 +1,14 @@
+[
+  {
+    "code": "RPY105",
+    "severity": "ERROR",
+    "line": 2,
+    "message_fragment": "Variable 'karma' is declared with both 'define' and 'default'. Previously declared with 'define' at "
+  },
+  {
+    "code": "RPY105",
+    "severity": "ERROR",
+    "line": 5,
+    "message_fragment": "Variable 'affection' is declared with both 'define' and 'default'. Previously declared with 'default"
+  }
+]

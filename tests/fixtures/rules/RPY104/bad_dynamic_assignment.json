@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY104",
+    "severity": "WARNING",
+    "line": 3,
+    "message_fragment": "Variable 'quest_unlocked' is assigned dynamically without a top-level 'default'. This will break sav"
+  }
+]

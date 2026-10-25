@@ -1,0 +1,14 @@
+[
+  {
+    "code": "RPY105",
+    "severity": "ERROR",
+    "line": 5,
+    "message_fragment": "In-place augmented assignment on constant 'PLAYER_STATS' declared with 'define'. Modifying mutable c"
+  },
+  {
+    "code": "RPY105",
+    "severity": "ERROR",
+    "line": 6,
+    "message_fragment": "In-place augmented assignment on constant 'PLAYER_STATS' declared with 'define'. Modifying mutable c"
+  }
+]

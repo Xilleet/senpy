@@ -1,0 +1,20 @@
+[
+  {
+    "code": "RPY108",
+    "severity": "ERROR",
+    "line": 6,
+    "message_fragment": "Invalid method call: variable 'inventory' has type 'list', which does not have a method '.add()' (di"
+  },
+  {
+    "code": "RPY108",
+    "severity": "ERROR",
+    "line": 7,
+    "message_fragment": "Invalid method call: variable 'quest_flags' has type 'dict', which does not have a method '.append()"
+  },
+  {
+    "code": "RPY108",
+    "severity": "ERROR",
+    "line": 8,
+    "message_fragment": "Invalid method call: variable 'player_name' has type 'str', which does not have a method '.pop()'. C"
+  }
+]

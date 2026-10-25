@@ -1,0 +1,14 @@
+[
+  {
+    "code": "RPY001",
+    "severity": "ERROR",
+    "line": 2,
+    "message_fragment": "Tab character ('\\t') used in indentation. Ren'Py requires 4 spaces per indent level."
+  },
+  {
+    "code": "RPY001",
+    "severity": "ERROR",
+    "line": 3,
+    "message_fragment": "Tab character ('\\t') used in indentation. Ren'Py requires 4 spaces per indent level."
+  }
+]

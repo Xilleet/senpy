@@ -1,0 +1,26 @@
+[
+  {
+    "code": "RPY502",
+    "severity": "WARNING",
+    "line": 5,
+    "message_fragment": "Transition 'disolve' is not defined (did you mean 'dissolve' ?). Causes runtime NameError."
+  },
+  {
+    "code": "RPY502",
+    "severity": "WARNING",
+    "line": 6,
+    "message_fragment": "Transition 'fdae' is not defined (did you mean 'fade' ?). Causes runtime NameError."
+  },
+  {
+    "code": "RPY502",
+    "severity": "WARNING",
+    "line": 7,
+    "message_fragment": "Transition 'missing_transition' is not defined (did you mean 'ComposeTransition' ?). Causes runtime "
+  },
+  {
+    "code": "RPY502",
+    "severity": "WARNING",
+    "line": 8,
+    "message_fragment": "Transition 'missing_wipe' is not defined. Causes runtime NameError."
+  }
+]

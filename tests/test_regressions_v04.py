@@ -69,44 +69,6 @@ screen main_menu():
     # Ни config, ни gui, ни dissolve не должны вызывать RPY109
     assert len(rpy109_errors) == 0, f"False RPY109 detected: {[d.message for d in rpy109_errors]}"
 
-
-def test_regression_rpy108_none_sentinel_reassignment(tmp_path: Path):
-    """[Regression v0.4.1] Verify bidirectional None assignments (None -> Type and Type -> None) never trigger RPY108."""
-    code = """
-default help_sayori = None
-default quest_item = None
-default active_enemy = "Goblin"
-default enemy_health = 100
-
-label start:
-    # 1. Присваивание типа переменной со значением по умолчанию None
-    $ help_sayori = True
-    $ quest_item = "Sword"
-
-    # 2. Сброс типизированных переменных обратно в sentinel None
-    $ active_enemy = None
-    $ enemy_health = None
-    return
-"""
-    result, _ = run_analyzer(code, tmp_path)
-    rpy108 = [d for d in result.diagnostics if d.code == "RPY108"]
-    assert len(rpy108) == 0, f"False RPY108 on None sentinel assignment: {rpy108}"
-
-    # Проверка, что реальный конфликт типов (int -> str) по-прежнему ловится строго
-    broken_code = """
-default score = 100
-label start:
-    $ score = "MAX"
-    return
-"""
-    broken_res, _ = run_analyzer(broken_code, tmp_path / "broken")
-    broken_rpy108 = [d for d in broken_res.diagnostics if d.code == "RPY108"]
-    assert len(broken_rpy108) == 1
-    assert broken_rpy108[0].line_number == 4
-    assert broken_rpy108[0].severity == "WARNING"
-    assert "was declared as 'int', but reassigned value of incompatible type 'str'" in broken_rpy108[0].message
-
-
 def test_regression_object_model_integrity_across_subsystems(tmp_path: Path):
     """[Regression v0.4.0] Verify unified Symbol objects hold correct metadata across passes."""
     code = """

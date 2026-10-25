@@ -65,7 +65,7 @@ BUILTIN_ACTIONS = {
     "ShowTransient", "FilePage"
 }
 
-SENPY_VERSION = "0.4.3"
+SENPY_VERSION = "0.4.4"
 
 IGNORED_DIRS = {
     ".git", ".svn", ".hg", "node_modules", ".venv", "venv", "env",
@@ -142,7 +142,7 @@ RE_AUDIO_STATEMENT = re.compile(
     re.IGNORECASE,
 )
 RE_INTERPOLATION = re.compile(r"\[([a-zA-Z_][a-zA-Z0-9_]*)[^\]]*\]")
-RE_CONDITION = re.compile(r"^\s*(?:if|elif)\s+(.+):$")
+RE_CONDITION = re.compile(r"^\s*(?:if|elif|while)\s+(.+):$")
 RE_PYTHON_BLOCK_START = re.compile(r"^(\s*)python(?:\s+early)?\s*:\s*(?:#.*)?$")
 RE_INIT_PYTHON_START = re.compile(r"^(\s*)init(?:\s+-?\d+)?\s+python(?:\s+early)?\s*:\s*(?:#.*)?$")
 RE_TRANSFORM = re.compile(r"^\s*transform\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\(.*?\))?\s*:")

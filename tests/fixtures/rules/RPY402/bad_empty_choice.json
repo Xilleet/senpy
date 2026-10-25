@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY402",
+    "severity": "WARNING",
+    "line": 5,
+    "message_fragment": "Menu choice 'Отказаться' has no statements inside and will immediately fall through."
+  }
+]

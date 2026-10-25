@@ -1,0 +1,20 @@
+[
+  {
+    "code": "RPY105",
+    "severity": "ERROR",
+    "line": 5,
+    "message_fragment": "Constant 'INVENTORY_LIST' was declared with 'define', but mutated via in-place method '.append()'. I"
+  },
+  {
+    "code": "RPY105",
+    "severity": "ERROR",
+    "line": 6,
+    "message_fragment": "In-place subscript assignment on constant 'QUEST_DICT' declared with 'define'. Modifying mutable col"
+  },
+  {
+    "code": "RPY105",
+    "severity": "ERROR",
+    "line": 7,
+    "message_fragment": "Constant 'INVENTORY_LIST' was declared with 'define', but mutated via in-place method '.clear()'. In"
+  }
+]
