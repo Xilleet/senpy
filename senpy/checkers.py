@@ -25,9 +25,19 @@ from senpy.constants import (
     RE_SHOW_SCENE,
     SMART_QUOTES,
 )
+from senpy.flow import FlowBranch, merge_flow_branches
 from senpy.models import Diagnostic
 from senpy.python_ast import extract_assigned_names
 from senpy.signature import validate_call_arguments
+
+
+class IfBlockContext:
+    """Контекст активного блока if/elif/else в анализе потока управления."""
+    def __init__(self, indent: int, line: int):
+        self.indent = indent
+        self.line = line
+        self.branches: list[FlowBranch] = []
+        self.current_branch: FlowBranch | None = None
 
 if TYPE_CHECKING:
     from senpy.analyzer import SenpyAnalyzer
@@ -788,7 +798,7 @@ class StateChecker(BaseChecker):
         super().__init__(analyzer)
         self.branch_uninitialized: dict[str, tuple[str, ...]] = {}
         self.guaranteed_vars: set[str] = set()
-        self.if_stack: list[dict] = []
+        self.if_stack: list[IfBlockContext] = []
 
     def reset(self) -> None:
         self.branch_uninitialized.clear()
@@ -799,51 +809,25 @@ class StateChecker(BaseChecker):
         while self.if_stack:
             self._merge_if_context(self.if_stack.pop())
 
-    def _merge_if_context(self, ctx: dict) -> None:
-        branches = ctx["branches"]
-        has_else = any(b["kind"] == "else" for b in branches)
-        non_terminating = [b for b in branches if not b["terminates"]]
+    def _merge_if_context(self, ctx: IfBlockContext) -> None:
+        has_else = any(b.kind == "else" for b in ctx.branches)
+        guaranteed_in_if, uninit_vars, all_terminates = merge_flow_branches(
+            branches=ctx.branches,
+            block_kind="if",
+            block_line=ctx.line,
+            has_else=has_else,
+            known_symbols=self.analyzer.user_symbols,
+            already_guaranteed=self.guaranteed_vars,
+        )
 
-        if not non_terminating:
-            return
-
-        if has_else and len(branches) > 1:
-            guaranteed_in_if = set.intersection(*(b["defined_vars"] for b in non_terminating))
-        else:
-            guaranteed_in_if = set()
-
-        all_defined = set().union(*(b["defined_vars"] for b in branches))
-        maybe_set = all_defined - guaranteed_in_if
+        self.branch_uninitialized.update(uninit_vars)
 
         if self.if_stack:
-            self.if_stack[-1]["current_branch"]["defined_vars"].update(guaranteed_in_if)
+            self.if_stack[-1].current_branch.defined_vars.update(guaranteed_in_if)
+            if all_terminates:
+                self.if_stack[-1].current_branch.terminates = True
         else:
             self.guaranteed_vars.update(guaranteed_in_if)
-
-        for var in sorted(maybe_set):
-            if var in self.analyzer.user_symbols or var in self.guaranteed_vars:
-                continue
-
-            missing_branch = next((b for b in branches if var not in b["defined_vars"]), None)
-            defined_branch = next((b for b in branches if var in b["defined_vars"]), None)
-
-            if not has_else:
-                missing_desc = "condition is False (no else branch)"
-                missing_line = ctx["line"]
-            elif missing_branch:
-                missing_desc = f"{missing_branch['kind']} branch was taken"
-                missing_line = missing_branch["line"]
-            else:
-                missing_desc = "alternate branch was taken"
-                missing_line = ctx["line"]
-
-            defined_desc = f"{defined_branch['kind']} branch" if defined_branch else "if branch"
-
-            self.branch_uninitialized[var] = (
-                missing_desc,
-                defined_desc,
-                str(missing_line),
-            )
 
     def check_line(
         self,
@@ -870,9 +854,9 @@ class StateChecker(BaseChecker):
             # Закрываем завершившиеся блоки if при уменьшении отступа
             while self.if_stack:
                 top = self.if_stack[-1]
-                if line_indent < top["indent"]:
+                if line_indent < top.indent:
                     self._merge_if_context(self.if_stack.pop())
-                elif line_indent == top["indent"]:
+                elif line_indent == top.indent:
                     if is_elif or is_else:
                         break
                     self._merge_if_context(self.if_stack.pop())
@@ -880,46 +864,42 @@ class StateChecker(BaseChecker):
                     break
 
             # Переключение на ветку elif или else
-            if (is_elif or is_else) and self.if_stack and line_indent == self.if_stack[-1]["indent"]:
+            if (is_elif or is_else) and self.if_stack and line_indent == self.if_stack[-1].indent:
                 b_kind = "elif" if is_elif else "else"
-                new_branch = {
-                    "kind": b_kind,
-                    "defined_vars": set(),
-                    "terminates": False,
-                    "line": idx + 1,
-                }
-                self.if_stack[-1]["branches"].append(new_branch)
-                self.if_stack[-1]["current_branch"] = new_branch
+                new_branch = FlowBranch(
+                    kind=b_kind,
+                    name=f"{b_kind} branch",
+                    line=idx + 1,
+                )
+                self.if_stack[-1].branches.append(new_branch)
+                self.if_stack[-1].current_branch = new_branch
 
             # Открытие нового if-блока
             elif is_if:
-                new_ctx = {
-                    "indent": line_indent,
-                    "line": idx + 1,
-                    "branches": [{
-                        "kind": "if",
-                        "defined_vars": set(),
-                        "terminates": False,
-                        "line": idx + 1,
-                    }],
-                }
-                new_ctx["current_branch"] = new_ctx["branches"][0]
+                new_ctx = IfBlockContext(indent=line_indent, line=idx + 1)
+                new_branch = FlowBranch(
+                    kind="if",
+                    name="if branch",
+                    line=idx + 1,
+                )
+                new_ctx.branches.append(new_branch)
+                new_ctx.current_branch = new_branch
                 self.if_stack.append(new_ctx)
 
             # распознаём jump, return и терминирующие вызовы renpy.*
             if self.if_stack and re.match(r"^\s*(?:jump\b|return\b|\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b)", stripped):
-                self.if_stack[-1]["current_branch"]["terminates"] = True
+                self.if_stack[-1].current_branch.terminates = True
 
         # RPY404: Проверка интерполяций [var] после развилок
         self.analyzer._check_cfg_interpolations(
             file_path, idx + 1, stripped, self.branch_uninitialized, noqa_map
         )
 
-        # menu: развилки
+        # menu: развилки (с полной передачей гарантированных переменных в if_stack)
         m_menu = RE_MENU_START.match(raw_line)
         if m_menu and not is_in_screen:
             menu_indent = len(m_menu.group(1))
-            consumed_idx, uninit_vars, _ = self.analyzer._analyze_menu_flow(
+            consumed_idx, uninit_vars, guaranteed_vars, all_terminates = self.analyzer._analyze_menu_flow(
                 lines,
                 idx + 1,
                 menu_indent,
@@ -927,6 +907,15 @@ class StateChecker(BaseChecker):
                 noqa_map=noqa_map,
             )
             self.branch_uninitialized.update(uninit_vars)
+
+            # Передаём вычисленные гарантированные переменные меню в текущую ветку if_stack
+            if self.if_stack:
+                self.if_stack[-1].current_branch.defined_vars.update(guaranteed_vars)
+                if all_terminates:
+                    self.if_stack[-1].current_branch.terminates = True
+            else:
+                self.guaranteed_vars.update(guaranteed_vars)
+
             return consumed_idx, file_modified
 
         # $ python code
@@ -951,7 +940,7 @@ class StateChecker(BaseChecker):
                 self.analyzer._clear_safe_cfg_vars(py_code, self.branch_uninitialized)
                 assigned_names = extract_assigned_names(py_code)
                 if self.if_stack:
-                    self.if_stack[-1]["current_branch"]["defined_vars"].update(assigned_names)
+                    self.if_stack[-1].current_branch.defined_vars.update(assigned_names)
                 else:
                     self.guaranteed_vars.update(assigned_names)
             return idx + 1, file_modified
@@ -982,9 +971,9 @@ class StateChecker(BaseChecker):
                     self.analyzer._clear_safe_cfg_vars(code, self.branch_uninitialized)
                     assigned_names = extract_assigned_names(code)
                     if self.if_stack:
-                        self.if_stack[-1]["current_branch"]["defined_vars"].update(assigned_names)
+                        self.if_stack[-1].current_branch.defined_vars.update(assigned_names)
                         if re.search(r"\brenpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\s*\(", code):
-                            self.if_stack[-1]["current_branch"]["terminates"] = True
+                            self.if_stack[-1].current_branch.terminates = True
                     else:
                         self.guaranteed_vars.update(assigned_names)
             return consumed_idx, file_modified

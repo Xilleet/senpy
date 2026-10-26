@@ -774,3 +774,161 @@ label next_scene:        # RPY308: fallthrough (default: WARNING)
 
     assert d104_custom.severity == "ERROR"
     assert d308_custom.severity == "INFO"
+
+def test_advanced_type_inference_expressions_rpy108(tmp_path: Path):
+    """Verify advanced type inference on expressions (binary ops, known variables, methods) for RPY108."""
+    code = """
+default base_score = 10
+default extra_score = base_score + 5     # inferred as int
+default player_title = "Hero " + "Eileen" # inferred as str
+default is_ready = base_score > 5         # inferred as bool
+
+label start:
+    # 1. Ошибки несовместимого += на составных типах
+    $ extra_score += "points"            # RPY108 [ERROR]: int += str
+    $ player_title += 1                  # RPY108 [ERROR]: str += int
+
+    # 2. Ошибки перезаписи несовместимым типом
+    $ extra_score = "MAX"                # RPY108 [WARNING]: int = str
+    $ is_ready = 100                     # RPY108 [WARNING]: bool = int
+
+    # 3. Валидные составные присваивания (0 ошибок)
+    $ extra_score += 20
+    $ player_title = player_title.upper()
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy108_diags = [d for d in result.diagnostics if d.code == "RPY108"]
+
+    assert len(rpy108_diags) == 4, f"Expected 4 RPY108 diagnostics, got: {rpy108_diags}"
+
+    # Проверяем фатальные ошибки +=
+    errs = [d for d in rpy108_diags if d.severity == "ERROR"]
+    assert len(errs) == 2
+    assert any("extra_score" in d.message and "type 'int'" in d.message for d in errs)
+    assert any("player_title" in d.message and "type 'str'" in d.message for d in errs)
+
+    # Проверяем предупреждения перезаписи типа
+    warns = [d for d in rpy108_diags if d.severity == "WARNING"]
+    assert len(warns) == 2
+    assert any("extra_score" in d.message and "incompatible type 'str'" in d.message for d in warns)
+    assert any("is_ready" in d.message and "incompatible type 'int'" in d.message for d in warns)
+
+def test_unified_cfg_nested_menu_inside_if(tmp_path: Path):
+    """Verify unified CFG correctly bubbles guaranteed vars and termination from menu to enclosing if."""
+    code = """
+label start:
+    # 1. Меню внутри if, где обе ветки задают переменную -> переменная гарантирована в if
+    if has_entered_shop:
+        menu:
+            "Купить меч":
+                $ weapon = "sword"
+            "Купить лук":
+                $ weapon = "bow"
+    else:
+        $ weapon = "fists"
+
+    # Не должно быть RPY404! weapon есть и в if, и в else
+    if weapon == "sword":
+        "Готов к бою."
+
+    # 2. Меню внутри if, где все выборы терминируют процесс
+    if is_game_over:
+        menu:
+            "Сдаться":
+                return
+            "Рестарт":
+                $ renpy.full_restart()
+    else:
+        $ survival_bonus = 100
+
+    # Ветка if завершается, поэтому survival_bonus гарантирован после блока
+    if survival_bonus > 0:
+        "Бонус: [survival_bonus]"
+    return
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy404_diags = [d for d in result.diagnostics if d.code == "RPY404"]
+    rpy401_diags = [d for d in result.diagnostics if d.code == "RPY401"]
+
+    assert len(rpy404_diags) == 0, f"False RPY404 on unified CFG nested menu: {rpy404_diags}"
+    assert len(rpy401_diags) == 0, f"False RPY401 on exhaustive menu: {rpy401_diags}"
+
+def test_lsp_differential_update_multiple_files_integrity(tmp_path: Path):
+    """Verify differential purge updates single file without corrupting other files' symbols."""
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+
+    file_a = game_dir / "a.rpy"
+    file_b = game_dir / "b.rpy"
+
+    file_a.write_text("default shared_var = 1\ndefault a_unique = 10\nlabel scene_a:\n    return\n", encoding="utf-8")
+    file_b.write_text("default shared_var = 2\ndefault b_unique = 20\nlabel scene_b:\n    return\n", encoding="utf-8")
+
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    analyzer.run(quiet=True)
+
+    assert "a_unique" in analyzer.variables
+    assert "b_unique" in analyzer.variables
+    assert "scene_a" in analyzer.labels
+    assert "scene_b" in analyzer.labels
+
+    # Модифицируем файл A: переименовываем a_unique -> a_renamed, удаляем scene_a
+    file_a.write_text("default shared_var = 1\ndefault a_renamed = 99\nlabel scene_a_new:\n    return\n", encoding="utf-8")
+    analyzer.analyze_file_only(str(file_a))
+
+    # 1. Изменения в файле A применились
+    assert "a_unique" not in analyzer.variables
+    assert "a_renamed" in analyzer.variables
+    assert "scene_a" not in analyzer.labels
+    assert "scene_a_new" in analyzer.labels
+
+    # 2. Символы файла B НЕ пострадали
+    assert "b_unique" in analyzer.variables
+    assert "scene_b" in analyzer.labels
+
+    # 3. Общая переменная shared_var не удалилась из declared_symbols, так как она осталась в файле B
+    assert "shared_var" in analyzer.declared_symbols
+
+def test_multiline_calls_and_playlists_parsing(tmp_path: Path):
+    """Verify multiline call statements, transform declarations, and audio playlists glue cleanly."""
+    extra_files = {
+        "audio/intro.ogg": b"dummy_audio_1",
+        "audio/loop.ogg": b"dummy_audio_2",
+    }
+    code = """
+label target_scene(difficulty="normal", party_size=4):
+    return
+
+transform multiline_bounce(
+    speed=0.2,
+    offset_y=-20
+):
+    yoffset 0
+    easein speed yoffset offset_y
+    easeout speed yoffset 0
+
+label start:
+    # 1. Многострочный вызов call с аргументами на разных строках
+    call target_scene(
+        difficulty="hard",
+        party_size=2
+    )
+
+    # 2. Многострочный плейлист audio
+    play music [
+        "audio/intro.ogg",
+        "audio/loop.ogg"
+    ]
+    return
+"""
+    _result, _ = run_senpy_on_code(code, tmp_path, extra_files=extra_files)
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    result = analyzer.run(quiet=True)
+
+    errors = [d for d in result.diagnostics if d.severity == "ERROR"]
+
+    # Ни RPY310 (ошибка аргументов call), ни RPY501 (аудио) не должны сработать
+    assert len(errors) == 0, f"Multiline instructions failed parsing: {errors}"
+    assert "target_scene" in analyzer.labels
+    assert "multiline_bounce" in analyzer.transforms

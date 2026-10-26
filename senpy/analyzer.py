@@ -97,6 +97,9 @@ def _strip_comment(line: str) -> str:
 
 def _count_bracket_delta(s: str) -> int:
     """Считает баланс скобок (, [, { вне строковых литералов."""
+    if not any(c in s for c in "()[]{}"):
+        return 0
+
     delta = 0
     in_quote = None
     i = 0
@@ -133,7 +136,6 @@ def _count_bracket_delta(s: str) -> int:
         i += 1
     return delta
 
-
 def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     """
     Склеивает многострочные конструкции (перенос через '\\' или незакрытые скобки).
@@ -144,18 +146,15 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     first_clean = _strip_comment(first_raw)
     stripped = first_clean.strip()
 
-    # Обычные диалоги и короткие строки не требуют заглядывания вперед
-    should_check = stripped.endswith('\\') or stripped.startswith((
-        "if ", "elif ", "while ", "screen ", "label ",
-        "image ", "define ", "default ", "$", "show ", "scene "
-    ))
+    bracket_depth = _count_bracket_delta(first_clean)
+    ends_with_backslash = stripped.endswith('\\')
 
-    if not should_check:
+    # Строка требует склейки ТОЛЬКО если есть явный перенос '\' или незакрытая скобка вне кавычек
+    if not ends_with_backslash and bracket_depth <= 0:
         return idx + 1, first_raw, first_clean
 
     raw_parts = [first_raw]
     clean_parts = [first_clean]
-    bracket_depth = _count_bracket_delta(first_clean)
     curr_idx = idx
 
     max_lookahead = 50  # Защита от бесконечного поглощения строк
@@ -175,11 +174,12 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
         peek_clean = _strip_comment(peek_raw).strip()
 
         # Граница блока: если нет явного обратного слэша '\', а следующая строка —
-        # новая ключевая конструкция верхнего уровня (label, screen, init, define, default),
+        # новая ключевая конструкция верхнего уровня (label, screen, init, define, default, transform, image, style, layeredimage),
         # принудительно останавливаемся, чтобы не поглотить чужую сцену при сломанной скобке.
         peek_indent = len(peek_raw) - len(peek_raw.lstrip(" "))
         if not ends_with_backslash and peek_indent == 0 and peek_clean.startswith((
-            "label ", "screen ", "init ", "define ", "default "
+            "label ", "screen ", "init ", "define ", "default ",
+            "transform ", "image ", "style ", "layeredimage "
         )):
             break
 
@@ -467,8 +467,58 @@ class SenpyAnalyzer:
             fixable_count=self.fixable_count,
         )
 
+    def _differential_purge_file(self, norm_path: str, file_path: str) -> None:
+        """
+        Дифференциально удаляет символы только одного файла из глобальных структур,
+        не вызывая дорогую полную пересборку всех файлов проекта (_rebuild_aggregates).
+        """
+        old_scope = self.file_scopes.pop(norm_path, None)
+        if not old_scope:
+            return
+
+        # 1. Быстрое удаление O(1) из объектных реестров
+        for k in old_scope.variables:
+            self.variables.pop(k, None)
+        for k in old_scope.labels:
+            self.labels.pop(k, None)
+        for k in old_scope.screens:
+            self.screens.pop(k, None)
+        for k in old_scope.images:
+            self.images.pop(k, None)
+        for k in old_scope.transforms:
+            self.transforms.pop(k, None)
+        for k in old_scope.defined_audio_map:
+            self.defined_audio_map.pop(k, None)
+
+        # 2. Очистка jump_sources только для данного файла
+        for tgt in old_scope.jump_sources:
+            if tgt in self.jump_sources:
+                self.jump_sources[tgt] = [loc for loc in self.jump_sources[tgt] if loc[0] != file_path]
+                if not self.jump_sources[tgt]:
+                    self.jump_sources.pop(tgt, None)
+
+        # 3. Дифференциальная очистка множеств:
+        # Символ удаляется из глобального множества только если его нет ни в одном другом файле проекта.
+        other_scopes = list(self.file_scopes.values())
+
+        for sym in old_scope.user_symbols:
+            if not any(sym in s.user_symbols for s in other_scopes):
+                self.user_symbols.discard(sym)
+
+        for sym in old_scope.declared_symbols:
+            if sym not in BUILTIN_SYMBOLS and not any(sym in s.declared_symbols for s in other_scopes):
+                self.declared_symbols.discard(sym)
+
+        for sym in old_scope.referenced_labels:
+            if not any(sym in s.referenced_labels for s in other_scopes):
+                self.referenced_labels.discard(sym)
+
+        for chan in old_scope.registered_audio_channels:
+            if chan not in BUILTIN_AUDIO_CHANNELS and not any(chan in s.registered_audio_channels for s in other_scopes):
+                self.registered_audio_channels.discard(chan)
+
     def _purge_file_symbols(self, norm_path: str) -> None:
-        """Удаляет символы файла из кэша и пересобирает глобальные таблицы."""
+        """Полное удаление символов файла с последующей глобальной пересборкой."""
         if norm_path in self.file_scopes:
             del self.file_scopes[norm_path]
             self._rebuild_aggregates()
@@ -514,7 +564,7 @@ class SenpyAnalyzer:
             if "tl" in rel_parts:
                 self._analyze_tl_file(file_path)
             else:
-                self._purge_file_symbols(norm_path)
+                self._differential_purge_file(norm_path, file_path)
                 self._collect_symbols(file_path)
                 self._analyze_file(file_path)
         finally:
@@ -601,7 +651,7 @@ class SenpyAnalyzer:
                             )
                         )
 
-                    inferred_t = infer_expr_type(val_str)
+                    inferred_t = infer_expr_type(val_str, known_vars=self.variables)
                     var_sym = VariableSymbol(
                         name=var, file_path=file_path, line_number=idx + 1, code_line=clean,
                         type_name=inferred_t, is_constant=False, is_character=False
@@ -661,7 +711,7 @@ class SenpyAnalyzer:
                             )
                         )
 
-                    inferred_t = infer_expr_type(val_str)
+                    inferred_t = infer_expr_type(val_str, known_vars=self.variables)
                     is_const = "." not in clean.split("=")[0]
                     is_char = "Character" in clean or "DynamicCharacter" in clean
                     var_sym = VariableSymbol(
@@ -1124,7 +1174,7 @@ class SenpyAnalyzer:
         menu_indent: int,
         file_path: str = "",
         noqa_map: dict | None = None,
-    ) -> tuple[int, dict[str, tuple[str, str]]]:
+    ) -> tuple[int, dict[str, tuple[str, ...]], set[str], bool]:
         return self.flow.analyze_menu_flow(lines, start_idx, menu_indent, file_path, noqa_map)
 
     def export_graph(self) -> str:

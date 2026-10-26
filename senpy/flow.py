@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections import deque
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from senpy.constants import RE_MENU_CHOICE, RE_STRING_MATCH, SYSTEM_LABELS
@@ -13,6 +14,74 @@ from senpy.text_tags import get_utf16_range
 if TYPE_CHECKING:
     from senpy.analyzer import SenpyAnalyzer
 
+@dataclass
+class FlowBranch:
+    """Представляет одну ветку развилки (choice в menu: или if/elif/else)."""
+    kind: str                      # "choice", "if", "elif", "else"
+    name: str                      # Название выбора или описание ветки
+    line: int                      # Номер строки
+    defined_vars: set[str] = field(default_factory=set)
+    terminates: bool = False
+    raw: str = ""
+
+
+def merge_flow_branches(
+    branches: list[FlowBranch],
+    block_kind: str,
+    block_line: int,
+    has_else: bool,
+    known_symbols: set[str],
+    already_guaranteed: set[str],
+) -> tuple[set[str], dict[str, tuple[str, ...]], bool]:
+    """
+    Унифицированное слияние параллельных веток (if/elif/else или menu:).
+    Возвращает:
+      - guaranteed_vars: переменные, гарантированно заданные во всех нетерминирующих путях
+      - uninitialized_vars: словарь переменных MAYBE_SET с метаданными о пропущенной ветке
+      - all_terminating: True, если абсолютно все ветки выходят через jump/return
+    """
+    non_terminating = [b for b in branches if not b.terminates]
+    if not non_terminating:
+        return set(), {}, True
+
+    if block_kind == "menu":
+        guaranteed = set.intersection(*(b.defined_vars for b in non_terminating)) if non_terminating else set()
+    else:  # "if"
+        if has_else and len(branches) > 1:
+            guaranteed = set.intersection(*(b.defined_vars for b in non_terminating))
+        else:
+            guaranteed = set()
+
+    all_defined = set().union(*(b.defined_vars for b in branches))
+    maybe_set = all_defined - guaranteed
+    uninitialized: dict[str, tuple[str, ...]] = {}
+
+    for var in sorted(maybe_set):
+        if var in known_symbols or var in already_guaranteed:
+            continue
+
+        missing_b = next((b for b in branches if var not in b.defined_vars), None)
+        defined_b = next((b for b in branches if var in b.defined_vars), None)
+
+        if block_kind == "if":
+            if not has_else:
+                missing_desc = "condition is False (no else branch)"
+                missing_line = block_line
+            elif missing_b:
+                missing_desc = f"{missing_b.kind} branch was taken"
+                missing_line = missing_b.line
+            else:
+                missing_desc = "alternate branch was taken"
+                missing_line = block_line
+            defined_desc = f"{defined_b.kind} branch" if defined_b else "if branch"
+        else:
+            missing_desc = missing_b.name if missing_b else "alternate choice"
+            defined_desc = defined_b.name if defined_b else "menu choice"
+            missing_line = missing_b.line if missing_b else block_line
+
+        uninitialized[var] = (missing_desc, defined_desc, str(missing_line))
+
+    return guaranteed, uninitialized, False
 
 class StoryFlowAnalyzer:
     """Анализирует граф переходов, развилки меню и генерирует Mermaid-диаграммы сюжета."""
@@ -161,28 +230,28 @@ class StoryFlowAnalyzer:
         menu_indent: int,
         file_path: str = "",
         noqa_map: dict | None = None,
-    ) -> tuple[int, dict[str, tuple[str, ...]], set[str]]:
+    ) -> tuple[int, dict[str, tuple[str, ...]], set[str], bool]:
         from senpy.analyzer import _strip_comment
         from senpy.constants import RE_MENU_START
 
         idx = start_idx
-        choices: list[dict] = []
-        current_choice = None
+        choices: list[FlowBranch] = []
+        current_choice: FlowBranch | None = None
         choice_indent: int | None = None
+        statement_counts: dict[int, int] = {}
         uninitialized_vars: dict[str, tuple[str, ...]] = {}
         noqa_map = noqa_map or {}
 
-        def check_empty_choice(choice_dict):
-            if choice_dict and choice_dict["statement_count"] == 0 and file_path:
-                raw_full = choice_dict.get("raw_full", choice_dict["raw"])
-                start_c, end_c = get_utf16_range(raw_full, choice_dict["title"])
+        def check_empty_choice(branch: FlowBranch | None):
+            if branch and statement_counts.get(id(branch), 0) == 0 and file_path:
+                start_c, end_c = get_utf16_range(branch.raw, branch.name)
                 self.analyzer._add_diagnostic(
                     Diagnostic(
                         file_path=file_path,
-                        line_number=choice_dict["line"],
-                        line_content=choice_dict["raw"],
+                        line_number=branch.line,
+                        line_content=branch.raw,
                         code="RPY402",
-                        message=f"Menu choice '{choice_dict['title']}' has no statements inside and will immediately fall through.",
+                        message=f"Menu choice '{branch.name}' has no statements inside and will immediately fall through.",
                         col=start_c,
                         end_col=end_c,
                     ),
@@ -216,41 +285,40 @@ class StoryFlowAnalyzer:
                     check_empty_choice(current_choice)
                     choices.append(current_choice)
 
-                current_choice = {
-                    "title": m_choice.group(2).strip("\"'"),
-                    "indent": line_indent,
-                    "defined": set(),
-                    "terminates": False,
-                    "statement_count": 0,
-                    "line": idx + 1,
-                    "raw": stripped,
-                    "raw_full": raw_line,
-                }
+                current_choice = FlowBranch(
+                    kind="choice",
+                    name=m_choice.group(2).strip("\"'"),
+                    line=idx + 1,
+                    raw=stripped,
+                )
+                statement_counts[id(current_choice)] = 0
                 idx += 1
                 continue
 
-            if current_choice and line_indent > current_choice["indent"]:
-                current_choice["statement_count"] += 1
+            if current_choice and line_indent > choice_indent:
+                statement_counts[id(current_choice)] = statement_counts.get(id(current_choice), 0) + 1
 
                 if RE_MENU_START.match(raw_line):
-                    consumed_idx, sub_uninit, sub_guaranteed = self.analyze_menu_flow(
+                    consumed_idx, sub_uninit, sub_guaranteed, sub_term = self.analyze_menu_flow(
                         lines,
                         idx + 1,
                         line_indent,
                         file_path=file_path,
                         noqa_map=noqa_map,
                     )
-                    current_choice["defined"].update(sub_guaranteed)
+                    current_choice.defined_vars.update(sub_guaranteed)
                     uninitialized_vars.update(sub_uninit)
+                    if sub_term:
+                        current_choice.terminates = True
                     idx = consumed_idx
                     continue
 
                 if stripped.startswith("$"):
                     py = stripped[1:].strip()
-                    current_choice["defined"].update(extract_assigned_names(py))
+                    current_choice.defined_vars.update(extract_assigned_names(py))
 
                 if re.match(r"^\s*(?:jump\b|return\b|\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b)", stripped):
-                    current_choice["terminates"] = True
+                    current_choice.terminates = True
 
             idx += 1
 
@@ -258,56 +326,49 @@ class StoryFlowAnalyzer:
             check_empty_choice(current_choice)
             choices.append(current_choice)
 
-        merging_choices = [c for c in choices if not c["terminates"]]
+        merging_choices = [c for c in choices if not c.terminates]
 
+        # RPY401: Диагностика асимметрии между нетерминирующими ветками меню
         if len(merging_choices) > 1:
-            all_defined = set().union(*(c["defined"] for c in merging_choices))
+            all_defined = set().union(*(c.defined_vars for c in merging_choices))
             for var in all_defined:
-                if var in self.analyzer.user_symbols:
+                if var in self.analyzer.user_symbols or var in self.analyzer.declared_symbols:
                     continue
 
-                missing_choice_dict = next(
-                    (c for c in merging_choices if var not in c["defined"]),
-                    None,
-                )
-                defined_choice_dict = next(
-                    (c for c in merging_choices if var in c["defined"]),
-                    None,
-                )
+                missing_b = next((c for c in merging_choices if var not in c.defined_vars), None)
+                defined_b = next((c for c in merging_choices if var in c.defined_vars), None)
 
-                if missing_choice_dict and defined_choice_dict:
-                    if file_path:
-                        start_c, end_c = get_utf16_range(missing_choice_dict["raw"], missing_choice_dict["title"])
-                        self.analyzer._add_diagnostic(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=missing_choice_dict["line"],
-                                line_content=missing_choice_dict["raw"],
-                                code="RPY401",
-                                message=(
-                                    f"Menu branch asymmetry: variable '{var}' is assigned in choice "
-                                    f"'{defined_choice_dict['title']}' (line {defined_choice_dict['line']}), "
-                                    f"but missing in '{missing_choice_dict['title']}'."
-                                ),
-                                col=start_c,
-                                end_col=end_c,
+                if missing_b and defined_b and file_path:
+                    start_c, end_c = get_utf16_range(missing_b.raw, missing_b.name)
+                    self.analyzer._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=missing_b.line,
+                            line_content=missing_b.raw,
+                            code="RPY401",
+                            message=(
+                                f"Menu branch asymmetry: variable '{var}' is assigned in choice "
+                                f"'{defined_b.name}' (line {defined_b.line}), "
+                                f"but missing in '{missing_b.name}'."
                             ),
-                            noqa_map,
-                        )
-
-                    uninitialized_vars[var] = (
-                        missing_choice_dict["title"],
-                        defined_choice_dict["title"],
-                        str(missing_choice_dict["line"]),
+                            col=start_c,
+                            end_col=end_c,
+                        ),
+                        noqa_map,
                     )
 
-        guaranteed_vars = (
-            set.intersection(*(c["defined"] for c in merging_choices))
-            if merging_choices
-            else set()
+        # Унифицированное слияние состояния
+        guaranteed_vars, merged_uninit, all_terminates = merge_flow_branches(
+            branches=choices,
+            block_kind="menu",
+            block_line=start_idx,
+            has_else=True,
+            known_symbols=self.analyzer.user_symbols,
+            already_guaranteed=set(),
         )
+        uninitialized_vars.update(merged_uninit)
 
-        return idx, uninitialized_vars, guaranteed_vars
+        return idx, uninitialized_vars, guaranteed_vars, all_terminates
 
     def generate_mermaid_graph(self) -> str:
         """Генерирует чистую Mermaid.js диаграмму графа сюжета новеллы."""

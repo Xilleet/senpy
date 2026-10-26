@@ -19,7 +19,7 @@ from senpy.analyzer import Diagnostic, SenpyAnalyzer
 from senpy.constants import CLAUSE_KEYWORDS
 from senpy.renpy_api import get_renpy_api_hover
 
-server = LanguageServer("senpy-lsp", "v0.4.4")
+server = LanguageServer("senpy-lsp", "v0.4.5")
 
 
 def _uri_to_path(uri: str) -> str:
@@ -192,6 +192,13 @@ def did_save(ls: LanguageServer, params: lsp.DidSaveTextDocumentParams):
     if params.text_document.uri.endswith(".rpy"):
         schedule_full_diagnostics(ls, params.text_document.uri)
 
+@server.feature(lsp.TEXT_DOCUMENT_DID_CLOSE)
+def did_close(ls: LanguageServer, params: lsp.DidCloseTextDocumentParams):
+    """Очищает файл из in-memory буфера анализатора при закрытии вкладки в редакторе."""
+    uri = params.text_document.uri
+    if _active_analyzer is not None:
+        norm_file = os.path.normcase(os.path.abspath(_uri_to_path(uri)))
+        _active_analyzer.in_memory_files.pop(norm_file, None)
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
 def did_change(ls: LanguageServer, params: lsp.DidChangeTextDocumentParams):

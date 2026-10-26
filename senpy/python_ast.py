@@ -4,7 +4,7 @@ import ast
 import contextlib
 import difflib
 import textwrap
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from senpy.constants import BUILTIN_SYMBOLS, SCREEN_LOCAL_IGNORE
 from senpy.models import Diagnostic
@@ -13,12 +13,20 @@ from senpy.text_tags import get_utf16_range, suggest_similar_symbol
 if TYPE_CHECKING:
     from senpy.analyzer import SenpyAnalyzer
 
-def infer_ast_type(val_node: ast.AST | None) -> str | None:
-    """Определяет тип данных выражения по AST-узлу."""
-    if val_node is None:
+def infer_ast_type(
+    val_node: ast.AST | None,
+    known_vars: dict[str, Any] | None = None,
+    depth: int = 0,
+) -> str | None:
+    """
+    Определяет тип данных выражения по AST-узлу с поддержкой бинарных операций,
+    известных переменных, сравнений и вызовов встроенных функций/методов.
+    """
+    if val_node is None or depth > 8:
         return None
+
+    # 1. Литералы и константы
     if isinstance(val_node, ast.Constant):
-        # bool проверяем ДО int, так как в Python isinstance(True, int) == True
         if isinstance(val_node.value, bool):
             return "bool"
         if isinstance(val_node.value, int):
@@ -29,56 +37,156 @@ def infer_ast_type(val_node: ast.AST | None) -> str | None:
             return "str"
         if val_node.value is None:
             return "None"
+
+    # 2. Имена переменных (подтягиваем тип из реестра символов)
+    elif isinstance(val_node, ast.Name):
+        if val_node.id in ("True", "False"):
+            return "bool"
+        if val_node.id == "None":
+            return "None"
+        if known_vars and val_node.id in known_vars:
+            var_sym = known_vars[val_node.id]
+            # Поддерживаем как объекты VariableSymbol, так и простые строки типов
+            return getattr(var_sym, "type_name", None) or (var_sym if isinstance(var_sym, str) else None)
+
+    # 3. Коллекции
     elif isinstance(val_node, (ast.List, ast.ListComp)):
         return "list"
     elif isinstance(val_node, (ast.Dict, ast.DictComp)):
         return "dict"
     elif isinstance(val_node, (ast.Set, ast.SetComp)):
         return "set"
-    elif isinstance(val_node, ast.Call) and isinstance(val_node.func, ast.Name):
-        if val_node.func.id in ("list", "revertable_list"):
-            return "list"
-        if val_node.func.id in ("dict", "revertable_dict"):
-            return "dict"
-        if val_node.func.id in ("set", "revertable_set"):
-            return "set"
+    elif isinstance(val_node, (ast.Tuple)):
+        return "tuple"
+
+    # 4. f-строки (f"value {x}")
+    elif isinstance(val_node, ast.JoinedStr):
+        return "str"
+
+    # 5. Операции сравнения: x > 5, x == y, a in b -> всегда bool
+    elif isinstance(val_node, ast.Compare):
+        return "bool"
+
+    # 6. Унарные операции: not x -> bool, -x -> int/float
+    elif isinstance(val_node, ast.UnaryOp):
+        if isinstance(val_node.op, ast.Not):
+            return "bool"
+        if isinstance(val_node.op, (ast.USub, ast.UAdd)):
+            operand_t = infer_ast_type(val_node.operand, known_vars, depth + 1)
+            if operand_t in ("int", "float"):
+                return operand_t
+
+    # 7. Бинарные операции (+, -, *, /, //, %)
+    elif isinstance(val_node, ast.BinOp):
+        lt = infer_ast_type(val_node.left, known_vars, depth + 1)
+        rt = infer_ast_type(val_node.right, known_vars, depth + 1)
+
+        # Деление через '/' в Python 3 всегда возвращает float
+        if isinstance(val_node.op, ast.Div):
+            return "float"
+
+        # Сложение строк: str + str -> str
+        if isinstance(val_node.op, ast.Add):
+            if lt == "str" and rt == "str":
+                return "str"
+            if lt == "list" and rt == "list":
+                return "list"
+
+        # Умножение: str * int -> str, list * int -> list
+        if isinstance(val_node.op, ast.Mult):
+            if (lt == "str" and rt == "int") or (lt == "int" and rt == "str"):
+                return "str"
+            if (lt == "list" and rt == "int") or (lt == "int" and rt == "list"):
+                return "list"
+
+        # Арифметика чисел
+        if lt in ("int", "float") and rt in ("int", "float"):
+            if "float" in (lt, rt):
+                return "float"
+            return "int"
+
+    # 8. Тернарные операторы: val_a if condition else val_b
+    elif isinstance(val_node, ast.IfExp):
+        t_body = infer_ast_type(val_node.body, known_vars, depth + 1)
+        t_else = infer_ast_type(val_node.orelse, known_vars, depth + 1)
+        if t_body == t_else and t_body is not None:
+            return t_body
+
+    # 9. Вызовы функций и методов
+    elif isinstance(val_node, ast.Call):
+        if isinstance(val_node.func, ast.Name):
+            func_id = val_node.func.id
+            if func_id in ("int", "len", "round"):
+                return "int"
+            if func_id == "float":
+                return "float"
+            if func_id == "str":
+                return "str"
+            if func_id == "bool":
+                return "bool"
+            if func_id in ("list", "revertable_list"):
+                return "list"
+            if func_id in ("dict", "revertable_dict"):
+                return "dict"
+            if func_id in ("set", "revertable_set"):
+                return "set"
+
+        elif isinstance(val_node.func, ast.Attribute):
+            method = val_node.func.attr
+            # Методы строк
+            if method in (
+                "upper", "lower", "strip", "lstrip", "rstrip",
+                "replace", "format", "capitalize", "title",
+            ):
+                return "str"
+            if method in ("split", "splitlines"):
+                return "list"
+            if method in ("startswith", "endswith", "isdigit", "isalpha", "isalnum"):
+                return "bool"
+            if method in ("count", "index", "find", "rfind"):
+                return "int"
+            if method in ("keys", "values"):
+                return "list"
+
     return None
 
 
-def infer_expr_type(expr_str: str | None) -> str | None:
-    """Выводит тип выражения из строки присваивания."""
+def infer_expr_type(
+    expr_str: str | None,
+    known_vars: dict[str, Any] | None = None,
+) -> str | None:
+    """Выводит тип выражения из строки присваивания с учетом известных символов."""
     if not expr_str or not expr_str.strip():
         return None
     try:
         tree = ast.parse(expr_str.strip(), mode="eval")
-        return infer_ast_type(tree.body)
+        return infer_ast_type(tree.body, known_vars=known_vars)
     except (SyntaxError, ValueError, TypeError):
         return None
 
-def infer_default_value(val_node: ast.AST | None) -> str:
-    """Выводит безопасное дефолтное значение по AST-узлу."""
-    if val_node is None:
+
+def infer_default_value(
+    val_node: ast.AST | None,
+    known_vars: dict[str, Any] | None = None,
+) -> str:
+    """Выводит безопасное дефолтное значение на основе вычисленного типа узла."""
+    t = infer_ast_type(val_node, known_vars=known_vars)
+    if t == "int":
+        return "0"
+    if t == "float":
+        return "0.0"
+    if t == "str":
+        return '""'
+    if t == "bool":
         return "False"
-    if isinstance(val_node, ast.Constant):
-        if isinstance(val_node.value, bool):
-            return "False"
-        elif isinstance(val_node.value, (int, float)):
-            return "0"
-        elif isinstance(val_node.value, str):
-            return '""'
-        elif val_node.value is None:
-            return "None"
-    elif isinstance(val_node, (ast.List, ast.ListComp)):
+    if t == "list":
         return "[]"
-    elif isinstance(val_node, (ast.Dict, ast.DictComp)):
+    if t == "dict":
         return "{}"
-    elif isinstance(val_node, (ast.Set, ast.SetComp)):
+    if t == "set":
         return "[]"
-    elif isinstance(val_node, ast.Call) and isinstance(val_node.func, ast.Name):
-        if val_node.func.id in ("list", "set"):
-            return "[]"
-        elif val_node.func.id == "dict":
-            return "{}"
+    if t == "None":
+        return "None"
     return "False"
 
 # Системные пространства имён Ren'Py, мутация которых допустима во время игры
@@ -457,7 +565,7 @@ class PythonAstChecker:
                         else:
                             # RPY108: Проверка несовместимого типа при +=, -= и т.д.
                             expected_t = var_sym.type_name if var_sym else None
-                            op_t = infer_ast_type(node.value)
+                            op_t = infer_ast_type(node.value, known_vars=self.analyzer.variables)
                             if expected_t and op_t:
                                 is_incompatible = False
 
@@ -568,7 +676,7 @@ class PythonAstChecker:
                             )
                             # RPY108: Проверка конфликта типов при присваивании ($ var = "High")
                             expected_t = self.analyzer.variables[target.id].type_name if target.id in self.analyzer.variables else None
-                            new_t = infer_ast_type(node.value)
+                            new_t = infer_ast_type(node.value, known_vars=self.analyzer.variables)
                             if (
                                 expected_t
                                 and new_t
