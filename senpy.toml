@@ -57,35 +57,49 @@ ignore = [
 
 
 # =============================================================================
-# [EN] SENPY RULE CHEAT SHEET
+# [EN] SENPY RULE CHEAT SHEET (All 41 Rules)
 # =============================================================================
+#  RPY001 [ERROR]   - Tab character in indentation (Ren'Py requires 4 spaces).
+#  RPY002 [ERROR]   - Smart/curly quotes in code statements.
 #  RPY101 [ERROR]   - Variable in dialogue interpolation [var] was never declared.
 #  RPY102 [ERROR]   - Augmented assignment ($ var += 1) before 'default' declaration.
 #  RPY103 [ERROR]   - Undeclared variable evaluated in condition (if var:).
 #  RPY104 [WARNING] - Dynamic assignment ($ var = ...) without a top-level 'default'.
 #  RPY105 [ERROR]   - Reassigning or mutating a constant declared with 'define'.
 #  RPY106 [WARNING] - Using standard 'random' or mutable 'set' during story flow.
-#
+#  RPY107 [HINT]    - Usage of deprecated / obsolete Ren'Py API.
+#  RPY108 [ERROR]   - Type taint conflict or invalid method invocation on collection.
+#  RPY109 [ERROR]   - Init phase dependency graph violation (alphabetical load order).
 #  RPY201 [WARNING] - Direct state mutation inside screen (breaks prediction/rollback).
 #  RPY202 [WARNING] - Screen accesses variable not initialized via 'default'.
 #  RPY203 [WARNING] - Screen button (textbutton/imagebutton) missing 'action'.
 #  RPY204 [ERROR]   - Calling or showing a screen that does not exist.
 #  RPY205 [WARNING] - Heavy imperative for/while loops inside screen.
-#
+#  RPY206 [ERROR]   - Direct function call with parentheses in screen action.
+#  RPY207 [ERROR]   - Invalid parameters in screen call / use.
+#  RPY208 [ERROR]   - Screen-local variable modified via global action or store mutation.
 #  RPY301 [ERROR]   - Unclosed or mismatched text tags ({b}...{/b}) in dialogue.
 #  RPY302 [ERROR]   - Jump/call to a label that does not exist (ScriptError).
-#  RPY303 [INFO]    - Label declared but never referenced statically (router/dead code).
+#  RPY303 [HINT]    - Label declared but never referenced statically (router/dead code).
 #  RPY304 [ERROR]   - Malformed hex code or unknown color in {color} tag.
 #  RPY305 [ERROR]   - Unescaped quotes inside dialogue string.
 #  RPY306 [WARNING] - Called label has no clear 'return' path (control flow bleed).
-#
+#  RPY307 [ERROR]   - Duplicate label declaration across scripts.
+#  RPY308 [WARNING] - Label preceded by regular statements (fallthrough hazard).
+#  RPY309 [WARNING] - Story island / isolated subgraph unreachable from 'start'.
+#  RPY310 [ERROR]   - Invalid argument count or keyword in 'call' statement.
 #  RPY401 [WARNING] - Menu branch imbalance: variable declared in some paths but missing in others.
 #  RPY402 [WARNING] - Empty menu choice that immediately falls through.
 #  RPY403 [WARNING] - Condition is always False or contains a logical contradiction.
-#
+#  RPY404 [WARNING] - Variable in MAYBE_SET state evaluated after menu/if branch.
 #  RPY501 [ERROR]   - Audio file not found on disk or inside .rpa archives.
-#  RPY502 [WARNING] - Sprite, background, or attribute not found in image definitions/assets.
-#  RPY504 [WARNING] - Duplicate image declaration or asset override.
+#  RPY502 [WARNING] - Sprite, background, or transform not found in declarations.
+#  RPY503 [HINT]    - Unused media asset on disk.
+#  RPY504 [HINT]    - Duplicate image declaration or asset override.
+#  RPY505 [WARNING] - Unregistered audio channel or voice loop.
+#  RPY601 [ERROR]   - Variable mismatch in translation string [var].
+#  RPY602 [WARNING] - Formatting tag mismatch in translation string.
+#  RPY603 [WARNING] - Empty translation string ('new ""').
 
 
 # =============================================================================

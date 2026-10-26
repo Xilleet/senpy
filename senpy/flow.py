@@ -6,7 +6,12 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from senpy.constants import RE_MENU_CHOICE, RE_STRING_MATCH, SYSTEM_LABELS
+from senpy.constants import (
+    BUILTIN_SCREENS,
+    RE_MENU_CHOICE,
+    RE_STRING_MATCH,
+    SYSTEM_LABELS,
+)
 from senpy.models import Diagnostic
 from senpy.python_ast import extract_assigned_names
 from senpy.text_tags import get_utf16_range
@@ -147,9 +152,23 @@ class StoryFlowAnalyzer:
         if not root_labels:
             return []
 
+        # экраны как мосты графа. Корневые экраны — встроенные (движок
+        # показывает их сам) плюс все экраны со статическими ссылками
+        # (show screen / call screen / use / Show / ShowMenu).
+        root_screens = BUILTIN_SCREENS | self.analyzer.used_screens
+        screen_targets: set[str] = set()
+        for scr_name in root_screens:
+            screen_targets.update(self.analyzer.screen_action_jumps.get(scr_name, ()))
+
         reachable: set[str] = set()
         queue = deque(root_labels)
         reachable.update(root_labels)
+
+        # Экшены Jump/Call из доступных экранов открывают новые метки
+        for target in screen_targets:
+            if target in labels and target not in reachable:
+                reachable.add(target)
+                queue.append(target)
 
         while queue:
             curr = queue.popleft()
@@ -396,6 +415,17 @@ class StoryFlowAnalyzer:
                 
             lines.append(f"    {label}{shape_start}{label}{shape_end}")
 
+        # --- Экраны: узлы (follow-up; префикс screen_ разводит
+        # id-пространства label/screen в Mermaid) ---
+        screens_registry = self.analyzer.screens
+        screen_action_jumps = getattr(self.analyzer, "screen_action_jumps", {}) or {}
+        used_screens = getattr(self.analyzer, "used_screens", set()) or set()
+        graph_screens = sorted(
+            (set(screen_action_jumps) | set(used_screens)) & set(screens_registry)
+        )
+        for scr in graph_screens:
+            lines.append(f'    screen_{scr}{{"screen: {scr}"}}:::screen')
+
         lines.append("")
 
         edges_added = False
@@ -414,16 +444,37 @@ class StoryFlowAnalyzer:
                     lines.append(f"    {src} -. jump .-> {tgt}:::missing")
                     edges_added = True
 
+        # --- Экраны: рёбра Jump-экшенов (существующая метка = сплошное,
+        # отсутствующая = пунктир с классом missing) ---
+        for scr in graph_screens:
+            for tgt in sorted(screen_action_jumps.get(scr, ())):
+                if tgt in labels:
+                    lines.append(f"    screen_{scr} -- action --> {tgt}")
+                else:
+                    lines.append(f"    screen_{scr} -. action .-> {tgt}:::missing")
+                edges_added = True
+
         if not edges_added:
             lines.append("    %% No static jumps detected")
 
         lines.append("\n    classDef missing fill:#ff4d4f,stroke:#333,stroke-width:1px,color:#fff;")
         lines.append("    classDef fallthrough fill:#faad14,stroke:#333,stroke-width:1px,color:#fff;")
+        lines.append("    classDef screen fill:#1890ff,stroke:#333,stroke-width:1px,color:#fff;")
         lines.append("```")
 
         meta = {"locations": {}}
         for lbl_name, lbl_sym in labels.items():
             meta["locations"][lbl_name] = {"file": lbl_sym.file_path.replace("\\", "/"), "line": lbl_sym.line_number, "type": "label"}
+
+        # Координаты экранов для навигации из senpy-meta
+        for scr in graph_screens:
+            scr_sym = screens_registry.get(scr)
+            if scr_sym is not None:
+                meta["locations"][f"screen_{scr}"] = {
+                    "file": scr_sym.file_path.replace("\\", "/"),
+                    "line": scr_sym.line_number,
+                    "type": "screen",
+                }
 
         for src, lbl_sym in labels.items():
             for tgt in lbl_sym.outgoing_jumps:

@@ -27,7 +27,18 @@ from senpy.rpa import safe_load_rpa_index
 from senpy.traceback import find_latest_traceback, parse_traceback_file
 from senpy.tsundere import IS_RU, TSUNDERE_FLAVORS, TSUNDERE_UI
 
-console = Console()
+# Пайпы (VS Code-расширение, >file, CI) всегда получают utf-8: дефолтная
+# кодировка пайпа Windows = locale (cp1251) -> UnicodeEncodeError на ✔/(//∇//)
+# и mojibake для кириллицы (Node декодирует пайп как utf8). Интерактивную
+# консоль не трогаем: там rich пишет через WriteConsoleW (Unicode-safe).
+for _stream in (sys.stdout, sys.stderr):
+    if _stream is not None and not _stream.isatty() and hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
+
+# legacy-рендерер Windows у rich падает на stdout-пайпе (WriteConsoleW на
+# невалидном хэндле): отключаем его, когда вывод не интерактивный терминал.
+# В живой консоли (isatty=True) поведение прежнее.
+console = Console(legacy_windows=sys.stdout.isatty())
 
 SENPY_CACHE_DIR = os.path.expanduser("~/.senpy/tools/unrpyc")
 UNRPYC_GITHUB_ZIP = "https://github.com/CensoredUsername/unrpyc/archive/refs/heads/master.zip"
@@ -300,6 +311,11 @@ def main():
         "--coverage",
         action="store_true",
         help="Display translation coverage metrics and completion percentages for game/tl/"
+    )
+    g_lint.add_argument(
+        "--stats",
+        action="store_true",
+        help="Calculate story & character dialogue statistics, word count and reading time"
     )
     g_lint.add_argument(
         "--defaults",
@@ -581,7 +597,7 @@ def main():
     if orphaned_rpyc:
         should_decompile = auto_decompile
         is_interactive = hasattr(sys.stdin, "isatty") and sys.stdin.isatty()
-        if not should_decompile and is_interactive and not (args.graph or args.graph_file):
+        if not should_decompile and is_interactive and not (args.graph or args.graph_file or args.stats):
             console.print(
                 f"[bold yellow]Found {len(orphaned_rpyc)} compiled .rpyc file(s) without source code.[/bold yellow]"
             )
@@ -600,7 +616,7 @@ def main():
                     if f_rpy not in extra_rpy_files:
                         extra_rpy_files.append(f_rpy)
 
-    is_quiet_mode = bool(args.graph or args.graph_file or args.output_format in ("json", "sarif"))
+    is_quiet_mode = bool(args.graph or args.graph_file or args.stats or args.output_format in ("json", "sarif"))
 
     if not is_quiet_mode:
         if is_tsundere:
@@ -626,6 +642,82 @@ def main():
     analyzer = SenpyAnalyzer(args.path, extra_files=extra_rpy_files, fix=args.fix, no_cache=args.no_cache)
     result = analyzer.run(quiet=is_quiet_mode)
     elapsed = time.perf_counter() - start_time
+    if args.stats:
+        from senpy.stats import collect_story_stats
+        analyzer = SenpyAnalyzer(args.path)
+        analyzer.run(quiet=True)
+        stats = collect_story_stats(analyzer)
+
+        if args.output_format == "json":
+            out_data = {
+                "total_dialogue_lines": stats.total_dialogue_lines,
+                "total_words": stats.total_words,
+                "total_chars": stats.total_chars,
+                "reading_time_minutes": stats.reading_time_minutes,
+                "reading_time_formatted": stats.reading_time_formatted,
+                "characters": [
+                    {
+                        "tag": c.tag,
+                        "display_name": c.display_name,
+                        "lines": c.lines_count,
+                        "words": c.words_count,
+                        "chars": c.chars_count,
+                        "percentage": c.percentage_words
+                    }
+                    for c in stats.characters.values()
+                ]
+            }
+            json_str = json.dumps(out_data, indent=2, ensure_ascii=False)
+            if args.output_file:
+                with open(args.output_file, "w", encoding="utf-8") as f:
+                    f.write(json_str)
+                console.print(f"[bold green]✔ Stats saved to {args.output_file}[/bold green]")
+            else:
+                print(json_str)
+            sys.exit(0)
+
+        # Вывод дашборда в терминал
+        summary_panel = Panel(
+            Text.from_markup(
+                f"[bold cyan]Total Dialogue Lines:[/bold cyan] [bold white]{stats.total_dialogue_lines:,}[/bold white]   "
+                f"[bold cyan]Total Words:[/bold cyan] [bold green]{stats.total_words:,}[/bold green]   "
+                f"[bold cyan]Characters:[/bold cyan] [bold yellow]{stats.total_chars:,}[/bold yellow]\n"
+                f"[bold cyan]Estimated Reading Time:[/bold cyan] [bold magenta]{stats.reading_time_formatted}[/bold magenta] (at 180 wpm)   "
+                f"[bold cyan]Cast Size:[/bold cyan] [bold white]{len(stats.characters)} speakers[/bold white]"
+            ),
+            title="[bold magenta]Story & Script Analytics[/bold magenta]",
+            border_style="cyan"
+        )
+        console.print(summary_panel)
+
+        table = Table(title="Dialogue Speech Share", border_style="dim")
+        table.add_column("Speaker", style="bold cyan")
+        table.add_column("Identifier", style="dim")
+        table.add_column("Lines", justify="right", style="bold white")
+        table.add_column("Words", justify="right", style="bold green")
+        table.add_column("Share", justify="right", style="bold yellow")
+        table.add_column("Distribution Bar", style="bright_magenta")
+
+        for c in stats.characters.values():
+            bar_len = int(c.percentage_words // 5)
+            if bar_len > 0:
+                bar = f"[bright_magenta]{'█' * bar_len}[/][dim]{'░' * (20 - bar_len)}[/dim]"
+            else:
+                bar = f"[dim]{'░' * 20}[/dim]"
+
+            table.add_row(
+                c.display_name,
+                f"`{c.tag}`",
+                f"{c.lines_count:,}",
+                f"{c.words_count:,}",
+                f"{c.percentage_words}%",
+                bar
+            )
+
+        console.print(table)
+        if is_tsundere and "stats" in TSUNDERE_UI:
+            console.print(f"\n[bold magenta]{TSUNDERE_UI['stats'].format(words=stats.total_words, hours=stats.reading_time_minutes / 60)}[/bold magenta]\n")
+        sys.exit(0)
     if args.export_wiki:
         from senpy.wiki import generate_project_wiki
         wiki_md = generate_project_wiki(analyzer)
@@ -663,10 +755,16 @@ def main():
         if args.graph_file:
             with open(args.graph_file, "w", encoding="utf-8") as f:
                 f.write(graph_content)
-        if is_tsundere:
-            console.print(f"\n[bold magenta](//∇//) «Я... я нарисовала карту твоих переходов в [bold]{args.graph_file}[/bold]! Н-но не думай, что мне интересно, куда пойдёт твой герой, бака!»[/bold magenta]\n")
+            if is_tsundere:
+                console.print(f"\n[bold magenta](//∇//) «Я... я нарисовала карту твоих переходов в [bold]{args.graph_file}[/bold]! Н-но не думай, что мне интересно, куда пойдёт твой герой, бака!»[/bold magenta]\n")
+            else:
+                console.print(f"\n[bold green]✔ Story flow graph saved to [bold]{args.graph_file}[/bold]![/bold green]\n")
         else:
-            console.print(f"\n[bold green]✔ Story flow graph saved to [bold]{args.graph_file}[/bold]![/bold green]\n")
+            # Сырой вывод в stdout: расширение парсит блоки ```mermaid``` /
+            # ```senpy-meta``` регулярками. console.print здесь вреден:
+            # soft-wrap ломает однострочный JSON, markup — опасен.
+            # utf-8 обязателен: Node декодирует пайп как utf8.
+            sys.stdout.write(graph_content + "\n")
         sys.exit(0)
 
     # Генерация файла senpy_defaults.rpy

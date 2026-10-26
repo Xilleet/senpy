@@ -46,3 +46,24 @@ label start:
     result = run_senpy_on_code(code, tmp_path)
     rpy503_diags = [d for d in result.diagnostics if d.code == "RPY503"]
     assert len(rpy503_diags) == 0, f"False RPY503 for Python assets: {rpy503_diags}"
+
+def test_fp_define_audio_namespace_channel(tmp_path: Path):
+    """define audio.X делает X валидным каналом для play/queue (без ложного RPY505)"""
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+    (game_dir / "music").mkdir()
+    (game_dir / "music" / "titles.ogg").write_bytes(b"dummy")
+    (game_dir / "music" / "rain.ogg").write_bytes(b"dummy")
+
+    code = '''
+define audio.титры = "music/titles.ogg"
+define audio.ambience = "music/rain.ogg"
+
+label start:
+    play титры "music/titles.ogg"
+    queue ambience "music/rain.ogg"
+    return
+'''
+    result = run_senpy_on_code(code, tmp_path)
+    rpy505 = [d for d in result.diagnostics if d.code == "RPY505"]
+    assert rpy505 == [], f"False RPY505 for audio namespace: {rpy505}"

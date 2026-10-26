@@ -48,6 +48,8 @@ class FileScope:
     transforms: dict[str, TransformSymbol] = field(default_factory=dict)
     
     jump_sources: dict[str, list[tuple[str, int]]] = field(default_factory=dict)
+    screen_action_jumps: dict[str, set[str]] = field(default_factory=dict)
+    used_screens: set[str] = field(default_factory=set)
 
 
 RULE_SEVERITY: dict[str, str] = {
@@ -74,6 +76,7 @@ RULE_SEVERITY: dict[str, str] = {
     "RPY205": "WARNING",  # Циклы for/while внутри экрана (просадки FPS)
     "RPY206": "ERROR",    # Прямой вызов функции в action со скобками
     "RPY207": "ERROR",    # Несовпадение параметров при вызове экрана (use / call screen)
+    "RPY208": "ERROR",    # Утечка локальной переменной экрана в глобальный store (SetVariable вместо SetScreenVariable)
 
     # 3xx: Диалоги и граф сюжета
     "RPY301": "ERROR",    # Незакрытый тег диалога {b}

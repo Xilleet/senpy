@@ -23,6 +23,8 @@ from senpy.constants import (
     RE_PYTHON_BLOCK_START,
     RE_SCREEN_CALL,
     RE_SHOW_SCENE,
+    RE_STOP_STATEMENT,
+    SCREEN_LOCAL_IGNORE,
     SMART_QUOTES,
 )
 from senpy.flow import FlowBranch, merge_flow_branches
@@ -164,14 +166,43 @@ class ScreenChecker(BaseChecker):
             if m_for:
                 scope_stack.add_symbol(m_for.group(1))
 
-            # RPY202: Проверка переменных в screen Actions (SetVariable, ToggleVariable)
+            # RPY202 & RPY208: Проверка переменных в screen Actions (SetVariable, ToggleVariable)
             if "SetVariable" in stripped or "ToggleVariable" in stripped:
-                for m_var_act in re.finditer(r'\b(?:SetVariable|ToggleVariable)\s*\(\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']', stripped):
-                    target_var = m_var_act.group(1)
-                    if (
+                for m_var_act in re.finditer(r'\b(SetVariable|ToggleVariable)\s*\(\s*["\']([^\W\d]\w*)["\']', stripped):
+                    act_name = m_var_act.group(1)
+                    target_var = m_var_act.group(2)
+                    local_syms = scope_stack.get_local_symbols()
+
+                    # RPY208: Использование глобального SetVariable / ToggleVariable на локальной переменной экрана
+                    if target_var in local_syms and target_var not in SCREEN_LOCAL_IGNORE:
+                        correct_act = "SetScreenVariable" if act_name == "SetVariable" else "ToggleScreenVariable"
+                        start_c, end_c = self.analyzer._get_utf16_range(raw_line, act_name)
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=idx + 1,
+                                line_content=stripped,
+                                code="RPY208",
+                                message=(
+                                    f"Screen action '{act_name}' targets screen-local variable '{target_var}'. "
+                                    f"This leaks into the global store instead of updating the screen! "
+                                    f"Use '{correct_act}' instead."
+                                ),
+                                severity="ERROR",
+                                col=start_c,
+                                end_col=end_c,
+                                fix_title=f"Replace '{act_name}' with '{correct_act}'",
+                                fix_replacement=correct_act,
+                                fix_start_col=start_c,
+                                fix_end_col=end_c,
+                            ),
+                            noqa_map,
+                        )
+
+                    elif (
                         target_var not in self.analyzer.declared_symbols
                         and target_var not in self.analyzer.user_symbols
-                        and target_var not in scope_stack.get_local_symbols()
+                        and target_var not in local_syms
                         and not target_var.startswith("_")
                     ):
                         matches = difflib.get_close_matches(target_var, list(self.analyzer.user_symbols), n=1, cutoff=0.6)
@@ -198,7 +229,7 @@ class ScreenChecker(BaseChecker):
 
             # RPY204: Проверка экранов в screen Actions (Show, ShowMenu, Hide)
             if any(act in stripped for act in ("Show", "ShowMenu", "Hide")):
-                for m_scr_act in re.finditer(r'\b(?:Show|ShowMenu|Hide)\s*\(\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']', stripped):
+                for m_scr_act in re.finditer(r'\b(?:Show|ShowMenu|Hide)\s*\(\s*["\']([^\W\d]\w*)["\']', stripped):
                     target_scr = m_scr_act.group(1)
                     if target_scr not in self.analyzer.screens and target_scr not in BUILTIN_SCREENS:
                         all_screens = list(self.analyzer.screens.keys()) + list(BUILTIN_SCREENS)
@@ -240,7 +271,7 @@ class ScreenChecker(BaseChecker):
                         noqa_map,
                     )
                 # RPY206: прямой вызов функции в action со скобками
-                m_act = re.search(r"\baction\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(", stripped)
+                m_act = re.search(r"\baction\s+([^\W\d]\w*)\s*\(", stripped)
                 if m_act:
                     fn_name = m_act.group(1)
                     if fn_name not in BUILTIN_ACTIONS:
@@ -287,7 +318,7 @@ class ScreenChecker(BaseChecker):
             screen_target = m_scr.group(1)
             if screen_target in self.analyzer.screens and self.analyzer.screens[screen_target].signature:
                 sig = self.analyzer.screens[screen_target].signature
-                m_scr_args = re.search(r'\b(?:show\s+screen|call\s+screen|use)\s+[a-zA-Z_][a-zA-Z0-9_]*\s*(?:\((.*?)\))?', stripped)
+                m_scr_args = re.search(r'\b(?:show\s+screen|call\s+screen|use)\s+[^\W\d]\w*\s*(?:\((.*?)\))?', stripped)
                 scr_args = m_scr_args.group(1) if m_scr_args and m_scr_args.group(1) is not None else None
                 err_msg = validate_call_arguments(sig, scr_args)
                 if err_msg:
@@ -317,7 +348,7 @@ class AssetChecker(BaseChecker):
         noqa_map: dict[int, set[str] | None],
     ) -> None:
         clean_expr = expr_str.strip().rstrip(",")
-        m_name = re.match(r"^([a-zA-Z_][a-zA-Z0-9_]*)", clean_expr)
+        m_name = re.match(r"^([^\W\d]\w*)", clean_expr)
         if not m_name:
             return
         trans_name = m_name.group(1)
@@ -456,7 +487,7 @@ class AssetChecker(BaseChecker):
                     parts.append("".join(curr).strip())
 
                 for part in parts:
-                    m_name = re.match(r"^([a-zA-Z_][a-zA-Z0-9_]*)", part)
+                    m_name = re.match(r"^([^\W\d]\w*)", part)
                     if not m_name:
                         continue
                     trans_name = m_name.group(1)
@@ -503,15 +534,40 @@ class AssetChecker(BaseChecker):
                 self._validate_transition_expr(
                     file_path, idx, raw_line, stripped, trans_expr, noqa_map
                 )
+        # RPY505: Проверка stop <channel> (Задача 6: раньше stop не проверялся вовсе)
+        m_stop = RE_STOP_STATEMENT.match(stripped) if stripped.startswith("stop ") else None
+        if m_stop:
+            stop_channel = m_stop.group(1).lower()
+            if (
+                stop_channel not in self.analyzer.registered_audio_channels
+                and stop_channel not in {k.lower() for k in self.analyzer.defined_audio_map}
+            ):
+                start_c, end_c = self.analyzer._get_utf16_range(raw_line, m_stop.group(1))
+                self.analyzer._add_diagnostic(
+                    Diagnostic(
+                        file_path=file_path,
+                        line_number=idx + 1,
+                        line_content=stripped,
+                        code="RPY505",
+                        message=(
+                            f"Audio channel '{stop_channel}' is not a built-in channel (music, sound, voice, audio) "
+                            "and has not been registered via 'renpy.music.register_channel()'. Causes runtime Exception."
+                        ),
+                        severity="WARNING",
+                        col=start_c,
+                        end_col=end_c,
+                    ),
+                    noqa_map,
+                )
 
         # RPY501 & RPY505: Проверка play / queue (каналы и файлы)
         m_audio = RE_AUDIO_STATEMENT.match(stripped) if stripped.startswith(("play ", "queue ")) else None
         if m_audio:
             channel = m_audio.group(2).lower()
-            rest = m_audio.group(3).strip()
+            rest = (m_audio.group(3) or "").strip()
 
             # 1. RPY505: Проверка валидности канала
-            if channel not in self.analyzer.registered_audio_channels:
+            if (channel not in self.analyzer.registered_audio_channels and channel not in {k.lower() for k in self.analyzer.defined_audio_map}):
                 start_c, end_c = self.analyzer._get_utf16_range(raw_line, m_audio.group(2))
                 self.analyzer._add_diagnostic(
                     Diagnostic(
@@ -521,7 +577,7 @@ class AssetChecker(BaseChecker):
                         code="RPY505",
                         message=(
                             f"Audio channel '{channel}' is not a built-in channel (music, sound, voice, audio) "
-                            "and has not been registered via 'renpy.music.register_channel()'. Causes runtime Exception."
+                            "and has not been registered via 'renpy.music.register_channel()' or defined via 'define audio.<channel>'. Causes runtime Exception."
                         ),
                         severity="WARNING",
                         col=start_c,
@@ -546,7 +602,33 @@ class AssetChecker(BaseChecker):
                     ),
                     noqa_map,
                 )
-
+            # 2a. RPY501: play/queue без файла — файл берётся из 'define audio.<канал>'
+            if not rest:
+                defined_file = next(
+                    (f for k, f in self.analyzer.defined_audio_map.items() if k.lower() == channel),
+                    None,
+                )
+                if defined_file is not None:
+                    self.analyzer._mark_asset_used(defined_file)
+                elif channel in self.analyzer.registered_audio_channels:
+                    start_c, end_c = self.analyzer._get_utf16_range(raw_line, m_audio.group(2))
+                    self.analyzer._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=idx + 1,
+                            line_content=stripped,
+                            code="RPY501",
+                            message=(
+                                f"'{m_audio.group(2)}' without a file: the file is taken from "
+                                f"'define audio.{m_audio.group(2)}', but no such definition was found. "
+                                "Add 'define audio.<channel> = \"file.ogg\"' or specify the file explicitly."
+                            ),
+                            severity="ERROR",
+                            col=start_c,
+                            end_col=end_c,
+                        ),
+                        noqa_map,
+                    )
             # 3. RPY501: Проверка существования аудиофайла (с поддержкой плейлистов [track1, track2])
             audio_targets = []
             clean_rest = rest.strip()
@@ -711,7 +793,7 @@ class DialogueChecker(BaseChecker):
                     # 1. RPY310: Проверка сигнатуры аргументов вызова метки
                     if target_label in self.analyzer.labels and self.analyzer.labels[target_label].signature:
                         sig = self.analyzer.labels[target_label].signature
-                        m_args = re.search(r'\bcall\s+(?!screen\b)[a-zA-Z_][a-zA-Z0-9_]*\s*(?:\((.*?)\))?', stripped)
+                        m_args = re.search(r'\bcall\s+(?!screen\b)[^\W\d]\w*\s*(?:\((.*?)\))?', stripped)
                         call_args = m_args.group(1) if m_args and m_args.group(1) is not None else None
                         err_msg = validate_call_arguments(sig, call_args)
                         if err_msg:

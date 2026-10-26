@@ -412,7 +412,7 @@ class PythonAstChecker:
 
                     if is_attr and target_name.startswith("style."):
                         continue
-                    if target_name in SCREEN_LOCAL_IGNORE or target_name in screen_local_symbols:
+                    if target_name in SCREEN_LOCAL_IGNORE:
                         continue
 
                     raw_l = (
@@ -422,6 +422,28 @@ class PythonAstChecker:
                     )
                     start_c, end_c = get_utf16_range(raw_l, target_name)
 
+                    # RPY208: Прямая мутация локальной переменной экрана через Python ($ var = ...)
+                    if target_name in screen_local_symbols:
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=line_idx,
+                                line_content=raw_l.strip(),
+                                code="RPY208",
+                                message=(
+                                    f"Direct state mutation of screen-local variable '{target_name}' inside screen '{screen_name}'. "
+                                    "Python statements in screens execute in the global store and cannot modify screen-local variables! "
+                                    f"Use screen action SetScreenVariable('{target_name}', ...) instead."
+                                ),
+                                severity="ERROR",
+                                col=start_c,
+                                end_col=end_c,
+                            ),
+                            noqa_map,
+                        )
+                        break
+
+                    # RPY201: Прямая мутация глобального состояния
                     self.analyzer._add_diagnostic(
                         Diagnostic(
                             file_path=file_path,

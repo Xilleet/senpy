@@ -48,6 +48,9 @@ from senpy.constants import (
     RE_NOQA,
     RE_QUOTED_IDENTIFIER,
     RE_RETURN,
+    RE_SCREEN_CALL,
+    RE_SCREEN_JUMP_ACTION,
+    RE_SCREEN_SHOW_ACTION,
     RE_SCREEN_START,
     RE_TRANSFORM,
     SENPY_VERSION,
@@ -259,6 +262,8 @@ class SenpyAnalyzer:
         
         # Остальные структуры и метаданные сканирования
         self.jump_sources: dict[str, list[tuple[str, int]]] = {}
+        self.screen_action_jumps: dict[str, set[str]] = {}
+        self.used_screens: set[str] = set()
         self.has_dynamic_jumps: bool = False
         self.diagnostics: list[Diagnostic] = []
         self.missing_defaults: dict[str, str] = {}
@@ -311,8 +316,10 @@ class SenpyAnalyzer:
         # Сброс базовых множеств
         self.user_symbols.clear()
         self.declared_symbols = set(BUILTIN_SYMBOLS)
-        self.referenced_labels.clear()
         self.defined_audio_map.clear()
+        self.referenced_labels.clear()
+        self.screen_action_jumps.clear()
+        self.used_screens.clear()
         self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
         
         # Очистка новых объектных реестров
@@ -322,6 +329,8 @@ class SenpyAnalyzer:
         self.images.clear()
         self.transforms.clear()
         self.jump_sources.clear()
+        self.screen_action_jumps.clear()
+        self.used_screens.clear()
         
         # Сброс флагов и счётчиков
         self.has_dynamic_jumps = False
@@ -338,6 +347,7 @@ class SenpyAnalyzer:
         old_manifest = self.cache_manager.load_manifest() if not self.fix else None
         cached_files = old_manifest.files if old_manifest else {}
         new_cached_entries: dict[str, CachedFileEntry] = {}
+        stage1_diags_map: dict[str, list] = {}
 
         # [1/2] Сбор символов (Tier 1 Cache: восстановление неизмененных FileScope)
         file_hashes: dict[str, str] = {}
@@ -366,11 +376,16 @@ class SenpyAnalyzer:
                 if cached_entry.content_hash and f_hash == cached_entry.content_hash:
                     self.file_scopes[norm_path] = cached_entry.scope
                     is_tier1_hit = True
+                    # восстанавливаем stage-1 диагностики (RPY307/RPY504/RPY105),
+                    # которые раньше исчезали на тёплом прогоне
+                    self.diagnostics.extend(getattr(cached_entry, "collect_diagnostics", ()) or ())
 
             if not is_tier1_hit:
                 f_hash = file_hashes.get(norm_path) or compute_file_hash(file_path)
                 file_hashes[norm_path] = f_hash
+                diag_start = len(self.diagnostics)
                 self._collect_symbols(file_path)
+                stage1_diags_map[norm_path] = list(self.diagnostics[diag_start:])
 
         if not quiet:
             print()
@@ -432,6 +447,7 @@ class SenpyAnalyzer:
                         diagnostics=new_diags,
                         used_assets=new_used,
                         content_hash=f_hash,
+                        collect_diagnostics=stage1_diags_map.get(norm_path, []),
                     )
 
         if not quiet:
@@ -513,6 +529,14 @@ class SenpyAnalyzer:
             if not any(sym in s.referenced_labels for s in other_scopes):
                 self.referenced_labels.discard(sym)
 
+        for scr_name in getattr(old_scope, "used_screens", ()):
+            if not any(scr_name in getattr(s, "used_screens", ()) for s in other_scopes):
+                self.used_screens.discard(scr_name)
+
+        for scr_name in getattr(old_scope, "screen_action_jumps", {}):
+            if not any(scr_name in getattr(s, "screen_action_jumps", {}) for s in other_scopes):
+                self.screen_action_jumps.pop(scr_name, None)
+
         for chan in old_scope.registered_audio_channels:
             if chan not in BUILTIN_AUDIO_CHANNELS and not any(chan in s.registered_audio_channels for s in other_scopes):
                 self.registered_audio_channels.discard(chan)
@@ -543,6 +567,9 @@ class SenpyAnalyzer:
             self.registered_audio_channels.update(scope.registered_audio_channels)
             self.defined_audio_map.update(scope.defined_audio_map)
             self.referenced_labels.update(scope.referenced_labels)
+            for scr_name, targets in getattr(scope, "screen_action_jumps", {}).items():
+                self.screen_action_jumps.setdefault(scr_name, set()).update(targets)
+            self.used_screens.update(getattr(scope, "used_screens", ()))
 
             self.variables.update(scope.variables)
             self.labels.update(scope.labels)
@@ -552,6 +579,10 @@ class SenpyAnalyzer:
 
             for tgt, locs in scope.jump_sources.items():
                 self.jump_sources.setdefault(tgt, []).extend(locs)
+
+        # экранные Jump/Call-экшены — тоже статические ссылки (RPY303, кэш-стабильно)
+        for targets in self.screen_action_jumps.values():
+            self.referenced_labels.update(targets)
 
     def analyze_file_only(self, file_path: str) -> list[Diagnostic]:
         """Быстрый анализ только одного измененного файла для LSP без утечки состояния."""
@@ -607,6 +638,7 @@ class SenpyAnalyzer:
             idx = 0
             current_label: str | None = None
             current_global_label: str | None = None
+            current_screen: str | None = None
 
             while idx < len(lines):
                 next_idx, line, clean_line = _get_logical_line(lines, idx)
@@ -735,6 +767,10 @@ class SenpyAnalyzer:
                     scope.screens[s_name] = scr_sym
                     self.screens[s_name] = scr_sym
 
+                # Задача 5: контекст экрана (screen-блоки всегда top-level)
+                if len(line) - len(line.lstrip(" ")) == 0:
+                    current_screen = m_screen_def.group(2) if m_screen_def else None
+
                 m_trans = RE_TRANSFORM.match(clean)
                 if m_trans:
                     trans_name = m_trans.group(1)
@@ -805,9 +841,27 @@ class SenpyAnalyzer:
                             scope.labels[current_label].outgoing_jumps.add(target_j)
                         if current_label in self.labels:
                             self.labels[current_label].outgoing_jumps.add(target_j)
+                        # таргет jump/call — статическая ссылка; RPY303 не должен
+                        # зависеть от stage-2 (детерминизм кэша)
+                        scope.referenced_labels.add(target_j)
+                        self.referenced_labels.add(target_j)
                         
                         self.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
                         scope.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
+
+                # Задача 5: рёбра из экранов (Jump/Call-экшены) и использования экранов
+                if current_screen:
+                    for m_act in RE_SCREEN_JUMP_ACTION.finditer(clean):
+                        scope.screen_action_jumps.setdefault(current_screen, set()).add(m_act.group(1))
+                        self.screen_action_jumps.setdefault(current_screen, set()).add(m_act.group(1))
+
+                for m_usage in RE_SCREEN_CALL.finditer(clean):
+                    scope.used_screens.add(m_usage.group(1))
+                    self.used_screens.add(m_usage.group(1))
+
+                for m_show in RE_SCREEN_SHOW_ACTION.finditer(clean):
+                    scope.used_screens.add(m_show.group(1))
+                    self.used_screens.add(m_show.group(1))
 
                 m_limg = RE_LAYEREDIMAGE_START.match(clean_line)
                 if m_limg:
@@ -866,7 +920,7 @@ class SenpyAnalyzer:
                     idx = next_idx
                     continue
 
-                m_chan = re.search(r'renpy\.music\.register_channel\s*\(\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']', clean)
+                m_chan = re.search(r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', clean)
                 if m_chan:
                     chan_name = m_chan.group(1).lower()
                     scope.registered_audio_channels.add(chan_name)
@@ -901,7 +955,7 @@ class SenpyAnalyzer:
         self, code_lines: list[str], scope: FileScope | None = None, file_path: str = "", start_line: int = 1
     ) -> None:
         full_code = "".join(code_lines)
-        for m in re.finditer(r'renpy\.music\.register_channel\s*\(\s*["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']', full_code):
+        for m in re.finditer(r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', full_code):
             chan = m.group(1).lower()
             if scope is not None:
                 scope.registered_audio_channels.add(chan)
@@ -1273,10 +1327,10 @@ class SenpyAnalyzer:
         re_old = re.compile(r'^\s*old\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')')
         re_new = re.compile(r'^\s*new\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')')
         re_dialogue_old = re.compile(
-            r'^\s*#\s*(?:(?:[a-zA-Z0-9_]+|"[^"]*"|\'[^\']*\')(?:\s+[a-zA-Z0-9_]+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
+            r'^\s*#\s*(?:(?:\w+|"[^"]*"|\'[^\']*\')(?:\s+\w+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
         )
         re_dialogue_new = re.compile(
-            r'^\s*(?:(?:[a-zA-Z0-9_]+|"[^"]*"|\'[^\']*\')(?:\s+[a-zA-Z0-9_]+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
+            r'^\s*(?:(?:\w+|"[^"]*"|\'[^\']*\')(?:\s+\w+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
         )
 
         pairs = []
@@ -1333,7 +1387,7 @@ class SenpyAnalyzer:
 
     def _validate_tl_pairs(self, pairs: list[tuple[str, int, str, int]], file_path: str):
         from collections import Counter
-        re_var = re.compile(r"\[([a-zA-Z_][a-zA-Z0-9_]*)(?:![a-zA-Z]+)?\]")
+        re_var = re.compile(r"\[([^\W\d]\w*)(?:![a-zA-Z]+)?\]")
         re_tag = re.compile(r"\{(/?[a-zA-Z_]+)(?:=[^}]*)?\}")
 
         for old_txt, old_line, new_txt, new_line in pairs:

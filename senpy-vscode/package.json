@@ -7,7 +7,7 @@
   "name": "senpy-vscode",
   "displayName": "senpy-vscode",
   "description": "Notice me, Senpy! Fast semantic Ren'Py linter with LSP support",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -26,6 +26,11 @@
         "command": "senpy.showStoryGraph",
         "title": "Senpy: Show Story Graph",
         "icon": "$(git-merge)"
+      },
+      {
+        "command": "senpy.showStoryStats",
+        "title": "Senpy: Show Story & Character Analytics",
+        "icon": "$(graph-line)"
       }
     ],
     "menus": {
@@ -34,11 +39,19 @@
           "command": "senpy.showStoryGraph",
           "when": "resourceLangId == renpy",
           "group": "navigation"
+        },
+        {
+          "command": "senpy.showStoryStats",
+          "when": "resourceLangId == renpy",
+          "group": "navigation"
         }
       ],
       "commandPalette": [
         {
           "command": "senpy.showStoryGraph"
+        },
+        {
+          "command": "senpy.showStoryStats"
         }
       ]
     },

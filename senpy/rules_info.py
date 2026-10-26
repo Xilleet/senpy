@@ -137,6 +137,13 @@ RULES_DATABASE = {
         "bad": "screen inv(sort_by):\n    ...\nuse inv()  # Missing required argument 'sort_by'!",
         "good": "screen inv(sort_by='name'):\n    ...\nuse inv()",
     },
+    "RPY208": {
+        "title": "Screen-local variable modified via global action or store mutation",
+        "severity": "ERROR",
+        "why": "Variables declared with 'default' inside a screen or screen parameters are screen-local. Using 'SetVariable' or '$ var = ...' modifies the global store instead of the screen variable, causing UI desynchronization and broken button interactions.",
+        "bad": 'screen shop():\n    default selected_item = None\n    textbutton "Sword" action SetVariable("selected_item", "Sword")',
+        "good": 'screen shop():\n    default selected_item = None\n    textbutton "Sword" action SetScreenVariable("selected_item", "Sword")',
+    },
     # ---------------- 300: Dialogue & Control Flow ----------------
     "RPY301": {
         "title": "Unclosed or mismatched text tag in dialogue",

@@ -24,6 +24,7 @@ class CachedFileEntry:
     diagnostics: list[Diagnostic] = field(default_factory=list)
     used_assets: set[str] = field(default_factory=set)
     content_hash: str = ""
+    collect_diagnostics: list[Diagnostic] = field(default_factory=list)
 
 
 def compute_file_hash(file_path: str) -> str:

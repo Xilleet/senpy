@@ -19,7 +19,7 @@ from senpy.analyzer import Diagnostic, SenpyAnalyzer
 from senpy.constants import CLAUSE_KEYWORDS
 from senpy.renpy_api import get_renpy_api_hover
 
-server = LanguageServer("senpy-lsp", "v0.4.5")
+server = LanguageServer("senpy-lsp", "v0.4.6")
 
 
 def _uri_to_path(uri: str) -> str:
@@ -439,7 +439,7 @@ def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location
 
     # 3. Извлекаем идентификатор под курсором
     word = None
-    for m in re.finditer(r'[a-zA-Z_][a-zA-Z0-9_\.]*', line):
+    for m in re.finditer(r'[^\W\d][\w\.]*', line):
         if m.start() <= col <= m.end():
             word = m.group(0)
             break
@@ -520,7 +520,7 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
     col = params.position.character
 
     word = None
-    for m in re.finditer(r'[a-zA-Z_][a-zA-Z0-9_\.]*', line):
+    for m in re.finditer(r'[^\W\d][\w\.]*', line):
         if m.start() <= col <= m.end():
             word = m.group(0)
             break

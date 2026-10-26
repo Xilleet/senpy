@@ -35,7 +35,7 @@ CRASH_RULES = [
         "Jump or Call executed to non-existent label '{0}'. Check for typos.",
     ),
     (
-        r"Exception:\s+Screen\s+([a-zA-Z0-9_]+)\s+is not known",
+        r"Exception:\s+Screen\s+(\w+)\s+is not known",
         "RPY204",
         "Call or Show screen target '{0}' does not exist in project declarations.",
     ),

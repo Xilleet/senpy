@@ -65,7 +65,7 @@ BUILTIN_ACTIONS = {
     "ShowTransient", "FilePage"
 }
 
-SENPY_VERSION = "0.4.5"
+SENPY_VERSION = "0.4.6"
 
 IGNORED_DIRS = {
     ".git", ".svn", ".hg", "node_modules", ".venv", "venv", "env",
@@ -122,38 +122,45 @@ SCREEN_LOCAL_IGNORE = {
 }
 
 # Скомпилированные регулярные выражения
-RE_DEFAULT = re.compile(r"^\s*default\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*=\s*(.*))?")
-RE_DEFINE = re.compile(r"^\s*define\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*=\s*(.*))?")
+RE_DEFAULT = re.compile(r"^\s*default\s+([^\W\d]\w*)(?:\s*=\s*(.*))?")
+RE_DEFINE = re.compile(r"^\s*define\s+([^\W\d]\w*)(?:\s*=\s*(.*))?")
 RE_DEFINE_AUDIO = re.compile(
-    r"^\s*define\s+(?:audio\.)?([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*[\"']([^\"']+)[\"']"
+    r"^\s*define\s+(?:audio\.)?([^\W\d]\w*)\s*=\s*[\"']([^\"']+)[\"']"
 )
-RE_IMAGE_DEF = re.compile(r"^\s*image\s+([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)\s*(?:=|:)(.*)")
+RE_IMAGE_DEF = re.compile(r"^\s*image\s+(\w+(?:\s+\w+)*)\s*(?:=|:)(.*)")
 RE_LAYEREDIMAGE_START = re.compile(
-    r"^(\s*)layeredimage\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\(.*?\))?\s*:"
+    r"^(\s*)layeredimage\s+([^\W\d]\w*)(?:\s*\(.*?\))?\s*:"
 )
-RE_LAYEREDIMAGE_ATTR = re.compile(r"^\s*attribute\s+([a-zA-Z_][a-zA-Z0-9_]*)")
+RE_LAYEREDIMAGE_ATTR = re.compile(r"^\s*attribute\s+([^\W\d]\w*)")
 RE_RETURN = re.compile(r"^\s*return\b")
-RE_LABEL = re.compile(r"^\s*label\s+(\.?[a-zA-Z_][a-zA-Z0-9_\.]*)\s*(?:\((.*?)\))?\s*:")
+RE_LABEL = re.compile(r"^\s*label\s+(\.?[^\W\d][\w\.]*)\s*(?:\((.*?)\))?\s*:")
 RE_JUMP_CALL = re.compile(
-    r"^\s*(jump|call)\s+(?!screen\b)(\.?[a-zA-Z_][a-zA-Z0-9_\.]*|\bexpression\b)"
+    r"^\s*(jump|call)\s+(?!screen\b)(\.?[^\W\d][\w\.]*|\bexpression\b)"
 )
 RE_AUDIO_STATEMENT = re.compile(
-    r"^\s*(play|queue)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(.+)",
+    r"^\s*(play|queue)\s+([^\W\d]\w*)(?:\s+(.+))?",
     re.IGNORECASE,
 )
-RE_INTERPOLATION = re.compile(r"\[([a-zA-Z_][a-zA-Z0-9_]*)[^\]]*\]")
+RE_STOP_STATEMENT = re.compile(r"^\s*stop\s+([^\W\d]\w*)")
+RE_INTERPOLATION = re.compile(r"\[([^\W\d]\w*)[^\]]*\]")
 RE_CONDITION = re.compile(r"^\s*(?:if|elif|while)\s+(.+):$")
 RE_PYTHON_BLOCK_START = re.compile(r"^(\s*)python(?:\s+early)?\s*:\s*(?:#.*)?$")
 RE_INIT_PYTHON_START = re.compile(r"^(\s*)init(?:\s+-?\d+)?\s+python(?:\s+early)?\s*:\s*(?:#.*)?$")
-RE_TRANSFORM = re.compile(r"^\s*transform\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\(.*?\))?\s*:")
+RE_TRANSFORM = re.compile(r"^\s*transform\s+([^\W\d]\w*)(?:\s*\(.*?\))?\s*:")
 RE_SCREEN_START = re.compile(
-    r"^(\s*)screen\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\((.*?)\))?\s*:\s*(?:#.*)?$"
+    r"^(\s*)screen\s+([^\W\d]\w*)(?:\((.*?)\))?\s*:\s*(?:#.*)?$"
 )
-RE_SCREEN_CALL = re.compile(r"^\s*(?:show\s+screen|call\s+screen|use)\s+([a-zA-Z_][a-zA-Z0-9_]*)")
-RE_SHOW_SCENE = re.compile(r"^\s*(show|scene)\s+(?!expression\b|screen\b)([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)")
+RE_SCREEN_CALL = re.compile(r"^\s*(?:show\s+screen|call\s+screen|use)\s+([^\W\d]\w*)")
+RE_SCREEN_JUMP_ACTION = re.compile(
+    r'\b(?:Jump|Call|renpy\.jump|renpy\.call)\s*\(\s*["\']([^\W\d][\w\.]*)["\']'
+)
+RE_SCREEN_SHOW_ACTION = re.compile(
+    r'\b(?:ShowMenu|Show)\s*\(\s*["\']([^\W\d][\w\.]*)["\']'
+)
+RE_SHOW_SCENE = re.compile(r"^\s*(show|scene)\s+(?!expression\b|screen\b)(\w+(?:\s+\w+)*)")
 RE_BUTTON_LINE = re.compile(r"^\s*(textbutton|imagebutton)\b")
-RE_FOR_LOOP = re.compile(r"^\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+")
-RE_MENU_START = re.compile(r"^(\s*)menu(?:\s+[a-zA-Z0-9_]+)?\s*:")
+RE_FOR_LOOP = re.compile(r"^\s*for\s+([^\W\d]\w*)\s+in\s+")
+RE_MENU_START = re.compile(r"^(\s*)menu(?:\s+\w+)?\s*:")
 RE_MENU_CHOICE = re.compile(
     r"^(\s*)(\"[^\"]+\"|\'[^\']+\')(?:\s*\([^)]*\))?(?:\s+if\s+.*)?\s*:"
 )
@@ -168,5 +175,5 @@ RE_NOQA = re.compile(
     r"#\s*(?:noqa|senpy:\s*ignore)(?:\[([a-zA-Z0-9_,\s]+)\]|:\s*([a-zA-Z0-9_,\s]+))?",
     re.IGNORECASE,
 )
-RE_JUMP_TARGET = re.compile(r"^\s*(?:jump|call)\s+(?!screen\b)(\.?[a-zA-Z_][a-zA-Z0-9_\.]*)")
-RE_QUOTED_IDENTIFIER = re.compile(r'["\']([a-zA-Z_][a-zA-Z0-9_]*)["\']')
+RE_JUMP_TARGET = re.compile(r"^\s*(?:jump|call)\s+(?!screen\b)(\.?[^\W\d][\w\.]*)")
+RE_QUOTED_IDENTIFIER = re.compile(r'["\']([^\W\d]\w*)["\']')

@@ -106,7 +106,49 @@ export function activate(context: vscode.ExtensionContext) {
             });
         });
     });
+// 5. Команда: Сценарная аналитика и дашборд персонажей
+    let statsCmd = vscode.commands.registerCommand('senpy.showStoryStats', async () => {
+        if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+            vscode.window.showErrorMessage("Senpy: Please open a Ren'Py project folder first.");
+            return;
+        }
 
+        const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+
+        vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Senpy: Calculating Story Analytics...",
+            cancellable: false
+        }, async () => {
+            return new Promise<void>((resolve, reject) => {
+                cp.exec(`"${serverCmd}" "${workspaceRoot}" --stats --format json`, { cwd: workspaceRoot, maxBuffer: 1024 * 1024 * 10, timeout: 60000 }, (error, stdout, stderr) => {
+                    if (error) {
+                        vscode.window.showErrorMessage(`Senpy Stats Error: ${stderr || error.message}`);
+                        reject();
+                        return;
+                    }
+
+                    try {
+                        const statsData = JSON.parse(stdout);
+                        const panel = vscode.window.createWebviewPanel(
+                            'senpyStats',
+                            'Story & Character Analytics',
+                            vscode.ViewColumn.Beside,
+                            { enableScripts: true, retainContextWhenHidden: true }
+                        );
+
+                        panel.webview.html = getStatsWebviewContent(statsData);
+                        resolve();
+                    } catch (err: any) {
+                        vscode.window.showErrorMessage(`Senpy: Failed to parse stats JSON: ${err.message}`);
+                        reject();
+                    }
+                });
+            });
+        });
+    });
+
+    context.subscriptions.push(statsCmd);
     context.subscriptions.push(graphCmd);
     
 // Пробрасываем папку bin/ расширения в PATH встроенного терминала VS Code
@@ -537,6 +579,118 @@ function getWebviewContent(graphContent: string, metaJson: string): string {
         }
         render();
     </script>
+</body>
+</html>`;
+}
+
+function getStatsWebviewContent(data: any): string {
+    const charsRows = (data.characters || []).map((c: any) => `
+        <tr>
+            <td style="font-weight: bold; color: var(--vscode-charts-blue);">${c.display_name}</td>
+            <td style="color: var(--vscode-descriptionForeground); font-family: monospace;">${c.tag}</td>
+            <td style="text-align: right;">${c.lines.toLocaleString()}</td>
+            <td style="text-align: right; font-weight: bold; color: var(--vscode-charts-green);">${c.words.toLocaleString()}</td>
+            <td style="text-align: right;">${c.percentage}%</td>
+            <td style="width: 180px;">
+                <div style="background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; height: 14px;">
+                    <div style="width: ${c.percentage}%; background: var(--vscode-progressBar-background, #007acc); height: 100%;"></div>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Story Analytics</title>
+    <style>
+        body {
+            font-family: var(--vscode-font-family);
+            color: var(--vscode-editor-foreground);
+            background-color: var(--vscode-editor-background);
+            padding: 24px;
+            margin: 0;
+        }
+        h2 { margin-top: 0; margin-bottom: 20px; font-weight: normal; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .card {
+            background-color: var(--vscode-editor-inactiveSelectionBackground, rgba(255,255,255,0.05));
+            border: 1px solid var(--vscode-widget-border, #444);
+            border-radius: 6px;
+            padding: 16px;
+        }
+        .card-title {
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .card-value {
+            font-size: 26px;
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.1));
+            font-size: 13px;
+        }
+        th {
+            color: var(--vscode-descriptionForeground);
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <h2>Story & Character Dialogue Analytics</h2>
+
+    <div class="grid">
+        <div class="card">
+            <div class="card-title">Total Words</div>
+            <div class="card-value" style="color: var(--vscode-charts-green);">${data.total_words.toLocaleString()}</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Dialogue Lines</div>
+            <div class="card-value">${data.total_dialogue_lines.toLocaleString()}</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Estimated Reading Time</div>
+            <div class="card-value" style="color: var(--vscode-charts-purple, #b180d7);">${data.reading_time_formatted}</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Cast Members</div>
+            <div class="card-value" style="color: var(--vscode-charts-yellow, #dcdcaa);">${data.characters.length}</div>
+        </div>
+    </div>
+
+    <h3 style="margin-bottom: 8px; font-weight: normal;">Cast Dialogue Distribution</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Character</th>
+                <th>Tag</th>
+                <th style="text-align: right;">Lines</th>
+                <th style="text-align: right;">Words</th>
+                <th style="text-align: right;">Share</th>
+                <th>Visual Balance</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${charsRows}
+        </tbody>
+    </table>
 </body>
 </html>`;
 }

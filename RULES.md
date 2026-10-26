@@ -7,7 +7,7 @@ Comprehensive guide to all semantic and static rules implemented in the **Senpy*
 ### Navigation
 - **Indentation & Code (RPY0xx)**: [RPY001](#rpy001) | [RPY002](#rpy002)
 - **Variables & State (RPY1xx)**: [RPY101](#rpy101) | [RPY102](#rpy102) | [RPY103](#rpy103) | [RPY104](#rpy104) | [RPY105](#rpy105) | [RPY106](#rpy106) | [RPY107](#rpy107) | [RPY108](#rpy108) | [RPY109](#rpy109)
-- **Screens & UI (RPY2xx)**: [RPY201](#rpy201) | [RPY202](#rpy202) | [RPY203](#rpy203) | [RPY204](#rpy204) | [RPY205](#rpy205) | [RPY206](#rpy206) | [RPY207](#rpy207)
+- **Screens & UI (RPY2xx)**: [RPY201](#rpy201) | [RPY202](#rpy202) | [RPY203](#rpy203) | [RPY204](#rpy204) | [RPY205](#rpy205) | [RPY206](#rpy206) | [RPY207](#rpy207) | [RPY208](#rpy208)
 - **Story Flow & Dialogue (RPY3xx)**: [RPY301](#rpy301) | [RPY302](#rpy302) | [RPY303](#rpy303) | [RPY304](#rpy304) | [RPY305](#rpy305) | [RPY306](#rpy306) | [RPY307](#rpy307) | [RPY308](#rpy308) | [RPY309](#rpy309) | [RPY310](#rpy310)
 - **Branching & Conditions (RPY4xx)**: [RPY401](#rpy401) | [RPY402](#rpy402) | [RPY403](#rpy403) | [RPY404](#rpy404)
 - **Assets & Media (RPY5xx)**: [RPY501](#rpy501) | [RPY502](#rpy502) | [RPY503](#rpy503) | [RPY504](#rpy504) | [RPY505](#rpy505)
@@ -352,6 +352,28 @@ use inventory()
 # Good
 use inventory("weapons")
 ```
+
+---
+
+<a id="rpy208"></a>
+### RPY208: Screen-local variable modified via global action or store mutation
+- **Severity**: `ERROR`
+- **Why**: Variables declared with `default` inside a screen or screen parameters are screen-local. Using `SetVariable` or `$ var = ...` modifies the global store instead of the screen variable, causing UI desynchronization and broken button interactions.
+- **Tip**: Fixable automatically via Quick Fix (`Ctrl+.`).
+
+```renpy
+# Bad
+screen shop():
+    default selected_item = None
+    textbutton "Pick Sword" action SetVariable("selected_item", "Sword")
+
+# Good
+screen shop():
+    default selected_item = None
+    textbutton "Pick Sword" action SetScreenVariable("selected_item", "Sword")
+```
+
+---
 
 ## Story Flow and Tags (RPY3xx)
 

@@ -698,12 +698,20 @@ label start:
 
 
 def test_rules_database_completeness():
-    """Verify RULES_DATABASE contains all 40 rules declared in RULE_SEVERITY"""
+    """Verify RULES_DATABASE contains all 41 rules declared in RULE_SEVERITY"""
     from senpy.models import RULE_SEVERITY
     from senpy.rules_info import RULES_DATABASE
     missing = set(RULE_SEVERITY.keys()) - set(RULES_DATABASE.keys())
     assert not missing, f"RULES_DATABASE is missing rules: {missing}"
-    assert len(RULES_DATABASE) == 40
+    assert len(RULES_DATABASE) == 41
+
+def test_tsundere_flavors_completeness():
+    """Verify TSUNDERE_FLAVORS contains phrases for all 41 rules declared in RULE_SEVERITY"""
+    from senpy.models import RULE_SEVERITY
+    from senpy.tsundere import TSUNDERE_FLAVORS
+    missing = set(RULE_SEVERITY.keys()) - set(TSUNDERE_FLAVORS.keys())
+    assert not missing, f"TSUNDERE_FLAVORS is missing phrases for rules: {missing}"
+    assert len(TSUNDERE_FLAVORS) == 41
 
 def test_cache_invalidates_on_same_size_same_mtime_content_change(tmp_path: Path):
     """Verify incremental cache invalidates via content_hash even when size and mtime are identical."""
@@ -932,3 +940,86 @@ label start:
     assert len(errors) == 0, f"Multiline instructions failed parsing: {errors}"
     assert "target_scene" in analyzer.labels
     assert "multiline_bounce" in analyzer.transforms
+
+def test_screen_variable_leak_rpy208(tmp_path: Path):
+    """Verify RPY208 catches screen-local variables modified via SetVariable, ToggleVariable or Python."""
+    code = """
+default global_gold = 100
+
+screen shop(discount_rate=0.1):
+    default selected_item = "none"
+    default is_confirmed = False
+
+    # 1. Позитивные случаи (ошибки RPY208):
+    textbutton "Sword" action SetVariable("selected_item", "sword")     # Ошибка: selected_item локален для экрана! (line 9)
+    textbutton "Confirm" action ToggleVariable("is_confirmed")          # Ошибка: is_confirmed локален для экрана! (line 10)
+    $ discount_rate = 0.2                                               # Ошибка: аргумент экрана мутируется через $! (line 11)
+
+    # 2. Негативные случаи (валидный код - 0 ошибок):
+    textbutton "Legit Pick" action SetScreenVariable("selected_item", "axe")
+    textbutton "Legit Toggle" action ToggleScreenVariable("is_confirmed")
+    textbutton "Global Buy" action SetVariable("global_gold", 50)
+"""
+    result, _ = run_senpy_on_code(code, tmp_path)
+    rpy208_diags = [d for d in result.diagnostics if d.code == "RPY208"]
+
+    assert len(rpy208_diags) == 3, f"Expected 3 RPY208 diagnostics, got: {rpy208_diags}"
+
+    # Ошибка 1: SetVariable -> SetScreenVariable с QuickFix
+    d_set = next(d for d in rpy208_diags if d.line_number == 9)
+    assert d_set.severity == "ERROR"
+    assert "selected_item" in d_set.message
+    assert "SetScreenVariable" in d_set.message
+    assert d_set.fix_replacement == "SetScreenVariable"
+
+    # Ошибка 2: ToggleVariable -> ToggleScreenVariable с QuickFix
+    d_toggle = next(d for d in rpy208_diags if d.line_number == 10)
+    assert d_toggle.severity == "ERROR"
+    assert "is_confirmed" in d_toggle.message
+    assert "ToggleScreenVariable" in d_toggle.message
+    assert d_toggle.fix_replacement == "ToggleScreenVariable"
+
+    # Ошибка 3: Прямая мутация $ discount_rate = 0.2
+    d_py = next(d for d in rpy208_diags if d.line_number == 11)
+    assert d_py.severity == "ERROR"
+    assert "discount_rate" in d_py.message
+
+def test_story_stats_word_count_and_character_balance(tmp_path: Path):
+    """Verify story stats correctly calculates word count, reading time and character speech shares."""
+    from senpy.stats import collect_story_stats
+
+    code = """
+define s = Character("Сайори")
+define m = Character("Моника")
+
+label start:
+    s "Привет, дорогой друг! Как твои дела?"
+    m "Добро пожаловать в литературный клуб!"
+    "В комнате воцарилась тишина."
+    s "Пойдём пить чай с печеньем."
+    return
+"""
+    _result, _ = run_senpy_on_code(code, tmp_path)
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    analyzer.run(quiet=True)
+
+    stats = collect_story_stats(analyzer)
+
+    assert stats.total_dialogue_lines == 4
+    assert stats.total_words > 15
+    assert stats.reading_time_minutes > 0.0
+
+    # Сайори сказала 2 реплики
+    assert "s" in stats.characters
+    assert stats.characters["s"].display_name == "Сайори"
+    assert stats.characters["s"].lines_count == 2
+    assert stats.characters["s"].percentage_words > 40.0
+
+    # Моника сказала 1 реплику
+    assert "m" in stats.characters
+    assert stats.characters["m"].display_name == "Моника"
+    assert stats.characters["m"].lines_count == 1
+
+    # Рассказчик сказал 1 реплику
+    assert "narrator" in stats.characters
+    assert stats.characters["narrator"].lines_count == 1
