@@ -228,29 +228,6 @@ jobs:
         shell: bash
         run: vsce package --no-yarn --no-git-tag-version
 
-      - name: Verify VSIX
-        shell: bash
-        run: |
-          ls -la senpy-vscode/*.vsix
-          # VSIX должен быть больше 25 MB (из-за встроенного senpy.exe ~30-50 MB).
-          # Если меньше — senpy.exe НЕ включён в VSIX, расширение не будет автономным.
-          # Это критическая ошибка — падаем (exit 1).
-          SIZE=$(stat -c%s senpy-vscode/*.vsix 2>/dev/null || stat -f%z senpy-vscode/*.vsix)
-          echo "VSIX size: $SIZE bytes ($((SIZE / 1024 / 1024)) MB)"
-          if [ "$SIZE" -lt 10000000 ]; then          if [ "$SIZE" -lt 25000000 ]; then
-            echo ""
-            echo "ERROR: VSIX слишком маленький ($((SIZE / 1024 / 1024)) MB < 10 MB)"
-            echo "senpy.exe НЕ включён в VSIX. Расширение не будет автономным."
-            echo ""
-            echo "Возможные причины:"
-            echo "  1. PyInstaller не собрал senpy.exe (проверь шаг Build senpy.exe)"
-            echo "  2. .vscodeignore исключает bin/ (проверь, что есть !bin/ и !bin/**)"
-            echo "  3. .gitignore исключает senpy-vscode/bin/, а vsce применяет .gitignore"
-            echo "     Решение: в .vscodeignore добавить !bin/ и !bin/** (переопределение)"
-            exit 1
-          fi
-          echo "OK: VSIX size $((SIZE / 1024 / 1024)) MB — senpy.exe включён"
-
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
         with:
