@@ -187,9 +187,8 @@ senpy_studio.egg-info/
 # --- unrpyc cache (скачивается cli.py при первом запуске --decompile) ---
 # Не игнорируем ~/.senpy (это вне репо), но игнорируем локальные копии unrpyc,
 # если кто-то положил их в проект.
-tools/unrpyc/
-unrpyc.py
-unrpyc/
+
+
 
 # --- Локальные тестовые Ren'Py-проекты (не коммитим) ---
 test_game/.senpy_cache/
@@ -200,3 +199,4 @@ logs/
 pip-log.txt
 pip-delete-this-directory.txt
 
+main

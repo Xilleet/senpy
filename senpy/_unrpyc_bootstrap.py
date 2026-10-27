@@ -1,10 +1,9 @@
 """Unrpyc bootstrap: скачивание, поиск, декомпиляция .rpyc, извлечение .rpa.
 
-Вынесено из cli.py
+Вынесено из cli.py (P1-1: Вариант B — умеренный рефакторинг).
 Этот модуль полностью независим от cli.py и использует только стандартные
 библиотеки + senpy.constants + senpy.rpa + senpy.tsundere.
 """
-
 from __future__ import annotations
 
 import contextlib
@@ -290,11 +289,17 @@ def extract_scripts_from_rpa(rpa_path: str, dest_dir: str) -> list[str]:
     return extracted
 
 
-def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: str) -> list[str]:
+def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str] | None = None, temp_dir: str = "") -> list[str]:
+    """Декомпилирует .rpyc файлы в .rpy в изолированной песочнице.
+
+    ECO-5: Теперь использует встроенный (vendored) unrpyc вместо subprocess.
+    Параметр unrpyc_cmd сохранён для обратной совместимости, но игнорируется.
+    """
+    from senpy.vendor.unrpyc import decompile_rpyc
+
     total = len(orphans)
     prep_label = "[Подготовка]" if IS_RU else "[Preparing]"
     decomp_label = "[Декомпиляция]" if IS_RU else "[Decompiling]"
-    done_word = "готово" if IS_RU else "done"
 
     temp_rpyc_files = []
     for i, f in enumerate(orphans, 1):
@@ -307,46 +312,41 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: st
         temp_rpyc_files.append(dest)
         msg = f"\r{prep_label} {i}/{total} ({base_name[:25]})"
         print(msg.ljust(75), end="", flush=True)
+
     print()
 
-    cmd = unrpyc_cmd + ["-c"] + temp_rpyc_files
-
-    done = 0
-    try:
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        if process.stdout:
-            for line in process.stdout:
-                if "decompil" in line.lower():
-                    done = min(total, done + 1)
-                    curr_file = ""
-                    for part in line.split():
-                        clean_part = part.strip("\"'()[],:;.")
-                        if clean_part.endswith((".rpyc", ".rpy")):
-                            curr_file = os.path.basename(clean_part)
-                            break
-                    if not curr_file:
-                        curr_file = done_word if done == total else "..."
-                    msg = f"\r{decomp_label} {done}/{total} ({curr_file[:25]})"
-                    print(msg.ljust(75), end="", flush=True)
-        process.wait()
-        print()
-    except (subprocess.SubprocessError, OSError) as e:
-        err_msg = "Ошибка декомпиляции" if IS_RU else "Decompilation error"
-        console.print(f"[bold red]{err_msg}:[/bold red] {e}")
-
     decompiled_rpy = []
-    for root, _, files in os.walk(temp_dir):
-        for file in files:
-            if file.endswith(".rpy"):
-                decompiled_rpy.append(os.path.join(root, file))
+    done = 0
+    for rpyc_file in temp_rpyc_files:
+        done += 1
+        base_name = os.path.basename(rpyc_file)
+        if base_name.endswith(".rpyc"):
+            rpy_name = base_name[:-1]  # .rpyc -> .rpy
+        elif base_name.endswith(".rpymc"):
+            rpy_name = base_name[:-1]  # .rpymc -> .rpym
+        else:
+            rpy_name = base_name + ".rpy"
 
+        rpy_path = os.path.join(temp_dir, rpy_name)
+        msg = f"\r{decomp_label} {done}/{total} ({rpy_name[:25]})"
+        print(msg.ljust(75), end="", flush=True)
+
+        try:
+            rpy_text = decompile_rpyc(rpyc_file)
+            with open(rpy_path, "w", encoding="utf-8") as f:
+                f.write(rpy_text)
+            decompiled_rpy.append(rpy_path)
+        except Exception as e:
+            err_msg = "Ошибка декомпиляции" if IS_RU else "Decompilation error"
+            # ECO-5: RPYCDecompilationError даёт понятное сообщение,
+            # любые другие исключения — выводим тип ошибки
+            err_type = type(e).__name__
+            console.print(
+                f"\n[bold red]{err_msg} ({base_name}):[/bold red] "
+                f"[{err_type}] {e}"
+            )
+
+    print()
     success_msg = (
         f"✔ Успешно декомпилировано {len(decompiled_rpy)} файл(ов) в песочницу!"
         if IS_RU
@@ -354,4 +354,3 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: st
     )
     console.print(f"[bold green]{success_msg}[/bold green]\n")
     return decompiled_rpy
-
