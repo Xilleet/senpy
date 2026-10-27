@@ -127,7 +127,7 @@ jobs:
     # раскомментируйте строку ниже (if: false). Job запустится, но пропустит
     # публикацию. После trial run — закомментируйте обратно.
     # =============================================================================
-    if: false  # ← раскомментировать для trial run
+    # if: false  # ← раскомментировать для trial run
     steps:
       - name: Download dist artifacts
         uses: actions/download-artifact@v4
@@ -241,7 +241,7 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     # needs: [publish-pypi, build-vsix]  # ← боевое: ждать и PyPI, и VSIX
-    needs: [build-vsix]  # ← trial: ждать только VSIX (publish-pypi может быть if: false)
+    needs: [publish-pypi, build-vsix]  # ← trial: ждать только VSIX (publish-pypi может быть if: false)
     # =============================================================================
     # Для реального релиза: заменить needs: [build-vsix] на needs: [publish-pypi, build-vsix]
     # Для trial run: оставить needs: [build-vsix] (PyPI может быть отключён)
