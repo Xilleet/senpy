@@ -4,6 +4,7 @@
 Этот модуль полностью независим от cli.py и использует только стандартные
 библиотеки + senpy.constants + senpy.rpa + senpy.tsundere.
 """
+
 from __future__ import annotations
 
 import contextlib

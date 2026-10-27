@@ -5,6 +5,7 @@
   - None: команда не активна (args.xxx = False)
   - int: exit code (0 = успех, 1 = ошибка)
 """
+
 from __future__ import annotations
 
 import json
@@ -61,7 +62,6 @@ def handle_traceback(args, console: Console, is_tsundere: bool) -> int | None:
     return 0
 
 
-
 def handle_init_ci(args, console: Console, is_tsundere: bool) -> int | None:
     """--init-ci: создание GitHub Actions workflow."""
     if not args.init_ci:
@@ -81,7 +81,6 @@ def handle_init_ci(args, console: Console, is_tsundere: bool) -> int | None:
             "[dim]Commit and push this file to enable automatic GitHub Code Scanning on every Pull Request![/dim]\n"
         )
     return 0
-
 
 
 def handle_coverage(args, console: Console, is_tsundere: bool) -> int | None:
@@ -106,9 +105,7 @@ def handle_coverage(args, console: Console, is_tsundere: bool) -> int | None:
 
     for lang, stats in sorted(coverage_data.items()):
         pct = stats.coverage_percent
-        pct_style = (
-            "bold green" if pct >= 95.0 else "bold yellow" if pct >= 70.0 else "bold red"
-        )
+        pct_style = "bold green" if pct >= 95.0 else "bold yellow" if pct >= 70.0 else "bold red"
         table.add_row(
             lang,
             f"{stats.total_strings:,}",
@@ -121,7 +118,6 @@ def handle_coverage(args, console: Console, is_tsundere: bool) -> int | None:
     if is_tsundere:
         console.print(f"\n[bold magenta]{TSUNDERE_UI['coverage']}[/bold magenta]\n")
     return 0
-
 
 
 def handle_clear_cache(args, console: Console) -> int | None:
@@ -137,7 +133,6 @@ def handle_clear_cache(args, console: Console) -> int | None:
     else:
         console.print("[yellow]No cache directory found.[/yellow]")
     return 0
-
 
 
 def handle_stats(args, analyzer, console: Console, is_tsundere: bool) -> int | None:
@@ -223,7 +218,6 @@ def handle_stats(args, analyzer, console: Console, is_tsundere: bool) -> int | N
     return 0
 
 
-
 def handle_export_wiki(args, analyzer, console: Console, is_tsundere: bool) -> int | None:
     """--export-wiki: генерация документации проекта."""
     if not args.export_wiki:
@@ -246,8 +240,9 @@ def handle_export_wiki(args, analyzer, console: Console, is_tsundere: bool) -> i
     return 0
 
 
-
-def handle_export_html(args, result, analyzer, console: Console, is_tsundere: bool, ignored_codes: set) -> int | None:
+def handle_export_html(
+    args, result, analyzer, console: Console, is_tsundere: bool, ignored_codes: set
+    ) -> int | None:
     """--export-html: автономный HTML отчёт."""
     if not args.export_html:
         return None
@@ -280,7 +275,6 @@ def handle_export_html(args, result, analyzer, console: Console, is_tsundere: bo
     return 0
 
 
-
 def handle_graph(args, analyzer, console: Console, is_tsundere: bool) -> int | None:
     """--graph / --graph-file: граф сюжета в Mermaid."""
     if not (args.graph or args.graph_file):
@@ -303,7 +297,6 @@ def handle_graph(args, analyzer, console: Console, is_tsundere: bool) -> int | N
     return 0
 
 
-
 def handle_defaults(args, analyzer, console: Console, is_tsundere: bool) -> int | None:
     """--defaults: генерация senpy_defaults.rpy."""
     if not args.defaults:
@@ -324,7 +317,6 @@ def handle_defaults(args, analyzer, console: Console, is_tsundere: bool) -> int 
             "\n[bold green]✔ All variables are already properly declared via 'default'![/bold green]\n"
         )
     return 0
-
 
 
 def handle_stubs(args, analyzer, console: Console, is_tsundere: bool) -> int | None:

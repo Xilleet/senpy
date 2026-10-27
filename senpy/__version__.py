@@ -7,6 +7,7 @@ senpy-vscode/package.json) должны синхронизироваться с 
 Изменять версию только здесь (или через `bump_version.py`, который сам
 проставит её сюда и во все остальные места).
 """
+
 from __future__ import annotations
 
 __version__ = "0.5.0"
