@@ -12,10 +12,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from lsprotocol import types as lsp
+from test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
 import senpy.server as server_mod
 from senpy.analyzer import SenpyAnalyzer
-from tests.test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
 # =============================================================================
 # UX-12: initialized handler
