@@ -81,118 +81,24 @@ jobs:
       - name: Check distribution
         run: twine check dist/*
 
-      - name: Verify version matches tag
-        # Защита: тег v0.4.8 должен соответствовать версии в __version__.py.
-        # Иначе можно случайно опубликовать v0.4.8 с кодом, где написано 0.4.7.
-        # Для pre-release тегов (v0.4.9-rc1) сравниваем только базовую часть (0.4.9),
-        # чтобы разрешить мульти-RC (rc1, rc2...) без изменения __version__.py.
+            - name: Verify version matches tag
+        # Защита: базовая версия тега должна совпадать с __version__.py.
+        # Отрезаем суффиксы (-rc1, -beta) и от тега, и от package version,
+        # чтобы разрешить RC-релизы (v0.4.9-rc2 с __version__.py = 0.4.9-rc2).
         run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"             # 0.4.9-rc1
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
           PKG_VERSION=$(python -c "from senpy.__version__ import __version__; print(__version__)")
-          # Отрезаем суффикс -rcN, -beta, -alpha и т.п. для сравнения
-          TAG_BASE=$(echo "$TAG_VERSION" | cut -d'-' -f1)     # 0.4.9
+          TAG_BASE=$(echo "$TAG_VERSION" | cut -d'-' -f1)
+          PKG_BASE=$(echo "$PKG_VERSION" | cut -d'-' -f1)
           echo "Git tag version:   $TAG_VERSION (base: $TAG_BASE)"
-          echo "Package version:   $PKG_VERSION"
-          if [ "$TAG_BASE" != "$PKG_VERSION" ]; then
+          echo "Package version:   $PKG_VERSION (base: $PKG_BASE)"
+          if [ "$TAG_BASE" != "$PKG_BASE" ]; then
             echo ""
-            echo "ERROR: Base tag version ($TAG_BASE) != package version ($PKG_VERSION)"
+            echo "ERROR: Base tag version ($TAG_BASE) != base package version ($PKG_BASE)"
             echo "Обнови senpy/__version__.py через 'python bump_version.py' перед созданием тега."
             exit 1
           fi
-          echo "OK: Versions match ($PKG_VERSION)
-
-      - name: Upload dist artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: senpy-dist
-          path: dist/*
-
-  # ===========================================================================
-  # 3. Публикация на PyPI через Trusted Publishing (OIDC)
-  # ===========================================================================
-  # НАСТРОЙКА ONE-TIME (на стороне PyPI):
-  # 1. Зайди на https://pypi.org/manage/account/publishing/
-  # 2. Add a new publisher → GitHub
-  #    - PyPI Project Name: senpy-linter
-  #    - Owner: Xilleet
-  #    - Repository: senpy
-  #    - Workflow filename: release.yml
-  #    - Environment name: pypi (должно совпадать с environment: ниже)
-  # После этого публикация будет автоматической, без токенов.
-  publish-pypi:
-    name: Publish to PyPI
-    runs-on: ubuntu-latest
-    needs: [build]
-    environment: pypi  # обязателен для Trusted Publishing
-    # =============================================================================
-    # TRIAL RUN: чтобы протестировать release.yml БЕЗ публикации на PyPI,
-    # раскомментируйте строку ниже (if: false). Job запустится, но пропустит
-    # публикацию. После trial run — закомментируйте обратно.
-    # =============================================================================
-    if: false  # ← раскомментировать для trial run
-    steps:
-      - name: Download dist artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: senpy-dist
-          path: dist/
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        # Никаких токенов — PyPI Trusted Publishing через OIDC.
-        # with: password: ... — НЕ НУЖНО, OIDC работает автоматически.
-
-  # ===========================================================================
-  # 4. Сборка АВТОНОМНОГО VSIX со встроенным senpy.exe
-  # ===========================================================================
-  # PyInstaller собирает senpy.exe (onefile, ~30-50 MB) — автономный бинарь
-  # со встроенным Python runtime. VSIX включает этот бинарь в bin/, поэтому
-  # пользователю НЕ нужен установленный Python — расширение работает «из коробки».
-  #
-  # Сборка на Windows (windows-latest), потому что:
-  # - senpy.exe нужен для Windows-пользователей (основная аудитория VN-сценаристов)
-  # - PyInstaller onefile на Linux соберёт Linux-бинарь, который не запустится на Windows
-  # - macOS-бинарь тоже отдельный (если когда-нибудь добавим — отдельный job)
-  build-vsix:
-    name: Build autonomous VSIX (with senpy.exe)
-    runs-on: windows-latest
-    needs: [test]
-    steps:
-      - uses: actions/checkout@v4
-
-      # --- Шаг 1: PyInstaller — сборка senpy.exe ---
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-
-      - name: Install Senpy + PyInstaller
-        shell: bash
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .
-          pip install pyinstaller
-
-      - name: Build senpy.exe with PyInstaller
-        # Аналог build_exe.bat, но cross-shell (bash на Windows через Git Bash)
-        # --onefile: всё в один .exe (30-50 MB, медленнее стартует, но проще дистрибуция)
-        # --name senpy: имя выходного файла (senpy.exe)
-        # --paths .: добавляем текущую директорию в sys.path (для импорта senpy.*)
-        # --distpath senpy-vscode/bin: куда положить готовый .exe
-        # --workpath build: временная папка (не коммитим)
-        # --specpath build: куда положить .spec файл (не коммитим)
-        # --clean: очистить кэш PyInstaller перед сборкой
-        # --noconfirm: перезаписать без вопроса
-        shell: bash
-        run: |
-          python -m PyInstaller \
-            --noconfirm \
-            --clean \
-            --onefile \
-            --name senpy \
-            --paths . \
-            --distpath "senpy-vscode/bin" \
+          echo "OK: Base versions match ($PKG_BASE)"senpy-vscode/bin" \
             --workpath "build" \
             --specpath "build" \
             "senpy/cli.py"
@@ -229,7 +135,7 @@ jobs:
         # --no-yarn: не запускать yarn (используем npm)
         # --no-git-tag-version: не создавать git-тег (мы уже в release-процессе)
         working-directory: senpy-vscode
-        run: vsce package --no-yarn --no-git-tag-version
+        run: vsce package --no-yarn --no-git-tag-version --no-git-ignore
 
       - name: Verify VSIX
         shell: bash
