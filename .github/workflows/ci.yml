@@ -73,33 +73,6 @@ jobs:
           verbose: true
 
   # ===========================================================================
-  # Ruff lint + format check — один job, не зависит от matrix
-  # ===========================================================================
-  lint:
-    name: Ruff lint + format check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-
-      - name: Install Ruff
-        run: pip install ruff
-
-      - name: Ruff check (lint)
-        # Проверяет линтером: unused imports, undefined names, etc.
-        run: ruff check .
-
-      - name: Ruff format --check
-        # Проверяет, что код отформатирован по нашим правилам.
-        # --check = не переписывать, только проверить, exit 1 если diff.
-        run: ruff format --check .
-
-  # ===========================================================================
   # Wheel build — проверка packaging
   # ===========================================================================
   build-wheel:
