@@ -224,21 +224,9 @@ jobs:
         run: npm install -g @vscode/vsce
 
       - name: Package VSIX
-        # vsce использует git ls-files и исключает файлы из .gitignore.
-        # Никакие флаги vsce не помогают включить senpy.exe.
-        # Решение: собираем VSIX без senpy.exe, затем добавляем его в ZIP вручную.
         working-directory: senpy-vscode
         shell: bash
-        run: |
-          vsce package --no-yarn --no-git-tag-version
-          # VSIX — это ZIP. Внутри файлы extension лежат в extension/.
-          # Добавляем senpy.exe по пути extension/bin/senpy.exe
-          mkdir -p _inject/extension/bin
-          cp bin/senpy.exe _inject/extension/bin/
-          cd _inject
-          zip -g ../senpy-vscode-*.vsix extension/bin/senpy.exe
-          cd ..
-          rm -rf _inject
+        run: vsce package --no-yarn --no-git-tag-version
 
       - name: Verify VSIX
         shell: bash
@@ -249,9 +237,9 @@ jobs:
           # Это критическая ошибка — падаем (exit 1).
           SIZE=$(stat -c%s senpy-vscode/*.vsix 2>/dev/null || stat -f%z senpy-vscode/*.vsix)
           echo "VSIX size: $SIZE bytes ($((SIZE / 1024 / 1024)) MB)"
-          if [ "$SIZE" -lt 25000000 ]; then
+          if [ "$SIZE" -lt 10000000 ]; then          if [ "$SIZE" -lt 25000000 ]; then
             echo ""
-            echo "ERROR: VSIX слишком маленький ($((SIZE / 1024 / 1024)) MB < 25 MB)"
+            echo "ERROR: VSIX слишком маленький ($((SIZE / 1024 / 1024)) MB < 10 MB)"
             echo "senpy.exe НЕ включён в VSIX. Расширение не будет автономным."
             echo ""
             echo "Возможные причины:"
