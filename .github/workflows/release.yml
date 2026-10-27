@@ -1,25 +1,43 @@
 # =============================================================================
 # Senpy Release — публикация на PyPI по тегу vX.Y.Z
 # =============================================================================
-# push тегов вида v*.*.*
-
+# Trigger: push тегов вида v*.*.* (например, v0.4.8)
+# Использует PyPI Trusted Publishing (OIDC) — никаких паролей/API-токенов.
+# Дополнительно: создаёт GitHub Release с артефактами (wheel + vsix)
+#
+# Что происходит при git push origin v0.4.8:
+# 1. test job — прогоняет pytest (pre-release проверка)
+# 2. build job — собирает wheel + sdist, проверяет что версия в __version__.py
+#    совпадает с тегом (защита от опечаток)
+# 3. build-vsix job — собирает АВТОНОМНЫЙ VSIX со встроенным senpy.exe
+#    (PyInstaller onefile binary + TypeScript extension)
+# 4. publish-pypi job — публикует wheel + sdist на PyPI через OIDC
+# 5. github-release job — создаёт GitHub Release с:
+#    - auto-generated release notes (из commits между предыдущим и текущим тегом)
+#    - прикреплёнными wheel, sdist, VSIX
+# =============================================================================
 name: Release
 
 on:
   push:
     tags:
       - 'v*.*.*'
+      # v0.4.8, v1.0.0, v2.3.1 — SemVer
+      # v0.4.8-rc1 → будет помечен как prerelease (см. ниже)
 
+# release job не должен запускаться параллельно с самим собой
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: false  # не отменяем release, даже если запушили новый тег
 
 permissions:
-  contents: write  
-  id-token: write  
+  contents: write  # для создания GitHub Release
+  id-token: write   # для PyPI Trusted Publishing (OIDC)
 
 jobs:
-
+  # ===========================================================================
+  # 1. Сначала прогоняем тесты — релизим только зелёное
+  # ===========================================================================
   test:
     name: Pre-release tests
     runs-on: ubuntu-latest
@@ -29,13 +47,17 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - run: |
-          pip install -e .[dev] 2>/dev/null || pip install -e .
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev] || pip install -e .
           pip install pytest
-          pytest tests/ -v
+      - name: Run tests
+        run: pytest tests/ -v
 
   # ===========================================================================
-  # wheel + sdist
+  # 2. Сборка wheel + sdist
   # ===========================================================================
   build:
     name: Build sdist + wheel
@@ -60,7 +82,8 @@ jobs:
         run: twine check dist/*
 
       - name: Verify version matches tag
-
+        # Защита: тег v0.4.8 должен соответствовать версии в __version__.py.
+        # Иначе можно случайно опубликовать v0.4.8 с кодом, где написано 0.4.7.
         run: |
           TAG_VERSION="${GITHUB_REF#refs/tags/v}"
           PKG_VERSION=$(python -c "from senpy.__version__ import __version__; print(__version__)")
@@ -79,7 +102,7 @@ jobs:
           path: dist/*
 
   # ===========================================================================
-  # Публикация на PyPI через Trusted Publishing (OIDC)
+  # 3. Публикация на PyPI через Trusted Publishing (OIDC)
   # ===========================================================================
   # НАСТРОЙКА ONE-TIME (на стороне PyPI):
   # 1. Зайди на https://pypi.org/manage/account/publishing/
@@ -95,6 +118,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build]
     environment: pypi  # обязателен для Trusted Publishing
+    # =============================================================================
+    # TRIAL RUN: чтобы протестировать release.yml БЕЗ публикации на PyPI,
+    # раскомментируйте строку ниже (if: false). Job запустится, но пропустит
+    # публикацию. После trial run — закомментируйте обратно.
+    # =============================================================================
+    if: false  # ← раскомментировать для trial run
     steps:
       - name: Download dist artifacts
         uses: actions/download-artifact@v4
@@ -108,28 +137,107 @@ jobs:
         # with: password: ... — НЕ НУЖНО, OIDC работает автоматически.
 
   # ===========================================================================
-  # Сборка VSIX для GitHub Release
+  # 4. Сборка АВТОНОМНОГО VSIX со встроенным senpy.exe
   # ===========================================================================
+  # PyInstaller собирает senpy.exe (onefile, ~30-50 MB) — автономный бинарь
+  # со встроенным Python runtime. VSIX включает этот бинарь в bin/, поэтому
+  # пользователю НЕ нужен установленный Python — расширение работает «из коробки».
+  #
+  # Сборка на Windows (windows-latest), потому что:
+  # - senpy.exe нужен для Windows-пользователей (основная аудитория VN-сценаристов)
+  # - PyInstaller onefile на Linux соберёт Linux-бинарь, который не запустится на Windows
+  # - macOS-бинарь тоже отдельный (если когда-нибудь добавим — отдельный job)
   build-vsix:
-    name: Build VSIX for release
-    runs-on: ubuntu-latest
+    name: Build autonomous VSIX (with senpy.exe)
+    runs-on: windows-latest
     needs: [test]
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # --- Шаг 1: PyInstaller — сборка senpy.exe ---
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Senpy + PyInstaller
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+
+      - name: Build senpy.exe with PyInstaller
+        # Аналог build_exe.bat, но cross-shell (bash на Windows через Git Bash)
+        # --onefile: всё в один .exe (30-50 MB, медленнее стартует, но проще дистрибуция)
+        # --name senpy: имя выходного файла (senpy.exe)
+        # --paths .: добавляем текущую директорию в sys.path (для импорта senpy.*)
+        # --distpath senpy-vscode/bin: куда положить готовый .exe
+        # --workpath build: временная папка (не коммитим)
+        # --specpath build: куда положить .spec файл (не коммитим)
+        # --clean: очистить кэш PyInstaller перед сборкой
+        # --noconfirm: перезаписать без вопроса
+        shell: bash
+        run: |
+          python -m PyInstaller \
+            --noconfirm \
+            --clean \
+            --onefile \
+            --name senpy \
+            --paths . \
+            --distpath "senpy-vscode/bin" \
+            --workpath "build" \
+            --specpath "build" \
+            "senpy/cli.py"
+
+      - name: Verify senpy.exe
+        # Проверяем, что .exe собрался и запускается
+        shell: bash
+        run: |
+          ls -la "senpy-vscode/bin/senpy.exe"
+          "senpy-vscode/bin/senpy.exe" --version
+
+      # --- Шаг 2: Node.js — сборка TypeScript extension ---
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: senpy-vscode/package-lock.json
 
-      - name: Install + compile + package VSIX
+      - name: Install npm dependencies
         working-directory: senpy-vscode
+        shell: bash
+        run: npm ci || npm install
+
+      - name: Compile extension (esbuild)
+        working-directory: senpy-vscode
+        run: npm run compile
+
+      # --- Шаг 3: vsce package — сборка VSIX ---
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Package VSIX
+        # --no-yarn: не запускать yarn (используем npm)
+        # --no-git-tag-version: не создавать git-тег (мы уже в release-процессе)
+        working-directory: senpy-vscode
+        run: vsce package --no-yarn --no-git-tag-version
+
+      - name: Verify VSIX
+        shell: bash
         run: |
-          npm ci 2>/dev/null || npm install
-          npm run compile
-          npm install -g @vscode/vsce
-          vsce package --no-yarn --no-git-tag-version
+          ls -la senpy-vscode/*.vsix
+          # VSIX должен быть больше 30 MB (из-за встроенного senpy.exe)
+          # Если меньше — что-то пошло не так, PyInstaller не собрал .exe
+          SIZE=$(stat -c%s senpy-vscode/*.vsix 2>/dev/null || stat -f%z senpy-vscode/*.vsix)
+          echo "VSIX size: $SIZE bytes"
+          if [ "$SIZE" -lt 30000000 ]; then
+            echo "WARNING: VSIX слишком маленький ($SIZE bytes < 30MB)"
+            echo "Возможно, senpy.exe не включён в VSIX."
+            echo "Проверь .vscodeignore — не исключает ли он bin/senpy.exe"
+          fi
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
@@ -138,12 +246,17 @@ jobs:
           path: senpy-vscode/*.vsix
 
   # ===========================================================================
-  # GitHub Release с артефактами
+  # 5. GitHub Release с артефактами + auto release notes
   # ===========================================================================
   github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [publish-pypi, build-vsix]
+    # needs: [publish-pypi, build-vsix]  # ← боевое: ждать и PyPI, и VSIX
+    needs: [build-vsix]  # ← trial: ждать только VSIX (publish-pypi может быть if: false)
+    # =============================================================================
+    # Для реального релиза: заменить needs: [build-vsix] на needs: [publish-pypi, build-vsix]
+    # Для trial run: оставить needs: [build-vsix] (PyPI может быть отключён)
+    # =============================================================================
     permissions:
       contents: write  # для создания release
     steps:
@@ -156,9 +269,11 @@ jobs:
 
       - name: Prepare release assets
         # Складываем всё в одну папку для upload
+        shell: bash
         run: |
           mkdir -p release/
           find release-assets/ -type f \( -name "*.whl" -o -name "*.tar.gz" -o -name "*.vsix" \) -exec cp {} release/ \;
+          echo "=== Files to upload ==="
           ls -la release/
 
       - name: Extract version from tag
@@ -170,9 +285,14 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: Senpy v${{ steps.version.outputs.version }}
-          generate_release_notes: true  # авто-генерация из commit messages
+          # generate_release_notes: true → GitHub сам собирает release notes
+          # из commits между предыдущим и текущим тегом.
+          # Группирует по Conventional Commits (feat:, fix:, docs:, chore:).
+          # Добавляет список PR с авторами и ссылку на diff.
+          generate_release_notes: true
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}  # v0.4.8-rc1 → prerelease
+          # Если тег содержит '-' (например v0.4.8-rc1) → помечаем как prerelease
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             release/*.whl
             release/*.tar.gz

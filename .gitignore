@@ -95,3 +95,108 @@ senpy.spec
 senpy-vscode/bin/senpy.exe
 аудит 0.4.5.md
 senpy-vscode/Reload
+test_formatter_demo.py
+
+# =============================================================================
+# Senpy .gitignore
+# =============================================================================
+# ECO-2: ранее отсутствовал — коммитились senpy.sarif (92KB), test_report.*,
+# __pycache__/*.pyc, .pytest_cache/. Теперь всё это исключается.
+#
+# Принцип: gitignore должен быть КОММЕНТИРОВАННЫМ и предсказуемым. Никаких
+# «игнорировать всё, кроме whitelist» — это слишком агрессивно для Python-проекта.
+# =============================================================================
+
+# --- Python bytecode и кэш ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# --- pytest ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.tox/
+
+# --- mypy / ruff (когда добавим ECO-10) ---
+.mypy_cache/
+.ruff_cache/
+
+# --- Senpy runtime-артефакты ---
+# SARIF-отчёты (генерируются через `senpy --output-format sarif --output-file ...`)
+senpy.sarif
+# Тест-репорты (генерируются conftest.py после pytest-прогонов)
+test_report.json
+test_report.txt
+tests/test_report.json
+tests/test_report.txt
+# Кэш senpy внутри Ren'Py-проектов (генерируется при локальных прогонах)
+.senpy_cache/
+
+# --- Сборка и дистрибутивы ---
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+develop-eggs/
+sdist/
+wheels/
+*.manifest
+*.spec
+
+# --- Виртуальные окружения ---
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# --- IDE ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+# --- OS-артефакты ---
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# --- VS Code extension build output (senpy-vscode) ---
+senpy-vscode/out/
+senpy-vscode/node_modules/
+senpy-vscode/*.vsix
+# bin/senpy.exe — собирается PyInstaller локально (build_exe.bat) или в CI
+# (release.yml build-vsix job). НЕ коммитим — это артефакт сборки.
+# Но .vscodeignore НЕ исключает его — в VSIX он попадает.
+senpy-vscode/bin/
+
+# --- PyInstaller build (когда добавим senpy-studio) ---
+build_exe/
+senpy_studio.egg-info/
+
+# --- unrpyc cache (скачивается cli.py при первом запуске --decompile) ---
+# Не игнорируем ~/.senpy (это вне репо), но игнорируем локальные копии unrpyc,
+# если кто-то положил их в проект.
+tools/unrpyc/
+unrpyc.py
+unrpyc/
+
+# --- Локальные тестовые Ren'Py-проекты (не коммитим) ---
+test_game/.senpy_cache/
+
+# --- Логи ---
+*.log
+logs/
+pip-log.txt
+pip-delete-this-directory.txt
+

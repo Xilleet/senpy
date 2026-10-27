@@ -24,17 +24,14 @@ def collapse_blank_lines(
         if ctx.skip:
             result.append(ctx)
             continue
-        # A line is "blank" if it's only whitespace + newline
         is_blank = ctx.raw.strip() == ""
         if is_blank:
             blank_count += 1
             if blank_count <= config.max_blank_lines:
                 result.append(ctx)
-            # else: skip (collapse)
         else:
             blank_count = 0
             result.append(ctx)
-    # Strip leading blank lines at start of file
     while result and result[0].raw.strip() == "" and not result[0].skip:
         result.pop(0)
     return result
@@ -49,13 +46,11 @@ def strip_trailing_whitespace(
         if ctx.skip:
             continue
         raw = ctx.raw
-        # Preserve line ending (\n or \r\n), strip spaces/tabs before it
         if raw.endswith("\r\n"):
             ctx.raw = raw.rstrip(" \t\r\n") + "\r\n"
         elif raw.endswith("\n"):
             ctx.raw = raw.rstrip(" \t\n") + "\n"
         else:
-            # Last line without newline — strip trailing ws, FMT-EOF-NEWLINE will add \n
             ctx.raw = raw.rstrip(" \t")
     return contexts
 
@@ -66,8 +61,5 @@ def ensure_eof_newline(contexts: list[FormatContext], config: FormatConfig) -> l
     if not contexts:
         return contexts
     last = contexts[-1]
-    # Strip all trailing newlines, then add exactly one \n
-    # (preserve \r\n if file was using CRLF — detect by checking if last non-empty
-    # line ended with \r\n; for MVP we just use \n)
     last.raw = last.raw.rstrip("\r\n") + "\n"
     return contexts

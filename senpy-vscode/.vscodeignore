@@ -1,15 +1,40 @@
-.vscode/**
-.vscode-test/**
-!out/**
-node_modules/**
-src/**
-.gitignore
-.yarnrc
-esbuild.js
-vsc-extension-quickstart.md
-**/tsconfig.json
-**/eslint.config.mjs
-**/*.map
-**/*.ts
-**/.vscode-test.*
+# .vscodeignore — что vsce исключает из VSIX пакета
+# =============================================================================
+# vsce package включает ВСЕ файлы из senpy-vscode/ по умолчанию.
+# .vscodeignore — это как .gitignore, но для VSIX пакета.
+# Файлы/папки здесь — исключаются из финального .vsix.
+#
+# ВАЖНО: bin/senpy.exe НЕ указан здесь — он ДОЛЖЕН попасть в VSIX
+# (это автономный бинарь, собранный PyInstaller в release.yml).
+# =============================================================================
 
+# --- Исходники TypeScript (уже скомпилированы в out/) ---
+src/**
+tsconfig.json
+esbuild.js
+
+# --- node_modules (vsce устанавливает production-зависимости сам) ---
+node_modules/**
+
+# --- Тесты ---
+test/**
+tests/**
+
+# --- Документация и конфиги ---
+*.md
+.gitignore
+.gitattributes
+.vscode/**
+.eslintrc*
+*.log
+
+# --- Временные файлы сборки ---
+build/**
+*.tmp
+*.bak
+
+# --- .vsix файлы (не включаем старые VSIX в новый VSIX) ---
+*.vsix
+
+# --- CI / GitHub ---
+.github/**

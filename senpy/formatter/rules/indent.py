@@ -24,16 +24,11 @@ def normalize_indent(contexts: list[FormatContext], config: FormatConfig) -> lis
         if ctx.skip:
             continue
         raw = ctx.raw
-        # Separate leading whitespace from rest
         stripped = raw.lstrip(" \t")
         leading = raw[: len(raw) - len(stripped)]
-        # Expand tabs (1 tab = config.indent_size spaces)
         leading_expanded = leading.expandtabs(config.indent_size)
-        # Round down to multiple of indent_size
         n_spaces = len(leading_expanded)
         normalized_count = (n_spaces // config.indent_size) * config.indent_size
         ctx.raw = " " * normalized_count + stripped
-        # Update ctx.indent for downstream rules (already computed in _build_contexts,
-        # but we recompute here for consistency after tab normalization)
         ctx.indent = normalized_count
     return contexts
