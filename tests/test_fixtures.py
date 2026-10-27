@@ -23,13 +23,15 @@ def normalize_diagnostics(diagnostics: list) -> list[dict[str, Any]]:
     """Нормализует диагностики для сохранения в JSON, отсекая нестабильные абсолютные пути."""
     result = []
     for d in diagnostics:
-        result.append({
-            "code": d.code,
-            "severity": d.severity,
-            "line": d.line_number,
-            "message_fragment": d.message[:100],  # Сохраняем стабильный фрагмент
-            # В будущем сюда можно добавить проверку col и end_col, если нужно
-        })
+        result.append(
+            {
+                "code": d.code,
+                "severity": d.severity,
+                "line": d.line_number,
+                "message_fragment": d.message[:100],  # Сохраняем стабильный фрагмент
+                # В будущем сюда можно добавить проверку col и end_col, если нужно
+            }
+        )
     # Сортируем по строке, чтобы порядок всегда был детерминированным
     return sorted(result, key=lambda x: x["line"])
 
@@ -53,7 +55,9 @@ def test_rule_fixture(rpy_file: Path, update_snapshots: bool, tmp_path: Path):
 
     if not is_bad:
         # Для позитивных тестов мы ожидаем ровно 0 ошибок по этому правилу
-        assert len(target_diags) == 0, f"Expected 0 '{rule_id}' diagnostics for positive test {rpy_file.name}, but got: {target_diags}"
+        assert len(target_diags) == 0, (
+            f"Expected 0 '{rule_id}' diagnostics for positive test {rpy_file.name}, but got: {target_diags}"
+        )
     else:
         # Для негативных тестов сверяем снимок
         snapshot_file = rpy_file.with_suffix(".json")
@@ -61,10 +65,16 @@ def test_rule_fixture(rpy_file: Path, update_snapshots: bool, tmp_path: Path):
 
         if update_snapshots:
             # Режим обновления: генерируем/перезаписываем JSON
-            snapshot_file.write_text(json.dumps(actual_json, indent=2, ensure_ascii=False), encoding="utf-8")
+            snapshot_file.write_text(
+                json.dumps(actual_json, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
             pytest.skip(f"Snapshot updated for {rpy_file.name}")
         else:
             # Обычный режим: сравниваем результат с диском
-            assert snapshot_file.exists(), f"Snapshot is missing: {snapshot_file}. Run pytest with '--update-snapshots'."
+            assert snapshot_file.exists(), (
+                f"Snapshot is missing: {snapshot_file}. Run pytest with '--update-snapshots'."
+            )
             expected_json = json.loads(snapshot_file.read_text(encoding="utf-8"))
-            assert actual_json == expected_json, f"Snapshot mismatch for {rpy_file.name}. Run with '--update-snapshots' if the change was intentional."
+            assert actual_json == expected_json, (
+                f"Snapshot mismatch for {rpy_file.name}. Run with '--update-snapshots' if the change was intentional."
+            )

@@ -5,6 +5,7 @@ Jump()-экшены внутри экранов признаны
 label->label переходы. Экраны-участники потока должны появляться узлами,
 их экшены — рёбрами к меткам, а senpy-meta — координатами экрана для навигации.
 """
+
 from __future__ import annotations
 
 import json
@@ -21,7 +22,7 @@ def run_senpy_on_code(code: str, tmp_path: Path):
     return analyzer.run(quiet=True), analyzer
 
 
-SCRIPT_SCREEN_JUMP = '''
+SCRIPT_SCREEN_JUMP = """
 screen stats_screen():
     vbox:
         textbutton "Статы" action Jump("stats_label")
@@ -31,7 +32,7 @@ label stats_label:
 
 label start:
     call screen stats_screen
-'''
+"""
 
 
 def test_screen_jump_action_edges_in_graph(tmp_path: Path):
@@ -49,13 +50,13 @@ def test_screen_jump_action_edges_in_graph(tmp_path: Path):
 
 def test_screen_missing_action_target_marked(tmp_path: Path):
     """Jump-экшен на несуществующую метку -> пунктирное ребро :::missing."""
-    script = '''
+    script = """
 screen magic_screen():
     textbutton "Магия" action Jump("ghost_label")
 
 label start:
     call screen magic_screen
-'''
+"""
     _, analyzer = run_senpy_on_code(script, tmp_path)
     graph = analyzer.export_graph()
 
@@ -78,13 +79,13 @@ def test_screen_nodes_in_meta_locations(tmp_path: Path):
 
 def test_graph_without_screens_has_no_screen_nodes(tmp_path: Path):
     """Негативный контроль: проект без экранов не получает экранных узлов."""
-    script = '''
+    script = """
 label start:
     jump finale
 
 label finale:
     return
-'''
+"""
     _, analyzer = run_senpy_on_code(script, tmp_path)
     graph = analyzer.export_graph()
 

@@ -63,7 +63,7 @@ def parse_traceback_file(file_path: str) -> CrashReport | None:
         return None
 
     with contextlib.suppress(OSError, UnicodeDecodeError):
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(file_path, encoding="utf-8", errors="replace") as f:
             content = f.read()
 
         # 1. Ищем место сбоя в коде игры (File "game/script.rpy", line 42, in ...)

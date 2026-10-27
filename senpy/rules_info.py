@@ -20,17 +20,15 @@ RULES_DATABASE = {
         "title": "Smart/curly quotes in code statement",
         "severity": "ERROR",
         "why": "Typographic smart quotes (“ ” ‘ ’ « ») copied from text editors like MS Word into Python code statements cause a fatal SyntaxError.",
-        "bad": '$ status = “active”\nif item == «key»: ...',
+        "bad": "$ status = “active”\nif item == «key»: ...",
         "good": '$ status = "active"\nif item == "key": ...',
     },
-    
     # ---------------- 100: Variables, Types & Rollback ----------------
-
     "RPY100": {
         "title": "File is not valid UTF-8",
         "severity": "ERROR",
         "why": "Ren'Py reads all .rpy scripts as UTF-8. A file saved in another encoding (e.g. Windows-1251) crashes the game on load. Senpy skips such files, so they must be re-saved as UTF-8.",
-        "bad": 'script.rpy saved in Windows-1251: bytes b\'\\xcf\\xf0\\xe8\\xe2\\xe5\\xf2\' instead of text',
+        "bad": "script.rpy saved in Windows-1251: bytes b'\\xcf\\xf0\\xe8\\xe2\\xe5\\xf2' instead of text",
         "good": "Re-save the file with UTF-8 encoding (VS Code: bottom-right status bar -> Save with Encoding -> UTF-8).",
     },
     "RPY101": {
@@ -93,8 +91,8 @@ RULES_DATABASE = {
         "title": "Init phase dependency graph violation",
         "severity": "ERROR",
         "why": "Ren'Py loads files in alphabetical order. If 'a_file.rpy' calls a function in 'init python' that is defined in 'z_file.rpy', the game will crash on startup because 'z_file' hasn't loaded yet.",
-        "bad": '# a_setup.rpy\ninit python:\n    setup_gui()  # Crashes!\n\n# z_helpers.rpy\ninit python:\n    def setup_gui(): ...',
-        "good": '# a_helpers.rpy\ninit python:\n    def setup_gui(): ...\n\n# z_setup.rpy\ninit python:\n    setup_gui()',
+        "bad": "# a_setup.rpy\ninit python:\n    setup_gui()  # Crashes!\n\n# z_helpers.rpy\ninit python:\n    def setup_gui(): ...",
+        "good": "# a_helpers.rpy\ninit python:\n    def setup_gui(): ...\n\n# z_setup.rpy\ninit python:\n    setup_gui()",
     },
     # ---------------- 200: Screen Language & UI ----------------
     "RPY201": {
@@ -185,7 +183,7 @@ RULES_DATABASE = {
     "RPY305": {
         "title": "Unescaped quotes inside dialogue string",
         "severity": "ERROR",
-        "why": "Quotes inside a dialogue string without escaping (\\\") break the string literal parser at startup.",
+        "why": 'Quotes inside a dialogue string without escaping (\\") break the string literal parser at startup.',
         "bad": '"She said "Hello" and smiled."',
         "good": '"She said \\"Hello\\" and smiled."',
     },
@@ -214,8 +212,8 @@ RULES_DATABASE = {
         "title": "Story island / isolated subgraph unreachable from 'start'",
         "severity": "WARNING",
         "why": "A group of scenes references each other in a loop, but no entry point exists from 'start', 'splashscreen', or main menus. This represents unreachable dead content or orphaned story routes.",
-        "bad": 'label route_a:\n    jump route_b\nlabel route_b:\n    jump route_a',
-        "good": '# Connect route to story flow via jump or call from start',
+        "bad": "label route_a:\n    jump route_b\nlabel route_b:\n    jump route_a",
+        "good": "# Connect route to story flow via jump or call from start",
     },
     "RPY310": {
         "title": "Invalid argument count or keyword in 'call' statement",

@@ -124,7 +124,11 @@ label start:
     result, _ = run_code(code, tmp_path)
     # Переменные y, x существуют только локально внутри выражений и не должны
     # протекать в глобальный store как ошибки RPY104/RPY102
-    rpy104_errors = [d for d in result.diagnostics if d.code == "RPY104" and d.line_content.strip().startswith(("x =", "y ="))]
+    rpy104_errors = [
+        d
+        for d in result.diagnostics
+        if d.code == "RPY104" and d.line_content.strip().startswith(("x =", "y ="))
+    ]
     assert len(rpy104_errors) == 0, f"Comprehension locals leaked into RPY104: {rpy104_errors}"
 
 
@@ -164,6 +168,7 @@ label start:
     # Хэши внутри кавычек не должны обрезать строки
     errors = [d for d in result.diagnostics if d.severity == "ERROR"]
     assert len(errors) == 0, f"Comments inside strings corrupted lexical parse: {errors}"
+
 
 def test_chaos_audio_playlist_syntax(tmp_path: Path):
     """[Chaos] Ren'Py audio playlists syntax: play music [ 'intro.ogg', 'loop.ogg' ]."""
@@ -217,7 +222,7 @@ def test_chaos_multiline_dialogue_with_backslashes_and_comments(tmp_path: Path):
     code = """
 label start:
     "First part of line " \
-    "second part with {b}bold tag " \  # Inline comment on continuation line
+    "second part with {b}bold tag " \\  # Inline comment on continuation line
     "that is closed here{/b}."
     return
 """
@@ -265,7 +270,10 @@ label start:
     result, _ = run_code(code, tmp_path)
     # Не должно быть ложных RPY203 (кнопка без action) или RPY206 (вызов функции)
     screen_errors = [d for d in result.diagnostics if d.code in ("RPY203", "RPY206", "RPY201")]
-    assert len(screen_errors) == 0, f"Screen with timer/action lists triggered false alarms: {screen_errors}"
+    assert len(screen_errors) == 0, (
+        f"Screen with timer/action lists triggered false alarms: {screen_errors}"
+    )
+
 
 def test_chaos_renpy_local_sub_labels_with_dots(tmp_path: Path):
     """[Chaos] Ren'Py official sub-labels syntax: 'label .local_name:' and 'jump .local_name'."""
@@ -284,7 +292,9 @@ label outside:
 """
     result, analyzer = run_code(code, tmp_path)
     # 1. Метка .armory (или dungeon_hub.armory) ОБЯЗАНА быть зарегистрирована в словаре labels!
-    assert any(".armory" in name for name in analyzer.labels), "Linter failed to register sub-label with dot!"
+    assert any(".armory" in name for name in analyzer.labels), (
+        "Linter failed to register sub-label with dot!"
+    )
 
     # 2. Прыжок в никуда jump .missing_sub ОБЯЗАН вызывать RPY302!
     rpy302 = [d for d in result.diagnostics if d.code == "RPY302"]
@@ -314,6 +324,7 @@ label shop_hub:
     result, _ = run_code(code, tmp_path)
     rpy401 = [d for d in result.diagnostics if d.code == "RPY401"]
     assert len(rpy401) == 1, f"Linter failed to parse menu choices with arguments: {rpy401}"
+
 
 def test_chaos_multiline_default_nested_collections(tmp_path: Path):
     """[Chaos] Multiline default dictionary spanning multiple lines with comments inside."""
@@ -371,4 +382,6 @@ label start:
     # Линтер должен понять, что корень выражения — объявленная переменная 'hero',
     # и не должен ругаться на get_title или True как на необъявленные переменные (RPY101)
     rpy101_errors = [d for d in result.diagnostics if d.code == "RPY101"]
-    assert len(rpy101_errors) == 0, f"Method call inside interpolation triggered RPY101: {rpy101_errors}"
+    assert len(rpy101_errors) == 0, (
+        f"Method call inside interpolation triggered RPY101: {rpy101_errors}"
+    )

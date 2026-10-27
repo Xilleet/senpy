@@ -61,19 +61,19 @@ from senpy.scope import ScopeStack, ScopeType
 
 def _strip_comment(line: str) -> str:
     """Удаляет комментарий (#), не ломая hex-цвета, экранированные кавычки (\") и тройные кавычки."""
-    if '#' not in line:
+    if "#" not in line:
         return line
-    
+
     in_quote = None
     i = 0
     n = len(line)
     while i < n:
         ch = line[i]
-        if ch == '\\':
+        if ch == "\\":
             i += 2
             continue
         if in_quote in ('"""', "'''"):
-            if line[i:i + 3] == in_quote:
+            if line[i : i + 3] == in_quote:
                 in_quote = None
                 i += 3
                 continue
@@ -84,15 +84,15 @@ def _strip_comment(line: str) -> str:
                 in_quote = None
             i += 1
             continue
-        if line[i:i + 3] in ('"""', "'''"):
-            in_quote = line[i:i + 3]
+        if line[i : i + 3] in ('"""', "'''"):
+            in_quote = line[i : i + 3]
             i += 3
             continue
         if ch in ('"', "'"):
             in_quote = ch
             i += 1
             continue
-        if ch == '#':
+        if ch == "#":
             return line[:i]
         i += 1
     return line
@@ -109,11 +109,11 @@ def _count_bracket_delta(s: str) -> int:
     n = len(s)
     while i < n:
         ch = s[i]
-        if ch == '\\':
+        if ch == "\\":
             i += 2
             continue
         if in_quote in ('"""', "'''"):
-            if s[i:i + 3] == in_quote:
+            if s[i : i + 3] == in_quote:
                 in_quote = None
                 i += 3
                 continue
@@ -124,20 +124,21 @@ def _count_bracket_delta(s: str) -> int:
                 in_quote = None
             i += 1
             continue
-        if s[i:i + 3] in ('"""', "'''"):
-            in_quote = s[i:i + 3]
+        if s[i : i + 3] in ('"""', "'''"):
+            in_quote = s[i : i + 3]
             i += 3
             continue
         if ch in ('"', "'"):
             in_quote = ch
             i += 1
             continue
-        if ch in '([{':
+        if ch in "([{":
             delta += 1
-        elif ch in ')]}':
+        elif ch in ")]}":
             delta -= 1
         i += 1
     return delta
+
 
 def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     """
@@ -150,7 +151,7 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     stripped = first_clean.strip()
 
     bracket_depth = _count_bracket_delta(first_clean)
-    ends_with_backslash = stripped.endswith('\\')
+    ends_with_backslash = stripped.endswith("\\")
 
     # Строка требует склейки ТОЛЬКО если есть явный перенос '\' или незакрытая скобка вне кавычек
     if not ends_with_backslash and bracket_depth <= 0:
@@ -165,7 +166,7 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
 
     while curr_idx + 1 < len(lines):
         clean_stripped = clean_parts[-1].rstrip()
-        ends_with_backslash = clean_stripped.endswith('\\')
+        ends_with_backslash = clean_stripped.endswith("\\")
         if not ends_with_backslash and bracket_depth <= 0:
             break
 
@@ -180,10 +181,23 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
         # новая ключевая конструкция верхнего уровня (label, screen, init, define, default, transform, image, style, layeredimage),
         # принудительно останавливаемся, чтобы не поглотить чужую сцену при сломанной скобке.
         peek_indent = len(peek_raw) - len(peek_raw.lstrip(" "))
-        if not ends_with_backslash and peek_indent == 0 and peek_clean.startswith((
-            "label ", "screen ", "init ", "define ", "default ",
-            "transform ", "image ", "style ", "layeredimage "
-        )):
+        if (
+            not ends_with_backslash
+            and peek_indent == 0
+            and peek_clean.startswith(
+                (
+                    "label ",
+                    "screen ",
+                    "init ",
+                    "define ",
+                    "default ",
+                    "transform ",
+                    "image ",
+                    "style ",
+                    "layeredimage ",
+                )
+            )
+        ):
             break
 
         curr_idx += 1
@@ -200,7 +214,7 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     cleaned_tokens = []
     for p in clean_parts:
         c = p.strip()
-        if c.endswith('\\'):
+        if c.endswith("\\"):
             c = c[:-1].strip()
         if c:
             cleaned_tokens.append(c)
@@ -208,6 +222,7 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     indent = len(clean_parts[0]) - len(clean_parts[0].lstrip())
     joined_clean = (" " * indent) + " ".join(cleaned_tokens)
     return curr_idx + 1, "".join(raw_parts), joined_clean
+
 
 class SenpyAnalyzer:
     def __init__(
@@ -228,38 +243,36 @@ class SenpyAnalyzer:
         self.extra_files = extra_files or []
         self.fix = fix
         self.in_memory_files = {
-            os.path.normcase(os.path.abspath(k)): v
-            for k, v in (in_memory_files or {}).items()
+            os.path.normcase(os.path.abspath(k)): v for k, v in (in_memory_files or {}).items()
         }
 
         # Настройка уровней строгости: переданные аргументы или секция [tool.senpy.severity] из конфига
         if severity_overrides is not None:
             self.severity_overrides = {
-                k.strip().upper(): v.strip().upper()
-                for k, v in severity_overrides.items()
+                k.strip().upper(): v.strip().upper() for k, v in severity_overrides.items()
             }
         else:
             from senpy.cli import load_config
+
             cfg = load_config(self.project_path)
             self.severity_overrides = {
-                k.strip().upper(): v.strip().upper()
-                for k, v in cfg.get("severity", {}).items()
+                k.strip().upper(): v.strip().upper() for k, v in cfg.get("severity", {}).items()
             }
-        
+
         # Базовые множества
         self.user_symbols: set[str] = set()
         self.declared_symbols: set[str] = set(BUILTIN_SYMBOLS)
         self.referenced_labels: set[str] = set()
         self.defined_audio_map: dict[str, str] = {}
         self.registered_audio_channels: set[str] = set(BUILTIN_AUDIO_CHANNELS)
-        
+
         # --- Новые объектные реестры (заменяют 13 старых словарей) ---
         self.variables: dict[str, VariableSymbol] = {}
         self.labels: dict[str, LabelSymbol] = {}
         self.screens: dict[str, ScreenSymbol] = {}
         self.images: dict[str, ImageSymbol] = {}
         self.transforms: dict[str, TransformSymbol] = {}
-        
+
         # Остальные структуры и метаданные сканирования
         self.jump_sources: dict[str, list[tuple[str, int]]] = {}
         self.screen_action_jumps: dict[str, set[str]] = {}
@@ -273,10 +286,11 @@ class SenpyAnalyzer:
         self.fixable_count: int = 0
         self.file_scopes: dict[str, FileScope] = {}
         self._stage1_lines: dict[str, list[str]] = {}
-        
+
     @staticmethod
     def _get_utf16_range(line: str, sub: str | None = None) -> tuple[int, int]:
         return get_utf16_range(line, sub)
+
     @property
     def known_assets(self) -> set[str]:
         return self.assets.known_assets
@@ -314,7 +328,7 @@ class SenpyAnalyzer:
         self.file_scopes.clear()
         self.missing_defaults.clear()
         self.diagnostics.clear()
-        
+
         # Сброс базовых множеств
         self.user_symbols.clear()
         self.declared_symbols = set(BUILTIN_SYMBOLS)
@@ -324,7 +338,7 @@ class SenpyAnalyzer:
         self.used_screens.clear()
         self.screen_uses.clear()
         self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
-        
+
         # Очистка новых объектных реестров
         self.variables.clear()
         self.labels.clear()
@@ -335,7 +349,7 @@ class SenpyAnalyzer:
         self.screen_action_jumps.clear()
         self.used_screens.clear()
         self.screen_uses.clear()
-        
+
         # Сброс флагов и счётчиков
         self.has_dynamic_jumps = False
         self.total_lines = 0
@@ -399,7 +413,9 @@ class SenpyAnalyzer:
 
         # [2/2] Анализ правил (Tier 2 Cache: если глобальные символы не изменились — мгновенно отдаем диагностики)
         current_global_hash = self.cache_manager.compute_global_hash(self)
-        is_global_unchanged = (old_manifest is not None and old_manifest.global_symbol_hash == current_global_hash)
+        is_global_unchanged = (
+            old_manifest is not None and old_manifest.global_symbol_hash == current_global_hash
+        )
 
         for i, file_path in enumerate(rpy_files, 1):
             fname = os.path.basename(file_path)
@@ -514,7 +530,9 @@ class SenpyAnalyzer:
         # 2. Очистка jump_sources только для данного файла
         for tgt in old_scope.jump_sources:
             if tgt in self.jump_sources:
-                self.jump_sources[tgt] = [loc for loc in self.jump_sources[tgt] if loc[0] != file_path]
+                self.jump_sources[tgt] = [
+                    loc for loc in self.jump_sources[tgt] if loc[0] != file_path
+                ]
                 if not self.jump_sources[tgt]:
                     self.jump_sources.pop(tgt, None)
 
@@ -527,7 +545,9 @@ class SenpyAnalyzer:
                 self.user_symbols.discard(sym)
 
         for sym in old_scope.declared_symbols:
-            if sym not in BUILTIN_SYMBOLS and not any(sym in s.declared_symbols for s in other_scopes):
+            if sym not in BUILTIN_SYMBOLS and not any(
+                sym in s.declared_symbols for s in other_scopes
+            ):
                 self.declared_symbols.discard(sym)
 
         for sym in old_scope.referenced_labels:
@@ -541,13 +561,15 @@ class SenpyAnalyzer:
         for scr_name in getattr(old_scope, "screen_action_jumps", {}):
             if not any(scr_name in getattr(s, "screen_action_jumps", {}) for s in other_scopes):
                 self.screen_action_jumps.pop(scr_name, None)
-                
+
         for src_name in getattr(old_scope, "screen_uses", {}):
             if not any(src_name in getattr(s, "screen_uses", {}) for s in other_scopes):
                 self.screen_uses.pop(src_name, None)
 
         for chan in old_scope.registered_audio_channels:
-            if chan not in BUILTIN_AUDIO_CHANNELS and not any(chan in s.registered_audio_channels for s in other_scopes):
+            if chan not in BUILTIN_AUDIO_CHANNELS and not any(
+                chan in s.registered_audio_channels for s in other_scopes
+            ):
                 self.registered_audio_channels.discard(chan)
 
     def _purge_file_symbols(self, norm_path: str) -> None:
@@ -658,7 +680,7 @@ class SenpyAnalyzer:
             if norm_path in self.in_memory_files:
                 lines = self.in_memory_files[norm_path].splitlines(keepends=True)
             else:
-                with open(file_path, "r", encoding="utf-8", newline="") as f:
+                with open(file_path, encoding="utf-8", newline="") as f:
                     lines = f.readlines()
                 self._stage1_lines[norm_path] = lines
 
@@ -717,8 +739,13 @@ class SenpyAnalyzer:
 
                     inferred_t = infer_expr_type(val_str, known_vars=self.variables)
                     var_sym = VariableSymbol(
-                        name=var, file_path=file_path, line_number=idx + 1, code_line=clean,
-                        type_name=inferred_t, is_constant=False, is_character=False
+                        name=var,
+                        file_path=file_path,
+                        line_number=idx + 1,
+                        code_line=clean,
+                        type_name=inferred_t,
+                        is_constant=False,
+                        is_character=False,
                     )
                     scope.variables[var] = var_sym
                     self.variables[var] = var_sym
@@ -779,8 +806,13 @@ class SenpyAnalyzer:
                     is_const = "." not in clean.split("=")[0]
                     is_char = "Character" in clean or "DynamicCharacter" in clean
                     var_sym = VariableSymbol(
-                        name=var, file_path=file_path, line_number=idx + 1, code_line=clean,
-                        type_name=inferred_t, is_constant=is_const, is_character=is_char
+                        name=var,
+                        file_path=file_path,
+                        line_number=idx + 1,
+                        code_line=clean,
+                        type_name=inferred_t,
+                        is_constant=is_const,
+                        is_character=is_char,
                     )
                     scope.variables[var] = var_sym
                     self.variables[var] = var_sym
@@ -823,7 +855,11 @@ class SenpyAnalyzer:
                 if m_label:
                     raw_name = m_label.group(1)
                     if raw_name.startswith("."):
-                        label_name = f"{current_global_label}{raw_name}" if current_global_label else raw_name
+                        label_name = (
+                            f"{current_global_label}{raw_name}"
+                            if current_global_label
+                            else raw_name
+                        )
                     else:
                         label_name = raw_name
                         current_global_label = label_name
@@ -844,8 +880,11 @@ class SenpyAnalyzer:
                     else:
                         sig = parse_signature(m_label.group(2))
                         lbl_sym = LabelSymbol(
-                            name=label_name, file_path=file_path, line_number=idx + 1,
-                            code_line=clean, signature=sig
+                            name=label_name,
+                            file_path=file_path,
+                            line_number=idx + 1,
+                            code_line=clean,
+                            signature=sig,
                         )
                         scope.labels[label_name] = lbl_sym
                         self.labels[label_name] = lbl_sym
@@ -865,10 +904,14 @@ class SenpyAnalyzer:
                     if m_jump_in_label:
                         raw_target_j = m_jump_in_label.group(1)
                         if raw_target_j.startswith("."):
-                            target_j = f"{current_global_label}{raw_target_j}" if current_global_label else raw_target_j
+                            target_j = (
+                                f"{current_global_label}{raw_target_j}"
+                                if current_global_label
+                                else raw_target_j
+                            )
                         else:
                             target_j = raw_target_j
-                        
+
                         if current_label in scope.labels:
                             scope.labels[current_label].outgoing_jumps.add(target_j)
                         if current_label in self.labels:
@@ -877,15 +920,19 @@ class SenpyAnalyzer:
                         # зависеть от stage-2 (детерминизм кэша)
                         scope.referenced_labels.add(target_j)
                         self.referenced_labels.add(target_j)
-                        
+
                         self.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
                         scope.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
 
                 # Задача 5: рёбра из экранов (Jump/Call-экшены) и использования экранов
                 if current_screen:
                     for m_act in RE_SCREEN_JUMP_ACTION.finditer(clean):
-                        scope.screen_action_jumps.setdefault(current_screen, set()).add(m_act.group(1))
-                        self.screen_action_jumps.setdefault(current_screen, set()).add(m_act.group(1))
+                        scope.screen_action_jumps.setdefault(current_screen, set()).add(
+                            m_act.group(1)
+                        )
+                        self.screen_action_jumps.setdefault(current_screen, set()).add(
+                            m_act.group(1)
+                        )
 
                 for m_usage in RE_SCREEN_CALL.finditer(clean):
                     scope.used_screens.add(m_usage.group(1))
@@ -914,8 +961,12 @@ class SenpyAnalyzer:
                             attrs.add(m_attr.group(1).strip())
 
                     img_sym = ImageSymbol(
-                        name=limg_tag, file_path=file_path, line_number=idx + 1,
-                        body="layeredimage", is_layered=True, attributes=attrs
+                        name=limg_tag,
+                        file_path=file_path,
+                        line_number=idx + 1,
+                        body="layeredimage",
+                        is_layered=True,
+                        attributes=attrs,
                     )
                     scope.images[limg_tag] = img_sym
                     self.images[limg_tag] = img_sym
@@ -932,11 +983,11 @@ class SenpyAnalyzer:
                         prev_file = self.images[img_name].file_path
                         prev_line = self.images[img_name].line_number
                         prev_body = self.images[img_name].body
-                        is_exact_dup = (img_body == prev_body)
+                        is_exact_dup = img_body == prev_body
                         msg = (
                             f"Duplicate image declaration '{img_name}'. Identical to declaration at {os.path.basename(prev_file)}:{prev_line}."
-                            if is_exact_dup else
-                            f"Image '{img_name}' is redefined (override). Previously declared at {os.path.basename(prev_file)}:{prev_line}."
+                            if is_exact_dup
+                            else f"Image '{img_name}' is redefined (override). Previously declared at {os.path.basename(prev_file)}:{prev_line}."
                         )
                         self.diagnostics.append(
                             Diagnostic(
@@ -949,21 +1000,31 @@ class SenpyAnalyzer:
                             )
                         )
                     img_sym = ImageSymbol(
-                        name=img_name, file_path=file_path, line_number=idx + 1,
-                        body=img_body, is_layered=False
+                        name=img_name,
+                        file_path=file_path,
+                        line_number=idx + 1,
+                        body=img_body,
+                        is_layered=False,
                     )
                     scope.images[img_name] = img_sym
                     self.images[img_name] = img_sym
                     idx = next_idx
                     continue
 
-                m_chan = re.search(r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', clean)
+                m_chan = re.search(
+                    r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', clean
+                )
                 if m_chan:
                     chan_name = m_chan.group(1).lower()
                     scope.registered_audio_channels.add(chan_name)
                     self.registered_audio_channels.add(chan_name)
 
-                if "renpy.call(" in clean or "renpy.jump(" in clean or "call expression" in clean or "jump expression" in clean:
+                if (
+                    "renpy.call(" in clean
+                    or "renpy.jump(" in clean
+                    or "call expression" in clean
+                    or "jump expression" in clean
+                ):
                     self.has_dynamic_jumps = True
 
                 if '"' in clean or "'" in clean:
@@ -991,10 +1052,16 @@ class SenpyAnalyzer:
             pass
 
     def _collect_from_python_block(
-        self, code_lines: list[str], scope: FileScope | None = None, file_path: str = "", start_line: int = 1
+        self,
+        code_lines: list[str],
+        scope: FileScope | None = None,
+        file_path: str = "",
+        start_line: int = 1,
     ) -> None:
         full_code = "".join(code_lines)
-        for m in re.finditer(r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', full_code):
+        for m in re.finditer(
+            r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', full_code
+        ):
             chan = m.group(1).lower()
             if scope is not None:
                 scope.registered_audio_channels.add(chan)
@@ -1010,18 +1077,23 @@ class SenpyAnalyzer:
             self.declared_symbols.add(name)
             if file_path:
                 var_sym = VariableSymbol(
-                    name=name, file_path=file_path, line_number=real_line,
-                    code_line=f"# definition of {name}", is_constant=False
+                    name=name,
+                    file_path=file_path,
+                    line_number=real_line,
+                    code_line=f"# definition of {name}",
+                    is_constant=False,
                 )
                 if scope is not None:
                     scope.variables[name] = var_sym
                 self.variables[name] = var_sym
-        
+
         if scope is not None:
             scope.referenced_labels.update(refs)
         self.referenced_labels.update(refs)
 
-    def _consume_block(self, lines: list[str], start_idx: int, header_indent: int) -> tuple[int, list[str]]:
+    def _consume_block(
+        self, lines: list[str], start_idx: int, header_indent: int
+    ) -> tuple[int, list[str]]:
         block = []
         idx = start_idx
         while idx < len(lines):
@@ -1097,7 +1169,7 @@ class SenpyAnalyzer:
         prefix = base_tag + " "
         for valid_img in all_valid:
             if valid_img.startswith(prefix):
-                for token in valid_img[len(prefix):].split():
+                for token in valid_img[len(prefix) :].split():
                     attrs.add(token)
         return attrs
 
@@ -1109,7 +1181,7 @@ class SenpyAnalyzer:
             elif norm_path in self._stage1_lines:
                 lines = self._stage1_lines.pop(norm_path)
             else:
-                with open(file_path, "r", encoding="utf-8", newline="") as f:
+                with open(file_path, encoding="utf-8", newline="") as f:
                     lines = f.readlines()
             if file_path.endswith("_ren.py"):
                 return
@@ -1156,14 +1228,13 @@ class SenpyAnalyzer:
                     if block_lines:
                         self._scan_python_assets(block_lines)
                         import textwrap
+
                         code = textwrap.dedent("".join(block_lines))
                         self.python_ast.check_init_dependency(
                             code, file_path, idx + 2, noqa_map, lines
                         )
                         # Также проверяем стандартные правила (устаревший API и т.д.)
-                        self.python_ast.check_python_ast(
-                            code, file_path, idx + 2, noqa_map, lines
-                        )
+                        self.python_ast.check_python_ast(code, file_path, idx + 2, noqa_map, lines)
                     idx = next_idx
                     continue
 
@@ -1205,7 +1276,14 @@ class SenpyAnalyzer:
 
                 # 4. DialogueChecker (RPY302, RPY305, RPY306, RPY308)
                 _, _ = dialogue_checker.check_line(
-                    file_path, idx, raw_line, clean, scope_stack, noqa_map, lines, state_checker.branch_uninitialized
+                    file_path,
+                    idx,
+                    raw_line,
+                    clean,
+                    scope_stack,
+                    noqa_map,
+                    lines,
+                    state_checker.branch_uninitialized,
                 )
 
                 # 5. Проверка кавычек, интерполяций и тегов (RPY101, RPY301, RPY304)
@@ -1233,6 +1311,7 @@ class SenpyAnalyzer:
 
         except (UnicodeDecodeError, OSError):
             pass
+
     def _check_and_fix_quoted_strings(
         self,
         file_path: str,
@@ -1316,7 +1395,14 @@ class SenpyAnalyzer:
         lines: list[str] | None = None,
     ) -> None:
         self.python_ast.check_screen_mutation(
-            py_code, file_path, line_idx, line_content, screen_name, screen_local_symbols, noqa_map, lines
+            py_code,
+            file_path,
+            line_idx,
+            line_content,
+            screen_name,
+            screen_local_symbols,
+            noqa_map,
+            lines,
         )
 
     def _check_python_ast(
@@ -1349,7 +1435,7 @@ class SenpyAnalyzer:
             if norm_path in self.in_memory_files:
                 lines = self.in_memory_files[norm_path].splitlines(keepends=True)
             else:
-                with open(file_path, "r", encoding="utf-8", newline="") as f:
+                with open(file_path, encoding="utf-8", newline="") as f:
                     lines = f.readlines()
         except UnicodeDecodeError as e:
             self._emit_encoding_error(file_path, e)
@@ -1368,8 +1454,12 @@ class SenpyAnalyzer:
         (исходный_текст, строка_old, текст_перевода, строка_new)
         Устойчив к комментариям, пустым строкам, voice/with и пропущенным new.
         """
-        re_old = re.compile(r'^\s*old\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')')
-        re_new = re.compile(r'^\s*new\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')')
+        re_old = re.compile(
+            r'^\s*old\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
+        )
+        re_new = re.compile(
+            r'^\s*new\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
+        )
         re_dialogue_old = re.compile(
             r'^\s*#\s*(?:(?:\w+|"[^"]*"|\'[^\']*\')(?:\s+\w+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
         )
@@ -1431,6 +1521,7 @@ class SenpyAnalyzer:
 
     def _validate_tl_pairs(self, pairs: list[tuple[str, int, str, int]], file_path: str):
         from collections import Counter
+
         re_var = re.compile(r"\[([^\W\d]\w*)(?:![a-zA-Z]+)?\]")
         re_tag = re.compile(r"\{(/?[a-zA-Z_]+)(?:=[^}]*)?\}")
 
@@ -1469,7 +1560,9 @@ class SenpyAnalyzer:
                 if extra:
                     diffs.append(f"typo/extra: {', '.join(f'[{v}]' for v in extra)}")
 
-                start_c, end_c = self._get_utf16_range(new_txt, next(iter(extra)) if extra else None)
+                start_c, end_c = self._get_utf16_range(
+                    new_txt, next(iter(extra)) if extra else None
+                )
                 self.diagnostics.append(
                     Diagnostic(
                         file_path=file_path,

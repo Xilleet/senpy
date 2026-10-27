@@ -124,15 +124,31 @@ ignore = [
     "B008",    # function call in default argument — используем в dataclass'ах
     "SIM108",  # if-else → ternary — иногда читаемость важнее
     "B904",    # raise from — пока не везде починено, добавим в отдельной задаче
+    # ECO-10 / CI fix: unsafe fixes, которые могут изменить поведение.
+    # Отключаем до отдельного аудита (post-0.5.0).
+    "B007",    # unused loop control variable — unsafe fix (переименование в _x)
+    "B905",    # zip without strict= — unsafe fix (может изменить поведение на неравных длинах)
+    "N812",    # lowercase imported as non-lowercase — стилистическое, не критично
+    "N806",    # non-lowercase variable in function — стилистическое
+    "SIM110",  # reimplemented-builtin (any/all вместо for) — иногда читаемость важнее
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Тесты могут иметь неиспользуемые импорты (для side effects) и длинные строки
-"tests/**/*.py" = ["F401", "E501"]
+# Тесты могут иметь неиспользуемые импорты (для side effects) и длинные строки.
+# W291/W293 (trailing/blank whitespace) — легитимны внутри .rpy-строк в тестах
+# (test_performance.py, test_mermaid_screens.py и др. содержат .rpy код как данные).
+"tests/**/*.py" = ["F401", "E501", "W291", "W293", "W605"]
 # __init__. — часто re-export
 "senpy/__init__.py" = ["F401"]
 # conftest.py — магия pytest, не трогаем
 "tests/conftest.py" = ["E402"]
+# Скрипты с sys.path.insert перед import — легитимный E402
+"scripts/**/*.py" = ["E402"]
+# html_report.py — содержит HTML/CSS как f-string, whitespace легитимен внутри шаблона
+"senpy/html_report.py" = ["W291", "W293"]
+# analyzer.py, server.py — warnings.filterwarnings() ДО импортов (подавление pygls warnings)
+"senpy/analyzer.py" = ["E402"]
+"senpy/server.py" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"

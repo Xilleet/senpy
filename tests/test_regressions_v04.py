@@ -25,7 +25,6 @@ def test_regression_cli_auto_detects_traceback_without_flag(tmp_path: Path):
     game_dir.mkdir(parents=True, exist_ok=True)
     (game_dir / "script.rpy").write_text("label start:\n    return\n", encoding="utf-8")
 
-    # Имитируем реальный лог падения из DDLC
     traceback_content = """I'm sorry, but an uncaught exception occurred.
 While running game code:
   File "game/un.rpy", line 5, in script
@@ -33,12 +32,10 @@ AttributeError: 'NoneType' object has no attribute 'something'
 """
     (tmp_path / "traceback.txt").write_text(traceback_content, encoding="utf-8")
 
-    # Запускаем CLI БЕЗ флага --traceback (раньше тут падал UnboundLocalError)
     test_args = ["senpy", str(tmp_path)]
     with patch("sys.argv", test_args):
         with pytest.raises(SystemExit) as exc_info:
             cli_main()
-        # Должен выйти с кодом 0 (чистый скрипт), а не упасть с грохотом
         assert exc_info.value.code == 0
 
 
@@ -47,20 +44,25 @@ def test_regression_rpy109_builtins_and_dotted_defines(tmp_path: Path):
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True, exist_ok=True)
 
-    # definitions.rpy загружается РАНЬШЕ screens.rpy
-    (game_dir / "definitions.rpy").write_text("""
+    (game_dir / "definitions.rpy").write_text(
+        """
 init python:
     config.window_hide_transition = dissolve
     config.window_show_transition = fade
     gui.init(1280, 720)
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
 
-    (game_dir / "screens.rpy").write_text("""
+    (game_dir / "screens.rpy").write_text(
+        """
 define config.has_quicksave = True
 define gui.text_size = 30
 screen main_menu():
     text "Menu"
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     result = analyzer.run(quiet=True)
@@ -68,6 +70,7 @@ screen main_menu():
     rpy109_errors = [d for d in result.diagnostics if d.code == "RPY109"]
     # Ни config, ни gui, ни dissolve не должны вызывать RPY109
     assert len(rpy109_errors) == 0, f"False RPY109 detected: {[d.message for d in rpy109_errors]}"
+
 
 def test_regression_object_model_integrity_across_subsystems(tmp_path: Path):
     """[Regression v0.4.0] Verify unified Symbol objects hold correct metadata across passes."""

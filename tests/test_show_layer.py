@@ -9,6 +9,7 @@
 ложный RPY502 "Sprite or background 'layer' not found in assets or 'image'
 definitions" на каждом сбросе камеры/трансформа слоя.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -35,8 +36,7 @@ label start:
     return
 """
     result, _ = run_senpy_on_code(script, tmp_path)
-    fps = [d for d in result.diagnostics
-           if d.code == "RPY502" and "show layer" in d.line_content]
+    fps = [d for d in result.diagnostics if d.code == "RPY502" and "show layer" in d.line_content]
     assert fps == [], f"Ложный RPY502 на легальном show layer: {[d.message for d in fps]}"
 
 

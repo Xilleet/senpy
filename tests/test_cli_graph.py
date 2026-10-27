@@ -7,6 +7,7 @@ cp.exec и парсит stdout регулярками ```mermaid```/```senpy-met
 и ронял процесс (Senpy Graph Error), (в) piped stdout в cp1251 портил
 кириллицу в senpy-meta.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,7 +20,7 @@ def _write_project(tmp_path: Path) -> Path:
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True, exist_ok=True)
     (game_dir / "script.rpy").write_text(
-        '''
+        """
 screen stats_screen():
     textbutton "Статы" action Jump("stats_label")
 
@@ -28,7 +29,7 @@ label stats_label:
 
 label start:
     call screen stats_screen
-''',
+""",
         encoding="utf-8",
     )
     return tmp_path
@@ -37,7 +38,8 @@ label start:
 def _run_cli(args: list[str], tmp_path: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "senpy.cli", str(tmp_path), *args],
-        check=False, capture_output=True,
+        check=False,
+        capture_output=True,
         text=True,
         encoding="utf-8",
         timeout=120,

@@ -35,11 +35,13 @@ from senpy.signature import validate_call_arguments
 
 class IfBlockContext:
     """Контекст активного блока if/elif/else в анализе потока управления."""
+
     def __init__(self, indent: int, line: int):
         self.indent = indent
         self.line = line
         self.branches: list[FlowBranch] = []
         self.current_branch: FlowBranch | None = None
+
 
 if TYPE_CHECKING:
     from senpy.analyzer import SenpyAnalyzer
@@ -84,12 +86,12 @@ class FormattingChecker(BaseChecker):
             self.analyzer._add_diagnostic(d, noqa_map)
 
         # RPY001: Проверка табуляции в отступах
-        leading_ws = new_raw_line[:len(new_raw_line) - len(new_raw_line.lstrip())]
+        leading_ws = new_raw_line[: len(new_raw_line) - len(new_raw_line.lstrip())]
         if "\t" in leading_ws:
             self.analyzer.fixable_count += 1
             if self.analyzer.fix:
                 fixed_leading = leading_ws.replace("\t", "    ")
-                new_raw_line = fixed_leading + new_raw_line[len(leading_ws):]
+                new_raw_line = fixed_leading + new_raw_line[len(leading_ws) :]
                 lines[idx] = new_raw_line
                 file_modified = True
                 self.analyzer.fixed_count += 1
@@ -115,7 +117,10 @@ class FormattingChecker(BaseChecker):
         # RPY002: Фигурные/типографские кавычки в коде
         if any(q in clean_line for q in SMART_QUOTES) and (
             stripped.startswith(("$", "if ", "elif ", "default ", "define "))
-            or (scope_stack.current_screen_name() is not None and not stripped.startswith(("text ", "textbutton ")))
+            or (
+                scope_stack.current_screen_name() is not None
+                and not stripped.startswith(("text ", "textbutton "))
+            )
         ):
             self.analyzer.fixable_count += 1
             if self.analyzer.fix:
@@ -135,7 +140,7 @@ class FormattingChecker(BaseChecker):
                         code="RPY002",
                         message="Smart/curly quotes (“ ” ‘ ’ « ») detected in code statement. Will cause Python SyntaxError.",
                         fix_title="Replace smart quotes with standard quotes",
-                        fix_replacement=''.join(SMART_QUOTES.get(c, c) for c in new_raw_line),
+                        fix_replacement="".join(SMART_QUOTES.get(c, c) for c in new_raw_line),
                     ),
                     noqa_map,
                 )
@@ -168,14 +173,20 @@ class ScreenChecker(BaseChecker):
 
             # RPY202 & RPY208: Проверка переменных в screen Actions (SetVariable, ToggleVariable)
             if "SetVariable" in stripped or "ToggleVariable" in stripped:
-                for m_var_act in re.finditer(r'\b(SetVariable|ToggleVariable)\s*\(\s*["\']([^\W\d]\w*)["\']', stripped):
+                for m_var_act in re.finditer(
+                    r'\b(SetVariable|ToggleVariable)\s*\(\s*["\']([^\W\d]\w*)["\']', stripped
+                ):
                     act_name = m_var_act.group(1)
                     target_var = m_var_act.group(2)
                     local_syms = scope_stack.get_local_symbols()
 
                     # RPY208: Использование глобального SetVariable / ToggleVariable на локальной переменной экрана
                     if target_var in local_syms and target_var not in SCREEN_LOCAL_IGNORE:
-                        correct_act = "SetScreenVariable" if act_name == "SetVariable" else "ToggleScreenVariable"
+                        correct_act = (
+                            "SetScreenVariable"
+                            if act_name == "SetVariable"
+                            else "ToggleScreenVariable"
+                        )
                         start_c, end_c = self.analyzer._get_utf16_range(raw_line, act_name)
                         self.analyzer._add_diagnostic(
                             Diagnostic(
@@ -205,7 +216,9 @@ class ScreenChecker(BaseChecker):
                         and target_var not in local_syms
                         and not target_var.startswith("_")
                     ):
-                        matches = difflib.get_close_matches(target_var, list(self.analyzer.user_symbols), n=1, cutoff=0.6)
+                        matches = difflib.get_close_matches(
+                            target_var, list(self.analyzer.user_symbols), n=1, cutoff=0.6
+                        )
                         hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
                         start_c, end_c = self.analyzer._get_utf16_range(raw_line, target_var)
                         self.analyzer._add_diagnostic(
@@ -229,11 +242,18 @@ class ScreenChecker(BaseChecker):
 
             # RPY204: Проверка экранов в screen Actions (Show, ShowMenu, Hide)
             if any(act in stripped for act in ("Show", "ShowMenu", "Hide")):
-                for m_scr_act in re.finditer(r'\b(?:Show|ShowMenu|Hide)\s*\(\s*["\']([^\W\d]\w*)["\']', stripped):
+                for m_scr_act in re.finditer(
+                    r'\b(?:Show|ShowMenu|Hide)\s*\(\s*["\']([^\W\d]\w*)["\']', stripped
+                ):
                     target_scr = m_scr_act.group(1)
-                    if target_scr not in self.analyzer.screens and target_scr not in BUILTIN_SCREENS:
+                    if (
+                        target_scr not in self.analyzer.screens
+                        and target_scr not in BUILTIN_SCREENS
+                    ):
                         all_screens = list(self.analyzer.screens.keys()) + list(BUILTIN_SCREENS)
-                        matches = difflib.get_close_matches(target_scr, all_screens, n=1, cutoff=0.6)
+                        matches = difflib.get_close_matches(
+                            target_scr, all_screens, n=1, cutoff=0.6
+                        )
                         hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
                         start_c, end_c = self.analyzer._get_utf16_range(raw_line, target_scr)
                         self.analyzer._add_diagnostic(
@@ -275,7 +295,9 @@ class ScreenChecker(BaseChecker):
                 if m_act:
                     fn_name = m_act.group(1)
                     if fn_name not in BUILTIN_ACTIONS:
-                        start_c, end_c = self.analyzer._get_utf16_range(raw_line, f"action {fn_name}(")
+                        start_c, end_c = self.analyzer._get_utf16_range(
+                            raw_line, f"action {fn_name}("
+                        )
                         self.analyzer._add_diagnostic(
                             Diagnostic(
                                 file_path=file_path,
@@ -292,7 +314,11 @@ class ScreenChecker(BaseChecker):
                         )
 
         # RPY204: Вызов несуществующего экрана (проверяем по self.analyzer.screens)
-        m_scr = RE_SCREEN_CALL.match(stripped) if stripped.startswith(("show screen", "call screen", "use ")) else None
+        m_scr = (
+            RE_SCREEN_CALL.match(stripped)
+            if stripped.startswith(("show screen", "call screen", "use "))
+            else None
+        )
         if m_scr:
             screen_target = m_scr.group(1)
             if screen_target not in self.analyzer.screens and screen_target not in BUILTIN_SCREENS:
@@ -316,10 +342,17 @@ class ScreenChecker(BaseChecker):
         # RPY207: Несовпадение аргументов при вызове экрана
         if m_scr:
             screen_target = m_scr.group(1)
-            if screen_target in self.analyzer.screens and self.analyzer.screens[screen_target].signature:
+            if (
+                screen_target in self.analyzer.screens
+                and self.analyzer.screens[screen_target].signature
+            ):
                 sig = self.analyzer.screens[screen_target].signature
-                m_scr_args = re.search(r'\b(?:show\s+screen|call\s+screen|use)\s+[^\W\d]\w*\s*(?:\((.*?)\))?', stripped)
-                scr_args = m_scr_args.group(1) if m_scr_args and m_scr_args.group(1) is not None else None
+                m_scr_args = re.search(
+                    r"\b(?:show\s+screen|call\s+screen|use)\s+[^\W\d]\w*\s*(?:\((.*?)\))?", stripped
+                )
+                scr_args = (
+                    m_scr_args.group(1) if m_scr_args and m_scr_args.group(1) is not None else None
+                )
                 err_msg = validate_call_arguments(sig, scr_args)
                 if err_msg:
                     self.analyzer._add_diagnostic(
@@ -389,7 +422,11 @@ class AssetChecker(BaseChecker):
         is_in_screen = scope_stack.current_screen_name() is not None
 
         # RPY502: Проверка show / scene
-        m_show = RE_SHOW_SCENE.match(stripped) if (not is_in_screen and stripped.startswith(("show ", "scene "))) else None
+        m_show = (
+            RE_SHOW_SCENE.match(stripped)
+            if (not is_in_screen and stripped.startswith(("show ", "scene ")))
+            else None
+        )
         if m_show:
             raw_tokens = m_show.group(2).split()
             img_tokens = []
@@ -407,7 +444,6 @@ class AssetChecker(BaseChecker):
             if img_tokens and img_tokens[0] == "layer" and m_show.group(1) == "show":
                 img_tokens = []
 
-
             if img_tokens:
                 full_img_tag = " ".join(img_tokens)
                 self.analyzer._mark_asset_used(full_img_tag)
@@ -415,12 +451,15 @@ class AssetChecker(BaseChecker):
                 all_valid = self.analyzer.valid_images.union(self.analyzer.images.keys())
 
                 has_base = (
-                    (base_tag in self.analyzer.images and self.analyzer.images[base_tag].is_layered)
-                    or any(img.startswith(base_tag + " ") or img == base_tag for img in all_valid)
-                )
+                    base_tag in self.analyzer.images and self.analyzer.images[base_tag].is_layered
+                ) or any(img.startswith(base_tag + " ") or img == base_tag for img in all_valid)
                 is_single_tag = len(img_tokens) == 1 and m_show.group(1) == "show"
 
-                if full_img_tag in all_valid or full_img_tag in BUILTIN_COLORS or (is_single_tag and has_base):
+                if (
+                    full_img_tag in all_valid
+                    or full_img_tag in BUILTIN_COLORS
+                    or (is_single_tag and has_base)
+                ):
                     pass
                 elif has_base:
                     valid_attrs = self.analyzer._get_tag_known_attributes(base_tag, all_valid)
@@ -434,7 +473,9 @@ class AssetChecker(BaseChecker):
 
                     if not (valid_attrs and not invalid_attrs):
                         err_attr = invalid_attrs[0] if invalid_attrs else full_img_tag
-                        matches = difflib.get_close_matches(err_attr, list(valid_attrs), n=1, cutoff=0.6)
+                        matches = difflib.get_close_matches(
+                            err_attr, list(valid_attrs), n=1, cutoff=0.6
+                        )
                         hint = f" (did you mean attribute '{matches[0]}' ?)" if matches else ""
                         start_c, end_c = self.analyzer._get_utf16_range(raw_line, err_attr)
                         self.analyzer._add_diagnostic(
@@ -455,7 +496,9 @@ class AssetChecker(BaseChecker):
                     all_tags = {img.split()[0] for img in all_valid}.union(
                         k for k, v in self.analyzer.images.items() if v.is_layered
                     )
-                    matched_tags = difflib.get_close_matches(base_tag, list(all_tags), n=1, cutoff=0.7)
+                    matched_tags = difflib.get_close_matches(
+                        base_tag, list(all_tags), n=1, cutoff=0.7
+                    )
                     hint = f" (did you mean base tag '{matched_tags[0]}' ?)" if matched_tags else ""
                     start_c, end_c = self.analyzer._get_utf16_range(raw_line, base_tag)
                     self.analyzer._add_diagnostic(
@@ -474,18 +517,20 @@ class AssetChecker(BaseChecker):
                     )
 
             # RPY502: Проверка валидности ATL-трансформаций в конструкции 'show ... at ...'
-            m_at = re.search(r'\bat\s+([^:]+?)(?:\s+(?:with|as|zorder|behind|onlayer)\b|:|$)', stripped)
+            m_at = re.search(
+                r"\bat\s+([^:]+?)(?:\s+(?:with|as|zorder|behind|onlayer)\b|:|$)", stripped
+            )
             if m_at:
                 at_clause = m_at.group(1)
                 parts: list[str] = []
                 curr: list[str] = []
                 paren_depth = 0
                 for ch in at_clause:
-                    if ch == '(':
+                    if ch == "(":
                         paren_depth += 1
-                    elif ch == ')':
+                    elif ch == ")":
                         paren_depth -= 1
-                    elif ch == ',' and paren_depth == 0:
+                    elif ch == "," and paren_depth == 0:
                         parts.append("".join(curr).strip())
                         curr = []
                         continue
@@ -502,8 +547,12 @@ class AssetChecker(BaseChecker):
                         trans_name not in self.analyzer.declared_symbols
                         and trans_name not in self.analyzer.user_symbols
                     ):
-                        all_candidates = [s for s in self.analyzer.declared_symbols if s.isidentifier()]
-                        matches = difflib.get_close_matches(trans_name, all_candidates, n=1, cutoff=0.6)
+                        all_candidates = [
+                            s for s in self.analyzer.declared_symbols if s.isidentifier()
+                        ]
+                        matches = difflib.get_close_matches(
+                            trans_name, all_candidates, n=1, cutoff=0.6
+                        )
                         hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
                         start_c, end_c = self.analyzer._get_utf16_range(raw_line, trans_name)
                         self.analyzer._add_diagnostic(
@@ -525,10 +574,16 @@ class AssetChecker(BaseChecker):
         if not is_in_screen and not stripped.startswith(("$", "python")):
             trans_expr: str | None = None
             if stripped.startswith(("show ", "scene ")):
-                m_sw = re.search(r'\bwith\s+([^:#]+?)(?:\s+(?:onlayer|zorder|behind|as)\b|:|$)', stripped)
+                m_sw = re.search(
+                    r"\bwith\s+([^:#]+?)(?:\s+(?:onlayer|zorder|behind|as)\b|:|$)", stripped
+                )
                 if m_sw:
                     trans_expr = m_sw.group(1)
-            elif stripped.startswith(("with ", "with\t")) and not stripped.endswith(":") and not re.search(r'\bas\b', stripped):
+            elif (
+                stripped.startswith(("with ", "with\t"))
+                and not stripped.endswith(":")
+                and not re.search(r"\bas\b", stripped)
+            ):
                 m_w = re.match(r"^with\s+([^:#]+)", stripped)
                 if m_w:
                     trans_expr = m_w.group(1)
@@ -545,10 +600,9 @@ class AssetChecker(BaseChecker):
         m_stop = RE_STOP_STATEMENT.match(stripped) if stripped.startswith("stop ") else None
         if m_stop:
             stop_channel = m_stop.group(1).lower()
-            if (
-                stop_channel not in self.analyzer.registered_audio_channels
-                and stop_channel not in {k.lower() for k in self.analyzer.defined_audio_map}
-            ):
+            if stop_channel not in self.analyzer.registered_audio_channels and stop_channel not in {
+                k.lower() for k in self.analyzer.defined_audio_map
+            }:
                 start_c, end_c = self.analyzer._get_utf16_range(raw_line, m_stop.group(1))
                 self.analyzer._add_diagnostic(
                     Diagnostic(
@@ -568,13 +622,17 @@ class AssetChecker(BaseChecker):
                 )
 
         # RPY501 & RPY505: Проверка play / queue (каналы и файлы)
-        m_audio = RE_AUDIO_STATEMENT.match(stripped) if stripped.startswith(("play ", "queue ")) else None
+        m_audio = (
+            RE_AUDIO_STATEMENT.match(stripped) if stripped.startswith(("play ", "queue ")) else None
+        )
         if m_audio:
             channel = m_audio.group(2).lower()
             rest = (m_audio.group(3) or "").strip()
 
             # 1. RPY505: Проверка валидности канала
-            if (channel not in self.analyzer.registered_audio_channels and channel not in {k.lower() for k in self.analyzer.defined_audio_map}):
+            if channel not in self.analyzer.registered_audio_channels and channel not in {
+                k.lower() for k in self.analyzer.defined_audio_map
+            }:
                 start_c, end_c = self.analyzer._get_utf16_range(raw_line, m_audio.group(2))
                 self.analyzer._add_diagnostic(
                     Diagnostic(
@@ -642,24 +700,35 @@ class AssetChecker(BaseChecker):
             if clean_rest.startswith("["):
                 b_end = clean_rest.find("]")
                 sub_content = clean_rest[1:b_end] if b_end != -1 else clean_rest[1:]
-                for m_item in re.finditer(r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\'|[^\s,]+)', sub_content):
+                for m_item in re.finditer(
+                    r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\'|[^\s,]+)',
+                    sub_content,
+                ):
                     t = m_item.group(1).strip()
                     if t and t not in (",", "[", "]"):
                         audio_targets.append(t)
             else:
-                m_target = re.match(r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\'|[^\s]+)', clean_rest)
+                m_target = re.match(
+                    r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\'|[^\s]+)',
+                    clean_rest,
+                )
                 if m_target:
                     audio_targets.append(m_target.group(1).strip())
 
             for raw_audio_target in audio_targets:
                 audio_found = False
 
-                if raw_audio_target.startswith(('"', "'")) and raw_audio_target.endswith(('"', "'")):
+                if raw_audio_target.startswith(('"', "'")) and raw_audio_target.endswith(
+                    ('"', "'")
+                ):
                     clean_audio_path = raw_audio_target[1:-1].strip()
                     clean_audio_path = re.sub(r"^<[^>]+>\s*", "", clean_audio_path)
                     clean_audio_path = clean_audio_path.replace("\\", "/").lower()
                     audio_file = os.path.basename(clean_audio_path)
-                    if clean_audio_path in self.analyzer.known_assets or audio_file in self.analyzer.known_assets:
+                    if (
+                        clean_audio_path in self.analyzer.known_assets
+                        or audio_file in self.analyzer.known_assets
+                    ):
                         audio_found = True
                         self.analyzer._mark_asset_used(clean_audio_path)
                         self.analyzer._mark_asset_used(audio_file)
@@ -695,6 +764,7 @@ class AssetChecker(BaseChecker):
 
 class DialogueChecker(BaseChecker):
     """RPY3xx — Диалоги, проверка кавычек, переходов jump/call и падений в метки."""
+
     def __init__(self, analyzer: SenpyAnalyzer):
         super().__init__(analyzer)
         self.in_label_context = False
@@ -738,15 +808,17 @@ class DialogueChecker(BaseChecker):
                     prev_clean = _strip_comment(lines[prev_idx]).strip()
                     if (
                         prev_clean
-                        and not prev_clean.startswith((
-                            "return",
-                            "jump ",
-                            "jump\t",
-                            "call ",
-                            "call\t",
-                            "renpy.full_restart",
-                            "renpy.quit",
-                        ))
+                        and not prev_clean.startswith(
+                            (
+                                "return",
+                                "jump ",
+                                "jump\t",
+                                "call ",
+                                "call\t",
+                                "renpy.full_restart",
+                                "renpy.quit",
+                            )
+                        )
                         and not prev_clean.endswith(":")
                     ):
                         self.analyzer._add_diagnostic(
@@ -770,13 +842,19 @@ class DialogueChecker(BaseChecker):
                 self.analyzer.has_dynamic_jumps = True
             else:
                 if raw_target.startswith("."):
-                    target_label = f"{self.current_global_label}{raw_target}" if self.current_global_label else raw_target
+                    target_label = (
+                        f"{self.current_global_label}{raw_target}"
+                        if self.current_global_label
+                        else raw_target
+                    )
                 else:
                     target_label = raw_target
 
                 self.analyzer.referenced_labels.add(target_label)
                 if target_label not in self.analyzer.labels:
-                    matches = difflib.get_close_matches(target_label, list(self.analyzer.labels.keys()), n=1, cutoff=0.6)
+                    matches = difflib.get_close_matches(
+                        target_label, list(self.analyzer.labels.keys()), n=1, cutoff=0.6
+                    )
                     best_match = matches[0] if matches else None
                     hint = f" (did you mean '{best_match}' ?)" if best_match else ""
                     start_c, end_c = self.analyzer._get_utf16_range(raw_line, raw_target)
@@ -798,10 +876,17 @@ class DialogueChecker(BaseChecker):
                     branch_uninitialized.clear()
                 elif cmd_type == "call":
                     # 1. RPY310: Проверка сигнатуры аргументов вызова метки
-                    if target_label in self.analyzer.labels and self.analyzer.labels[target_label].signature:
+                    if (
+                        target_label in self.analyzer.labels
+                        and self.analyzer.labels[target_label].signature
+                    ):
                         sig = self.analyzer.labels[target_label].signature
-                        m_args = re.search(r'\bcall\s+(?!screen\b)[^\W\d]\w*\s*(?:\((.*?)\))?', stripped)
-                        call_args = m_args.group(1) if m_args and m_args.group(1) is not None else None
+                        m_args = re.search(
+                            r"\bcall\s+(?!screen\b)[^\W\d]\w*\s*(?:\((.*?)\))?", stripped
+                        )
+                        call_args = (
+                            m_args.group(1) if m_args and m_args.group(1) is not None else None
+                        )
                         err_msg = validate_call_arguments(sig, call_args)
                         if err_msg:
                             self.analyzer._add_diagnostic(
@@ -817,7 +902,9 @@ class DialogueChecker(BaseChecker):
                             )
 
                     # 2. RPY306: Проверка наличия пути к return
-                    if target_label in self.analyzer.labels and not self.analyzer._can_reach_return(target_label):
+                    if target_label in self.analyzer.labels and not self.analyzer._can_reach_return(
+                        target_label
+                    ):
                         self.analyzer._add_diagnostic(
                             Diagnostic(
                                 file_path=file_path,
@@ -831,16 +918,24 @@ class DialogueChecker(BaseChecker):
 
         # RPY302: Переходы через UI Actions и Python (Jump, Call, renpy.jump, renpy.call)
         if any(kw in stripped for kw in ("Jump", "Call", "renpy.jump", "renpy.call")):
-            for m_dyn in re.finditer(r'\b(?:Jump|Call|renpy\.jump|renpy\.call)\s*\(\s*["\']([^"\']+)["\']', stripped):
+            for m_dyn in re.finditer(
+                r'\b(?:Jump|Call|renpy\.jump|renpy\.call)\s*\(\s*["\']([^"\']+)["\']', stripped
+            ):
                 raw_target = m_dyn.group(1)
                 if raw_target.startswith("."):
-                    target_label = f"{self.current_global_label}{raw_target}" if self.current_global_label else raw_target
+                    target_label = (
+                        f"{self.current_global_label}{raw_target}"
+                        if self.current_global_label
+                        else raw_target
+                    )
                 else:
                     target_label = raw_target
-                    
+
                 self.analyzer.referenced_labels.add(target_label)
                 if target_label not in self.analyzer.labels:
-                    matches = difflib.get_close_matches(target_label, list(self.analyzer.labels.keys()), n=1, cutoff=0.6)
+                    matches = difflib.get_close_matches(
+                        target_label, list(self.analyzer.labels.keys()), n=1, cutoff=0.6
+                    )
                     best_match = matches[0] if matches else None
                     hint = f" (did you mean '{best_match}' ?)" if best_match else ""
                     start_c, end_c = self.analyzer._get_utf16_range(raw_line, raw_target)
@@ -861,10 +956,16 @@ class DialogueChecker(BaseChecker):
 
         # RPY305: Неэкранированные кавычки в диалоге
         first_token = stripped.split()[0] if stripped.split() else ""
-        if self.in_label_context and not is_in_screen and first_token not in NON_DIALOGUE_STATEMENTS:
+        if (
+            self.in_label_context
+            and not is_in_screen
+            and first_token not in NON_DIALOGUE_STATEMENTS
+        ):
             unescaped_quotes = re.findall(r'(?<!\\)"', stripped)
             is_odd_quotes = len(unescaped_quotes) % 2 != 0
-            has_inner_quotes = bool(re.search(r'(?<!\\)"[^"\\]*(?<!\\)"\s+[^\s"\'#]+.*(?<!\\)"', stripped))
+            has_inner_quotes = bool(
+                re.search(r'(?<!\\)"[^"\\]*(?<!\\)"\s+[^\s"\'#]+.*(?<!\\)"', stripped)
+            )
             if is_odd_quotes or has_inner_quotes:
                 self.analyzer._add_diagnostic(
                     Diagnostic(
@@ -976,7 +1077,10 @@ class StateChecker(BaseChecker):
                 self.if_stack.append(new_ctx)
 
             # распознаём jump, return и терминирующие вызовы renpy.*
-            if self.if_stack and re.match(r"^\s*(?:jump\b|return\b|\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b)", stripped):
+            if self.if_stack and re.match(
+                r"^\s*(?:jump\b|return\b|\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b)",
+                stripped,
+            ):
                 self.if_stack[-1].current_branch.terminates = True
 
         # RPY404: Проверка интерполяций [var] после развилок
@@ -988,12 +1092,14 @@ class StateChecker(BaseChecker):
         m_menu = RE_MENU_START.match(raw_line)
         if m_menu and not is_in_screen:
             menu_indent = len(m_menu.group(1))
-            consumed_idx, uninit_vars, guaranteed_vars, all_terminates = self.analyzer._analyze_menu_flow(
-                lines,
-                idx + 1,
-                menu_indent,
-                file_path=file_path,
-                noqa_map=noqa_map,
+            consumed_idx, uninit_vars, guaranteed_vars, all_terminates = (
+                self.analyzer._analyze_menu_flow(
+                    lines,
+                    idx + 1,
+                    menu_indent,
+                    file_path=file_path,
+                    noqa_map=noqa_map,
+                )
             )
             self.branch_uninitialized.update(uninit_vars)
 
@@ -1061,14 +1167,21 @@ class StateChecker(BaseChecker):
                     assigned_names = extract_assigned_names(code)
                     if self.if_stack:
                         self.if_stack[-1].current_branch.defined_vars.update(assigned_names)
-                        if re.search(r"\brenpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\s*\(", code):
+                        if re.search(
+                            r"\brenpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\s*\(",
+                            code,
+                        ):
                             self.if_stack[-1].current_branch.terminates = True
                     else:
                         self.guaranteed_vars.update(assigned_names)
             return consumed_idx, file_modified
 
         # if / elif condition
-        m_cond = RE_CONDITION.match(stripped) if stripped.startswith(("if ", "elif ", "while ")) else None
+        m_cond = (
+            RE_CONDITION.match(stripped)
+            if stripped.startswith(("if ", "elif ", "while "))
+            else None
+        )
         if m_cond:
             expr = m_cond.group(1)
             self.analyzer._check_condition(

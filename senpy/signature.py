@@ -53,7 +53,9 @@ def parse_signature(param_str: str | None) -> SignatureInfo:
             pos_names=pos_names,
         )
 
-    return SignatureInfo(has_params=True, max_args=float("inf"), has_varargs=True, has_varkwargs=True)
+    return SignatureInfo(
+        has_params=True, max_args=float("inf"), has_varargs=True, has_varkwargs=True
+    )
 
 
 def parse_call_args(args_str: str) -> tuple[int, set[str], bool, bool] | None:

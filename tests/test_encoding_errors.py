@@ -4,6 +4,7 @@
 в analyzer.py — файл в cp1251 молча выпадал из анализа, и линтер рапортовал
 «проект чист», хотя Ren'Py упадёт на загрузке такого скрипта.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

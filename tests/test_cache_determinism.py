@@ -18,7 +18,8 @@ def test_warm_run_repeats_cold_diagnostics(tmp_path: Path):
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True)
 
-    (game_dir / "script.rpy").write_text("""
+    (game_dir / "script.rpy").write_text(
+        """
 label start:
     jump epilogue_only_by_jump
     return
@@ -27,14 +28,19 @@ label epilogue_only_by_jump:
     return
 
 image bg town = "images/bg_town.png"
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
 
-    (game_dir / "extra.rpy").write_text("""
+    (game_dir / "extra.rpy").write_text(
+        """
 label start:
     return
 
 image bg town = "images/bg_town.png"
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
 
     cold = SenpyAnalyzer(str(tmp_path)).run(quiet=True)
     warm = SenpyAnalyzer(str(tmp_path)).run(quiet=True)

@@ -9,34 +9,64 @@ from senpy.text_tags import get_utf16_range
 # Имя функции -> (Совет/пояснение, 1-к-1 замена для автофикса или None)
 DEPRECATED_APIS: dict[str, tuple[str, str | None]] = {
     # Устаревшие Displayables
-    "LiveComposite": ("This function is obsolete or outdated. Use 'Composite' instead.", "Composite"),
+    "LiveComposite": (
+        "This function is obsolete or outdated. Use 'Composite' instead.",
+        "Composite",
+    ),
     "LiveCrop": ("This function is obsolete or outdated. Use 'Crop' instead.", "Crop"),
     "LiveTile": ("This function is obsolete or outdated. Use 'Tile' instead.", "Tile"),
-    "DynamicCharacter": ("Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead.", "Character"),
-    
+    "DynamicCharacter": (
+        "Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead.",
+        "Character",
+    ),
     # Устаревшие анимации (заменены на ATL)
-    "anim.Filmstrip": ("Legacy animation helper. Prefer modern ATL (transform / pause) instead.", None),
+    "anim.Filmstrip": (
+        "Legacy animation helper. Prefer modern ATL (transform / pause) instead.",
+        None,
+    ),
     "anim.Blink": ("Legacy animation helper. Prefer modern ATL instead.", None),
     "anim.SMAnimation": ("Legacy animation helper. Prefer modern ATL instead.", None),
-    
     # Устаревшие вызовы ui.* (заменены на Screen Language)
-    "ui.text": ("Legacy 'ui' screen function is obsolete. Use Screen Language 'text' statement.", None),
-    "ui.button": ("Legacy 'ui' screen function is obsolete. Use Screen Language 'button' statement.", None),
-    "ui.imagebutton": ("Legacy 'ui' screen function is obsolete. Use Screen Language 'imagebutton' statement.", None),
-    "ui.textbutton": ("Legacy 'ui' screen function is obsolete. Use Screen Language 'textbutton' statement.", None),
-    "ui.vbox": ("Legacy 'ui' screen function is obsolete. Use Screen Language 'vbox' statement.", None),
-    "ui.hbox": ("Legacy 'ui' screen function is obsolete. Use Screen Language 'hbox' statement.", None),
-    "ui.grid": ("Legacy 'ui' screen function is obsolete. Use Screen Language 'grid' statement.", None),
-    "ui.close": ("Legacy 'ui' screen construction is obsolete. Use declarative Screen Language.", None),
+    "ui.text": (
+        "Legacy 'ui' screen function is obsolete. Use Screen Language 'text' statement.",
+        None,
+    ),
+    "ui.button": (
+        "Legacy 'ui' screen function is obsolete. Use Screen Language 'button' statement.",
+        None,
+    ),
+    "ui.imagebutton": (
+        "Legacy 'ui' screen function is obsolete. Use Screen Language 'imagebutton' statement.",
+        None,
+    ),
+    "ui.textbutton": (
+        "Legacy 'ui' screen function is obsolete. Use Screen Language 'textbutton' statement.",
+        None,
+    ),
+    "ui.vbox": (
+        "Legacy 'ui' screen function is obsolete. Use Screen Language 'vbox' statement.",
+        None,
+    ),
+    "ui.hbox": (
+        "Legacy 'ui' screen function is obsolete. Use Screen Language 'hbox' statement.",
+        None,
+    ),
+    "ui.grid": (
+        "Legacy 'ui' screen function is obsolete. Use Screen Language 'grid' statement.",
+        None,
+    ),
+    "ui.close": (
+        "Legacy 'ui' screen construction is obsolete. Use declarative Screen Language.",
+        None,
+    ),
 }
 
 # Предкомпилированное регулярное выражение для быстрого поиска
-RE_DEPRECATED = re.compile(
-    r"\b(" + "|".join(re.escape(k) for k in DEPRECATED_APIS) + r")\b"
-)
+RE_DEPRECATED = re.compile(r"\b(" + "|".join(re.escape(k) for k in DEPRECATED_APIS) + r")\b")
 
 # Быстрый фильтр подстрок, чтобы не гонять regex по обычным строкам
 FAST_TERMS = ("Live", "anim.", "ui.", "DynamicCharacter")
+
 
 class DeprecationChecker:
     """Проверяет строки кода сценария на использование устаревшего API Ren'Py."""
@@ -48,7 +78,7 @@ class DeprecationChecker:
         i = 0
         while i < pos:
             ch = s[i]
-            if ch == '\\':
+            if ch == "\\":
                 i += 2
                 continue
             if in_quote:

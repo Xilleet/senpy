@@ -53,12 +53,14 @@ class SafeCacheUnpickler(pickle.Unpickler):
     чтобы отвергнуть файл. Сломанный кэш = None = штатная пересборка.
     """
 
-    ALLOWED_MODULES = frozenset({
-        "senpy.cache",      # CacheManifest, CachedFileEntry
-        "senpy.models",     # FileScope, Diagnostic
-        "senpy.symbols",    # Variable/Label/Screen/Image/TransformSymbol
-        "senpy.signature",  # SignatureInfo
-    })
+    ALLOWED_MODULES = frozenset(
+        {
+            "senpy.cache",  # CacheManifest, CachedFileEntry
+            "senpy.models",  # FileScope, Diagnostic
+            "senpy.symbols",  # Variable/Label/Screen/Image/TransformSymbol
+            "senpy.signature",  # SignatureInfo
+        }
+    )
 
     def find_class(self, module: str, name: str):
         if module in self.ALLOWED_MODULES:
@@ -66,6 +68,7 @@ class SafeCacheUnpickler(pickle.Unpickler):
         raise pickle.UnpicklingError(
             f"Security Error: Forbidden import '{module}.{name}' in senpy cache"
         )
+
 
 class CacheManager:
     def __init__(self, project_path: str, enabled: bool = True):
@@ -124,14 +127,18 @@ class CacheManager:
             lbl = analyzer.labels[lbl_name]
             if lbl.signature:
                 sig = lbl.signature
-                hasher.update(str((sig.min_args, sig.max_args, sorted(sig.all_names))).encode("utf-8"))
+                hasher.update(
+                    str((sig.min_args, sig.max_args, sorted(sig.all_names))).encode("utf-8")
+                )
 
         for scr_name in sorted(analyzer.screens.keys()):
             hasher.update(scr_name.encode("utf-8"))
             scr = analyzer.screens[scr_name]
             if scr.signature:
                 sig = scr.signature
-                hasher.update(str((sig.min_args, sig.max_args, sorted(sig.all_names))).encode("utf-8"))
+                hasher.update(
+                    str((sig.min_args, sig.max_args, sorted(sig.all_names))).encode("utf-8")
+                )
 
         for sym in sorted(analyzer.declared_symbols):
             hasher.update(sym.encode("utf-8"))

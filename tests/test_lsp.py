@@ -29,7 +29,7 @@ def setup_test_workspace(tmp_path: Path):
     """Создаёт тестовый проект Ren'Py и инициализирует анализатор в LSP сервере."""
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True, exist_ok=True)
-    
+
     script_content = """
 default player_gold = 100
 define max_hp = 50
@@ -115,30 +115,39 @@ def test_lsp_go_to_definition(tmp_path: Path):
     doc_lbl = MockDocument(uri, "label test:\n    jump forest_scene")
     mock_ls = MagicMock()
     mock_ls.workspace = MockWorkspace(doc_lbl)
-    loc_lbl = server_mod.definition(mock_ls, lsp.DefinitionParams(
-        text_document=lsp.TextDocumentIdentifier(uri=uri),
-        position=lsp.Position(line=1, character=12),
-    ))
+    loc_lbl = server_mod.definition(
+        mock_ls,
+        lsp.DefinitionParams(
+            text_document=lsp.TextDocumentIdentifier(uri=uri),
+            position=lsp.Position(line=1, character=12),
+        ),
+    )
     assert loc_lbl is not None
     assert loc_lbl.range.start.line == analyzer.labels["forest_scene"].line_number - 1
 
     # 2. Переход к переменной default
     doc_var = MockDocument(uri, "$ player_gold += 20")
     mock_ls.workspace = MockWorkspace(doc_var)
-    loc_var = server_mod.definition(mock_ls, lsp.DefinitionParams(
-        text_document=lsp.TextDocumentIdentifier(uri=uri),
-        position=lsp.Position(line=0, character=4),
-    ))
+    loc_var = server_mod.definition(
+        mock_ls,
+        lsp.DefinitionParams(
+            text_document=lsp.TextDocumentIdentifier(uri=uri),
+            position=lsp.Position(line=0, character=4),
+        ),
+    )
     assert loc_var is not None
     assert loc_var.range.start.line == analyzer.variables["player_gold"].line_number - 1
 
     # 3. Переход к layeredimage
     doc_img = MockDocument(uri, "show sayori happy")
     mock_ls.workspace = MockWorkspace(doc_img)
-    loc_img = server_mod.definition(mock_ls, lsp.DefinitionParams(
-        text_document=lsp.TextDocumentIdentifier(uri=uri),
-        position=lsp.Position(line=0, character=6),  # Курсор на слове "sayori"
-    ))
+    loc_img = server_mod.definition(
+        mock_ls,
+        lsp.DefinitionParams(
+            text_document=lsp.TextDocumentIdentifier(uri=uri),
+            position=lsp.Position(line=0, character=6),  # Курсор на слове "sayori"
+        ),
+    )
     assert loc_img is not None
     assert loc_img.range.start.line == analyzer.images["sayori"].line_number - 1
 
@@ -150,10 +159,13 @@ def test_lsp_go_to_definition(tmp_path: Path):
 
     doc_audio = MockDocument(uri, 'play sound "audio/click.ogg"')
     mock_ls.workspace = MockWorkspace(doc_audio)
-    loc_audio = server_mod.definition(mock_ls, lsp.DefinitionParams(
-        text_document=lsp.TextDocumentIdentifier(uri=uri),
-        position=lsp.Position(line=0, character=16),  # Внутри кавычек
-    ))
+    loc_audio = server_mod.definition(
+        mock_ls,
+        lsp.DefinitionParams(
+            text_document=lsp.TextDocumentIdentifier(uri=uri),
+            position=lsp.Position(line=0, character=16),  # Внутри кавычек
+        ),
+    )
     assert loc_audio is not None
     assert loc_audio.uri == server_mod._path_to_uri(str(audio_path))
 
@@ -168,10 +180,13 @@ def test_lsp_hover_variable_and_label(tmp_path: Path):
     # 1. Ховер на переменную player_gold
     doc_var = MockDocument(uri, "$ player_gold += 50")
     mock_ls.workspace = MockWorkspace(doc_var)
-    h_var = server_mod.hover(mock_ls, lsp.HoverParams(
-        text_document=lsp.TextDocumentIdentifier(uri=uri),
-        position=lsp.Position(line=0, character=4),
-    ))
+    h_var = server_mod.hover(
+        mock_ls,
+        lsp.HoverParams(
+            text_document=lsp.TextDocumentIdentifier(uri=uri),
+            position=lsp.Position(line=0, character=4),
+        ),
+    )
     assert h_var is not None
     assert "player_gold" in h_var.contents.value
     assert "default player_gold = 100" in h_var.contents.value
@@ -179,29 +194,31 @@ def test_lsp_hover_variable_and_label(tmp_path: Path):
     # 2. Ховер на метку forest_scene (должен содержать исходящий переход в deep_cave)
     doc_lbl = MockDocument(uri, "jump forest_scene")
     mock_ls.workspace = MockWorkspace(doc_lbl)
-    h_lbl = server_mod.hover(mock_ls, lsp.HoverParams(
-        text_document=lsp.TextDocumentIdentifier(uri=uri),
-        position=lsp.Position(line=0, character=7),
-    ))
+    h_lbl = server_mod.hover(
+        mock_ls,
+        lsp.HoverParams(
+            text_document=lsp.TextDocumentIdentifier(uri=uri),
+            position=lsp.Position(line=0, character=7),
+        ),
+    )
     assert h_lbl is not None
     assert "forest_scene" in h_lbl.contents.value
     assert "deep_cave" in h_lbl.contents.value  # Проверяем наличие исходящего прыжка!
+
 
 def test_lsp_document_symbols(tmp_path: Path):
     """[LSP] Document symbols returns outline hierarchy with labels, screens, images and variables"""
     script_file, _analyzer = setup_test_workspace(tmp_path)
     uri = server_mod._path_to_uri(str(script_file))
 
-    with open(script_file, "r", encoding="utf-8") as f:
+    with open(script_file, encoding="utf-8") as f:
         content = f.read()
 
     doc = MockDocument(uri, content)
     mock_ls = MagicMock()
     mock_ls.workspace = MockWorkspace(doc)
 
-    params = lsp.DocumentSymbolParams(
-        text_document=lsp.TextDocumentIdentifier(uri=uri)
-    )
+    params = lsp.DocumentSymbolParams(text_document=lsp.TextDocumentIdentifier(uri=uri))
 
     symbols = server_mod.document_symbols(mock_ls, params)
     assert symbols is not None
@@ -211,9 +228,9 @@ def test_lsp_document_symbols(tmp_path: Path):
     assert "start" in names
     assert "forest_scene" in names
     assert "deep_cave" in names
-    assert "sayori" in names          # layeredimage
-    assert "player_gold" in names     # default
-    assert "max_hp" in names          # define
+    assert "sayori" in names  # layeredimage
+    assert "player_gold" in names  # default
+    assert "max_hp" in names  # define
 
     # Проверяем атрибуты метки для Outline и Breadcrumbs
     start_sym = next(s for s in symbols if s.name == "start")
@@ -221,6 +238,7 @@ def test_lsp_document_symbols(tmp_path: Path):
     assert start_sym.detail == "Label"
     # Блок start должен охватывать несколько строк до следующей сцены forest_scene
     assert start_sym.range.start.line < start_sym.range.end.line
+
 
 def test_graph_export_and_interactive_metadata(tmp_path: Path):
     """[Flow & Graph] Verify export_graph contains valid Mermaid syntax and intact senpy-meta JSON"""
@@ -243,6 +261,7 @@ def test_graph_export_and_interactive_metadata(tmp_path: Path):
     assert "forest_scene" in meta["locations"]
     assert meta["locations"]["forest_scene"]["line"] > 0
 
+
 def test_lsp_hover_renpy_api_docs(tmp_path: Path):
     """[LSP] Hover tooltip returns rich markdown documentation for Ren'Py API and Actions"""
     script_file, _ = setup_test_workspace(tmp_path)
@@ -253,10 +272,13 @@ def test_lsp_hover_renpy_api_docs(tmp_path: Path):
     # 1. Проверяем hover на renpy.pause
     doc_pause = MockDocument(uri, "$ renpy.pause(1.5)")
     mock_ls.workspace = MockWorkspace(doc_pause)
-    h_pause = server_mod.hover(mock_ls, lsp.HoverParams(
-        text_document=lsp.TextDocumentIdentifier(uri=uri),
-        position=lsp.Position(line=0, character=8),  # Курсор внутри "renpy.pause"
-    ))
+    h_pause = server_mod.hover(
+        mock_ls,
+        lsp.HoverParams(
+            text_document=lsp.TextDocumentIdentifier(uri=uri),
+            position=lsp.Position(line=0, character=8),  # Курсор внутри "renpy.pause"
+        ),
+    )
     assert h_pause is not None
     assert "renpy.pause" in h_pause.contents.value
     assert "Pauses script execution" in h_pause.contents.value
@@ -265,10 +287,13 @@ def test_lsp_hover_renpy_api_docs(tmp_path: Path):
     # 2. Проверяем hover на screen Action: SetVariable
     doc_action = MockDocument(uri, "textbutton 'Click' action SetVariable('x', 1)")
     mock_ls.workspace = MockWorkspace(doc_action)
-    h_action = server_mod.hover(mock_ls, lsp.HoverParams(
-        text_document=lsp.TextDocumentIdentifier(uri=uri),
-        position=lsp.Position(line=0, character=30),  # Курсор внутри "SetVariable"
-    ))
+    h_action = server_mod.hover(
+        mock_ls,
+        lsp.HoverParams(
+            text_document=lsp.TextDocumentIdentifier(uri=uri),
+            position=lsp.Position(line=0, character=30),  # Курсор внутри "SetVariable"
+        ),
+    )
     assert h_action is not None
     assert "SetVariable" in h_action.contents.value
     assert "Screen Action" in h_action.contents.value
@@ -316,7 +341,9 @@ def test_lsp_code_action_quick_fixes(tmp_path: Path):
     # 1. Запрос CodeAction для строки 1 (RPY001 — замена табов на 4 пробела)
     params_rpy001 = lsp.CodeActionParams(
         text_document=lsp.TextDocumentIdentifier(uri=uri),
-        range=lsp.Range(start=lsp.Position(line=1, character=0), end=lsp.Position(line=1, character=5)),
+        range=lsp.Range(
+            start=lsp.Position(line=1, character=0), end=lsp.Position(line=1, character=5)
+        ),
         context=lsp.CodeActionContext(diagnostics=[]),
     )
     actions_rpy001 = server_mod.code_action(mock_ls, params_rpy001)
@@ -328,7 +355,9 @@ def test_lsp_code_action_quick_fixes(tmp_path: Path):
     # 2. Запрос CodeAction для строки 2 (RPY002 — замена типографских кавычек)
     params_rpy002 = lsp.CodeActionParams(
         text_document=lsp.TextDocumentIdentifier(uri=uri),
-        range=lsp.Range(start=lsp.Position(line=2, character=0), end=lsp.Position(line=2, character=10)),
+        range=lsp.Range(
+            start=lsp.Position(line=2, character=0), end=lsp.Position(line=2, character=10)
+        ),
         context=lsp.CodeActionContext(diagnostics=[]),
     )
     actions_rpy002 = server_mod.code_action(mock_ls, params_rpy002)
@@ -339,7 +368,9 @@ def test_lsp_code_action_quick_fixes(tmp_path: Path):
     # 3. Запрос CodeAction для строки 3 (RPY301 — автозакрытие тега {b})
     params_rpy301 = lsp.CodeActionParams(
         text_document=lsp.TextDocumentIdentifier(uri=uri),
-        range=lsp.Range(start=lsp.Position(line=3, character=0), end=lsp.Position(line=3, character=10)),
+        range=lsp.Range(
+            start=lsp.Position(line=3, character=0), end=lsp.Position(line=3, character=10)
+        ),
         context=lsp.CodeActionContext(diagnostics=[]),
     )
     actions_rpy301 = server_mod.code_action(mock_ls, params_rpy301)
@@ -350,7 +381,9 @@ def test_lsp_code_action_quick_fixes(tmp_path: Path):
     # 4. Отрицательный случай: курсор на чистой строке 4 ('return') — никаких действий быть не должно
     params_clean = lsp.CodeActionParams(
         text_document=lsp.TextDocumentIdentifier(uri=uri),
-        range=lsp.Range(start=lsp.Position(line=4, character=0), end=lsp.Position(line=4, character=5)),
+        range=lsp.Range(
+            start=lsp.Position(line=4, character=0), end=lsp.Position(line=4, character=5)
+        ),
         context=lsp.CodeActionContext(diagnostics=[]),
     )
     actions_clean = server_mod.code_action(mock_ls, params_clean)
@@ -386,28 +419,40 @@ def test_lsp_transform_navigation_and_symbols(tmp_path: Path):
     mock_ls.workspace = MockWorkspace(mock_doc)
 
     # 1. Проверка F12 Go-to-Definition на имени трансформа
-    loc = server_mod.definition(mock_ls, lsp.DefinitionParams(
-        text_document=lsp.TextDocumentIdentifier(uri=uri),
-        position=lsp.Position(line=5, character=22),  # Курсор внутри "custom_bounce"
-    ))
+    loc = server_mod.definition(
+        mock_ls,
+        lsp.DefinitionParams(
+            text_document=lsp.TextDocumentIdentifier(uri=uri),
+            position=lsp.Position(line=5, character=22),  # Курсор внутри "custom_bounce"
+        ),
+    )
     assert loc is not None, "F12 failed to resolve location for ATL transform 'custom_bounce'"
-    assert loc.range.start.line == 0, f"Expected definition on line 0, got line {loc.range.start.line}"
+    assert loc.range.start.line == 0, (
+        f"Expected definition on line 0, got line {loc.range.start.line}"
+    )
 
     # 2. Проверка Document Symbols (Outline / Ctrl+Shift+O)
-    symbols = server_mod.document_symbols(mock_ls, lsp.DocumentSymbolParams(
-        text_document=lsp.TextDocumentIdentifier(uri=uri)
-    ))
+    symbols = server_mod.document_symbols(
+        mock_ls, lsp.DocumentSymbolParams(text_document=lsp.TextDocumentIdentifier(uri=uri))
+    )
     trans_sym = next((s for s in symbols if s.name == "custom_bounce"), None)
-    assert trans_sym is not None, "Document symbols outline is missing ATL transform 'custom_bounce'"
+    assert trans_sym is not None, (
+        "Document symbols outline is missing ATL transform 'custom_bounce'"
+    )
     assert trans_sym.detail == "Transform"
 
     # 3. Проверка автокомплита после 'at '
     doc_comp = MockDocument(uri, "show sayori at ")
     mock_ls.workspace = MockWorkspace(doc_comp)
-    comp_res = server_mod.completions(mock_ls, lsp.CompletionParams(
-        text_document=lsp.TextDocumentIdentifier(uri=uri),
-        position=lsp.Position(line=0, character=15),
-    ))
+    comp_res = server_mod.completions(
+        mock_ls,
+        lsp.CompletionParams(
+            text_document=lsp.TextDocumentIdentifier(uri=uri),
+            position=lsp.Position(line=0, character=15),
+        ),
+    )
     comp_labels = {item.label for item in comp_res.items}
-    assert "custom_bounce" in comp_labels, "Autocomplete missing user-defined transform 'custom_bounce'"
+    assert "custom_bounce" in comp_labels, (
+        "Autocomplete missing user-defined transform 'custom_bounce'"
+    )
     assert "center" in comp_labels, "Autocomplete missing built-in position 'center'"

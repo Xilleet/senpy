@@ -36,6 +36,7 @@ def _mermaid_safe_id(name: str) -> str:
         safe += "_"
     return safe
 
+
 def _mermaid_node_ref(name: str) -> str:
     """Ссылка на узел в ребре: голый id, если санитизация имя не меняла
     (байт-совместимость со старым выводом), иначе id + кавычканный
@@ -43,12 +44,14 @@ def _mermaid_node_ref(name: str) -> str:
     sid = _mermaid_safe_id(name)
     return sid if sid == name else f'{sid}["{name}"]'
 
+
 @dataclass
 class FlowBranch:
     """Представляет одну ветку развилки (choice в menu: или if/elif/else)."""
-    kind: str                      # "choice", "if", "elif", "else"
-    name: str                      # Название выбора или описание ветки
-    line: int                      # Номер строки
+
+    kind: str  # "choice", "if", "elif", "else"
+    name: str  # Название выбора или описание ветки
+    line: int  # Номер строки
     defined_vars: set[str] = field(default_factory=set)
     terminates: bool = False
     raw: str = ""
@@ -74,7 +77,11 @@ def merge_flow_branches(
         return set(), {}, True
 
     if block_kind == "menu":
-        guaranteed = set.intersection(*(b.defined_vars for b in non_terminating)) if non_terminating else set()
+        guaranteed = (
+            set.intersection(*(b.defined_vars for b in non_terminating))
+            if non_terminating
+            else set()
+        )
     else:  # "if"
         if has_else and len(branches) > 1:
             guaranteed = set.intersection(*(b.defined_vars for b in non_terminating))
@@ -112,6 +119,7 @@ def merge_flow_branches(
 
     return guaranteed, uninitialized, False
 
+
 class StoryFlowAnalyzer:
     """Анализирует граф переходов, развилки меню и генерирует Mermaid-диаграммы сюжета."""
 
@@ -130,7 +138,10 @@ class StoryFlowAnalyzer:
         visited.add(label_name)
 
         outgoing = lbl.outgoing_jumps if lbl else set()
-        return any(self.can_reach_return(target, visited) for target in outgoing)
+        for target in outgoing:
+            if self.can_reach_return(target, visited):
+                return True
+        return False
 
     def check_unreachable_labels(self) -> list[Diagnostic]:
         """RPY303: Выявляет метки, на которые нет статических ссылок (возможный dead code)."""
@@ -165,10 +176,7 @@ class StoryFlowAnalyzer:
         """RPY309: Находит изолированные подграфы (острова) и циклы, недостижимые из системных точек входа."""
         labels = self.analyzer.labels
 
-        root_labels = {
-            lbl for lbl in labels
-            if lbl.lower() in SYSTEM_LABELS or lbl.startswith("_")
-        }
+        root_labels = {lbl for lbl in labels if lbl.lower() in SYSTEM_LABELS or lbl.startswith("_")}
 
         if not root_labels:
             return []
@@ -200,6 +208,10 @@ class StoryFlowAnalyzer:
                     reachable.add(target)
                     queue.append(target)
 
+        # PERF-1: ранее тут было `any(label_name in l.outgoing_jumps for l in labels.values())`
+        # внутри цикла по labels — это O(N²). На проекте с 1000 labels = 1M проверок.
+        # Pre-compute incoming dict за O(N+E) (один проход по всем labels и их outgoing_jumps),
+        # затем O(1) lookup в цикле ниже.
         incoming_jumps: dict[str, set[str]] = {}
         for src_name, src_lbl in labels.items():
             for tgt in src_lbl.outgoing_jumps:
@@ -253,7 +265,11 @@ class StoryFlowAnalyzer:
                     info = branch_uninitialized[var]
                     missing_choice = info[0]
                     menu_line = info[2] if len(info) > 2 else "earlier"
-                    reason = missing_choice if ("branch" in missing_choice or "condition" in missing_choice) else f"player took choice '{missing_choice}'"
+                    reason = (
+                        missing_choice
+                        if ("branch" in missing_choice or "condition" in missing_choice)
+                        else f"player took choice '{missing_choice}'"
+                    )
                     self.analyzer._add_diagnostic(
                         Diagnostic(
                             file_path=file_path,
@@ -341,7 +357,9 @@ class StoryFlowAnalyzer:
                 continue
 
             if current_choice and line_indent > choice_indent:
-                statement_counts[id(current_choice)] = statement_counts.get(id(current_choice), 0) + 1
+                statement_counts[id(current_choice)] = (
+                    statement_counts.get(id(current_choice), 0) + 1
+                )
 
                 if RE_MENU_START.match(raw_line):
                     consumed_idx, sub_uninit, sub_guaranteed, sub_term = self.analyze_menu_flow(
@@ -362,7 +380,10 @@ class StoryFlowAnalyzer:
                     py = stripped[1:].strip()
                     current_choice.defined_vars.update(extract_assigned_names(py))
 
-                if re.match(r"^\s*(?:jump\b|return\b|\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b)", stripped):
+                if re.match(
+                    r"^\s*(?:jump\b|return\b|\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b)",
+                    stripped,
+                ):
                     current_choice.terminates = True
 
             idx += 1
@@ -431,12 +452,14 @@ class StoryFlowAnalyzer:
 
             has_return = lbl_sym.has_return
             has_jumps = len(lbl_sym.outgoing_jumps) > 0
+
             if has_return:
                 shape_start, shape_end = ('(["', '"])')
             elif not has_jumps:
                 shape_start, shape_end = ('[["', '"]]:::fallthrough')
             else:
                 shape_start, shape_end = ('["', '"]')
+
             lines.append(f"    {_mermaid_safe_id(label)}{shape_start}{label}{shape_end}")
 
         # --- Экраны: узлы (follow-up; префикс screen_ разводит
@@ -469,7 +492,9 @@ class StoryFlowAnalyzer:
                     lines.append(f"    {_mermaid_safe_id(src)} {arrow} {_mermaid_safe_id(tgt)}")
                     edges_added = True
                 else:
-                    lines.append(f'    {_mermaid_safe_id(src)} -. jump .-> {_mermaid_node_ref(tgt)}:::missing')
+                    lines.append(
+                        f"    {_mermaid_safe_id(src)} -. jump .-> {_mermaid_node_ref(tgt)}:::missing"
+                    )
                     edges_added = True
 
         # --- Экраны: рёбра Jump-экшенов (существующая метка = сплошное,
@@ -477,9 +502,13 @@ class StoryFlowAnalyzer:
         for scr in graph_screens:
             for tgt in sorted(screen_action_jumps.get(scr, ())):
                 if tgt in labels:
-                    lines.append(f"    screen_{_mermaid_safe_id(scr)} -- action --> {_mermaid_safe_id(tgt)}")
+                    lines.append(
+                        f"    screen_{_mermaid_safe_id(scr)} -- action --> {_mermaid_safe_id(tgt)}"
+                    )
                 else:
-                    lines.append(f"    screen_{_mermaid_safe_id(scr)} -. action .-> {_mermaid_node_ref(tgt)}:::missing")
+                    lines.append(
+                        f"    screen_{_mermaid_safe_id(scr)} -. action .-> {_mermaid_node_ref(tgt)}:::missing"
+                    )
                 edges_added = True
 
         # --- рёбра label -- call screen --> screen и screen -- use --> screen ---
@@ -496,18 +525,23 @@ class StoryFlowAnalyzer:
                     lines.append(f"    screen_{src_name} -- use --> screen_{tgt}")
                     edges_added = True
 
-
         if not edges_added:
             lines.append("    %% No static jumps detected")
 
         lines.append("\n    classDef missing fill:#ff4d4f,stroke:#333,stroke-width:1px,color:#fff;")
-        lines.append("    classDef fallthrough fill:#faad14,stroke:#333,stroke-width:1px,color:#fff;")
+        lines.append(
+            "    classDef fallthrough fill:#faad14,stroke:#333,stroke-width:1px,color:#fff;"
+        )
         lines.append("    classDef screen fill:#1890ff,stroke:#333,stroke-width:1px,color:#fff;")
         lines.append("```")
 
         meta = {"locations": {}}
         for lbl_name, lbl_sym in labels.items():
-            meta["locations"][lbl_name] = {"file": lbl_sym.file_path.replace("\\", "/"), "line": lbl_sym.line_number, "type": "label"}
+            meta["locations"][lbl_name] = {
+                "file": lbl_sym.file_path.replace("\\", "/"),
+                "line": lbl_sym.line_number,
+                "type": "label",
+            }
 
         # Координаты экранов для навигации из senpy-meta
         for scr in graph_screens:
@@ -519,7 +553,7 @@ class StoryFlowAnalyzer:
                     "type": "screen",
                 }
 
-        for src, lbl_sym in labels.items():  # noqa: B007
+        for src, lbl_sym in labels.items():
             for tgt in lbl_sym.outgoing_jumps:
                 if tgt not in labels and tgt in self.analyzer.jump_sources:
                     sources = self.analyzer.jump_sources[tgt]

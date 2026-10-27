@@ -103,7 +103,7 @@ def generate_stubs(analyzer: SenpyAnalyzer, out_dir: str = "typings") -> tuple[s
         with contextlib.suppress(OSError, json.JSONDecodeError, UnicodeDecodeError):
             data = {}
             if os.path.exists(settings_json):
-                with open(settings_json, "r", encoding="utf-8") as f:
+                with open(settings_json, encoding="utf-8") as f:
                     data = json.load(f)
             extra_paths = data.get("python.analysis.extraPaths", [])
             rel_out = out_dir.replace("\\", "/")

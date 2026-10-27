@@ -17,7 +17,7 @@ def generate_project_wiki(analyzer: SenpyAnalyzer) -> str:
     ]
 
     characters = [v for v in analyzer.variables.values() if v.is_character]
-    
+
     # 1. Персонажи (Characters)
     lines.append("## Characters")
     lines.append("")
@@ -34,9 +34,9 @@ def generate_project_wiki(analyzer: SenpyAnalyzer) -> str:
     # 2. Переменные и состояние (default / define)
     lines.append("## State & Variables")
     lines.append("")
-    
+
     state_vars = [v for v in analyzer.variables.values() if not v.is_character]
-    
+
     if state_vars:
         lines.append("| Variable | Type | Kind | Source |")
         lines.append("| :--- | :--- | :--- | :--- |")

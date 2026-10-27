@@ -13,6 +13,7 @@ from senpy.text_tags import get_utf16_range, suggest_similar_symbol
 if TYPE_CHECKING:
     from senpy.analyzer import SenpyAnalyzer
 
+
 def infer_ast_type(
     val_node: ast.AST | None,
     known_vars: dict[str, Any] | None = None,
@@ -47,7 +48,9 @@ def infer_ast_type(
         if known_vars and val_node.id in known_vars:
             var_sym = known_vars[val_node.id]
             # Поддерживаем как объекты VariableSymbol, так и простые строки типов
-            return getattr(var_sym, "type_name", None) or (var_sym if isinstance(var_sym, str) else None)
+            return getattr(var_sym, "type_name", None) or (
+                var_sym if isinstance(var_sym, str) else None
+            )
 
     # 3. Коллекции
     elif isinstance(val_node, (ast.List, ast.ListComp)):
@@ -135,8 +138,15 @@ def infer_ast_type(
             method = val_node.func.attr
             # Методы строк
             if method in (
-                "upper", "lower", "strip", "lstrip", "rstrip",
-                "replace", "format", "capitalize", "title",
+                "upper",
+                "lower",
+                "strip",
+                "lstrip",
+                "rstrip",
+                "replace",
+                "format",
+                "capitalize",
+                "title",
             ):
                 return "str"
             if method in ("split", "splitlines"):
@@ -189,43 +199,125 @@ def infer_default_value(
         return "None"
     return "False"
 
+
 # Системные пространства имён Ren'Py, мутация которых допустима во время игры
 SYSTEM_MUTABLE_NAMESPACES = {"persistent", "config", "store", "gui", "style"}
 
 MUTATING_METHODS = {
     # Списки (list / deque)
-    "append", "extend", "insert", "remove", "pop", "clear", "reverse", "sort",
+    "append",
+    "extend",
+    "insert",
+    "remove",
+    "pop",
+    "clear",
+    "reverse",
+    "sort",
     # Множества (set)
-    "add", "discard", "difference_update", "intersection_update", "symmetric_difference_update",
+    "add",
+    "discard",
+    "difference_update",
+    "intersection_update",
+    "symmetric_difference_update",
     # Словари (dict)
-    "update", "popitem", "setdefault",
+    "update",
+    "popitem",
+    "setdefault",
 }
 
 # Допустимые стандартные методы встроенных типов данных
 KNOWN_TYPE_METHODS: dict[str, set[str]] = {
     "list": {
-        "append", "extend", "insert", "remove", "pop", "clear",
-        "index", "count", "sort", "reverse", "copy",
+        "append",
+        "extend",
+        "insert",
+        "remove",
+        "pop",
+        "clear",
+        "index",
+        "count",
+        "sort",
+        "reverse",
+        "copy",
     },
     "dict": {
-        "clear", "copy", "fromkeys", "get", "items", "keys",
-        "pop", "popitem", "setdefault", "update", "values",
+        "clear",
+        "copy",
+        "fromkeys",
+        "get",
+        "items",
+        "keys",
+        "pop",
+        "popitem",
+        "setdefault",
+        "update",
+        "values",
     },
     "set": {
-        "add", "clear", "copy", "difference", "difference_update",
-        "discard", "intersection", "intersection_update", "isdisjoint",
-        "issubset", "issuperset", "pop", "remove", "symmetric_difference",
-        "symmetric_difference_update", "union", "update",
+        "add",
+        "clear",
+        "copy",
+        "difference",
+        "difference_update",
+        "discard",
+        "intersection",
+        "intersection_update",
+        "isdisjoint",
+        "issubset",
+        "issuperset",
+        "pop",
+        "remove",
+        "symmetric_difference",
+        "symmetric_difference_update",
+        "union",
+        "update",
     },
     "str": {
-        "capitalize", "casefold", "center", "count", "encode", "endswith",
-        "expandtabs", "find", "format", "format_map", "index", "isalnum",
-        "isalpha", "isascii", "isdecimal", "isdigit", "isidentifier",
-        "islower", "isnumeric", "isprintable", "isspace", "istitle",
-        "isupper", "join", "ljust", "lower", "lstrip", "partition",
-        "removeprefix", "removesuffix", "replace", "rfind", "rindex",
-        "rjust", "rpartition", "rsplit", "rstrip", "split", "splitlines",
-        "startswith", "strip", "swapcase", "title", "translate", "upper",
+        "capitalize",
+        "casefold",
+        "center",
+        "count",
+        "encode",
+        "endswith",
+        "expandtabs",
+        "find",
+        "format",
+        "format_map",
+        "index",
+        "isalnum",
+        "isalpha",
+        "isascii",
+        "isdecimal",
+        "isdigit",
+        "isidentifier",
+        "islower",
+        "isnumeric",
+        "isprintable",
+        "isspace",
+        "istitle",
+        "isupper",
+        "join",
+        "ljust",
+        "lower",
+        "lstrip",
+        "partition",
+        "removeprefix",
+        "removesuffix",
+        "replace",
+        "rfind",
+        "rindex",
+        "rjust",
+        "rpartition",
+        "rsplit",
+        "rstrip",
+        "split",
+        "splitlines",
+        "startswith",
+        "strip",
+        "swapcase",
+        "title",
+        "translate",
+        "upper",
         "zfill",
     },
 }
@@ -237,6 +329,7 @@ METHOD_SUGGESTIONS: dict[tuple[str, str], str] = {
     ("set", "append"): ".add()",
 }
 
+
 def _get_root_name(node: ast.AST | None) -> str | None:
     """Рекурсивно разворачивает срезы и атрибуты до базового имени переменной (например, a[0]['k'] -> a)."""
     curr = node
@@ -245,6 +338,7 @@ def _get_root_name(node: ast.AST | None) -> str | None:
     if isinstance(curr, ast.Name):
         return curr.id
     return None
+
 
 def extract_assigned_names(py_code: str) -> set[str]:
     """Извлекает имена переменных, которым присваивается значение в строке Python."""
@@ -279,7 +373,11 @@ class PythonAstChecker:
                     for target in node.targets:
                         if isinstance(target, ast.Name):
                             names[target.id] = getattr(node, "lineno", 1)
-                elif isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.isidentifier():
+                elif (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and node.value.isidentifier()
+                ):
                     refs.add(node.value)
         return names, refs
 
@@ -293,15 +391,19 @@ class PythonAstChecker:
     ) -> None:
         """RPY109: Проверяет вызовы функций в init python на алфавитный порядок файлов."""
         import os
+
         with contextlib.suppress(SyntaxError):
             tree = ast.parse(py_code)
 
             def walk_and_check(root_node: ast.AST):
                 for child in ast.walk(root_node):
                     # Игнорируем тела функций и классов (они исполняются отложенно)
-                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and child is not root_node:
+                    if (
+                        isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                        and child is not root_node
+                    ):
                         continue
-                    
+
                     if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
                         name = child.id
                         if name in BUILTIN_SYMBOLS:
@@ -309,13 +411,25 @@ class PythonAstChecker:
                         if name in self.analyzer.variables:
                             def_file = self.analyzer.variables[name].file_path
                             if def_file != file_path:
-                                curr_rel = os.path.relpath(file_path, self.analyzer.project_path).replace("\\", "/").lower()
-                                def_rel = os.path.relpath(def_file, self.analyzer.project_path).replace("\\", "/").lower()
-                                
+                                curr_rel = (
+                                    os.path.relpath(file_path, self.analyzer.project_path)
+                                    .replace("\\", "/")
+                                    .lower()
+                                )
+                                def_rel = (
+                                    os.path.relpath(def_file, self.analyzer.project_path)
+                                    .replace("\\", "/")
+                                    .lower()
+                                )
+
                                 # Если текущий файл загружается раньше файла с определением
                                 if curr_rel < def_rel:
                                     real_line = start_line + getattr(child, "lineno", 1) - 1
-                                    raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+                                    raw_l = (
+                                        lines[real_line - 1]
+                                        if lines and 0 <= real_line - 1 < len(lines)
+                                        else ""
+                                    )
                                     start_c, end_c = get_utf16_range(raw_l, name)
                                     self.analyzer._add_diagnostic(
                                         Diagnostic(
@@ -551,7 +665,11 @@ class PythonAstChecker:
                             if lines and 0 <= real_line - 1 < len(lines)
                             else ""
                         )
-                        if (not raw_l or var_name not in raw_l) and lines and 0 <= start_line - 1 < len(lines):
+                        if (
+                            (not raw_l or var_name not in raw_l)
+                            and lines
+                            and 0 <= start_line - 1 < len(lines)
+                        ):
                             raw_l = lines[start_line - 1]
                         start_c, end_c = get_utf16_range(raw_l, var_name)
 
@@ -591,7 +709,15 @@ class PythonAstChecker:
                             if expected_t and op_t:
                                 is_incompatible = False
 
-                                if expected_t == "str" and op_t != "str" or expected_t in ("int", "float") and op_t not in ("int", "float") or expected_t == "list" and op_t not in ("list",) or expected_t in ("dict", "bool"):
+                                if (
+                                    expected_t == "str"
+                                    and op_t != "str"
+                                    or expected_t in ("int", "float")
+                                    and op_t not in ("int", "float")
+                                    or expected_t == "list"
+                                    and op_t not in ("list",)
+                                    or expected_t in ("dict", "bool")
+                                ):
                                     is_incompatible = True
 
                                 if is_incompatible:
@@ -611,14 +737,22 @@ class PythonAstChecker:
                                         ),
                                         noqa_map,
                                     )
-                                    
+
                 elif isinstance(node.target, ast.Subscript):
                     root_name = _get_root_name(node.target.value)
-                    if root_name and root_name not in local_scope and root_name not in SYSTEM_MUTABLE_NAMESPACES:
+                    if (
+                        root_name
+                        and root_name not in local_scope
+                        and root_name not in SYSTEM_MUTABLE_NAMESPACES
+                    ):
                         root_var = self.analyzer.variables.get(root_name)
                         if root_var and root_var.is_constant and not root_var.is_character:
                             real_line = start_line + getattr(node, "lineno", 1) - 1
-                            raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+                            raw_l = (
+                                lines[real_line - 1]
+                                if lines and 0 <= real_line - 1 < len(lines)
+                                else ""
+                            )
                             start_c, end_c = get_utf16_range(raw_l, root_name)
                             self.analyzer._add_diagnostic(
                                 Diagnostic(
@@ -637,7 +771,11 @@ class PythonAstChecker:
                             )
                         elif root_name not in self.analyzer.declared_symbols:
                             real_line = start_line + getattr(node, "lineno", 1) - 1
-                            raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+                            raw_l = (
+                                lines[real_line - 1]
+                                if lines and 0 <= real_line - 1 < len(lines)
+                                else ""
+                            )
                             start_c, end_c = get_utf16_range(raw_l, root_name)
                             hint = suggest_similar_symbol(root_name, self.analyzer.user_symbols)
                             self.analyzer._add_diagnostic(
@@ -655,11 +793,7 @@ class PythonAstChecker:
 
             elif isinstance(node, ast.Assign):
                 real_line = start_line + getattr(node, "lineno", 1) - 1
-                raw_l = (
-                    lines[real_line - 1]
-                    if lines and 0 <= real_line - 1 < len(lines)
-                    else ""
-                )
+                raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
                 if not raw_l.strip() and lines and 0 <= start_line - 1 < len(lines):
                     raw_l = lines[start_line - 1]
 
@@ -697,14 +831,19 @@ class PythonAstChecker:
                                 val_node=node.value,
                             )
                             # RPY108: Проверка конфликта типов при присваивании ($ var = "High")
-                            expected_t = self.analyzer.variables[target.id].type_name if target.id in self.analyzer.variables else None
+                            expected_t = (
+                                self.analyzer.variables[target.id].type_name
+                                if target.id in self.analyzer.variables
+                                else None
+                            )
                             new_t = infer_ast_type(node.value, known_vars=self.analyzer.variables)
                             if (
                                 expected_t
                                 and new_t
                                 and expected_t != new_t
-                                and expected_t != "None"  # None -> любой_тип разрешён (первичная инициализация)
-                                and new_t != "None"       # любой_тип -> None разрешён (сброс в sentinel)
+                                and expected_t
+                                != "None"  # None -> любой_тип разрешён (первичная инициализация)
+                                and new_t != "None"  # любой_тип -> None разрешён (сброс в sentinel)
                                 and not ({expected_t, new_t} <= {"int", "float"})
                             ):
                                 start_c, end_c = get_utf16_range(raw_l, target.id)
@@ -727,7 +866,11 @@ class PythonAstChecker:
                     # 3. Мутация по ключу/индексу: $ CONST["ключ"] = "значение"
                     elif isinstance(target, ast.Subscript):
                         root_name = _get_root_name(target.value)
-                        if root_name and root_name not in local_scope and root_name not in SYSTEM_MUTABLE_NAMESPACES:
+                        if (
+                            root_name
+                            and root_name not in local_scope
+                            and root_name not in SYSTEM_MUTABLE_NAMESPACES
+                        ):
                             root_var = self.analyzer.variables.get(root_name)
                             if root_var and root_var.is_constant and not root_var.is_character:
                                 start_c, end_c = get_utf16_range(raw_l, root_name)
@@ -782,11 +925,19 @@ class PythonAstChecker:
                         # 4.1. RPY105 / RPY102: Мутация констант и необъявленных переменных через методы
                         if method_name in MUTATING_METHODS:
                             root_name = _get_root_name(sub.func.value)
-                            if root_name and root_name not in local_scope and root_name not in SYSTEM_MUTABLE_NAMESPACES:
+                            if (
+                                root_name
+                                and root_name not in local_scope
+                                and root_name not in SYSTEM_MUTABLE_NAMESPACES
+                            ):
                                 root_var = self.analyzer.variables.get(root_name)
                                 if root_var and root_var.is_constant and not root_var.is_character:
                                     real_line = start_line + getattr(sub, "lineno", 1) - 1
-                                    raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+                                    raw_l = (
+                                        lines[real_line - 1]
+                                        if lines and 0 <= real_line - 1 < len(lines)
+                                        else ""
+                                    )
                                     target_str = f"{root_name}.{method_name}"
                                     sub_str = target_str if target_str in raw_l else root_name
                                     start_c, end_c = get_utf16_range(raw_l, sub_str)
@@ -807,11 +958,17 @@ class PythonAstChecker:
                                     )
                                 elif root_name not in self.analyzer.declared_symbols:
                                     real_line = start_line + getattr(sub, "lineno", 1) - 1
-                                    raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+                                    raw_l = (
+                                        lines[real_line - 1]
+                                        if lines and 0 <= real_line - 1 < len(lines)
+                                        else ""
+                                    )
                                     target_str = f"{root_name}.{method_name}"
                                     sub_str = target_str if target_str in raw_l else root_name
                                     start_c, end_c = get_utf16_range(raw_l, sub_str)
-                                    hint = suggest_similar_symbol(root_name, self.analyzer.user_symbols)
+                                    hint = suggest_similar_symbol(
+                                        root_name, self.analyzer.user_symbols
+                                    )
                                     self.analyzer._add_diagnostic(
                                         Diagnostic(
                                             file_path=file_path,
@@ -829,12 +986,20 @@ class PythonAstChecker:
                         if isinstance(sub.func.value, ast.Name) and not method_name.startswith("_"):
                             var_id = sub.func.value.id
                             var_sym = self.analyzer.variables.get(var_id)
-                            if var_sym and var_sym.type_name in KNOWN_TYPE_METHODS and var_id not in local_scope:
+                            if (
+                                var_sym
+                                and var_sym.type_name in KNOWN_TYPE_METHODS
+                                and var_id not in local_scope
+                            ):
                                 t_name = var_sym.type_name
                                 valid_methods = KNOWN_TYPE_METHODS[t_name]
                                 if method_name not in valid_methods:
                                     real_line = start_line + getattr(sub, "lineno", 1) - 1
-                                    raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+                                    raw_l = (
+                                        lines[real_line - 1]
+                                        if lines and 0 <= real_line - 1 < len(lines)
+                                        else ""
+                                    )
                                     target_str = f"{var_id}.{method_name}"
                                     sub_str = target_str if target_str in raw_l else method_name
                                     start_c, end_c = get_utf16_range(raw_l, sub_str)
@@ -842,8 +1007,14 @@ class PythonAstChecker:
                                     if (t_name, method_name) in METHOD_SUGGESTIONS:
                                         hint = f" (did you mean '{METHOD_SUGGESTIONS[(t_name, method_name)]}' ?)"
                                     else:
-                                        matches = difflib.get_close_matches(method_name, list(valid_methods), n=1, cutoff=0.6)
-                                        hint = f" (did you mean '.{matches[0]}()' ?)" if matches else ""
+                                        matches = difflib.get_close_matches(
+                                            method_name, list(valid_methods), n=1, cutoff=0.6
+                                        )
+                                        hint = (
+                                            f" (did you mean '.{matches[0]}()' ?)"
+                                            if matches
+                                            else ""
+                                        )
 
                                     self.analyzer._add_diagnostic(
                                         Diagnostic(
@@ -863,8 +1034,12 @@ class PythonAstChecker:
                                     )
 
             elif isinstance(node, (ast.If, ast.While)):
-                self._walk_python_nodes(node.body, file_path, start_line, noqa_map, lines, local_scope)
-                self._walk_python_nodes(node.orelse, file_path, start_line, noqa_map, lines, local_scope)
+                self._walk_python_nodes(
+                    node.body, file_path, start_line, noqa_map, lines, local_scope
+                )
+                self._walk_python_nodes(
+                    node.orelse, file_path, start_line, noqa_map, lines, local_scope
+                )
 
             elif isinstance(node, ast.For):
                 loop_scope = set(local_scope)
@@ -874,18 +1049,30 @@ class PythonAstChecker:
                     for elt in node.target.elts:
                         if isinstance(elt, ast.Name):
                             loop_scope.add(elt.id)
-                self._walk_python_nodes(node.body, file_path, start_line, noqa_map, lines, loop_scope)
-                self._walk_python_nodes(node.orelse, file_path, start_line, noqa_map, lines, loop_scope)
+                self._walk_python_nodes(
+                    node.body, file_path, start_line, noqa_map, lines, loop_scope
+                )
+                self._walk_python_nodes(
+                    node.orelse, file_path, start_line, noqa_map, lines, loop_scope
+                )
 
             elif isinstance(node, ast.Try):
-                self._walk_python_nodes(node.body, file_path, start_line, noqa_map, lines, local_scope)
-                self._walk_python_nodes(node.orelse, file_path, start_line, noqa_map, lines, local_scope)
-                self._walk_python_nodes(node.finalbody, file_path, start_line, noqa_map, lines, local_scope)
+                self._walk_python_nodes(
+                    node.body, file_path, start_line, noqa_map, lines, local_scope
+                )
+                self._walk_python_nodes(
+                    node.orelse, file_path, start_line, noqa_map, lines, local_scope
+                )
+                self._walk_python_nodes(
+                    node.finalbody, file_path, start_line, noqa_map, lines, local_scope
+                )
                 for handler in node.handlers:
                     h_scope = set(local_scope)
                     if handler.name:
                         h_scope.add(handler.name)
-                    self._walk_python_nodes(handler.body, file_path, start_line, noqa_map, lines, h_scope)
+                    self._walk_python_nodes(
+                        handler.body, file_path, start_line, noqa_map, lines, h_scope
+                    )
 
     def _verify_assign_target(
         self,
@@ -897,7 +1084,11 @@ class PythonAstChecker:
         val_node: ast.AST | None = None,
     ) -> None:
         var_sym = self.analyzer.variables.get(var_name)
-        if var_name.startswith("_") or (var_sym and var_sym.is_character) or var_name in SYSTEM_MUTABLE_NAMESPACES:
+        if (
+            var_name.startswith("_")
+            or (var_sym and var_sym.is_character)
+            or var_name in SYSTEM_MUTABLE_NAMESPACES
+        ):
             return
 
         start_c, end_c = get_utf16_range(raw_line, var_name) if raw_line else (0, 0)
@@ -970,7 +1161,9 @@ class PythonAstChecker:
                 not_names = {
                     n.operand.id
                     for n in cond_tree.body.values
-                    if isinstance(n, ast.UnaryOp) and isinstance(n.op, ast.Not) and isinstance(n.operand, ast.Name)
+                    if isinstance(n, ast.UnaryOp)
+                    and isinstance(n.op, ast.Not)
+                    and isinstance(n.operand, ast.Name)
                 }
                 contradictions = names.intersection(not_names)
                 if contradictions:
@@ -990,7 +1183,10 @@ class PythonAstChecker:
                     var_name = node.id
                     if var_name.startswith("_") or var_name in SCREEN_LOCAL_IGNORE:
                         continue
-                    if var_name not in self.analyzer.declared_symbols and var_name not in screen_local_symbols:
+                    if (
+                        var_name not in self.analyzer.declared_symbols
+                        and var_name not in screen_local_symbols
+                    ):
                         hint = suggest_similar_symbol(var_name, self.analyzer.user_symbols)
                         start_c, end_c = get_utf16_range(line_content, var_name)
                         if screen_name:
@@ -1045,7 +1241,11 @@ class PythonAstChecker:
                     missing_choice = info[0]
                     menu_line = info[2] if len(info) > 2 else "earlier"
                     start_c, end_c = get_utf16_range(line_content, node.id)
-                    reason = missing_choice if ("branch" in missing_choice or "condition" in missing_choice) else f"player took choice '{missing_choice}'"
+                    reason = (
+                        missing_choice
+                        if ("branch" in missing_choice or "condition" in missing_choice)
+                        else f"player took choice '{missing_choice}'"
+                    )
                     self.analyzer._add_diagnostic(
                         Diagnostic(
                             file_path=file_path,

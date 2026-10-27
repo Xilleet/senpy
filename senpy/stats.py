@@ -43,8 +43,8 @@ RE_CHARACTER_DEF = re.compile(
     r'(?:Dynamic)?Character\s*\(\s*(?:_\s*\(\s*)?["\']?([^"\'\),]+)["\']?'
 )
 RE_VAR_VALUE = re.compile(r'=\s*["\']([^"\']+)["\']')
-RE_TEXT_TAGS = re.compile(r'\{[^}]*\}')
-RE_WORDS = re.compile(r'[\w\'-]+', re.UNICODE)
+RE_TEXT_TAGS = re.compile(r"\{[^}]*\}")
+RE_WORDS = re.compile(r"[\w\'-]+", re.UNICODE)
 RE_DIALOGUE_LINE = re.compile(
     r'^(?:([^\W\d]\w*|"[^"]*"|\'[^\']*\')(?:\s+[\w-]+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')(.*)$'
 )
@@ -60,14 +60,14 @@ def extract_character_names(analyzer: SenpyAnalyzer) -> dict[str, str]:
                 raw_target = m.group(1).strip()
                 # Снимаем интерполяцию [var] если имя задано как Character("[p_name]")
                 clean_target = raw_target.strip("[]\"'")
-                
+
                 # Если имя персонажа ссылается на переменную (как в DDLC: s_name -> Сайори)
                 if clean_target in analyzer.variables:
                     val_match = RE_VAR_VALUE.search(analyzer.variables[clean_target].code_line)
                     if val_match:
                         names[var_name] = val_match.group(1)
                         continue
-                
+
                 names[var_name] = raw_target if raw_target.isidentifier() is False else clean_target
             else:
                 names[var_name] = var_name
@@ -92,7 +92,7 @@ def collect_story_stats(analyzer: SenpyAnalyzer) -> StoryStats:
             lines = analyzer.in_memory_files[norm_path].splitlines(keepends=True)
         else:
             try:
-                with open(file_path, "r", encoding="utf-8", newline="") as f:
+                with open(file_path, encoding="utf-8", newline="") as f:
                     lines = f.readlines()
             except (OSError, UnicodeDecodeError):
                 continue
@@ -115,7 +115,9 @@ def collect_story_stats(analyzer: SenpyAnalyzer) -> StoryStats:
             if line_indent == 0:
                 if stripped.startswith("label ") and stripped.endswith(":"):
                     in_label = True
-                elif stripped.startswith(("screen ", "style ", "init ", "transform ", "image ", "layeredimage ")):
+                elif stripped.startswith(
+                    ("screen ", "style ", "init ", "transform ", "image ", "layeredimage ")
+                ):
                     in_label = False
 
             if not in_label:
@@ -124,10 +126,14 @@ def collect_story_stats(analyzer: SenpyAnalyzer) -> StoryStats:
 
             # Обработка специальной конструкции Ren'Py: extend "..."
             if stripped.startswith(("extend ", "extend\t")):
-                m_ext = re.search(r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')', stripped)
+                m_ext = re.search(
+                    r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')', stripped
+                )
                 if m_ext:
                     text_content = m_ext.group(2) or m_ext.group(3) or ""
-                    clean_text = RE_TEXT_TAGS.sub("", text_content).replace('\\"', '"').replace("\\'", "'")
+                    clean_text = (
+                        RE_TEXT_TAGS.sub("", text_content).replace('\\"', '"').replace("\\'", "'")
+                    )
                     words = RE_WORDS.findall(clean_text)
                     w_count = len(words)
                     c_count = sum(len(w) for w in words)
@@ -152,17 +158,24 @@ def collect_story_stats(analyzer: SenpyAnalyzer) -> StoryStats:
                 text_content = m.group(3) or m.group(4) or ""
 
                 # Очистка текста от тегов {b}, {color=...} и экранированных символов
-                clean_text = RE_TEXT_TAGS.sub("", text_content).replace('\\"', '"').replace("\\'", "'")
+                clean_text = (
+                    RE_TEXT_TAGS.sub("", text_content).replace('\\"', '"').replace("\\'", "'")
+                )
                 words = RE_WORDS.findall(clean_text)
                 word_count = len(words)
                 char_count = sum(len(w) for w in words)
 
                 if word_count > 0:
                     speaker_tag = raw_speaker.strip("\"'") if raw_speaker else "narrator"
-                    disp_name = char_names.get(speaker_tag, "Narrator (Рассказчик)" if speaker_tag == "narrator" else speaker_tag)
+                    disp_name = char_names.get(
+                        speaker_tag,
+                        "Narrator (Рассказчик)" if speaker_tag == "narrator" else speaker_tag,
+                    )
 
                     if speaker_tag not in char_stats:
-                        char_stats[speaker_tag] = CharacterStats(tag=speaker_tag, display_name=disp_name)
+                        char_stats[speaker_tag] = CharacterStats(
+                            tag=speaker_tag, display_name=disp_name
+                        )
 
                     char_stats[speaker_tag].lines_count += 1
                     char_stats[speaker_tag].words_count += word_count
@@ -181,7 +194,9 @@ def collect_story_stats(analyzer: SenpyAnalyzer) -> StoryStats:
             stat.percentage_words = round((stat.words_count / total_words) * 100, 1)
 
     reading_time = round(total_words / 180.0, 1)
-    sorted_chars = dict(sorted(char_stats.items(), key=lambda item: item[1].words_count, reverse=True))
+    sorted_chars = dict(
+        sorted(char_stats.items(), key=lambda item: item[1].words_count, reverse=True)
+    )
 
     return StoryStats(
         total_dialogue_lines=total_lines,

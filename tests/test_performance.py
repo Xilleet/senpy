@@ -29,28 +29,22 @@ init python:
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True, exist_ok=True)
     (game_dir / "script.rpy").write_text(code, encoding="utf-8")
-    
-    # Создаем фейковые файлы, чтобы не сработало правило RPY501
+
     (game_dir / "audio").mkdir()
     (game_dir / "audio" / "track1.ogg").write_bytes(b"dummy")
     (game_dir / "audio" / "track2.ogg").write_bytes(b"dummy")
     (game_dir / "audio" / "track3.ogg").write_bytes(b"dummy")
 
     analyzer = SenpyAnalyzer(str(tmp_path))
-    
-    # Оборачиваем метод _scan_python_assets, чтобы посчитать количество его вызовов,
-    # но при этом сохранить его оригинальную логику (wraps)
-    with patch.object(analyzer, '_scan_python_assets', wraps=analyzer._scan_python_assets) as mock_scan:
+
+    with patch.object(
+        analyzer, "_scan_python_assets", wraps=analyzer._scan_python_assets
+    ) as mock_scan:
         result = analyzer.run(quiet=True)
-        
-        # Убеждаемся, что ложных RPY503 нет (файлы найдены скриптом)
+
         rpy503_diags = [d for d in result.diagnostics if d.code == "RPY503"]
         assert len(rpy503_diags) == 0
-        
-        # ГЛАВНАЯ ПРОВЕРКА TDD:
-        # Метод должен быть вызван РОВНО 3 раза:
-        # 1. Для однострочного $ (строка 9)
-        # 2. Для блока python: (строка 11)
-        # 3. Для блока init python: (строка 17)
-        # Если бы скан был глобальным, вызовов было бы > 15 (по количеству строк)
-        assert mock_scan.call_count == 3, f"Expected exactly 3 calls to asset scanner, but got {mock_scan.call_count}. Overhead detected!"
+
+        assert mock_scan.call_count == 3, (
+            f"Expected exactly 3 calls to asset scanner, but got {mock_scan.call_count}. Overhead detected!"
+        )

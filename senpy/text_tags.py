@@ -39,9 +39,7 @@ def get_utf16_range(line: str, sub: str | None = None) -> tuple[int, int]:
 
 def suggest_similar_symbol(unknown_var: str, user_symbols: set[str]) -> str:
     """Предлагает близкое по написанию имя переменной."""
-    matches = difflib.get_close_matches(
-        unknown_var, list(user_symbols), n=1, cutoff=0.6
-    )
+    matches = difflib.get_close_matches(unknown_var, list(user_symbols), n=1, cutoff=0.6)
     if matches:
         return f" (did you mean '{matches[0]}' ?)"
     return ""
@@ -128,7 +126,9 @@ def process_quoted_strings(
                 color_val = tag_param.strip("\"'").lower()
                 if color_val.startswith("#"):
                     hex_str = color_val[1:]
-                    if len(hex_str) not in (3, 4, 6, 8) or not all(c in "0123456789abcdef" for c in hex_str):
+                    if len(hex_str) not in (3, 4, 6, 8) or not all(
+                        c in "0123456789abcdef" for c in hex_str
+                    ):
                         start_c, end_c = get_utf16_range(raw_line, tag_param)
                         diagnostics.append(
                             Diagnostic(
@@ -232,9 +232,7 @@ def process_quoted_strings(
             quote_len = 3 if last_match.group(0).startswith(('"""', "'''")) else 1
             insert_pos = last_match.end() - quote_len
             reconstructed_line = (
-                reconstructed_line[:insert_pos]
-                + closing_tags
-                + reconstructed_line[insert_pos:]
+                reconstructed_line[:insert_pos] + closing_tags + reconstructed_line[insert_pos:]
             )
             modified = True
             fixed_count += len(stack)

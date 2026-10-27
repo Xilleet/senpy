@@ -10,18 +10,20 @@ if TYPE_CHECKING:
 @dataclass
 class VariableSymbol:
     """Представляет переменную (default) или константу (define) в проекте."""
+
     name: str
     file_path: str
     line_number: int
     code_line: str
     type_name: str | None = None
-    is_constant: bool = False    # True если define, False если default
-    is_character: bool = False   # True если это Character(...) или DynamicCharacter(...)
+    is_constant: bool = False  # True если define, False если default
+    is_character: bool = False  # True если это Character(...) или DynamicCharacter(...)
 
 
 @dataclass
 class LabelSymbol:
     """Представляет сюжетную метку (label)."""
+
     name: str
     file_path: str
     line_number: int
@@ -35,6 +37,7 @@ class LabelSymbol:
 @dataclass
 class ScreenSymbol:
     """Представляет UI экран (screen)."""
+
     name: str
     file_path: str
     line_number: int
@@ -44,6 +47,7 @@ class ScreenSymbol:
 @dataclass
 class ImageSymbol:
     """Представляет объявление спрайта или фона (image / layeredimage)."""
+
     name: str
     file_path: str
     line_number: int
@@ -55,6 +59,7 @@ class ImageSymbol:
 @dataclass
 class TransformSymbol:
     """Представляет ATL-трансформацию (transform)."""
+
     name: str
     file_path: str
     line_number: int

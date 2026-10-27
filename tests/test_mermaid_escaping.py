@@ -5,6 +5,7 @@ Ren'Py допускает саб-метки с точками (label .start -> c
 имена попадали в id узлов/рёбер как есть и ломали парсинг диаграммы в вебвью;
 тексты fallthrough/return-узлов эммитились без кавычек.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,7 +26,7 @@ def get_graph(tmp_path: Path, code: str) -> str:
     return analyzer.export_graph()
 
 
-SCRIPT_DOTTED = '''
+SCRIPT_DOTTED = """
 label start:
     jump chapter.start
 
@@ -37,30 +38,30 @@ label .start:
 
 label финиш:
     return
-'''
+"""
 
-SCRIPT_END = '''
+SCRIPT_END = """
 label start:
     jump end
 
 label end:
     return
-'''
+"""
 
-SCRIPT_MISSING = '''
+SCRIPT_MISSING = """
 label start:
     jump ghost.target
-'''
+"""
 
-SCRIPT_PLAIN = '''
+SCRIPT_PLAIN = """
 label start:
     jump chapter_one
 
 label chapter_one:
     jump start
-'''
+"""
 
-SCRIPT_SCREEN_PLAIN = '''
+SCRIPT_SCREEN_PLAIN = """
 screen hub():
     textbutton "Далее" action Jump("finale")
 
@@ -71,7 +72,7 @@ label start:
 
 label finale:
     return
-'''
+"""
 
 
 def test_dotted_label_id_sanitized_text_kept(tmp_path: Path):

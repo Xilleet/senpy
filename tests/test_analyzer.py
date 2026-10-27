@@ -9,39 +9,6 @@ import pytest
 from senpy.analyzer import SenpyAnalyzer
 from senpy.rpa import safe_load_rpa_index
 
-MEGA_UNCOVERED_RULES = {
-        # RPY100 — нужен файл с невалидным UTF-8 (тестируется отдельно через
-        # test_encoding_errors.py + RPY100 fixture TODO).
-        "RPY100",
-        # RPY107 — нужен вызов deprecated API (LiveComposite, anim.*, ui.*).
-        # MEGA_TEST_SCRIPT их не использует.
-        "RPY107",
-        # RPY108 — нужен конфликт типов (str += int). MEGA_TEST_SCRIPT имеет
-        # += на define, но без конфликта типов.
-        "RPY108",
-        # RPY109 — нужен init python block с двумя зависимыми файлами.
-        # MEGA_TEST_SCRIPT имеет только один init python с def.
-        "RPY109",
-        # RPY207 — нужен вызов use/call screen с неверными параметрами.
-        "RPY207",
-        # RPY208 — нужен SetVariable на screen-local переменной.
-        "RPY208",
-        # RPY309 — нужен сюжетный остров (изолированный label). MEGA_TEST_SCRIPT
-        # имеет только chapter_two -> bad_edd (несуществующий), что даёт RPY302.
-        "RPY309",
-        # RPY310 — нужен call label(...) с неверными аргументами.
-        "RPY310",
-        # RPY404 — нужен MAYBE_SET после menu. MEGA_TEST_SCRIPT имеет RPY401
-        # (асимметрия), но не RPY404.
-        "RPY404",
-        # RPY501 — нужен play/queue аудио с несуществующим файлом.
-        "RPY501",
-        # RPY505 — нужен register_channel на невалидном канале.
-        "RPY505",
-        # RPY601-603 — нужны переводческие файлы в game/tl/. MEGA_TEST_SCRIPT
-        # их не создаёт. Покрываются отдельными fixture-тестами.
-        "RPY601", "RPY602", "RPY603",
-    }
 
 def run_senpy_on_code(
     code: str,
@@ -130,7 +97,7 @@ label chapter_two:
     "Внимание: {b}опасная зона!"   # RPY301
     jump bad_edd   # RPY302
 
-$ player_gold -= 10
+$ player_gold -= 10 
 
 label test_flow:
     menu:
@@ -171,15 +138,63 @@ label forgotten_secret_draft:   # RPY303: метка без прямых пер�
 
 
 def test_mega_broken_script_catches_all_rules(tmp_path: Path):
+    """Verify MEGA_TEST_SCRIPT ловит все правила, которые он должен покрывать.
+
+    P0-8: ранее тут хардкодился список из 29 правил, и тест проходил тривиально,
+    не ловя регрессии 13 новых правил (RPY100, RPY107-109, RPY207-208, RPY309-310,
+    RPY404, RPY505, RPY601-603). Теперь список берётся динамически из
+    models.RULE_SEVERITY, и новые правила автоматически попадают в проверку.
+
+    Правила, которые MEGA_TEST_SCRIPT заведомо НЕ может покрывать (нужны
+    специальные условия — переводческие файлы, init python blocks, etc.),
+    перечислены в MEGA_UNCOVERED_RULES с пояснением.
+    """
     from senpy.models import RULE_SEVERITY
 
     # Создаём файл ассета, на который нет ни одной ссылки в коде (вызывает RPY503)
-    extra_files = {
-        "images/completely_unused_background.png": b"dummy_png_bytes"
-    }
+    extra_files = {"images/completely_unused_background.png": b"dummy_png_bytes"}
 
     result, _ = run_senpy_on_code(MEGA_TEST_SCRIPT, tmp_path, extra_files=extra_files)
     codes_found = {d.code for d in result.diagnostics}
+
+    # Правила, которые MEGA_TEST_SCRIPT заведомо не покрывает.
+    # Каждое — с указанием причины и номером соответствующего fixture-теста
+    # (если он есть) или TODO (если fixture ещё нужно создать — см. RULE-1).
+    MEGA_UNCOVERED_RULES = {
+        # RPY100 — нужен файл с невалидным UTF-8 (тестируется отдельно через
+        # test_encoding_errors.py + RPY100 fixture TODO).
+        "RPY100",
+        # RPY107 — нужен вызов deprecated API (LiveComposite, anim.*, ui.*).
+        # MEGA_TEST_SCRIPT их не использует.
+        "RPY107",
+        # RPY108 — нужен конфликт типов (str += int). MEGA_TEST_SCRIPT имеет
+        # += на define, но без конфликта типов.
+        "RPY108",
+        # RPY109 — нужен init python block с двумя зависимыми файлами.
+        # MEGA_TEST_SCRIPT имеет только один init python с def.
+        "RPY109",
+        # RPY207 — нужен вызов use/call screen с неверными параметрами.
+        "RPY207",
+        # RPY208 — нужен SetVariable на screen-local переменной.
+        "RPY208",
+        # RPY309 — нужен сюжетный остров (изолированный label). MEGA_TEST_SCRIPT
+        # имеет только chapter_two -> bad_edd (несуществующий), что даёт RPY302.
+        "RPY309",
+        # RPY310 — нужен call label(...) с неверными аргументами.
+        "RPY310",
+        # RPY404 — нужен MAYBE_SET после menu. MEGA_TEST_SCRIPT имеет RPY401
+        # (асимметрия), но не RPY404.
+        "RPY404",
+        # RPY501 — нужен play/queue аудио с несуществующим файлом.
+        "RPY501",
+        # RPY505 — нужен register_channel на невалидном канале.
+        "RPY505",
+        # RPY601-603 — нужны переводческие файлы в game/tl/. MEGA_TEST_SCRIPT
+        # их не создаёт. Покрываются отдельными fixture-тестами.
+        "RPY601",
+        "RPY602",
+        "RPY603",
+    }
 
     # Все правила, которые MEGA_TEST_SCRIPT ДОЛЖЕН покрывать
     expected_rules = set(RULE_SEVERITY.keys()) - MEGA_UNCOVERED_RULES
@@ -192,6 +207,8 @@ def test_mega_broken_script_catches_all_rules(tmp_path: Path):
         f"Пойманные правила: {sorted(codes_found)}"
     )
 
+    # Обратная проверка: каждое правило в MEGA_UNCOVERED_RULES должно существовать
+    # в RULE_SEVERITY (защита от опечаток в MEGA_UNCOVERED_RULES).
     invalid_uncovered = MEGA_UNCOVERED_RULES - set(RULE_SEVERITY.keys())
     assert not invalid_uncovered, (
         f"MEGA_UNCOVERED_RULES содержит несуществующие правила: {sorted(invalid_uncovered)}. "
@@ -214,6 +231,7 @@ label start:
     errors_and_warnings = [d for d in result.diagnostics if d.severity in ("ERROR", "WARNING")]
     assert len(errors_and_warnings) == 0, f"Unexpected diagnostics: {errors_and_warnings}"
 
+
 def test_dialogue_with_attributes_and_clauses(tmp_path: Path):
     """Verify dialogue with character attributes and 'with' clauses parses cleanly"""
     code = """
@@ -227,6 +245,7 @@ label start:
     result, _ = run_senpy_on_code(code, tmp_path)
     assert len(result.diagnostics) == 0
 
+
 def test_autofix_unclosed_tags(tmp_path: Path):
     """Verify auto-fixing unclosed dialogue tags with closing sequence (RPY301)"""
     broken_code = """
@@ -238,7 +257,7 @@ label start:
     fixed_content = script_file.read_text(encoding="utf-8")
 
     assert result.fixed_count > 0
-    assert "{/i}{/b}\"" in fixed_content
+    assert '{/i}{/b}"' in fixed_content
 
 
 def test_autofix_tab_indentation_rpy001(tmp_path: Path):
@@ -254,7 +273,7 @@ def test_autofix_tab_indentation_rpy001(tmp_path: Path):
 
 def test_autofix_smart_quotes_rpy002(tmp_path: Path):
     """Verify auto-replacing smart/curly quotes with ASCII quotes (RPY002)"""
-    broken_code = 'label start:\n    $ status = “active”\n    return\n'
+    broken_code = "label start:\n    $ status = “active”\n    return\n"
     result, script_file = run_senpy_on_code(broken_code, tmp_path, fix=True)
     fixed_code = script_file.read_text(encoding="utf-8")
 
@@ -282,6 +301,7 @@ label start:
     rpy501_errors = [d for d in result.diagnostics if d.code == "RPY501"]
     assert len(rpy501_errors) == 0, f"Expected valid audio, but got: {rpy501_errors}"
 
+
 def test_multiline_conditions_and_screens_parse_cleanly(tmp_path: Path):
     """Verify multiline if conditions and screen parameter blocks parse without errors"""
     code = """
@@ -306,6 +326,7 @@ label start:
     errors = [d for d in result.diagnostics if d.severity == "ERROR"]
     assert len(errors) == 0, f"Multiline statements triggered errors: {errors}"
 
+
 def test_safe_rpa_blocks_malicious_pickle(tmp_path: Path):
     """Verify safe_load_rpa_index rejects untrusted opcodes (GLOBAL/REDUCE)"""
 
@@ -313,12 +334,14 @@ def test_safe_rpa_blocks_malicious_pickle(tmp_path: Path):
     class Exploit:
         def __reduce__(self):
             import os
-            return (os.system, ('echo hacked',))
+
+            return (os.system, ("echo hacked",))
 
     malicious_data = zlib.compress(pickle.dumps(Exploit()))
 
     with pytest.raises(pickle.UnpicklingError):
         safe_load_rpa_index(malicious_data)
+
 
 def test_lsp_analyze_file_only_no_symbol_leak(tmp_path: Path):
     """Verify analyze_file_only does not retain renamed symbols in state"""
@@ -339,6 +362,7 @@ def test_lsp_analyze_file_only_no_symbol_leak(tmp_path: Path):
     # Старое имя должно исчезнуть, новое появиться!
     assert "old_score" not in analyzer.declared_symbols
     assert "new_score" in analyzer.declared_symbols
+
 
 def test_translation_validation_catches_rpy601_602_603(tmp_path: Path):
     """Verify translation validator catches variable mismatches, tag mismatches, and empty strings"""
@@ -371,6 +395,7 @@ translate russian strings:
     assert "RPY602" in codes
     assert "RPY603" in codes
 
+
 def test_audio_channel_validation_rpy505(tmp_path: Path):
     """Verify RPY505 catches unregistered audio channels and loop on voice channel"""
     code = """
@@ -390,6 +415,7 @@ label start:
     assert len(rpy505_diags) == 2
     assert any("mystery_channel" in d.message and d.severity == "WARNING" for d in rpy505_diags)
     assert any("voice" in d.message and d.severity == "WARNING" for d in rpy505_diags)
+
 
 def test_incremental_cache_speedup_and_invalidation(tmp_path: Path):
     """Verify incremental disk caching (.senpy_cache) correctly caches and invalidates state"""
@@ -423,6 +449,7 @@ label start:
 
     codes = [d.code for d in result_invalidated.diagnostics]
     assert "RPY102" in codes  # Ошибка NameError мгновенно поймана после изменения файла
+
 
 def test_bracket_fault_tolerance_prevents_cascading_consumption(tmp_path: Path):
     """Verify unclosed bracket on condition does not cascade and consume the entire file"""
@@ -473,13 +500,14 @@ def test_rpa_sandbox_path_traversal_guard(tmp_path: Path):
     extracted = extract_scripts_from_rpa(str(fake_archive), str(dest_sandbox))
     assert extracted == []
 
+
 def test_autofix_preserves_crlf_line_endings(tmp_path: Path):
     """Verify autofix preserves CRLF (\\r\\n) line endings without corrupting to \\r\\r\\n"""
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True, exist_ok=True)
     script_file = game_dir / "script.rpy"
 
-    crlf_content = "label start:\r\n    \"Unclosed {b}tag\"\r\n    return\r\n"
+    crlf_content = 'label start:\r\n    "Unclosed {b}tag"\r\n    return\r\n'
     script_file.write_bytes(crlf_content.encode("utf-8"))
 
     analyzer = SenpyAnalyzer(str(tmp_path), fix=True)
@@ -489,6 +517,7 @@ def test_autofix_preserves_crlf_line_endings(tmp_path: Path):
     raw_after_fix = script_file.read_bytes()
     assert b"\r\r\n" not in raw_after_fix
     assert b"\r\n" in raw_after_fix
+
 
 def test_init_dependency_graph_rpy109(tmp_path: Path):
     """Verify RPY109 catches functions called before they are loaded alphabetically"""
@@ -534,6 +563,7 @@ init python:
     clean_result = clean_analyzer.run(quiet=True)
     assert not any(d.code == "RPY109" for d in clean_result.diagnostics)
 
+
 def test_init_ci_generates_workflow_file(tmp_path: Path):
     """Verify --init-ci generates a valid .github/workflows/senpy.yml workflow"""
     from senpy.ci import init_ci_workflow
@@ -554,6 +584,7 @@ def test_init_ci_generates_workflow_file(tmp_path: Path):
     assert "upload-sarif@v3" in content
     assert "security-events: write" in content
     assert "senpy game/ --format sarif" in content
+
 
 def test_translation_coverage_calculation(tmp_path: Path):
     """Verify --coverage accurately computes translation progress percentages across languages"""
@@ -604,6 +635,7 @@ translate spanish strings:
     assert stats["spanish"].empty_strings == 0
     assert stats["spanish"].coverage_percent == 100.0
 
+
 def test_export_wiki_generation(tmp_path: Path):
     """Verify --export-wiki extracts characters, typed variables, and terminal endings"""
     from senpy.wiki import generate_project_wiki
@@ -641,6 +673,7 @@ label good_end:
     assert "## Story Endings" in wiki_content
     assert "`good_end`" in wiki_content
 
+
 def test_generate_stubs_creates_valid_pyi_files(tmp_path: Path):
     """Verify --generate-stubs creates store.pyi and renpy.pyi with accurate types"""
     from senpy.stubs import generate_stubs
@@ -674,6 +707,7 @@ label start:
     assert "player_name: str" in store_pyi
     assert "is_quest_active: bool" in store_pyi
     assert "persistent: Any" in store_pyi
+
 
 def test_traceback_inspector_parses_crash_log(tmp_path: Path):
     """Verify Traceback Inspector parses traceback.txt and maps runtime crashes to Senpy rules"""
@@ -719,6 +753,7 @@ label explore:
     assert "target_enemy" in rpy103[0].message
     assert rpy103[0].line_number == 8
 
+
 def test_call_screen_does_not_create_dummy_jump_target(tmp_path: Path):
     """Verify 'call screen' does not register a jump to a label named 'screen'"""
     code = """
@@ -739,19 +774,23 @@ def test_rules_database_completeness():
     """RULES_DATABASE и RULE_SEVERITY совпадают ключ-в-ключ"""
     from senpy.models import RULE_SEVERITY
     from senpy.rules_info import RULES_DATABASE
+
     missing = set(RULE_SEVERITY.keys()) - set(RULES_DATABASE.keys())
     assert not missing, f"RULES_DATABASE is missing rules: {missing}"
     extra = set(RULES_DATABASE.keys()) - set(RULE_SEVERITY.keys())
     assert not extra, f"RULES_DATABASE has rules not in RULE_SEVERITY: {extra}"
 
+
 def test_tsundere_flavors_completeness():
     """TSUNDERE_FLAVORS и RULE_SEVERITY совпадают ключ-в-ключ"""
     from senpy.models import RULE_SEVERITY
     from senpy.tsundere import TSUNDERE_FLAVORS
+
     missing = set(RULE_SEVERITY.keys()) - set(TSUNDERE_FLAVORS.keys())
     assert not missing, f"TSUNDERE_FLAVORS is missing phrases for rules: {missing}"
     extra = set(TSUNDERE_FLAVORS.keys()) - set(RULE_SEVERITY.keys())
     assert not extra, f"TSUNDERE_FLAVORS has phrases for unknown rules: {extra}"
+
 
 def test_cache_invalidates_on_same_size_same_mtime_content_change(tmp_path: Path):
     """Verify incremental cache invalidates via content_hash even when size and mtime are identical."""
@@ -779,6 +818,7 @@ def test_cache_invalidates_on_same_size_same_mtime_content_change(tmp_path: Path
 
     # Принудительно возвращаем точный старый mtime, имитируя коллизию метаданных
     import os
+
     os.utime(str(script_file), (orig_mtime, orig_mtime))
 
     # Шаг 3: тёплый повторный запуск
@@ -786,8 +826,12 @@ def test_cache_invalidates_on_same_size_same_mtime_content_change(tmp_path: Path
     analyzer_2.run(quiet=True)
 
     # На старом коде этот ассерт обязан упасть, так как кэш выдаст устаревший hero_gold!
-    assert "hero_mana" in analyzer_2.declared_symbols, "Cache served stale scope: new variable 'hero_mana' was missed!"
-    assert "hero_gold" not in analyzer_2.declared_symbols, "Cache served stale scope: old variable 'hero_gold' retained!"
+    assert "hero_mana" in analyzer_2.declared_symbols, (
+        "Cache served stale scope: new variable 'hero_mana' was missed!"
+    )
+    assert "hero_gold" not in analyzer_2.declared_symbols, (
+        "Cache served stale scope: old variable 'hero_gold' retained!"
+    )
 
 
 def test_per_rule_severity_override(tmp_path: Path):
@@ -822,6 +866,7 @@ label next_scene:        # RPY308: fallthrough (default: WARNING)
 
     assert d104_custom.severity == "ERROR"
     assert d308_custom.severity == "INFO"
+
 
 def test_advanced_type_inference_expressions_rpy108(tmp_path: Path):
     """Verify advanced type inference on expressions (binary ops, known variables, methods) for RPY108."""
@@ -861,6 +906,7 @@ label start:
     assert len(warns) == 2
     assert any("extra_score" in d.message and "incompatible type 'str'" in d.message for d in warns)
     assert any("is_ready" in d.message and "incompatible type 'int'" in d.message for d in warns)
+
 
 def test_unified_cfg_nested_menu_inside_if(tmp_path: Path):
     """Verify unified CFG correctly bubbles guaranteed vars and termination from menu to enclosing if."""
@@ -902,6 +948,7 @@ label start:
     assert len(rpy404_diags) == 0, f"False RPY404 on unified CFG nested menu: {rpy404_diags}"
     assert len(rpy401_diags) == 0, f"False RPY401 on exhaustive menu: {rpy401_diags}"
 
+
 def test_lsp_differential_update_multiple_files_integrity(tmp_path: Path):
     """Verify differential purge updates single file without corrupting other files' symbols."""
     game_dir = tmp_path / "game"
@@ -910,8 +957,14 @@ def test_lsp_differential_update_multiple_files_integrity(tmp_path: Path):
     file_a = game_dir / "a.rpy"
     file_b = game_dir / "b.rpy"
 
-    file_a.write_text("default shared_var = 1\ndefault a_unique = 10\nlabel scene_a:\n    return\n", encoding="utf-8")
-    file_b.write_text("default shared_var = 2\ndefault b_unique = 20\nlabel scene_b:\n    return\n", encoding="utf-8")
+    file_a.write_text(
+        "default shared_var = 1\ndefault a_unique = 10\nlabel scene_a:\n    return\n",
+        encoding="utf-8",
+    )
+    file_b.write_text(
+        "default shared_var = 2\ndefault b_unique = 20\nlabel scene_b:\n    return\n",
+        encoding="utf-8",
+    )
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
@@ -922,7 +975,10 @@ def test_lsp_differential_update_multiple_files_integrity(tmp_path: Path):
     assert "scene_b" in analyzer.labels
 
     # Модифицируем файл A: переименовываем a_unique -> a_renamed, удаляем scene_a
-    file_a.write_text("default shared_var = 1\ndefault a_renamed = 99\nlabel scene_a_new:\n    return\n", encoding="utf-8")
+    file_a.write_text(
+        "default shared_var = 1\ndefault a_renamed = 99\nlabel scene_a_new:\n    return\n",
+        encoding="utf-8",
+    )
     analyzer.analyze_file_only(str(file_a))
 
     # 1. Изменения в файле A применились
@@ -937,6 +993,7 @@ def test_lsp_differential_update_multiple_files_integrity(tmp_path: Path):
 
     # 3. Общая переменная shared_var не удалилась из declared_symbols, так как она осталась в файле B
     assert "shared_var" in analyzer.declared_symbols
+
 
 def test_multiline_calls_and_playlists_parsing(tmp_path: Path):
     """Verify multiline call statements, transform declarations, and audio playlists glue cleanly."""
@@ -981,6 +1038,7 @@ label start:
     assert "target_scene" in analyzer.labels
     assert "multiline_bounce" in analyzer.transforms
 
+
 def test_screen_variable_leak_rpy208(tmp_path: Path):
     """Verify RPY208 catches screen-local variables modified via SetVariable, ToggleVariable or Python."""
     code = """
@@ -1023,6 +1081,7 @@ screen shop(discount_rate=0.1):
     d_py = next(d for d in rpy208_diags if d.line_number == 11)
     assert d_py.severity == "ERROR"
     assert "discount_rate" in d_py.message
+
 
 def test_story_stats_word_count_and_character_balance(tmp_path: Path):
     """Verify story stats correctly calculates word count, reading time and character speech shares."""

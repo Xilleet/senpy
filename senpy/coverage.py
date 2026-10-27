@@ -48,7 +48,7 @@ def calculate_translation_coverage(project_path: str) -> dict[str, LanguageStats
             stats_by_lang[lang] = LanguageStats(language=lang)
 
         try:
-            with open(file_path, "r", encoding="utf-8", newline="") as f:
+            with open(file_path, encoding="utf-8", newline="") as f:
                 lines = f.readlines()
         except (OSError, UnicodeDecodeError):
             continue

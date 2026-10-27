@@ -8,6 +8,7 @@
 SafeRPAUnpickler из rpa.py); мусор/чужие объекты -> None -> кэш
 пересобирается, как при обычной коррупции.
 """
+
 import pickle
 
 from senpy.analyzer import SenpyAnalyzer
@@ -38,14 +39,14 @@ def test_legit_cache_still_loads(tmp_path):
     root = tmp_path / "proj"
     (root / "game").mkdir(parents=True)
     (root / "game" / "script.rpy").write_text(
-        'label start:\n'
+        "label start:\n"
         '    "Hello"\n'
-        '    jump chapter_2\n'
-        '    return\n'
-        '\n'
-        'label chapter_2:\n'
+        "    jump chapter_2\n"
+        "    return\n"
+        "\n"
+        "label chapter_2:\n"
         '    "The end"\n'
-        '    return\n',
+        "    return\n",
         encoding="utf-8",
     )
 
@@ -70,6 +71,7 @@ def test_garbage_and_foreign_pickle_rejected(tmp_path):
 
     # 2) валидный pickle класса вне белого списка
     import datetime
+
     (cache_dir / "cache.pkl").write_bytes(pickle.dumps(datetime.datetime(2020, 1, 1)))  # noqa: DTZ001
     assert cm.load_manifest() is None
 

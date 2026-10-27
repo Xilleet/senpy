@@ -4,10 +4,10 @@ from enum import Enum, auto
 
 
 class ScopeType(Enum):
-    GLOBAL = auto()    # Глобальные переменные (default, define, built-in)
-    LABEL = auto()     # Сюжетные метки (аргументы меток)
-    SCREEN = auto()    # Экраны (аргументы экранов, локальные переменные Python)
-    BLOCK = auto()     # Блоки кода (init python, циклы, menu)
+    GLOBAL = auto()  # Глобальные переменные (default, define, built-in)
+    LABEL = auto()  # Сюжетные метки (аргументы меток)
+    SCREEN = auto()  # Экраны (аргументы экранов, локальные переменные Python)
+    BLOCK = auto()  # Блоки кода (init python, циклы, menu)
 
 
 class Scope:

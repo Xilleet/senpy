@@ -31,13 +31,15 @@ def pytest_runtest_makereport(item, call):
 
     if report.when == "call" or (report.when == "setup" and report.failed):
         title = getattr(item, "user_title", item.name)
-        _TEST_RESULTS.append({
-            "name": item.name,
-            "title": title,
-            "status": report.outcome.upper(),  # PASSED, FAILED, SKIPPED
-            "duration": round(report.duration, 4),
-            "error": str(report.longrepr) if report.failed else None,
-        })
+        _TEST_RESULTS.append(
+            {
+                "name": item.name,
+                "title": title,
+                "status": report.outcome.upper(),  # PASSED, FAILED, SKIPPED
+                "duration": round(report.duration, 4),
+                "error": str(report.longrepr) if report.failed else None,
+            }
+        )
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -72,8 +74,7 @@ def pytest_sessionfinish(session, exitstatus):
         ],
     }
     Path("test_report.json").write_text(
-        json.dumps(json_data, indent=2, ensure_ascii=False),
-        encoding="utf-8"
+        json.dumps(json_data, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
     # 2. Генерируем test_report.txt
@@ -107,14 +108,16 @@ def pytest_sessionfinish(session, exitstatus):
 
     Path("test_report.txt").write_text("\n".join(txt_lines), encoding="utf-8")
 
+
 def pytest_addoption(parser):
     """Добавляем флаг для автоматического обновления JSON-снимков."""
     parser.addoption(
         "--update-snapshots",
         action="store_true",
         default=False,
-        help="Update JSON snapshots for fixture tests"
+        help="Update JSON snapshots for fixture tests",
     )
+
 
 @pytest.fixture
 def update_snapshots(request):

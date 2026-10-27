@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """update_unrpyc_pin.py — обновление pinned unrpyc commit + SHA256 в senpy/cli.py.
 
+ECO-4: Senpy пиннит unrpyc к конкретному git-коммиту/тегу (не master-ветке
+в общем случае) и проверяет SHA256 скачанного zip. Этот скрипт обновляет
+обе константы в senpy/cli.py одной командой.
+
 ============================================================================
 СОВМЕСТИМОСТЬ UNRPYC С ВЕРСИЯМИ REN'PY (важно для публичного скрипта)
 ============================================================================
@@ -28,7 +32,7 @@ unrpyc имеет две ветки:
 ИСТОЧНИК: https://github.com/CensoredUsername/unrpyc#readme
 
 ============================================================================
-ТЕСТЫ
+ТЕСТЫ МЕЙНТЕЙНЕРА (подтверждённая совместимость)
 ============================================================================
 
 Мейнтейнер Senpy тестировал unrpyc на реальных .rpyc файлах:
@@ -60,6 +64,7 @@ unrpyc имеет две ветки:
     git add senpy/cli.py
     git commit -m "ECO-4: pin unrpyc to <version> (Ren'Py 6.99/7.x/8.x supported)"
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -78,21 +83,25 @@ CLI_PATH = Path(__file__).parent.parent / "senpy" / "cli.py"
 # =============================================================================
 # МАТРИЦА СОВМЕСТИМОСТИ UNRPYC × REN'PY
 # =============================================================================
+# Каждая запись — это "профиль" пина. Можно выбрать по тегу/коммиту или по
+# целевой версии Ren'Py. Профили отсортированы по предпочтительности.
+
 
 @dataclass
 class UnrpycProfile:
     """Профиль pinned unrpyc с описанием совместимости."""
-    ref: str                    # git ref (тег или commit SHA) для скачивания
-    label: str                  # человекочитаемое имя
-    renpy_versions: str         # поддерживаемые версии Ren'Py (для документации)
-    python_required: str        # требуемая версия Python для unrpyc
-    release_date: str           # дата релиза или "latest" для master
-    stability: str              # "stable" / "latest" / "testing"
-    notes: str                  # дополнительные заметки
-    recommended: bool = False   # рекомендован ли по умолчанию
+
+    ref: str  # git ref (тег или commit SHA) для скачивания
+    label: str  # человекочитаемое имя
+    renpy_versions: str  # поддерживаемые версии Ren'Py (для документации)
+    python_required: str  # требуемая версия Python для unrpyc
+    release_date: str  # дата релиза или "latest" для master
+    stability: str  # "stable" / "latest" / "testing"
+    notes: str  # дополнительные заметки
+    recommended: bool = False  # рекомендован ли по умолчанию
 
 
-# Список доступных профилей.
+# Список доступных профилей. Порядок важен — первый recommended = default.
 PROFILES: list[UnrpycProfile] = [
     UnrpycProfile(
         ref="v2.0.4",
@@ -154,11 +163,11 @@ PROFILES: list[UnrpycProfile] = [
 # здесь можно добавить маппинг.
 
 RENPY_VERSION_TO_PROFILE: dict[str, str] = {
-    "6.99": "v2.0.4",   # стабильный, подтверждён тестами мейнтейнера
+    "6.99": "v2.0.4",  # стабильный, подтверждён тестами мейнтейнера
     "6": "v2.0.4",
-    "7": "v2.0.4",      # стабильный, подтверждён тестами мейнтейнера
-    "8": "v2.0.4",      # стабильный, официально поддерживается (не тестировалось мейнтейнером)
-    "all": "v2.0.4",    # явный выбор "все версии"
+    "7": "v2.0.4",  # стабильный, подтверждён тестами мейнтейнера
+    "8": "v2.0.4",  # стабильный, официально поддерживается (не тестировалось мейнтейнером)
+    "all": "v2.0.4",  # явный выбор "все версии"
 }
 
 
@@ -391,7 +400,9 @@ def run_update(profile: UnrpycProfile) -> int:
         commit_sha, commit_date, commit_msg = get_commit_sha(profile.ref)
     except urllib.error.HTTPError as e:
         if e.code == 403 and "rate limit" in (e.reason or "").lower():
-            print("[ERROR] GitHub API rate limit exceeded. Подожди час или запусти с GitHub-токеном:")
+            print(
+                "[ERROR] GitHub API rate limit exceeded. Подожди час или запусти с GitHub-токеном:"
+            )
             print("        GH_TOKEN=xxx python scripts/update_unrpyc_pin.py")
             print("        (или: GITHUB_TOKEN=xxx — оба варианта работают)")
             return 1
@@ -422,7 +433,9 @@ def run_update(profile: UnrpycProfile) -> int:
     print(f"[★] Готово. Pinned unrpyc к {profile.label} (commit {commit_sha[:8]}).")
     print(f"    Поддерживаемые версии Ren'Py: {profile.renpy_versions}")
     print()
-    print(f"    Закоммитьте: git add senpy/cli.py && git commit -m 'ECO-4: pin unrpyc to {profile.ref}'")
+    print(
+        f"    Закоммитьте: git add senpy/cli.py && git commit -m 'ECO-4: pin unrpyc to {profile.ref}'"
+    )
     return 0
 
 

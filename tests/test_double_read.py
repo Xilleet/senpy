@@ -4,6 +4,7 @@ Stage 1 (_collect_symbols) и stage 2 (_analyze_file) работают на од
 До фикса — каждый .rpy декодируется из UTF-8 дважды. После — stage 2 берёт lines
 из self._stage1_lines, который populate'ит stage 1.
 """
+
 from pathlib import Path
 
 from senpy.analyzer import SenpyAnalyzer

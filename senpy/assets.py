@@ -38,7 +38,7 @@ class AssetManager:
         self.known_assets: set[str] = set()
         self.valid_images: set[str] = set(BUILTIN_COLORS)
         self.media_disk_files: dict[str, str] = {}  # rel_path -> full_path
-        self.audio_dir_files: dict[str, str] = {}    # stem -> full rel path
+        self.audio_dir_files: dict[str, str] = {}  # stem -> full rel path
         self.used_asset_keys: set[str] = set()
 
     def index(self) -> None:
@@ -58,11 +58,7 @@ class AssetManager:
             dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
             for f in filenames:
                 full_path = os.path.join(root, f)
-                rel_path = (
-                    os.path.relpath(full_path, self.project_path)
-                    .replace("\\", "/")
-                    .lower()
-                )
+                rel_path = os.path.relpath(full_path, self.project_path).replace("\\", "/").lower()
                 self.known_assets.add(rel_path)
                 self.known_assets.add(f.lower())
 
@@ -79,10 +75,10 @@ class AssetManager:
 
                 if f.lower().endswith(".rpa"):
                     self._read_rpa_index(full_path)
-        
+
         for asset in self.known_assets:
             base, ext = os.path.splitext(asset)
-                
+
             # Оставляем строгий парсинг только для официального стандарта images/
             if ext.lower() in (".png", ".webp", ".jpg", ".jpeg"):
                 clean_name = base.replace("\\", "/").lower()
@@ -97,9 +93,7 @@ class AssetManager:
 
     def _read_rpa_index(self, rpa_path: str) -> None:
         with (
-            contextlib.suppress(
-                OSError, zlib.error, pickle.UnpicklingError, ValueError
-            ),
+            contextlib.suppress(OSError, zlib.error, pickle.UnpicklingError, ValueError),
             open(rpa_path, "rb") as f,
         ):
             header = f.read(40)

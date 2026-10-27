@@ -29,7 +29,9 @@ label menu_return:
 """
     result = run_senpy_on_code(code, tmp_path)
     islands = [d for d in result.diagnostics if d.code == "RPY309"]
-    assert not islands, f"False RPY309 for screen-reachable label: {[d.line_number for d in islands]}"
+    assert not islands, (
+        f"False RPY309 for screen-reachable label: {[d.line_number for d in islands]}"
+    )
 
 
 def test_rpy309_no_fp_label_reachable_via_use_chain(tmp_path: Path):
@@ -68,5 +70,6 @@ label orphan_target:
 """
     result = run_senpy_on_code(code, tmp_path)
     islands = [d for d in result.diagnostics if d.code == "RPY309"]
-    assert len(islands) == 1 and islands[0].line_number == 9, \
+    assert len(islands) == 1 and islands[0].line_number == 9, (
         f"Expected exactly one RPY309 at line 9, got: {[(d.line_number) for d in islands]}"
+    )

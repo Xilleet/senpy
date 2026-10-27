@@ -3,6 +3,7 @@
 Запуск: python scripts/update_renpy_api.py
 Поддерживает многопоточную быструю загрузку с живым прогресс-баром.
 """
+
 from __future__ import annotations
 
 import ast
@@ -71,7 +72,9 @@ def get_latest_version() -> str | None:
             pass
 
     try:
-        req = urllib.request.Request("https://github.com/renpy/renpy/releases/latest", headers=HEADERS)
+        req = urllib.request.Request(
+            "https://github.com/renpy/renpy/releases/latest", headers=HEADERS
+        )
         with urllib.request.urlopen(req, timeout=8) as resp:
             tag = resp.geturl().rstrip("/").split("/")[-1].lstrip("v").strip()
             if tag and tag[0].isdigit():
@@ -83,9 +86,9 @@ def get_latest_version() -> str | None:
 
 def clean_sphinx_doc(doc: str) -> tuple[str, str]:
     """Вычищает служебные директивы Sphinx (:doc:, :ref:, :func:) из docstring."""
-    cleaned = re.sub(r':(?:doc|name|args):[^\n]*\n', '', doc)
-    cleaned = re.sub(r':(?:doc|ref|func|class|meth):`([^`<]+)(?:<[^>]+>)?`', r'`\1`', cleaned)
-    cleaned = re.sub(r'\.\.\s+(?:raw|versionadded|versionchanged)::.*', '', cleaned)
+    cleaned = re.sub(r":(?:doc|name|args):[^\n]*\n", "", doc)
+    cleaned = re.sub(r":(?:doc|ref|func|class|meth):`([^`<]+)(?:<[^>]+>)?`", r"`\1`", cleaned)
+    cleaned = re.sub(r"\.\.\s+(?:raw|versionadded|versionchanged)::.*", "", cleaned)
 
     paragraphs = [p.strip() for p in cleaned.strip().split("\n\n") if p.strip()]
     if not paragraphs:
@@ -149,7 +152,9 @@ def fetch_all_export_sources(ref: str) -> list[str]:
                 for item in items:
                     name = item.get("name", "")
                     if name.endswith(".py") and not name.startswith("__"):
-                        dl_url = item.get("download_url") or RAW_BASE_URL.format(ref=ref, filename=name)
+                        dl_url = item.get("download_url") or RAW_BASE_URL.format(
+                            ref=ref, filename=name
+                        )
                         file_targets.append((name, dl_url))
         except (json.JSONDecodeError, TypeError, KeyError):
             pass
@@ -191,12 +196,12 @@ def fetch_all_export_sources(ref: str) -> list[str]:
 def serialize_api_module(version: str, docs: dict[str, dict[str, str]]) -> str:
     """Генерирует форматированный код для senpy/renpy_api.py."""
     lines = [
-        'from __future__ import annotations',
-        '',
-        '# Версия документации Ren\'Py, зафиксированная в этой базе',
+        "from __future__ import annotations",
+        "",
+        "# Версия документации Ren'Py, зафиксированная в этой базе",
         f'RENPY_DOC_VERSION = "{version}"',
-        '',
-        'RENPY_API_DOCS: dict[str, dict[str, str]] = {',
+        "",
+        "RENPY_API_DOCS: dict[str, dict[str, str]] = {",
     ]
 
     for key in sorted(docs.keys()):
@@ -206,9 +211,9 @@ def serialize_api_module(version: str, docs: dict[str, dict[str, str]]) -> str:
             if item.get(field):
                 val = repr(item[field])
                 lines.append(f'        "{field}": {val},')
-        lines.append('    },')
+        lines.append("    },")
 
-    lines.append('}\n')
+    lines.append("}\n")
 
     helper_code = '''def get_renpy_api_hover(symbol: str) -> str | None:
     """Возвращает форматированный Markdown для подсказки Hover по символу Ren'Py API."""
@@ -244,11 +249,11 @@ def run_updater():
     latest_tag = get_latest_version() or "master"
     print(f"[✔] Актуальная версия Ren'Py на GitHub: v{latest_tag}")
 
-    is_newer = (latest_tag != RENPY_DOC_VERSION)
+    is_newer = latest_tag != RENPY_DOC_VERSION
     prompt = (
         f"[?] Доступна новая версия v{latest_tag}! Синхронизировать API? [Y/n]: "
-        if is_newer else
-        f"[?] Версия v{latest_tag} уже совпадает. Принудительно обновить функции? [y/N]: "
+        if is_newer
+        else f"[?] Версия v{latest_tag} уже совпадает. Принудительно обновить функции? [y/N]: "
     )
 
     ans = input(prompt).strip().lower()

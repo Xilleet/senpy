@@ -6,6 +6,7 @@ RE_AUDIO_STATEMENT требовал файл после канала. Из-за 
   - голый 'play music' без файла и без 'define audio.music' проходил молча
     (в рантайме Ren'Py это исключение).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,13 +29,13 @@ def test_play_without_file_uses_audio_namespace(tmp_path: Path):
     (game_dir / "audio").mkdir()
     (game_dir / "audio" / "titles.ogg").write_bytes(b"dummy")
 
-    code = '''
+    code = """
 define audio.титры = "audio/titles.ogg"
 
 label start:
     play титры
     return
-'''
+"""
     result = run_senpy_on_code(code, tmp_path)
     bad = [d for d in result.diagnostics if d.code in ("RPY501", "RPY503", "RPY505")]
     assert bad == [], f"False diagnostics for bare play with audio namespace: {bad}"
@@ -42,11 +43,11 @@ label start:
 
 def test_bare_play_without_define_warns(tmp_path: Path):
     """play X без файла и без define audio.X -> RPY501 (в рантайме это исключение)"""
-    code = '''
+    code = """
 label start:
     play music
     return
-'''
+"""
     result = run_senpy_on_code(code, tmp_path)
     codes = [d.code for d in result.diagnostics]
     assert "RPY501" in codes, f"Ожидался RPY501 на 'play music' без файла, получено: {codes}"

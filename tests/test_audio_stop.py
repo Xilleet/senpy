@@ -23,7 +23,9 @@ label start:
 """
     result = run_senpy_on_code(code, tmp_path)
     rpy505 = [d for d in result.diagnostics if d.code == "RPY505"]
-    assert not rpy505, f"False RPY505 for built-in channels: {[(d.line_number, d.message) for d in rpy505]}"
+    assert not rpy505, (
+        f"False RPY505 for built-in channels: {[(d.line_number, d.message) for d in rpy505]}"
+    )
 
 
 def test_stop_unknown_channel_warns(tmp_path: Path):
@@ -35,8 +37,9 @@ label start:
 """
     result = run_senpy_on_code(code, tmp_path)
     rpy505 = [d for d in result.diagnostics if d.code == "RPY505"]
-    assert len(rpy505) == 1 and rpy505[0].line_number == 3, \
+    assert len(rpy505) == 1 and rpy505[0].line_number == 3, (
         f"Expected RPY505 at line 3, got: {[(d.code, d.line_number) for d in result.diagnostics]}"
+    )
 
 
 def test_stop_channel_from_define_audio_ok(tmp_path: Path):
@@ -50,4 +53,6 @@ label start:
 """
     result = run_senpy_on_code(code, tmp_path)
     rpy505 = [d for d in result.diagnostics if d.code == "RPY505"]
-    assert not rpy505, f"False RPY505 for define audio channel: {[(d.line_number, d.message) for d in rpy505]}"
+    assert not rpy505, (
+        f"False RPY505 for define audio channel: {[(d.line_number, d.message) for d in rpy505]}"
+    )
