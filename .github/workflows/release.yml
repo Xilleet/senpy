@@ -224,14 +224,15 @@ jobs:
         run: npm install -g @vscode/vsce
 
       - name: Package VSIX
-        # --no-yarn: не запускать yarn (используем npm)
-        # --no-git-tag-version: не создавать git-тег (мы уже в release-процессе)
-        # --no-git-ignore: КРИТИЧЕСКИ ВАЖНО. По умолчанию vsce использует
-        # `git ls-files` для списка файлов, исключая всё, что не в git.
-        # bin/senpy.exe собирается PyInstaller в CI и не в git — без этого
-        # флага vsce его не включит в VSIX.
+        # vsce использует `git ls-files` для списка файлов. senpy.exe собран
+        # PyInstaller в CI и не в git. `git add -f` принудительно добавляет его
+        # в git index (игнорируя .gitignore), чтобы vsce его увидел и включил в VSIX.
+        # Файл не будет закоммичен (мы не делаем git commit), только индексируется.
         working-directory: senpy-vscode
-        run: vsce package --no-yarn --no-git-tag-version --no-git-aware
+        shell: bash
+        run: |
+          git add -f bin/senpy.exe
+          vsce package --no-yarn --no-git-tag-version
 
       - name: Verify VSIX
         shell: bash
