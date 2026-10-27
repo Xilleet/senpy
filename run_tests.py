@@ -4,6 +4,7 @@
     python run_tests.py                     # Меню или автозапуск
     python run_tests.py --update-snapshots  # Прямой запуск с флагом (для CI)
 """
+
 from __future__ import annotations
 
 import sys
@@ -20,7 +21,7 @@ console = Console()
 def run_pytest_with_timer(args: list[str]) -> int:
     """Запускает pytest с переданными аргументами и замеряет время."""
     console.print(f"\n[bold cyan]⚡ Запуск pytest с аргументами: {args}[/bold cyan]\n")
-    
+
     start_time = time.perf_counter()
     exit_code = pytest.main(args)
     elapsed = time.perf_counter() - start_time
@@ -29,11 +30,15 @@ def run_pytest_with_timer(args: list[str]) -> int:
     if exit_code == 0:
         console.print(f"\n[bold green]✔ Всё успешно пройдено за {elapsed:.2f}с![/bold green]\n")
     elif exit_code == 5:
-        console.print(f"\n[bold yellow]⚠ Тесты по данному фильтру не найдены (возможно, фикстура для этого правила ещё не создана).[/bold yellow]\n")
-        exit_code = 0 
+        console.print(
+            "\n[bold yellow]⚠ Тесты по данному фильтру не найдены (возможно, фикстура для этого правила ещё не создана).[/bold yellow]\n"
+        )
+        exit_code = 0
     else:
-        console.print(f"\n[bold red]✖ Обнаружены ошибки / падения тестов ({elapsed:.2f}с).[/bold red]\n")
-    
+        console.print(
+            f"\n[bold red]✖ Обнаружены ошибки / падения тестов ({elapsed:.2f}с).[/bold red]\n"
+        )
+
     return exit_code
 
 
@@ -59,14 +64,16 @@ def interactive_menu() -> list[str]:
     elif choice == "2":
         return ["tests"]
     elif choice == "3":
-        rule_input = Prompt.ask("[?] Введите номер правила (например, 108 или rpy108)").strip().lower()
+        rule_input = (
+            Prompt.ask("[?] Введите номер правила (например, 108 или rpy108)").strip().lower()
+        )
         if not rule_input:
             return ["tests"]
         # Нормализуем ввод: если ввели "108", превращаем в "rpy108"
         rule_filter = rule_input if rule_input.startswith("rpy") else f"rpy{rule_input}"
         console.print(f"[dim][*] Фильтр тестов по шаблону: -k {rule_filter}[/dim]")
         return ["tests", "-k", rule_filter]
-    
+
     return ["tests"]
 
 
@@ -91,8 +98,8 @@ if __name__ == "__main__":
         exit_code = 130
     except SystemExit as se:
         exit_code = se.code if isinstance(se.code, int) else 1
-    except BaseException as e:
-        console.print(f"\n[bold red][!] Критическая ошибка скрипта:[/bold red]")
+    except BaseException:
+        console.print("\n[bold red][!] Критическая ошибка скрипта:[/bold red]")
         traceback.print_exc()
         exit_code = 1
     finally:
