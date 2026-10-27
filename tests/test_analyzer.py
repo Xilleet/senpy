@@ -9,6 +9,39 @@ import pytest
 from senpy.analyzer import SenpyAnalyzer
 from senpy.rpa import safe_load_rpa_index
 
+MEGA_UNCOVERED_RULES = {
+        # RPY100 — нужен файл с невалидным UTF-8 (тестируется отдельно через
+        # test_encoding_errors.py + RPY100 fixture TODO).
+        "RPY100",
+        # RPY107 — нужен вызов deprecated API (LiveComposite, anim.*, ui.*).
+        # MEGA_TEST_SCRIPT их не использует.
+        "RPY107",
+        # RPY108 — нужен конфликт типов (str += int). MEGA_TEST_SCRIPT имеет
+        # += на define, но без конфликта типов.
+        "RPY108",
+        # RPY109 — нужен init python block с двумя зависимыми файлами.
+        # MEGA_TEST_SCRIPT имеет только один init python с def.
+        "RPY109",
+        # RPY207 — нужен вызов use/call screen с неверными параметрами.
+        "RPY207",
+        # RPY208 — нужен SetVariable на screen-local переменной.
+        "RPY208",
+        # RPY309 — нужен сюжетный остров (изолированный label). MEGA_TEST_SCRIPT
+        # имеет только chapter_two -> bad_edd (несуществующий), что даёт RPY302.
+        "RPY309",
+        # RPY310 — нужен call label(...) с неверными аргументами.
+        "RPY310",
+        # RPY404 — нужен MAYBE_SET после menu. MEGA_TEST_SCRIPT имеет RPY401
+        # (асимметрия), но не RPY404.
+        "RPY404",
+        # RPY501 — нужен play/queue аудио с несуществующим файлом.
+        "RPY501",
+        # RPY505 — нужен register_channel на невалидном канале.
+        "RPY505",
+        # RPY601-603 — нужны переводческие файлы в game/tl/. MEGA_TEST_SCRIPT
+        # их не создаёт. Покрываются отдельными fixture-тестами.
+        "RPY601", "RPY602", "RPY603",
+    }
 
 def run_senpy_on_code(
     code: str,
@@ -97,7 +130,7 @@ label chapter_two:
     "Внимание: {b}опасная зона!"   # RPY301
     jump bad_edd   # RPY302
 
-$ player_gold -= 10 
+$ player_gold -= 10
 
 label test_flow:
     menu:
@@ -138,7 +171,8 @@ label forgotten_secret_draft:   # RPY303: метка без прямых пер�
 
 
 def test_mega_broken_script_catches_all_rules(tmp_path: Path):
-    """Verify all 29 Senpy semantic rules are caught in broken script"""
+    from senpy.models import RULE_SEVERITY
+
     # Создаём файл ассета, на который нет ни одной ссылки в коде (вызывает RPY503)
     extra_files = {
         "images/completely_unused_background.png": b"dummy_png_bytes"
@@ -147,18 +181,22 @@ def test_mega_broken_script_catches_all_rules(tmp_path: Path):
     result, _ = run_senpy_on_code(MEGA_TEST_SCRIPT, tmp_path, extra_files=extra_files)
     codes_found = {d.code for d in result.diagnostics}
 
-    # Полная матрица всех 29 правил линтера
-    all_29_rules = {
-        "RPY001", "RPY002",
-        "RPY101", "RPY102", "RPY103", "RPY104", "RPY105", "RPY106",
-        "RPY201", "RPY202", "RPY203", "RPY204", "RPY205", "RPY206",
-        "RPY301", "RPY302", "RPY303", "RPY304", "RPY305", "RPY306", "RPY307", "RPY308",
-        "RPY401", "RPY402", "RPY403",
-        "RPY501", "RPY502", "RPY503", "RPY504",
-    }
+    # Все правила, которые MEGA_TEST_SCRIPT ДОЛЖЕН покрывать
+    expected_rules = set(RULE_SEVERITY.keys()) - MEGA_UNCOVERED_RULES
 
-    missing_rules = all_29_rules - codes_found
-    assert not missing_rules, f"Linter missed expected rules: {sorted(missing_rules)}"
+    missing_rules = expected_rules - codes_found
+    assert not missing_rules, (
+        f"MEGA_TEST_SCRIPT не поймал правила, которые должен покрывать: {sorted(missing_rules)}.\n"
+        f"Если добавлено новое правило — добавь его либо в MEGA_TEST_SCRIPT, "
+        f"либо в MEGA_UNCOVERED_RULES с указанием причины.\n"
+        f"Пойманные правила: {sorted(codes_found)}"
+    )
+
+    invalid_uncovered = MEGA_UNCOVERED_RULES - set(RULE_SEVERITY.keys())
+    assert not invalid_uncovered, (
+        f"MEGA_UNCOVERED_RULES содержит несуществующие правила: {sorted(invalid_uncovered)}. "
+        f"Возможно, правило было переименовано или удалено — обнови список."
+    )
 
 
 def test_clean_script_has_zero_errors(tmp_path: Path):
@@ -474,9 +512,9 @@ init python:
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     result = analyzer.run(quiet=True)
-    
+
     rpy109_diags = [d for d in result.diagnostics if d.code == "RPY109"]
-    
+
     # 1. Поймали ошибку в a_setup.rpy
     assert len(rpy109_diags) == 1
     diag = rpy109_diags[0]

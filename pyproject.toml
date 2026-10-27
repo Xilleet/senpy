@@ -4,14 +4,57 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "senpy-linter"
-version = "0.4.7"
+# ECO-9: версия берётся из senpy/__version__.py (single source of truth).
+# Раньше была захардкожена в 4 местах; теперь — только в __version__.py,
+# а все остальные (constants.py, server.py, package.json) синхронизируются
+# через bump_version.py.
+dynamic = ["version"]
 description = "Fast semantic checker and validator for Ren'Py visual novels"
+readme = "README.md"
+license = { file = "LICENSE" }
 authors = [{ name = "Xilleet" }]
 requires-python = ">=3.11"
+keywords = [
+    "renpy",
+    "linter",
+    "static-analysis",
+    "visual-novel",
+    "lsp",
+    "language-server",
+    "code-quality",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Text Editors :: Integrated Development Environments (IDE)",
+    "Topic :: Games/Entertainment",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
 dependencies = [
     "rich>=13.0.0",
     "pygls>=1.3.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Xilleet/senpy"
+Documentation = "https://github.com/Xilleet/senpy/blob/main/README.md"
+Rules = "https://github.com/Xilleet/senpy/blob/main/RULES.md"
+Repository = "https://github.com/Xilleet/senpy"
+Issues = "https://github.com/Xilleet/senpy/issues"
+Changelog = "https://github.com/Xilleet/senpy/blob/main/CHANGELOG.md"
 
 [project.scripts]
 senpy = "senpy.cli:main"
@@ -20,6 +63,12 @@ senpy = "senpy.cli:main"
 include = ["senpy"]
 exclude = ["senpy-vscode", "senpy-vscode.*", "test_game"]
 
+[tool.setuptools.dynamic]
+version = {attr = "senpy.__version__.__version__"}
+
+# =============================================================================
+# pytest
+# =============================================================================
 [tool.pytest.ini_options]
 # Игнорируем известное DeprecationWarning из внешней зависимости pygls (feature_manager.py:86).
 # В Python 3.12+ функция asyncio.iscoroutinefunction() объявлена устаревшей в пользу inspect.iscoroutinefunction()
@@ -29,3 +78,127 @@ exclude = ["senpy-vscode", "senpy-vscode.*", "test_game"]
 filterwarnings = [
     "ignore::DeprecationWarning:pygls.*",
 ]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+]
+
+# =============================================================================
+# Ruff — линтер и форматтер для самого Senpy (не для пользовательских .rpy)
+# =============================================================================
+# ECO-10: конфиг Ruff для самого проекта Senpy. Это НЕ заменяет senpy format
+# (который для .rpy файлов), это для самого Python-кода Senpy.
+# Запуск: ruff check . && ruff format --check .
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+    "senpy-vscode",       # TypeScript/JS — не наше
+    "test_game",          # тестовый Ren'Py-проект, не Python-код
+    "build",
+    "dist",
+    ".senpy_cache",
+]
+
+[tool.ruff.lint]
+# Включаем основные группы правил:
+# E  - pycodestyle errors
+# W  - pycodestyle warnings
+# F  - pyflakes (basic errors: unused imports, undefined names)
+# I  - isort (import sorting)
+# N  - pep8-naming
+# UP - pyupgrade (modernize syntax)
+# B  - flake8-bugbear (likely-bugs)
+# SIM - flake8-simplify
+# C4 - flake8-comprehensions
+select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "C4"]
+
+# Игнорируем то, что конфликтует со стилем Senpy или пока слишком строго:
+ignore = [
+    "E501",    # line too long — Ruff formatter сам делает 100, но мы не блокируем
+    "B008",    # function call in default argument — используем в dataclass'ах
+    "SIM108",  # if-else → ternary — иногда читаемость важнее
+    "B904",    # raise from — пока не везде починено, добавим в отдельной задаче
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Тесты могут иметь неиспользуемые импорты (для side effects) и длинные строки
+"tests/**/*.py" = ["F401", "E501"]
+# __init__. — часто re-export
+"senpy/__init__.py" = ["F401"]
+# conftest.py — магия pytest, не трогаем
+"tests/conftest.py" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# =============================================================================
+# mypy — опциональная типизация (не блокирующая, для постепенного внедрения)
+# =============================================================================
+# ECO-10: mypy запускается опционально (pip install mypy && mypy senpy/).
+# Начинаем мягко: check_untyped_defs, но без strict. Постепенно можно усилить.
+[tool.mypy]
+python_version = "3.11"
+mypy_path = ["senpy"]
+packages = ["senpy"]
+exclude = [
+    "senpy-vscode/",
+    "test_game/",
+    "build/",
+    "dist/",
+]
+
+# Базовые проверки
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+no_implicit_optional = true
+check_untyped_defs = true
+
+# Пока НЕ строгий режим — слишком много правок потребуется.
+# Включить в отдельной задаче, когда покроем типы.
+# strict = true
+
+# Игнорируем ошибки типизации во внешних зависимостях
+[[tool.mypy.overrides]]
+module = ["pygls.*", "lsprotocol.*"]
+ignore_missing_imports = true
+
+# =============================================================================
+# coverage — опциональная статистика покрытия тестов
+# =============================================================================
+# ECO-10: coverage запускается опционально (pip install coverage &&
+# coverage run -m pytest && coverage report).
+[tool.coverage.run]
+source = ["senpy"]
+omit = [
+    "senpy/__version__.py",     # 23 строки, нечего тестировать
+    "senpy/__main__.py",        # thin wrapper
+    "senpy-vscode/*",           # не наш Python
+    "test_game/*",              # тестовый Ren'Py-проект
+    "tests/*",                  # сами тесты
+    "build/*",
+    "dist/*",
+]
+branch = true
+parallel = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@(abc\\.)?abstractmethod",
+]
+show_missing = true
+skip_covered = false
+precision = 2

@@ -9,13 +9,13 @@ import shutil
 import subprocess
 import sys
 import time
+import tomllib
 import urllib.error
 import urllib.request
 import zipfile
 import zlib
 from collections import Counter
 
-import tomllib
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -271,6 +271,79 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: st
     return decompiled_rpy
 
 
+
+# --- P0-1 helpers: file redirect for text-format output ---
+class _ReplaceConsole:
+    """Context manager: временно подменяет модульную `console` на `file_console`,
+    корректно закрывая файл при выходе (даже при sys.exit внутри блока)."""
+
+    def __init__(self, file_console: Console):
+        self._file_console = file_console
+        self._original_console: Console | None = None
+
+    def __enter__(self):
+        global console
+        self._original_console = console
+        console = self._file_console
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        global console
+        # Возвращаем оригинальную console
+        if self._original_console is not None:
+            console = self._original_console
+        # Закрываем файловый поток (rich Console хранит его в .file)
+        try:
+            if hasattr(self._file_console.file, "close"):
+                self._file_console.file.close()
+        except Exception:
+            pass
+        # Не подавляем исключения
+        return False
+
+
+def _replace_console(file_console: Console) -> _ReplaceConsole:
+    """Фабрика для with-блока: with _replace_console(file_console): ..."""
+    return _ReplaceConsole(file_console)
+
+
+def _exit_with_output_redirect(args, exit_code: int) -> None:
+    """Закрывает файл (если был открыт) и выходит с exit_code.
+    Используется вместо sys.exit() внутри with-блока text-вывода."""
+    # sys.exit() поднимает SystemExit, который корректно обрабатывается
+    # __exit__ context manager'а — файл закроется автоматически.
+    sys.exit(exit_code)
+
+
+
+def _make_file_console(args) -> Console:
+    """Создаёт файловую Console для text-формата с --output-file.
+    Force_terminal=False чтобы rich не применял ANSI-цвета в файл."""
+    out_dir = os.path.dirname(os.path.abspath(args.output_file))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    # type: ignore[arg-type] — file ожидает IO[str], file-объект подходит
+    return Console(
+        file=open(args.output_file, "w", encoding="utf-8"),
+        force_terminal=False,
+        legacy_windows=False,
+    )
+
+
+class _NullRedirect:
+    """No-op context manager для случая без --output-file."""
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+
+def _null_redirect() -> _NullRedirect:
+    return _NullRedirect()
+
+
+
 def main():
 
     parser = argparse.ArgumentParser(
@@ -437,8 +510,8 @@ def main():
         help="B-Baka! It's not like I want to check your visual novel!"
     )
 
-    args = parser.parse_args() 
-    
+    args = parser.parse_args()
+
     if args.lsp:
         from senpy.server import start_lsp
         start_lsp()
@@ -456,9 +529,24 @@ def main():
     is_tsundere = args.tsundere or config.get("tsundere", False)
 
     if args.traceback:
-        crash = parse_traceback_file(args.traceback)
+        traceback_arg = args.traceback
+        if not os.path.isfile(traceback_arg):
+            # Не absolute path и не существует в CWD — попробуем относительно args.path
+            relative_to_project = os.path.join(args.path, traceback_arg)
+            if os.path.isfile(relative_to_project):
+                traceback_arg = relative_to_project
+            elif traceback_arg == "traceback.txt":
+                # Дефолтный const, файл не найден нигде — пробуем авто-поиск
+                auto_found = find_latest_traceback(args.path)
+                if auto_found:
+                    traceback_arg = auto_found
+
+        crash = parse_traceback_file(traceback_arg)
         if not crash:
-            console.print(f"[yellow]Could not find or parse crash log at '[bold]{args.traceback}[/bold]'.[/yellow]\n")
+            console.print(f"[yellow]Could not find or parse crash log at '[bold]{traceback_arg}[/bold]'.[/yellow]\n")
+            # Если ни один файл не нашёлся — подсказываем пользователю
+            if traceback_arg == "traceback.txt" or traceback_arg == args.traceback:
+                console.print("[dim]Hint: senpy looks for traceback.txt or errors.txt in project root or game/ subfolder.[/dim]")
             sys.exit(0)
 
         t_text = Text()
@@ -543,13 +631,19 @@ def main():
     orphaned_rpyc = []
     extra_rpy_files = []
 
-    # Предварительно собираем список существующих .rpy строго без учета .senpy_cache
     existing_rpy_files = set()
+    existing_rpy_basenames = set()
     for root, dirs, files in os.walk(args.path):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for f in files:
             if f.endswith(".rpy"):
-                existing_rpy_files.add(f)
+                full_path = os.path.join(root, f)
+                try:
+                    rel = os.path.relpath(full_path, args.path)
+                except ValueError:
+                    rel = f
+                existing_rpy_files.add(rel)
+                existing_rpy_basenames.add(f)
 
     # 2. Умная работа с RPA: ищем скрипты в архивах (для релизных сборок и модов)
     rpa_files = []
@@ -558,7 +652,7 @@ def main():
         for f in files:
             if f.lower().endswith(".rpa"):
                 rpa_files.append(os.path.join(root, f))
-    
+
     for rpa in rpa_files:
         rpa_base = os.path.splitext(os.path.basename(rpa))[0].lower()
         if any(term in rpa_base for term in ("script", "archive", "data", "game", "code")) or not raw_orphans:
@@ -566,8 +660,7 @@ def main():
             for item in extracted:
                 base_name = os.path.basename(item)
                 rpy_name = base_name[:-1] if base_name.endswith(".rpyc") else base_name
-                # Если такой .rpy уже есть в game/, пропускаем архивную копию
-                if rpy_name not in existing_rpy_files:
+                if rpy_name not in existing_rpy_basenames:
                     if item.endswith(".rpy"):
                         extra_rpy_files.append(item)
                     elif item.endswith(".rpyc"):
@@ -575,14 +668,15 @@ def main():
 
     # 3. Синхронизируем исходники для дедупликации (не декомпилируем .rpyc, если уже найден .rpy)
     for f in extra_rpy_files:
-        existing_rpy_files.add(os.path.basename(f))
+        existing_rpy_basenames.add(os.path.basename(f))
 
     # 4. Проверяем кэш декомпиляции для всех .rpyc (с диска и из .rpa)
     for rpyc in raw_orphans:
         rpy_name = os.path.basename(rpyc)[:-1]
-        
+
         # Если .rpy исходник уже найден в папке или вытащен из архива — игнорируем его .rpyc
-        if rpy_name in existing_rpy_files:
+        # сравнение по basename — .rpyc-дедупликация корректна по basename.
+        if rpy_name in existing_rpy_basenames:
             continue
 
         cached_rpy = os.path.join(decomp_sandbox, rpy_name)
@@ -644,8 +738,6 @@ def main():
     elapsed = time.perf_counter() - start_time
     if args.stats:
         from senpy.stats import collect_story_stats
-        analyzer = SenpyAnalyzer(args.path)
-        analyzer.run(quiet=True)
         stats = collect_story_stats(analyzer)
 
         if args.output_format == "json":
@@ -810,14 +902,14 @@ def main():
     if args.output_format == "sarif":
         from senpy.sarif import generate_sarif
         sarif_str = generate_sarif(active_diagnostics, args.path)
-        
+
         if args.output_file:
             with open(args.output_file, "w", encoding="utf-8") as f:
                 f.write(sarif_str)
             console.print(f"[bold green]✔ SARIF report saved to {args.output_file}[/bold green]")
         else:
             print(sarif_str)
-            
+
         error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
         sys.exit(1 if error_count > 0 else 0)
 
@@ -853,104 +945,109 @@ def main():
         error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
         sys.exit(1 if error_count > 0 else 0)
 
-    # 0 ПРОБЛЕМ
-    if not active_diagnostics:
+    output_redirect = _replace_console(_make_file_console(args)) if (
+        args.output_file and args.output_format == "text"
+    ) else _null_redirect()
+
+    with output_redirect:
+        # 0 ПРОБЛЕМ
+        if not active_diagnostics:
+            if is_tsundere:
+                console.print(
+                    f"[bold magenta](⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄) «{TSUNDERE_UI['clean_title']}»[/bold magenta]\n"
+                    f"[dim]{TSUNDERE_UI['clean_sub'].format(lines=result.total_lines, elapsed=elapsed)}[/dim]"
+                )
+            else:
+                msg = f"[bold green]✔ All clean![/bold green] Scanned [bold]{result.total_lines:,}[/bold] lines across [bold]{result.file_count}[/bold] file(s) in [cyan]{elapsed:.3f}s[/cyan]."
+                if result.fixed_count > 0:
+                    msg += f" [bold cyan]({result.fixed_count} fix(es) applied!)[/bold cyan]"
+                console.print(msg)
+            _exit_with_output_redirect(args, 0)
+
+        # ВЫВОД КАРТОЧЕК С УЧЕТОМ SEVERITY
+        displayed = active_diagnostics[:max_errors]
+        for err in displayed:
+            text = Text()
+            text.append(f"{err.file_path}:{err.line_number}\n", style="bold cyan")
+            text.append(f"  {err.line_number} │ ", style="dim")
+            text.append(f"{err.line_content}\n\n", style="bright_white")
+
+            if is_tsundere and err.code in TSUNDERE_FLAVORS:
+                text.append(f"  {TSUNDERE_FLAVORS[err.code]}\n", style="bold italic #ff79c6")
+
+            badge_style, border_style = SEVERITY_STYLES.get(err.severity, ("bold red", "red dim"))
+            text.append(f"  [{err.severity}] {err.code}: ", style=badge_style)
+            text.append(f"{err.message}", style="bright_white")
+
+            panel_border = "magenta dim" if is_tsundere else border_style
+            console.print(Panel(text, border_style=panel_border, expand=False))
+
+        if len(active_diagnostics) > max_errors:
+            hidden = len(active_diagnostics) - max_errors
+            console.print(f"\n[dim]... and {hidden} more diagnostic(s) omitted (use --max-errors to show more).[/dim]\n")
+
+        # СВОДНАЯ ТАБЛИЦА С УРОВНЯМИ СТРОГОСТИ
+        counts = Counter((e.code, e.severity) for e in active_diagnostics)
+        table = Table(title="Diagnostics Summary" if not is_tsundere else TSUNDERE_UI['summary'], border_style="dim")
+        table.add_column("Rule", style="bold cyan")
+        table.add_column("Severity", justify="center")
+        table.add_column("Count", justify="right", style="bold white")
+
+        for (code, severity), count in sorted(counts.items()):
+            sev_badge = Text(severity, style=SEVERITY_STYLES.get(severity, ("white", ""))[0])
+            table.add_row(code, sev_badge, str(count))
+
+        console.print(table)
+
+        if result.fixed_count > 0:
+            if is_tsundere:
+                console.print(f"\n[bold magenta](//∇//) «{TSUNDERE_UI['fixed'].format(count=result.fixed_count)}»[/bold magenta]")
+            else:
+                console.print(f"\n[bold green]✔ Automatically fixed {result.fixed_count} error(s)![/bold green]")
+        elif result.fixable_count > 0 and not args.fix:
+            if is_tsundere:
+                console.print(f"\n[dim magenta][*] {TSUNDERE_UI['fixable'].format(count=result.fixable_count)}[/dim magenta]")
+            else:
+                console.print(f"\n[dim][*] {result.fixable_count} fixable with the --fix option[/dim]")
+
+        if hidden_info_count > 0:
+            if is_tsundere:
+                console.print(f"\n[dim magenta](¬_¬ ) «{TSUNDERE_UI['info_omitted'].format(count=hidden_info_count)}»[/dim magenta]")
+            else:
+                console.print(f"\n[dim]ℹ {hidden_info_count} info notice(s) omitted (use --info to view them).[/dim]")
+
+        # Подсчет по категориям
+        error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
+        warn_count = sum(1 for e in active_diagnostics if e.severity == "WARNING")
+        hint_count = sum(1 for e in active_diagnostics if e.severity == "HINT")
+        info_count = sum(1 for e in active_diagnostics if e.severity == "INFO")
+
+        summary_parts = []
+        if error_count:
+            summary_parts.append(f"[bold red]{error_count} error(s)[/bold red]")
+        if warn_count:
+            summary_parts.append(f"[bold yellow]{warn_count} warning(s)[/bold yellow]")
+        if hint_count:
+            summary_parts.append(f"[bold cyan]{hint_count} hint(s)[/bold cyan]")
+        if info_count:
+            summary_parts.append(f"[bold blue]{info_count} info notice(s)[/bold blue]")
+
+        summary_str = ", ".join(summary_parts)
+
         if is_tsundere:
+            if error_count > 0:
+                console.print(f"\n[bold magenta](╬ Ò﹏Ó) {TSUNDERE_UI['errors'].format(summary_str=summary_str, elapsed=elapsed)}[/bold magenta]")
+            else:
+                console.print(f"\n[bold magenta](¬_¬ ) {TSUNDERE_UI['warnings'].format(summary_str=summary_str, elapsed=elapsed)}[/bold magenta]")
+        else:
+            status_icon = "[bold red]✖[/bold red]" if error_count > 0 else "[bold yellow]⚠[/bold yellow]"
             console.print(
-                f"[bold magenta](⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄) «{TSUNDERE_UI['clean_title']}»[/bold magenta]\n"
-                f"[dim]{TSUNDERE_UI['clean_sub'].format(lines=result.total_lines, elapsed=elapsed)}[/dim]"
+                f"\n{status_icon} Found {summary_str} "
+                f"across [bold]{result.file_count}[/bold] file(s) ({result.total_lines:,} lines) "
+                f"in [cyan]{elapsed:.3f}s[/cyan]."
             )
-        else:
-            msg = f"[bold green]✔ All clean![/bold green] Scanned [bold]{result.total_lines:,}[/bold] lines across [bold]{result.file_count}[/bold] file(s) in [cyan]{elapsed:.3f}s[/cyan]."
-            if result.fixed_count > 0:
-                msg += f" [bold cyan]({result.fixed_count} fix(es) applied!)[/bold cyan]"
-            console.print(msg)
-        sys.exit(0)
 
-    # ВЫВОД КАРТОЧЕК С УЧЕТОМ SEVERITY
-    displayed = active_diagnostics[:max_errors]
-    for err in displayed:
-        text = Text()
-        text.append(f"{err.file_path}:{err.line_number}\n", style="bold cyan")
-        text.append(f"  {err.line_number} │ ", style="dim")
-        text.append(f"{err.line_content}\n\n", style="bright_white")
-
-        if is_tsundere and err.code in TSUNDERE_FLAVORS:
-            text.append(f"  {TSUNDERE_FLAVORS[err.code]}\n", style="bold italic #ff79c6")
-
-        badge_style, border_style = SEVERITY_STYLES.get(err.severity, ("bold red", "red dim"))
-        text.append(f"  [{err.severity}] {err.code}: ", style=badge_style)
-        text.append(f"{err.message}", style="bright_white")
-
-        panel_border = "magenta dim" if is_tsundere else border_style
-        console.print(Panel(text, border_style=panel_border, expand=False))
-
-    if len(active_diagnostics) > max_errors:
-        hidden = len(active_diagnostics) - max_errors
-        console.print(f"\n[dim]... and {hidden} more diagnostic(s) omitted (use --max-errors to show more).[/dim]\n")
-
-    # СВОДНАЯ ТАБЛИЦА С УРОВНЯМИ СТРОГОСТИ
-    counts = Counter((e.code, e.severity) for e in active_diagnostics)
-    table = Table(title="Diagnostics Summary" if not is_tsundere else TSUNDERE_UI['summary'], border_style="dim")
-    table.add_column("Rule", style="bold cyan")
-    table.add_column("Severity", justify="center")
-    table.add_column("Count", justify="right", style="bold white")
-
-    for (code, severity), count in sorted(counts.items()):
-        sev_badge = Text(severity, style=SEVERITY_STYLES.get(severity, ("white", ""))[0])
-        table.add_row(code, sev_badge, str(count))
-
-    console.print(table)
-
-    if result.fixed_count > 0:
-        if is_tsundere:
-            console.print(f"\n[bold magenta](//∇//) «{TSUNDERE_UI['fixed'].format(count=result.fixed_count)}»[/bold magenta]")
-        else:
-            console.print(f"\n[bold green]✔ Automatically fixed {result.fixed_count} error(s)![/bold green]")
-    elif result.fixable_count > 0 and not args.fix:
-        if is_tsundere:
-            console.print(f"\n[dim magenta][*] {TSUNDERE_UI['fixable'].format(count=result.fixable_count)}[/dim magenta]")
-        else:
-            console.print(f"\n[dim][*] {result.fixable_count} fixable with the --fix option[/dim]")
-
-    if hidden_info_count > 0:
-        if is_tsundere:
-            console.print(f"\n[dim magenta](¬_¬ ) «{TSUNDERE_UI['info_omitted'].format(count=hidden_info_count)}»[/dim magenta]")
-        else:
-            console.print(f"\n[dim]ℹ {hidden_info_count} info notice(s) omitted (use --info to view them).[/dim]")
-
-    # Подсчет по категориям
-    error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
-    warn_count = sum(1 for e in active_diagnostics if e.severity == "WARNING")
-    hint_count = sum(1 for e in active_diagnostics if e.severity == "HINT")
-    info_count = sum(1 for e in active_diagnostics if e.severity == "INFO")
-
-    summary_parts = []
-    if error_count:
-        summary_parts.append(f"[bold red]{error_count} error(s)[/bold red]")
-    if warn_count:
-        summary_parts.append(f"[bold yellow]{warn_count} warning(s)[/bold yellow]")
-    if hint_count:
-        summary_parts.append(f"[bold cyan]{hint_count} hint(s)[/bold cyan]")
-    if info_count:
-        summary_parts.append(f"[bold blue]{info_count} info notice(s)[/bold blue]")
-
-    summary_str = ", ".join(summary_parts)
-
-    if is_tsundere:
-        if error_count > 0:
-            console.print(f"\n[bold magenta](╬ Ò﹏Ó) {TSUNDERE_UI['errors'].format(summary_str=summary_str, elapsed=elapsed)}[/bold magenta]")
-        else:
-            console.print(f"\n[bold magenta](¬_¬ ) {TSUNDERE_UI['warnings'].format(summary_str=summary_str, elapsed=elapsed)}[/bold magenta]")
-    else:
-        status_icon = "[bold red]✖[/bold red]" if error_count > 0 else "[bold yellow]⚠[/bold yellow]"
-        console.print(
-            f"\n{status_icon} Found {summary_str} "
-            f"across [bold]{result.file_count}[/bold] file(s) ({result.total_lines:,} lines) "
-            f"in [cyan]{elapsed:.3f}s[/cyan]."
-        )
-
-    sys.exit(1 if error_count > 0 else 0)
+        _exit_with_output_redirect(args, 1 if error_count > 0 else 0)
 
 
 if __name__ == "__main__":

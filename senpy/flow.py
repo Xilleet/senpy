@@ -130,10 +130,7 @@ class StoryFlowAnalyzer:
         visited.add(label_name)
 
         outgoing = lbl.outgoing_jumps if lbl else set()
-        for target in outgoing:
-            if self.can_reach_return(target, visited):
-                return True
-        return False
+        return any(self.can_reach_return(target, visited) for target in outgoing)
 
     def check_unreachable_labels(self) -> list[Diagnostic]:
         """RPY303: Выявляет метки, на которые нет статических ссылок (возможный dead code)."""
@@ -203,6 +200,11 @@ class StoryFlowAnalyzer:
                     reachable.add(target)
                     queue.append(target)
 
+        incoming_jumps: dict[str, set[str]] = {}
+        for src_name, src_lbl in labels.items():
+            for tgt in src_lbl.outgoing_jumps:
+                incoming_jumps.setdefault(tgt, set()).add(src_name)
+
         diagnostics: list[Diagnostic] = []
         for label_name, lbl in labels.items():
             if label_name in reachable:
@@ -210,7 +212,7 @@ class StoryFlowAnalyzer:
             if label_name.startswith("_") or label_name.lower() in SYSTEM_LABELS:
                 continue
 
-            has_incoming_jump = any(label_name in l.outgoing_jumps for l in labels.values())
+            has_incoming_jump = label_name in incoming_jumps
             has_reference = label_name in self.analyzer.referenced_labels
 
             if has_incoming_jump or has_reference:
@@ -426,17 +428,15 @@ class StoryFlowAnalyzer:
         for label, lbl_sym in sorted(labels.items()):
             if label.startswith("_"):
                 continue
-            
+
             has_return = lbl_sym.has_return
             has_jumps = len(lbl_sym.outgoing_jumps) > 0
-            
             if has_return:
                 shape_start, shape_end = ('(["', '"])')
             elif not has_jumps:
                 shape_start, shape_end = ('[["', '"]]:::fallthrough')
             else:
                 shape_start, shape_end = ('["', '"]')
-                
             lines.append(f"    {_mermaid_safe_id(label)}{shape_start}{label}{shape_end}")
 
         # --- Экраны: узлы (follow-up; префикс screen_ разводит
@@ -519,7 +519,7 @@ class StoryFlowAnalyzer:
                     "type": "screen",
                 }
 
-        for src, lbl_sym in labels.items():
+        for src, lbl_sym in labels.items():  # noqa: B007
             for tgt in lbl_sym.outgoing_jumps:
                 if tgt not in labels and tgt in self.analyzer.jump_sources:
                     sources = self.analyzer.jump_sources[tgt]

@@ -12,6 +12,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- P0-11: Content-Security-Policy — запрещаем inline-скрипты без nonce,
+         запрещаем external scripts кроме доверенных CDN. Это блокирует XSS
+         через внедрённый в Mermaid-граф HTML (если атакующий подсунет
+         HTML-теги (например, script) в имя метки, CSP его не даст выполнить). Пример: 'script' tag в имени label. -->
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self';
+                   script-src 'self' 'unsafe-inline'
+                              https://cdn.jsdelivr.net/npm/mermaid@10/
+                              https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/;
+                   style-src 'self' 'unsafe-inline';
+                   img-src 'self' data:;
+                   font-src 'self';
+                   connect-src 'self';">
     <title>Senpy Story Report</title>
     <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
     <style>
@@ -71,7 +84,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             margin-left: 5px; transition: 0.2s;
         }}
         .controls button:hover {{ background: #555; }}
-        
         /* Diagnostic Cards */
         .diag-card {{
             background: var(--bg-card);
@@ -84,19 +96,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .diag-card.ERROR {{ border-left-color: var(--error); }}
         .diag-card.WARNING {{ border-left-color: var(--warning); }}
         .diag-card.INFO, .diag-card.HINT {{ border-left-color: var(--info); }}
-        
+
         .diag-header {{ display: flex; justify-content: space-between; margin-bottom: 6px; }}
         .diag-rule {{ font-weight: bold; font-size: 14px; }}
         .diag-loc {{ font-size: 12px; color: #888; }}
         .diag-msg {{ font-size: 13px; line-height: 1.4; color: #ccc; margin-bottom: 8px; }}
-        
+
         .code-snippet {{
             background: #111; padding: 8px; border-radius: 4px;
             font-family: 'Consolas', 'Courier New', monospace;
             font-size: 12px; color: #ddd;
             overflow-x: auto; white-space: pre; border: 1px solid #222;
         }}
-        
+
         #mermaid-graph {{
             flex: 1;
             background: var(--bg-main);
@@ -122,7 +134,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             {diagnostics_html}
         </div>
     </div>
-    
+
     <div class="main">
         <div class="topbar">
             <h3>Interactive Story Graph <i>(Scroll to zoom, drag to pan)</i></h3>
@@ -141,26 +153,30 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <!-- Load Mermaid as an ES module for modern async rendering -->
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-        mermaid.initialize({{ 
-            startOnLoad: false, 
-            theme: 'dark', 
+        mermaid.initialize({{
+            startOnLoad: false,
+            theme: 'dark',
             maxTextSize: 90000,
-            securityLevel: 'loose'
+            // P0-11: 'strict' (default в новых Mermaid) — отключает HTML
+            // в нодах графа. Раньше было 'loose', что позволяло XSS через
+            // имена меток с <script>/<img onerror=...>. 'strict' рендерит
+            // только текст, HTML-теги экранируются.
+            securityLevel: 'strict'
         }});
-        
+
         const graphDef = `{mermaid_code}`;
-        
+
         async function renderGraph() {{
             const container = document.getElementById('mermaid-graph');
             try {{
                 const {{ svg }} = await mermaid.render('m-svg', graphDef);
                 container.innerHTML = svg;
-                
+
                 const svgElem = container.querySelector('svg');
                 svgElem.style.width = '100%';
                 svgElem.style.height = '100%';
                 svgElem.style.maxWidth = '100%';
-                
+
                 // Initialize SVG Pan/Zoom
                 window.panZoom = svgPanZoom(svgElem, {{
                     zoomEnabled: true,
@@ -171,10 +187,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     maxZoom: 20
                 }});
             }} catch (e) {{
-                container.innerHTML = `<div style="color:var(--error); padding: 20px;">Failed to render graph: ${{e.message}}</div>`;
+                // P0-11: используем textContent вместо innerHTML, чтобы
+                // e.message (в котором могут быть HTML-символы из графа)
+                // не выполнился как HTML.
+                const errDiv = document.createElement('div');
+                errDiv.style.cssText = 'color:var(--error); padding: 20px;';
+                errDiv.textContent = 'Failed to render graph: ' + (e.message || String(e));
+                container.innerHTML = '';
+                container.appendChild(errDiv);
             }}
         }}
-        
+
         if (graphDef.trim().length > 0) {{
             renderGraph();
         }} else {{
@@ -193,18 +216,20 @@ def generate_html_report(
     elapsed: float,
     out_path: str,
 ) -> None:
-    
+
     # Strip markdown wrappers if present
     graph_code = graph_mermaid.strip()
     graph_code = graph_code.removeprefix("```mermaid")
     graph_code = graph_code.removesuffix("```")
-    
+
     # Escape JS string literals safely
     js_safe_graph = (
         graph_code.replace("\\", "\\\\")
         .replace("`", "\\`")
         .replace("$", "\\$")
     )
+
+    js_safe_graph = js_safe_graph.replace("<", "&lt;").replace(">", "&gt;")
 
     diags_html_parts = []
     if not diagnostics:
@@ -215,7 +240,7 @@ def generate_html_report(
             safe_msg = html.escape(diag.message)
             safe_code = html.escape(diag.line_content.strip())
             file_name = html.escape(os.path.basename(diag.file_path))
-            
+
             card = f"""
             <div class="diag-card {diag.severity}">
                 <div class="diag-header">

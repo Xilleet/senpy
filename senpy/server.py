@@ -7,20 +7,22 @@ import threading
 import warnings
 from urllib.parse import unquote, urlparse
 
-warnings.filterwarnings("ignore", category=SyntaxWarning)
-
 from lsprotocol import types as lsp
+
+from senpy.__version__ import VERSION_WITH_PREFIX as _SENPY_VERSION
+from senpy.analyzer import Diagnostic, SenpyAnalyzer
+from senpy.constants import CLAUSE_KEYWORDS
+from senpy.renpy_api import get_renpy_api_hover
+
+warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 try:
     from pygls.lsp.server import LanguageServer
 except ImportError:
     from pygls.server import LanguageServer
 
-from senpy.analyzer import Diagnostic, SenpyAnalyzer
-from senpy.constants import CLAUSE_KEYWORDS
-from senpy.renpy_api import get_renpy_api_hover
 
-server = LanguageServer("senpy-lsp", "v0.4.7")
+server = LanguageServer("senpy-lsp", _SENPY_VERSION)
 
 
 def _uri_to_path(uri: str) -> str:
@@ -34,6 +36,10 @@ def _uri_to_path(uri: str) -> str:
 def _path_to_uri(path: str) -> str:
     from pathlib import Path
     return Path(os.path.abspath(path)).as_uri()
+
+
+def _normalize_path(path: str) -> str:
+    return os.path.normcase(os.path.abspath(path))
 
 
 def _get_workspace_root(ls: LanguageServer, fallback_file_path: str) -> str:
@@ -121,7 +127,7 @@ def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
             diag_uri = _path_to_uri(diag.file_path)
             lsp_diag = _create_lsp_diagnostic(diag)
             files_diags.setdefault(diag_uri, []).append(lsp_diag)
-            norm_file = os.path.normcase(os.path.abspath(diag.file_path))
+            norm_file = _normalize_path(diag.file_path)  # P0-6: единая нормализация
             new_diagnostics_by_path.setdefault(norm_file, []).append((diag, lsp_diag))
 
         # Атомарно обновляем общий кэш (без .clear())
@@ -149,7 +155,7 @@ def run_single_file_diagnostics(ls: LanguageServer, uri: str, content: str):
 
     with _analysis_lock:
         file_path = _uri_to_path(uri)
-        norm_file = os.path.normcase(os.path.abspath(file_path))
+        norm_file = _normalize_path(file_path)  # P0-6: единая нормализация
 
         _active_analyzer.in_memory_files[norm_file] = content
         diags = _active_analyzer.analyze_file_only(file_path)
@@ -213,7 +219,7 @@ def did_close(ls: LanguageServer, params: lsp.DidCloseTextDocumentParams):
     """Очищает файл из in-memory буфера анализатора при закрытии вкладки в редакторе."""
     uri = params.text_document.uri
     if _active_analyzer is not None:
-        norm_file = os.path.normcase(os.path.abspath(_uri_to_path(uri)))
+        norm_file = _normalize_path(_uri_to_path(uri))  # P0-6: единая нормализация
         _active_analyzer.in_memory_files.pop(norm_file, None)
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
@@ -231,16 +237,9 @@ def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.Co
     actions: list[lsp.CodeAction] = []
     try:
         uri = params.text_document.uri
-        norm_path = os.path.normcase(_uri_to_path(uri))
-        file_base = os.path.basename(norm_path)
+        norm_path = _normalize_path(_uri_to_path(uri))
 
         diags_for_file = _latest_diagnostics_by_path.get(norm_path)
-        if not diags_for_file:
-            for saved_path, saved_diags in _latest_diagnostics_by_path.items():
-                if os.path.basename(saved_path) == file_base:
-                    diags_for_file = saved_diags
-                    break
-
         if not diags_for_file:
             return actions
 
@@ -590,10 +589,14 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
         return None
 
     doc = ls.workspace.get_text_document(params.text_document.uri)
-    if not doc:
+    if not doc or not doc.lines:
         return None
 
-    line = doc.lines[params.position.line]
+    line_idx = params.position.line
+    if line_idx >= len(doc.lines):
+        return None
+
+    line = doc.lines[line_idx]
     col = params.position.character
 
     word = None
@@ -625,10 +628,10 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
     if word in _active_analyzer.labels:
         lbl = _active_analyzer.labels[word]
         fname = os.path.basename(lbl.file_path)
-        
+
         info_lines = [f"**Ren'Py Label** — `{word}`\n\n*Declared at `{fname}:{lbl.line_number}`*"]
         info_lines.append(f"```renpy\n{lbl.code_line}\n```")
-        
+
         status = []
         if lbl.has_return:
             status.append("✔ Has return")
@@ -658,7 +661,7 @@ def document_symbols(ls: LanguageServer, params: lsp.DocumentSymbolParams) -> li
 
     uri = params.text_document.uri
     file_path = _uri_to_path(uri)
-    norm_path = os.path.normcase(os.path.abspath(file_path))
+    norm_path = _normalize_path(file_path)  # P0-6: единая нормализация
 
     scope = _active_analyzer.file_scopes.get(norm_path)
     if not scope:
