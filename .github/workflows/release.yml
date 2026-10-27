@@ -84,16 +84,22 @@ jobs:
       - name: Verify version matches tag
         # Защита: тег v0.4.8 должен соответствовать версии в __version__.py.
         # Иначе можно случайно опубликовать v0.4.8 с кодом, где написано 0.4.7.
+        # Для pre-release тегов (v0.4.9-rc1) сравниваем только базовую часть (0.4.9),
+        # чтобы разрешить мульти-RC (rc1, rc2...) без изменения __version__.py.
         run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"             # 0.4.9-rc1
           PKG_VERSION=$(python -c "from senpy.__version__ import __version__; print(__version__)")
-          echo "Git tag version: $TAG_VERSION"
-          echo "Package version: $PKG_VERSION"
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "ERROR: Tag version ($TAG_VERSION) != package version ($PKG_VERSION)"
+          # Отрезаем суффикс -rcN, -beta, -alpha и т.п. для сравнения
+          TAG_BASE=$(echo "$TAG_VERSION" | cut -d'-' -f1)     # 0.4.9
+          echo "Git tag version:   $TAG_VERSION (base: $TAG_BASE)"
+          echo "Package version:   $PKG_VERSION"
+          if [ "$TAG_BASE" != "$PKG_VERSION" ]; then
+            echo ""
+            echo "ERROR: Base tag version ($TAG_BASE) != package version ($PKG_VERSION)"
             echo "Обнови senpy/__version__.py через 'python bump_version.py' перед созданием тега."
             exit 1
           fi
+          echo "OK: Versions match ($PKG_VERSION)
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v4
@@ -229,15 +235,24 @@ jobs:
         shell: bash
         run: |
           ls -la senpy-vscode/*.vsix
-          # VSIX должен быть больше 30 MB (из-за встроенного senpy.exe)
-          # Если меньше — что-то пошло не так, PyInstaller не собрал .exe
+          # VSIX должен быть больше 25 MB (из-за встроенного senpy.exe ~30-50 MB).
+          # Если меньше — senpy.exe НЕ включён в VSIX, расширение не будет автономным.
+          # Это критическая ошибка — падаем (exit 1).
           SIZE=$(stat -c%s senpy-vscode/*.vsix 2>/dev/null || stat -f%z senpy-vscode/*.vsix)
-          echo "VSIX size: $SIZE bytes"
-          if [ "$SIZE" -lt 30000000 ]; then
-            echo "WARNING: VSIX слишком маленький ($SIZE bytes < 30MB)"
-            echo "Возможно, senpy.exe не включён в VSIX."
-            echo "Проверь .vscodeignore — не исключает ли он bin/senpy.exe"
+          echo "VSIX size: $SIZE bytes ($((SIZE / 1024 / 1024)) MB)"
+          if [ "$SIZE" -lt 25000000 ]; then
+            echo ""
+            echo "ERROR: VSIX слишком маленький ($((SIZE / 1024 / 1024)) MB < 25 MB)"
+            echo "senpy.exe НЕ включён в VSIX. Расширение не будет автономным."
+            echo ""
+            echo "Возможные причины:"
+            echo "  1. PyInstaller не собрал senpy.exe (проверь шаг Build senpy.exe)"
+            echo "  2. .vscodeignore исключает bin/ (проверь, что есть !bin/ и !bin/**)"
+            echo "  3. .gitignore исключает senpy-vscode/bin/, а vsce применяет .gitignore"
+            echo "     Решение: в .vscodeignore добавить !bin/ и !bin/** (переопределение)"
+            exit 1
           fi
+          echo "OK: VSIX size $((SIZE / 1024 / 1024)) MB — senpy.exe включён"
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
