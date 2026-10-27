@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 """update_unrpyc_pin.py — обновление pinned unrpyc commit + SHA256 в senpy/cli.py.
 
-ECO-4: Senpy пиннит unrpyc к конкретному git-коммиту/тегу (не master-ветке
-в общем случае) и проверяет SHA256 скачанного zip. Этот скрипт обновляет
-обе константы в senpy/cli.py одной командой.
-
 ============================================================================
 СОВМЕСТИМОСТЬ UNRPYC С ВЕРСИЯМИ REN'PY (важно для публичного скрипта)
 ============================================================================
@@ -32,7 +28,7 @@ unrpyc имеет две ветки:
 ИСТОЧНИК: https://github.com/CensoredUsername/unrpyc#readme
 
 ============================================================================
-ТЕСТЫ МЕЙНТЕЙНЕРА (подтверждённая совместимость)
+ТЕСТЫ
 ============================================================================
 
 Мейнтейнер Senpy тестировал unrpyc на реальных .rpyc файлах:
@@ -74,7 +70,6 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-
 GITHUB_API = "https://api.github.com/repos/CensoredUsername/unrpyc/commits/{ref}"
 ZIP_URL_TEMPLATE = "https://github.com/CensoredUsername/unrpyc/archive/{commit}.zip"
 CLI_PATH = Path(__file__).parent.parent / "senpy" / "cli.py"
@@ -83,8 +78,6 @@ CLI_PATH = Path(__file__).parent.parent / "senpy" / "cli.py"
 # =============================================================================
 # МАТРИЦА СОВМЕСТИМОСТИ UNRPYC × REN'PY
 # =============================================================================
-# Каждая запись — это "профиль" пина. Можно выбрать по тегу/коммиту или по
-# целевой версии Ren'Py. Профили отсортированы по предпочтительности.
 
 @dataclass
 class UnrpycProfile:
@@ -99,7 +92,7 @@ class UnrpycProfile:
     recommended: bool = False   # рекомендован ли по умолчанию
 
 
-# Список доступных профилей. Порядок важен — первый recommended = default.
+# Список доступных профилей.
 PROFILES: list[UnrpycProfile] = [
     UnrpycProfile(
         ref="v2.0.4",
