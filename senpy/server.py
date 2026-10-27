@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import os
 import re
 import threading
@@ -19,7 +20,7 @@ from senpy.analyzer import Diagnostic, SenpyAnalyzer
 from senpy.constants import CLAUSE_KEYWORDS
 from senpy.renpy_api import get_renpy_api_hover
 
-server = LanguageServer("senpy-lsp", "v0.4.6")
+server = LanguageServer("senpy-lsp", "v0.4.7")
 
 
 def _uri_to_path(uri: str) -> str:
@@ -82,6 +83,21 @@ def _create_lsp_diagnostic(diag: Diagnostic) -> lsp.Diagnostic:
         ),
     )
 
+def _with_analysis_lock(func):
+    """Читающие обработчики обязаны ждать _analysis_lock.
+
+    Писатели (run_full_project_diagnostics / run_single_file_diagnostics)
+    мутируют реестры _active_analyzer только под локом; без него читатели
+    ловят RuntimeError: dictionary changed size during iteration и видят
+    половинные снапшоты. Сигнатура wrapper — строго (ls, params): pygls
+    инспектирует первый параметр (wrap_with_server) и решает, передавать ли
+    серверный инстанс первым аргументом.
+    """
+    @functools.wraps(func)
+    def wrapper(ls, params):
+        with _analysis_lock:
+            return func(ls, params)
+    return wrapper
 
 def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
     """Полное сканирование проекта в одном потоке с блокировкой от параллельных запусков."""
@@ -210,6 +226,7 @@ def did_change(ls: LanguageServer, params: lsp.DidChangeTextDocumentParams):
     lsp.TEXT_DOCUMENT_CODE_ACTION,
     lsp.CodeActionOptions(code_action_kinds=[lsp.CodeActionKind.QuickFix]),
 )
+@_with_analysis_lock
 def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.CodeAction]:
     actions: list[lsp.CodeAction] = []
     try:
@@ -285,6 +302,7 @@ def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.Co
     return actions
 
 @server.feature(lsp.TEXT_DOCUMENT_COMPLETION)
+@_with_analysis_lock
 def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.CompletionList:
     """Контекстный автокомплит для меток, спрайтов и экранов."""
     items: list[lsp.CompletionItem] = []
@@ -362,6 +380,7 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
 
 
 @server.feature(lsp.TEXT_DOCUMENT_DEFINITION)
+@_with_analysis_lock
 def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location | None:
     """Нативный переход по F12 к меткам, экранам, переменным, спрайтам и файлам ассетов."""
     if _active_analyzer is None or not _is_initialized:
@@ -505,8 +524,66 @@ def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location
 
     return None
 
+@server.feature(lsp.TEXT_DOCUMENT_REFERENCES)
+@_with_analysis_lock
+def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Location] | None:
+    """Find References: все статические jump/call-ссылки на метку под курсором."""
+    if _active_analyzer is None or not _is_initialized:
+        return None
+
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    if not doc or not doc.lines:
+        return None
+
+    line_idx = params.position.line
+    if line_idx >= len(doc.lines):
+        return None
+
+    line = doc.lines[line_idx]
+    col = params.position.character
+
+    # Тот же экстрактор слова, что в definition/hover
+    word = None
+    for m in re.finditer(r'[a-zA-Z_][a-zA-Z0-9_\.]*', line):
+        if m.start() <= col <= m.end():
+            word = m.group(0)
+            break
+
+    if not word:
+        return None
+
+    locations: list[lsp.Location] = []
+
+    # Обратный индекс jump_sources [(файл, строка 1-базная)]
+    # строится анализатором для таргетов jump И call, поддерживается
+    # дифференциальной чисткой (_differential_purge_file) и переживает
+    # перестройку кэша (_rebuild_aggregates).
+    if word in _active_analyzer.labels:
+        if params.context.include_declaration:
+            lbl = _active_analyzer.labels[word]
+            locations.append(lsp.Location(
+                uri=_path_to_uri(lbl.file_path),
+                range=lsp.Range(
+                    start=lsp.Position(line=max(0, lbl.line_number - 1), character=0),
+                    end=lsp.Position(line=max(0, lbl.line_number - 1), character=len(word)),
+                ),
+            ))
+        for ref_path, ref_line in _active_analyzer.jump_sources.get(word, []):
+            locations.append(lsp.Location(
+                uri=_path_to_uri(ref_path),
+                range=lsp.Range(
+                    start=lsp.Position(line=max(0, ref_line - 1), character=0),
+                    end=lsp.Position(line=max(0, ref_line - 1), character=len(word)),
+                ),
+            ))
+        return locations
+
+    # экраны, переменные, спрайты, трансформы — следующая итерация:
+    # для них ещё нет обратного индекса с координатами.
+    return None
 
 @server.feature(lsp.TEXT_DOCUMENT_HOVER)
+@_with_analysis_lock
 def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
     """Семантические подсказки при наведении курсора мыши на переменные, метки и экраны."""
     if _active_analyzer is None or not _is_initialized:
@@ -572,6 +649,7 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
 
 
 @server.feature(lsp.TEXT_DOCUMENT_DOCUMENT_SYMBOL)
+@_with_analysis_lock
 def document_symbols(ls: LanguageServer, params: lsp.DocumentSymbolParams) -> list[lsp.DocumentSymbol]:
     """Генерирует нативное дерево символов для Outline (Структура), Breadcrumbs и Ctrl+Shift+O."""
     symbols: list[lsp.DocumentSymbol] = []

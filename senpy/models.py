@@ -50,6 +50,7 @@ class FileScope:
     jump_sources: dict[str, list[tuple[str, int]]] = field(default_factory=dict)
     screen_action_jumps: dict[str, set[str]] = field(default_factory=dict)
     used_screens: set[str] = field(default_factory=set)
+    screen_uses: dict[str, set[str]] = field(default_factory=dict)
 
 
 RULE_SEVERITY: dict[str, str] = {
@@ -58,6 +59,7 @@ RULE_SEVERITY: dict[str, str] = {
     "RPY002": "ERROR",    # Фигурные/типографские кавычки в коде -> SyntaxError
 
     # 1xx: Переменные, состояние и питон
+    "RPY100": "ERROR",    # Файл не декодируется как UTF-8 -> молча выпадал из анализа
     "RPY101": "ERROR",    # Опечатка в [var] -> KeyError в диалоге
     "RPY102": "ERROR",    # += до default -> NameError при входе в сцену
     "RPY103": "ERROR",    # if var: без объявления -> NameError

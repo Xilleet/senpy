@@ -698,20 +698,22 @@ label start:
 
 
 def test_rules_database_completeness():
-    """Verify RULES_DATABASE contains all 41 rules declared in RULE_SEVERITY"""
+    """RULES_DATABASE и RULE_SEVERITY совпадают ключ-в-ключ"""
     from senpy.models import RULE_SEVERITY
     from senpy.rules_info import RULES_DATABASE
     missing = set(RULE_SEVERITY.keys()) - set(RULES_DATABASE.keys())
     assert not missing, f"RULES_DATABASE is missing rules: {missing}"
-    assert len(RULES_DATABASE) == 41
+    extra = set(RULES_DATABASE.keys()) - set(RULE_SEVERITY.keys())
+    assert not extra, f"RULES_DATABASE has rules not in RULE_SEVERITY: {extra}"
 
 def test_tsundere_flavors_completeness():
-    """Verify TSUNDERE_FLAVORS contains phrases for all 41 rules declared in RULE_SEVERITY"""
+    """TSUNDERE_FLAVORS и RULE_SEVERITY совпадают ключ-в-ключ"""
     from senpy.models import RULE_SEVERITY
     from senpy.tsundere import TSUNDERE_FLAVORS
     missing = set(RULE_SEVERITY.keys()) - set(TSUNDERE_FLAVORS.keys())
     assert not missing, f"TSUNDERE_FLAVORS is missing phrases for rules: {missing}"
-    assert len(TSUNDERE_FLAVORS) == 41
+    extra = set(TSUNDERE_FLAVORS.keys()) - set(RULE_SEVERITY.keys())
+    assert not extra, f"TSUNDERE_FLAVORS has phrases for unknown rules: {extra}"
 
 def test_cache_invalidates_on_same_size_same_mtime_content_change(tmp_path: Path):
     """Verify incremental cache invalidates via content_hash even when size and mtime are identical."""

@@ -43,6 +43,30 @@ class CacheManifest:
     files: dict[str, CachedFileEntry] = field(default_factory=dict)
 
 
+class SafeCacheUnpickler(pickle.Unpickler):
+    """Unpickler с белым списком модулей: cache.pkl приходит из недоверенного источника.
+
+    Папка .senpy_cache лежит ВНУТРИ проекта Ren'Py и переезжает вместе с ним
+    (шаринг проекта, скачивание, чужие моды), поэтому plain pickle.load = RCE
+    через __reduce__ в подложенном файле. Легитимное содержимое кэша — только
+    наши dataclasses и примитивы, любого find_class вне списка достаточно,
+    чтобы отвергнуть файл. Сломанный кэш = None = штатная пересборка.
+    """
+
+    ALLOWED_MODULES = frozenset({
+        "senpy.cache",      # CacheManifest, CachedFileEntry
+        "senpy.models",     # FileScope, Diagnostic
+        "senpy.symbols",    # Variable/Label/Screen/Image/TransformSymbol
+        "senpy.signature",  # SignatureInfo
+    })
+
+    def find_class(self, module: str, name: str):
+        if module in self.ALLOWED_MODULES:
+            return super().find_class(module, name)
+        raise pickle.UnpicklingError(
+            f"Security Error: Forbidden import '{module}.{name}' in senpy cache"
+        )
+
 class CacheManager:
     def __init__(self, project_path: str, enabled: bool = True):
         self.project_path = os.path.abspath(project_path)
@@ -74,7 +98,7 @@ class CacheManager:
             return None
         with contextlib.suppress(OSError, pickle.PickleError, EOFError, AttributeError, ValueError):
             with open(self.manifest_path, "rb") as f:
-                data = pickle.load(f)
+                data = SafeCacheUnpickler(f).load()
             if isinstance(data, CacheManifest) and data.version == SENPY_VERSION:
                 self.manifest = data
                 return data

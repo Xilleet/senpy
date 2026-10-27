@@ -264,6 +264,7 @@ class SenpyAnalyzer:
         self.jump_sources: dict[str, list[tuple[str, int]]] = {}
         self.screen_action_jumps: dict[str, set[str]] = {}
         self.used_screens: set[str] = set()
+        self.screen_uses: dict[str, set[str]] = {}
         self.has_dynamic_jumps: bool = False
         self.diagnostics: list[Diagnostic] = []
         self.missing_defaults: dict[str, str] = {}
@@ -271,6 +272,7 @@ class SenpyAnalyzer:
         self.fixed_count: int = 0
         self.fixable_count: int = 0
         self.file_scopes: dict[str, FileScope] = {}
+        self._stage1_lines: dict[str, list[str]] = {}
         
     @staticmethod
     def _get_utf16_range(line: str, sub: str | None = None) -> tuple[int, int]:
@@ -320,6 +322,7 @@ class SenpyAnalyzer:
         self.referenced_labels.clear()
         self.screen_action_jumps.clear()
         self.used_screens.clear()
+        self.screen_uses.clear()
         self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
         
         # Очистка новых объектных реестров
@@ -331,12 +334,14 @@ class SenpyAnalyzer:
         self.jump_sources.clear()
         self.screen_action_jumps.clear()
         self.used_screens.clear()
+        self.screen_uses.clear()
         
         # Сброс флагов и счётчиков
         self.has_dynamic_jumps = False
         self.total_lines = 0
         self.fixed_count = 0
         self.fixable_count = 0
+        self._stage1_lines.clear()
 
         self._index_assets()
         main_rpy, tl_rpy = self._get_rpy_files()
@@ -536,6 +541,10 @@ class SenpyAnalyzer:
         for scr_name in getattr(old_scope, "screen_action_jumps", {}):
             if not any(scr_name in getattr(s, "screen_action_jumps", {}) for s in other_scopes):
                 self.screen_action_jumps.pop(scr_name, None)
+                
+        for src_name in getattr(old_scope, "screen_uses", {}):
+            if not any(src_name in getattr(s, "screen_uses", {}) for s in other_scopes):
+                self.screen_uses.pop(src_name, None)
 
         for chan in old_scope.registered_audio_channels:
             if chan not in BUILTIN_AUDIO_CHANNELS and not any(chan in s.registered_audio_channels for s in other_scopes):
@@ -560,6 +569,7 @@ class SenpyAnalyzer:
         self.screens.clear()
         self.images.clear()
         self.jump_sources.clear()
+        self.screen_uses.clear()
 
         for scope in self.file_scopes.values():
             self.declared_symbols.update(scope.declared_symbols)
@@ -570,6 +580,8 @@ class SenpyAnalyzer:
             for scr_name, targets in getattr(scope, "screen_action_jumps", {}).items():
                 self.screen_action_jumps.setdefault(scr_name, set()).update(targets)
             self.used_screens.update(getattr(scope, "used_screens", ()))
+            for src_name, targets in getattr(scope, "screen_uses", {}).items():
+                self.screen_uses.setdefault(src_name, set()).update(targets)
 
             self.variables.update(scope.variables)
             self.labels.update(scope.labels)
@@ -619,6 +631,25 @@ class SenpyAnalyzer:
                         main_files.append(full_p)
         return sorted(main_files), sorted(tl_files)
 
+    def _emit_encoding_error(self, file_path: str, err: UnicodeDecodeError) -> None:
+        """RPY100: файл не читается как UTF-8. Раньше decode-ошибка глохла в
+        `except: pass` — линтер молча пропускал файл и рапортовал «чисто»,
+        хотя Ren'Py упадёт на загрузке такого скрипта."""
+        self.diagnostics.append(
+            Diagnostic(
+                file_path=file_path,
+                line_number=1,
+                line_content="",
+                code="RPY100",
+                severity="ERROR",
+                message=(
+                    f"File is not valid UTF-8 ({err.reason} at byte offset {err.start}). "
+                    "Ren'Py requires UTF-8 script files: the game will fail to load it. "
+                    "The file was skipped by the linter; re-save it with UTF-8 encoding."
+                ),
+            )
+        )
+
     def _collect_symbols(self, file_path: str):
         try:
             norm_path = os.path.normcase(os.path.abspath(file_path))
@@ -629,6 +660,7 @@ class SenpyAnalyzer:
             else:
                 with open(file_path, "r", encoding="utf-8", newline="") as f:
                     lines = f.readlines()
+                self._stage1_lines[norm_path] = lines
 
             if file_path.endswith("_ren.py"):
                 self._collect_from_python_block(lines, scope, file_path, 1)
@@ -858,6 +890,11 @@ class SenpyAnalyzer:
                 for m_usage in RE_SCREEN_CALL.finditer(clean):
                     scope.used_screens.add(m_usage.group(1))
                     self.used_screens.add(m_usage.group(1))
+                    # Задача 11: атрибуция «кто использует экран» для рёбер графа
+                    usage_src = current_screen or current_label
+                    if usage_src:
+                        scope.screen_uses.setdefault(usage_src, set()).add(m_usage.group(1))
+                        self.screen_uses.setdefault(usage_src, set()).add(m_usage.group(1))
 
                 for m_show in RE_SCREEN_SHOW_ACTION.finditer(clean):
                     scope.used_screens.add(m_show.group(1))
@@ -948,7 +985,9 @@ class SenpyAnalyzer:
 
             self.file_scopes[norm_path] = scope
 
-        except (UnicodeDecodeError, OSError):
+        except UnicodeDecodeError as e:
+            self._emit_encoding_error(file_path, e)
+        except OSError:
             pass
 
     def _collect_from_python_block(
@@ -1067,6 +1106,8 @@ class SenpyAnalyzer:
             norm_path = os.path.normcase(os.path.abspath(file_path))
             if norm_path in self.in_memory_files:
                 lines = self.in_memory_files[norm_path].splitlines(keepends=True)
+            elif norm_path in self._stage1_lines:
+                lines = self._stage1_lines.pop(norm_path)
             else:
                 with open(file_path, "r", encoding="utf-8", newline="") as f:
                     lines = f.readlines()
@@ -1310,7 +1351,10 @@ class SenpyAnalyzer:
             else:
                 with open(file_path, "r", encoding="utf-8", newline="") as f:
                     lines = f.readlines()
-        except (UnicodeDecodeError, OSError):
+        except UnicodeDecodeError as e:
+            self._emit_encoding_error(file_path, e)
+            return
+        except OSError:
             return
 
         self.total_lines += len(lines)

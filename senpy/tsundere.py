@@ -59,6 +59,7 @@ TSUNDERE_FLAVORS = {
     "RPY601": "(╬ Ò﹏Ó) «Ты сломал переменную в переводе! Оригинал ждёт [var], а у тебя опечатка! Игра вылетит с KeyError, идиот!»" if IS_RU else "(╬ Ò﹏Ó) «Variable mismatch in translation! The original expects [var], but you made a typo! The game will crash with KeyError, dummy!»",
     "RPY602": "(；￣Д￣) «Теги форматирования в переводе не совпадают с оригиналом! Текст игры поплывёт, бестолочь!»" if IS_RU else "(；￣Д￣) «Formatting tags in translation don't match the original! Text styling will break, idiot!»",
     "RPY603": "(￣︿￣) «Ты оставил строку перевода пустой! У игроков там будет пустота вместо текста!»" if IS_RU else "(￣︿￣) «You left the translation string empty! Players will see blank air instead of text!»",
+    "RPY100": "(╯°□°)╯︵ ┻━┻ «Этот файл вообще не в UTF-8! Он молча выпал из проверки — ищи кракозябры в игре, бака!»" if IS_RU else "(╯°□°)╯︵ ┻━┻ «This file isn't even UTF-8! It silently dropped out of the check — enjoy the mojibake in-game, baka!»",
 }
 
 TSUNDERE_UI = {

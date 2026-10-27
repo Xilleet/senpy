@@ -23,7 +23,16 @@ RULES_DATABASE = {
         "bad": '$ status = “active”\nif item == «key»: ...',
         "good": '$ status = "active"\nif item == "key": ...',
     },
+    
     # ---------------- 100: Variables, Types & Rollback ----------------
+
+    "RPY100": {
+        "title": "File is not valid UTF-8",
+        "severity": "ERROR",
+        "why": "Ren'Py reads all .rpy scripts as UTF-8. A file saved in another encoding (e.g. Windows-1251) crashes the game on load. Senpy skips such files, so they must be re-saved as UTF-8.",
+        "bad": 'script.rpy saved in Windows-1251: bytes b\'\\xcf\\xf0\\xe8\\xe2\\xe5\\xf2\' instead of text',
+        "good": "Re-save the file with UTF-8 encoding (VS Code: bottom-right status bar -> Save with Encoding -> UTF-8).",
+    },
     "RPY101": {
         "title": "Unresolved variable in dialogue interpolation",
         "severity": "ERROR",

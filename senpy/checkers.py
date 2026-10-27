@@ -401,6 +401,13 @@ class AssetChecker(BaseChecker):
                 if t.endswith(":"):
                     break
 
+            # "show layer <имя>" — очистка слоя (renpy.show_layer_at), а НЕ показ
+            # изображения: слово layer зарезервировано парсером Ren'Py и не может
+            # быть тегом картинки. АТ-трансформы ниже проверяются как раньше.
+            if img_tokens and img_tokens[0] == "layer" and m_show.group(1) == "show":
+                img_tokens = []
+
+
             if img_tokens:
                 full_img_tag = " ".join(img_tokens)
                 self.analyzer._mark_asset_used(full_img_tag)

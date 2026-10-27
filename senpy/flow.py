@@ -19,6 +19,30 @@ from senpy.text_tags import get_utf16_range
 if TYPE_CHECKING:
     from senpy.analyzer import SenpyAnalyzer
 
+_MERMAID_RESERVED_IDS = {"end"}
+
+
+def _mermaid_safe_id(name: str) -> str:
+    """Имя метки/экрана -> валидный id узла Mermaid.
+
+    \\W юникодный: кириллица сохраняется, точки саб-меток -> "_".
+    Зарезервированное слово end получает суффикс, иначе Mermaid
+    трактует его как закрытие subgraph и ломает парсинг.
+    Ограничение: санитизация может коллидировать (chapter.start и
+    chapter_start дадут один узел) — принято осознанно.
+    """
+    safe = re.sub(r"\W", "_", name)
+    if safe in _MERMAID_RESERVED_IDS:
+        safe += "_"
+    return safe
+
+def _mermaid_node_ref(name: str) -> str:
+    """Ссылка на узел в ребре: голый id, если санитизация имя не меняла
+    (байт-совместимость со старым выводом), иначе id + кавычканный
+    текст с сырым именем."""
+    sid = _mermaid_safe_id(name)
+    return sid if sid == name else f'{sid}["{name}"]'
+
 @dataclass
 class FlowBranch:
     """Представляет одну ветку развилки (choice в menu: или if/elif/else)."""
@@ -407,24 +431,28 @@ class StoryFlowAnalyzer:
             has_jumps = len(lbl_sym.outgoing_jumps) > 0
             
             if has_return:
-                shape_start, shape_end = ("([", "])")
+                shape_start, shape_end = ('(["', '"])')
             elif not has_jumps:
-                shape_start, shape_end = ("[[", "]]:::fallthrough")
+                shape_start, shape_end = ('[["', '"]]:::fallthrough')
             else:
                 shape_start, shape_end = ('["', '"]')
                 
-            lines.append(f"    {label}{shape_start}{label}{shape_end}")
+            lines.append(f"    {_mermaid_safe_id(label)}{shape_start}{label}{shape_end}")
 
         # --- Экраны: узлы (follow-up; префикс screen_ разводит
         # id-пространства label/screen в Mermaid) ---
         screens_registry = self.analyzer.screens
         screen_action_jumps = getattr(self.analyzer, "screen_action_jumps", {}) or {}
         used_screens = getattr(self.analyzer, "used_screens", set()) or set()
+        # источники screen_uses (лейблы с call/show screen и экраны
+        # с use) — тоже участники графа, их узлы должны существовать
+        screen_uses = getattr(self.analyzer, "screen_uses", {}) or {}
         graph_screens = sorted(
-            (set(screen_action_jumps) | set(used_screens)) & set(screens_registry)
+            (set(screen_action_jumps) | set(used_screens) | set(screen_uses))
+            & set(screens_registry)
         )
         for scr in graph_screens:
-            lines.append(f'    screen_{scr}{{"screen: {scr}"}}:::screen')
+            lines.append(f'    screen_{_mermaid_safe_id(scr)}{{"screen: {scr}"}}:::screen')
 
         lines.append("")
 
@@ -438,10 +466,10 @@ class StoryFlowAnalyzer:
                 arrow = "-- call -->" if is_call else "-->"
 
                 if tgt in labels:
-                    lines.append(f"    {src} {arrow} {tgt}")
+                    lines.append(f"    {_mermaid_safe_id(src)} {arrow} {_mermaid_safe_id(tgt)}")
                     edges_added = True
                 else:
-                    lines.append(f"    {src} -. jump .-> {tgt}:::missing")
+                    lines.append(f'    {_mermaid_safe_id(src)} -. jump .-> {_mermaid_node_ref(tgt)}:::missing')
                     edges_added = True
 
         # --- Экраны: рёбра Jump-экшенов (существующая метка = сплошное,
@@ -449,10 +477,25 @@ class StoryFlowAnalyzer:
         for scr in graph_screens:
             for tgt in sorted(screen_action_jumps.get(scr, ())):
                 if tgt in labels:
-                    lines.append(f"    screen_{scr} -- action --> {tgt}")
+                    lines.append(f"    screen_{_mermaid_safe_id(scr)} -- action --> {_mermaid_safe_id(tgt)}")
                 else:
-                    lines.append(f"    screen_{scr} -. action .-> {tgt}:::missing")
+                    lines.append(f"    screen_{_mermaid_safe_id(scr)} -. action .-> {_mermaid_node_ref(tgt)}:::missing")
                 edges_added = True
+
+        # --- рёбра label -- call screen --> screen и screen -- use --> screen ---
+        for src_name in sorted(screen_uses):
+            if src_name.startswith("_"):
+                continue
+            for tgt in sorted(screen_uses[src_name]):
+                if tgt not in screens_registry:
+                    continue  # несуществующие экраны — территория RPY204
+                if src_name in labels:
+                    lines.append(f"    {src_name} -- call screen --> screen_{tgt}")
+                    edges_added = True
+                elif src_name in screens_registry:
+                    lines.append(f"    screen_{src_name} -- use --> screen_{tgt}")
+                    edges_added = True
+
 
         if not edges_added:
             lines.append("    %% No static jumps detected")
