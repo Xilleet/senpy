@@ -850,5 +850,399 @@ def document_symbols(
     return symbols
 
 
+# =============================================================================
+# UX-1: textDocument/foldingRange — сворачивание label/screen/menu/init блоков
+# =============================================================================
+# Позволяет в VS Code сворачивать (fold) блоки кода:
+# - label X: ... (до следующего label или конца файла)
+# - screen X(): ...
+# - menu: ...
+# - init python: ...
+# - transform X: ...
+# - python: ...
+#
+# Алгоритм: проходим по строкам, отслеживаем отступы. При встрече scope-opening
+# ключевого слова — открываем folding range. Закрываем при уменьшении отступа
+# до того же уровня или ниже.
+@server.feature(lsp.TEXT_DOCUMENT_FOLDING_RANGE)
+@_with_analysis_lock
+def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[lsp.FoldingRange]:
+    """Возвращает folding ranges для .rpy файла.
+
+    VS Code использует это для сворачивания блоков (Ctrl+Shift+[).
+    """
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    if not doc or not doc.lines:
+        return []
+
+    lines = doc.lines
+
+    # Паттерны для scope-opening строк (как в formatter _build_contexts)
+    _RE_LABEL = re.compile(r"^label\s+(\w+)")
+    _RE_SCREEN = re.compile(r"^screen\s+(\w+)")
+    _RE_INIT = re.compile(r"^init\s+python")
+    _RE_MENU = re.compile(r"^menu\s*:?")
+    _RE_TRANSFORM = re.compile(r"^transform\s+(\w+)")
+    _RE_PYTHON_BLOCK = re.compile(r"^python\s*:")
+
+    ranges: list[lsp.FoldingRange] = []
+
+    # Стек открытых блоков: (start_line_0based, indent, keyword)
+    open_blocks: list[tuple[int, int, str]] = []
+
+    for i, raw_line in enumerate(lines):
+        # Считаем отступ (в пробелах, с expandtabs)
+        stripped = raw_line.lstrip(" \t")
+        leading = raw_line[: len(raw_line) - len(stripped)]
+        indent = len(leading.expandtabs(4))
+
+        # Закрываем блоки с бОльшим или равным отступом
+        while open_blocks and indent <= open_blocks[-1][1]:
+            start_line, start_indent, keyword = open_blocks.pop()
+            if i - 1 > start_line:  # минимум 2 строки в блоке
+                ranges.append(
+                    lsp.FoldingRange(
+                        start_line=start_line,
+                        end_line=i - 1,
+                        kind=lsp.FoldingRangeKind.Region,
+                    )
+                )
+
+        # Проверяем, открывает ли строка новый scope
+        clean = stripped.split("#")[0].strip()  # убираем комментарий
+        if clean:
+            is_scope_opener = (
+                _RE_LABEL.match(clean)
+                or _RE_SCREEN.match(clean)
+                or _RE_INIT.match(clean)
+                or _RE_MENU.match(clean)
+                or _RE_TRANSFORM.match(clean)
+                or _RE_PYTHON_BLOCK.match(clean)
+            )
+            if is_scope_opener and clean.endswith(":"):
+                open_blocks.append((i, indent, clean))
+
+    # Закрываем оставшиеся открытые блоки (до конца файла)
+    for start_line, start_indent, keyword in open_blocks:
+        if len(lines) - 1 > start_line:
+            ranges.append(
+                lsp.FoldingRange(
+                    start_line=start_line,
+                    end_line=len(lines) - 1,
+                    kind=lsp.FoldingRangeKind.Region,
+                )
+            )
+
+    # Сортируем по start_line (блоки закрываются в обратном порядке —
+    # внутренние раньше внешних, но клиент ожидает по порядку)
+    ranges.sort(key=lambda r: r.start_line)
+    return ranges
+
+
+# =============================================================================
+# UX-2: textDocument/rename — переименование меток
+# =============================================================================
+# Переименовывает label во всех местах:
+# - Объявление (label X:)
+# - Все jump X
+# - Все call X
+#
+# Использует jump_sources обратный индекс из analyzer.
+# Возвращает WorkspaceEdit с изменениями для всех файлов проекта.
+@server.feature(lsp.TEXT_DOCUMENT_RENAME)
+@_with_analysis_lock
+def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | None:
+    """Переименование метки: обновляет объявление + все jump/call ссылки."""
+    if _active_analyzer is None or not _is_initialized:
+        return None
+
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    if not doc or not doc.lines:
+        return None
+
+    line_idx = params.position.line
+    if line_idx >= len(doc.lines):
+        return None
+
+    line = doc.lines[line_idx]
+    col = params.position.character
+
+    # Извлекаем слово под курсором
+    word = None
+    for m in re.finditer(r"[a-zA-Z_][a-zA-Z0-9_\.]*", line):
+        if m.start() <= col <= m.end():
+            word = m.group(0)
+            break
+
+    if not word:
+        return None
+
+    # Пока поддерживаем rename только для label'ов
+    if word not in _active_analyzer.labels:
+        return None
+
+    new_name = params.new_name
+    changes: dict[str, list[lsp.TextEdit]] = {}
+
+    # 1. Объявление (label X:)
+    lbl = _active_analyzer.labels[word]
+    lbl_uri = _path_to_uri(lbl.file_path)
+    lbl_line = max(0, lbl.line_number - 1)  # 0-based
+
+    # Читаем строку, чтобы найти точную позицию слова
+    try:
+        with open(lbl.file_path, encoding="utf-8") as f:
+            file_lines = f.readlines()
+        if lbl_line < len(file_lines):
+            lbl_content = file_lines[lbl_line]
+            # Находим позицию слова в строке
+            word_start = lbl_content.find(word)
+            if word_start >= 0:
+                word_start_utf16 = len(lbl_content[:word_start].encode("utf-16-le")) // 2
+                word_end_utf16 = word_start_utf16 + len(word.encode("utf-16-le")) // 2
+                changes.setdefault(lbl_uri, []).append(
+                    lsp.TextEdit(
+                        range=lsp.Range(
+                            start=lsp.Position(line=lbl_line, character=word_start_utf16),
+                            end=lsp.Position(line=lbl_line, character=word_end_utf16),
+                        ),
+                        new_text=new_name,
+                    )
+                )
+    except OSError:
+        pass
+
+    # 2. Все jump/call ссылки (из jump_sources)
+    for ref_path, ref_line in _active_analyzer.jump_sources.get(word, []):
+        ref_uri = _path_to_uri(ref_path)
+        ref_line_0 = max(0, ref_line - 1)  # 0-based
+
+        # Читаем строку, чтобы найти точную позицию слова
+        try:
+            with open(ref_path, encoding="utf-8") as f:
+                ref_lines = f.readlines()
+            if ref_line_0 < len(ref_lines):
+                ref_content = ref_lines[ref_line_0]
+                # Находим позицию слова в строке
+                word_start = ref_content.find(word)
+                if word_start >= 0:
+                    word_start_utf16 = len(ref_content[:word_start].encode("utf-16-le")) // 2
+                    word_end_utf16 = word_start_utf16 + len(word.encode("utf-16-le")) // 2
+                    changes.setdefault(ref_uri, []).append(
+                        lsp.TextEdit(
+                            range=lsp.Range(
+                                start=lsp.Position(line=ref_line_0, character=word_start_utf16),
+                                end=lsp.Position(line=ref_line_0, character=word_end_utf16),
+                            ),
+                            new_text=new_name,
+                        )
+                    )
+        except OSError:
+            pass
+
+    if not changes:
+        return None
+
+    return lsp.WorkspaceEdit(changes=changes)
+
+
+# =============================================================================
+# UX-3: workspace/symbol — глобальный поиск символов (Ctrl+T)
+# =============================================================================
+# Возвращает все label'ы, screen'ы, transform'ы в проекте.
+# VS Code: Ctrl+T → вводишь имя → переход к определению.
+#
+# Поддерживает фильтрацию по query (case-insensitive substring match).
+# Если query пустой — возвращает все символы.
+@server.feature(lsp.WORKSPACE_SYMBOL)
+@_with_analysis_lock
+def workspace_symbol(
+    ls: LanguageServer, params: lsp.WorkspaceSymbolParams
+) -> list[lsp.WorkspaceSymbol]:
+    """Возвращает все символы проекта (labels, screens, transforms).
+
+    VS Code: Ctrl+T → поиск по всем файлам проекта.
+    """
+    if _active_analyzer is None or not _is_initialized:
+        return []
+
+    query = (params.query or "").lower()
+    symbols: list[lsp.WorkspaceSymbol] = []
+
+    def _matches(name: str) -> bool:
+        """Проверяет, подходит ли имя под query (case-insensitive)."""
+        if not query:
+            return True
+        return query in name.lower()
+
+    # 1. Labels (SymbolKind.Function = 12)
+    for name, lbl in _active_analyzer.labels.items():
+        if not _matches(name):
+            continue
+        lbl_line = max(0, lbl.line_number - 1)
+        symbols.append(
+            lsp.WorkspaceSymbol(
+                name=name,
+                kind=lsp.SymbolKind.Function,
+                location=lsp.Location(
+                    uri=_path_to_uri(lbl.file_path),
+                    range=lsp.Range(
+                        start=lsp.Position(line=lbl_line, character=0),
+                        end=lsp.Position(line=lbl_line, character=len(name)),
+                    ),
+                ),
+            )
+        )
+
+    # 2. Screens (SymbolKind.Object = 26)
+    for name, scr in _active_analyzer.screens.items():
+        if not _matches(name):
+            continue
+        scr_line = max(0, scr.line_number - 1)
+        symbols.append(
+            lsp.WorkspaceSymbol(
+                name=name,
+                kind=lsp.SymbolKind.Object,
+                location=lsp.Location(
+                    uri=_path_to_uri(scr.file_path),
+                    range=lsp.Range(
+                        start=lsp.Position(line=scr_line, character=0),
+                        end=lsp.Position(line=scr_line, character=len(name)),
+                    ),
+                ),
+            )
+        )
+
+    # 3. Transforms (SymbolKind.Function = 12)
+    for name, trn in _active_analyzer.transforms.items():
+        if not _matches(name):
+            continue
+        trn_line = max(0, trn.line_number - 1)
+        symbols.append(
+            lsp.WorkspaceSymbol(
+                name=name,
+                kind=lsp.SymbolKind.Function,
+                location=lsp.Location(
+                    uri=_path_to_uri(trn.file_path),
+                    range=lsp.Range(
+                        start=lsp.Position(line=trn_line, character=0),
+                        end=lsp.Position(line=trn_line, character=len(name)),
+                    ),
+                ),
+            )
+        )
+
+    return symbols
+
+
+# =============================================================================
+# UX-12: initialized — запуск full project scan сразу после инициализации
+# =============================================================================
+# Без этого handler'а hover/completion не работают первые 300ms после открытия
+# файла (до первого did_save). initialized запускает scan немедленно.
+@server.feature(lsp.INITIALIZED)
+def initialized(ls: LanguageServer, params: lsp.InitializedParams) -> None:
+    """Запускает full project diagnostics сразу после инициализации LSP."""
+    global _current_workspace_root
+
+    try:
+        root = ls.workspace.root_path
+    except AttributeError:
+        root = None
+
+    if root:
+        _current_workspace_root = root
+        # Запускаем full scan в фоне (debounced)
+        schedule_full_diagnostics(ls, "")
+
+
+# =============================================================================
+# UX-5: documentHighlight — подсветка всех упоминаний слова в файле
+# =============================================================================
+# VS Code: курсор на переменной/метке → все её упоминания в файле подсвечиваются.
+# Ищет слово в: labels, screens, transforms, variables (declared_symbols).
+# Возвращает DocumentHighlight с kind: Write (объявление) / Read (использование).
+@server.feature(lsp.TEXT_DOCUMENT_DOCUMENT_HIGHLIGHT)
+@_with_analysis_lock
+def document_highlight(
+    ls: LanguageServer, params: lsp.DocumentHighlightParams
+) -> list[lsp.DocumentHighlight]:
+    """Подсвечивает все упоминания слова под курсором в текущем файле."""
+    if _active_analyzer is None or not _is_initialized:
+        return []
+
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    if not doc or not doc.lines:
+        return []
+
+    line_idx = params.position.line
+    if line_idx >= len(doc.lines):
+        return []
+
+    line = doc.lines[line_idx]
+    col = params.position.character
+
+    # Извлекаем слово под курсором
+    word = None
+    for m in re.finditer(r"[a-zA-Z_][a-zA-Z0-9_\.]*", line):
+        if m.start() <= col <= m.end():
+            word = m.group(0)
+            break
+
+    if not word:
+        return []
+
+    # Проверяем, что это user-defined символ (label/screen/transform/variable)
+    is_user_symbol = (
+        word in _active_analyzer.labels
+        or word in _active_analyzer.screens
+        or word in _active_analyzer.transforms
+        or word in _active_analyzer.variables
+        or word in _active_analyzer.user_symbols
+    )
+
+    if not is_user_symbol:
+        return []
+
+    # Ищем все вхождения слова в текущем файле
+    highlights: list[lsp.DocumentHighlight] = []
+    _uri_to_path(params.text_document.uri)
+
+    for i, file_line in enumerate(doc.lines):
+        # Простое find для каждого вхождения слова в строке
+        start = 0
+        while True:
+            pos = file_line.find(word, start)
+            if pos == -1:
+                break
+            # Проверяем границы слова (не часть другого слова)
+            before = file_line[pos - 1] if pos > 0 else " "
+            after = file_line[pos + len(word)] if pos + len(word) < len(file_line) else " "
+            if not (before.isalnum() or before == "_") and not (after.isalnum() or after == "_"):
+                # Это полное слово, не подстрока
+                # Определяем kind: Write если это строка объявления, Read иначе
+                stripped = file_line.strip()
+                is_declaration = (
+                    stripped.startswith(f"label {word}")
+                    or stripped.startswith(f"screen {word}")
+                    or stripped.startswith(f"transform {word}")
+                    or stripped.startswith(f"default {word}")
+                    or stripped.startswith(f"define {word}")
+                )
+                kind = lsp.DocumentHighlightKind.Write if is_declaration else lsp.DocumentHighlightKind.Read
+                highlights.append(
+                    lsp.DocumentHighlight(
+                        range=lsp.Range(
+                            start=lsp.Position(line=i, character=pos),
+                            end=lsp.Position(line=i, character=pos + len(word)),
+                        ),
+                        kind=kind,
+                    )
+                )
+            start = pos + 1
+
+    return highlights
+
+
 def start_lsp():
     server.start_io()

@@ -1,32 +1,29 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
-import hashlib
 import json
 import os
-import pickle
-import shutil
-import subprocess
 import sys
 import time
-import tomllib
-import urllib.error
-import urllib.request
-import zipfile
-import zlib
 from collections import Counter
+from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from senpy._unrpyc_bootstrap import (
+    decompile_to_sandbox,
+    extract_scripts_from_rpa,
+    find_unrpyc_executable,
+    load_config,
+)
 from senpy.analyzer import SenpyAnalyzer
 from senpy.constants import IGNORED_DIRS
-from senpy.rpa import safe_load_rpa_index
+from senpy.formatter import FormatConfig, Formatter
 from senpy.traceback import find_latest_traceback, parse_traceback_file
-from senpy.tsundere import IS_RU, TSUNDERE_FLAVORS, TSUNDERE_UI
+from senpy.tsundere import TSUNDERE_FLAVORS, TSUNDERE_UI
 
 # Пайпы (VS Code-расширение, >file, CI) всегда получают utf-8: дефолтная
 # кодировка пайпа Windows = locale (cp1251) -> UnicodeEncodeError на ✔/(//∇//)
@@ -41,37 +38,6 @@ for _stream in (sys.stdout, sys.stderr):
 # В живой консоли (isatty=True) поведение прежнее.
 console = Console(legacy_windows=sys.stdout.isatty())
 
-SENPY_CACHE_DIR = os.path.expanduser("~/.senpy/tools/unrpyc")
-# ECO-4: ранее UNRPYC_GITHUB_ZIP указывал на master-ветку, что означало
-# "всегда качать свежий код". Это риск: master может измениться в любой момент,
-# возможны breaking changes или (hypothetically) инъекции вредоносного кода,
-# если аккаунт CensoredUsername скомпрометируют.
-#
-# Теперь мы пинним к конкретному коммиту (UNRPYC_PINNED_COMMIT) и проверяем
-# SHA256 скачанного zip (UNRPYC_PINNED_SHA256). Это defence-in-depth:
-# даже если GitHub будет скомпрометирован или TLS-перехват подменит zip,
-# мы отвергнем несовпадающий файл.
-#
-# Обновление pinned commit:
-#   python scripts/update_unrpyc_pin.py
-# (скрипт получит свежий SHA master-ветки, посчитает SHA256 zip'а и
-# обновит обе константы).
-#
-# Текущий pinned commit:
-# Default: v2.0.4 — последний стабильный релиз unrpyc (24 февраля 2026).
-# Поддержка: Ren'Py 6.18.0+ / 6.99 / 7.x / 8.x.
-# Обновить: `python scripts/update_unrpyc_pin.py` (подставит реальный commit SHA + SHA256).
-# Список профилей: `python scripts/update_unrpyc_pin.py --list`.
-UNRPYC_PINNED_COMMIT = "v2.0.4"
-UNRPYC_PINNED_SHA256 = None  # placeholder — будет вычислен при update
-UNRPYC_GITHUB_ZIP_TEMPLATE = "https://github.com/CensoredUsername/unrpyc/archive/{commit}.zip"
-
-
-def _unrpyc_zip_url() -> str:
-    """URL для скачивания pinned версии unrpyc."""
-    return UNRPYC_GITHUB_ZIP_TEMPLATE.format(commit=UNRPYC_PINNED_COMMIT)
-
-
 SEVERITY_STYLES = {
     "ERROR": ("bold red", "red dim"),
     "WARNING": ("bold yellow", "yellow dim"),
@@ -79,309 +45,22 @@ SEVERITY_STYLES = {
     "INFO": ("bold blue", "blue dim"),
 }
 
-
-def load_config(project_path: str) -> dict:
-    candidates = [
-        os.path.join(project_path, "senpy.toml"),
-        os.path.join(project_path, "pyproject.toml"),
-        os.path.join(os.path.dirname(project_path), "senpy.toml"),
-        os.path.join(os.path.dirname(project_path), "pyproject.toml"),
-        os.path.join(os.getcwd(), "senpy.toml"),
-        os.path.join(os.getcwd(), "pyproject.toml"),
-    ]
-    for c in candidates:
-        if os.path.isfile(c):
-            with (
-                contextlib.suppress(tomllib.TOMLDecodeError, OSError),
-                open(c, "rb") as f,
-            ):
-                data = tomllib.load(f)
-                return data.get("tool", {}).get("senpy", data.get("senpy", {}))
-    return {}
+# P1-1: unrpyc/rpa функции вынесены в senpy/_unrpyc_bootstrap.py
+# (Вариант B — умеренный рефакторинг cli.py)
+from senpy._cli_commands import (  # noqa: E402
+    handle_clear_cache,
+    handle_coverage,
+    handle_defaults,
+    handle_export_html,
+    handle_export_wiki,
+    handle_graph,
+    handle_init_ci,
+    handle_stats,
+    handle_stubs,
+    handle_traceback,
+)
 
 
-def find_in_directory_tree(start_dirs: list[str]) -> str | None:
-    for base in start_dirs:
-        if not base or not os.path.exists(base):
-            continue
-        candidates = [
-            os.path.join(base, "unrpyc.py"),
-            os.path.join(base, "unrpyc", "unrpyc.py"),
-            os.path.join(base, "tools", "unrpyc.py"),
-            os.path.join(os.path.dirname(base), "unrpyc.py"),
-            os.path.join(os.path.dirname(base), "tools", "unrpyc.py"),
-        ]
-        for c in candidates:
-            if os.path.isfile(c):
-                return c
-    return None
-
-
-def _verify_unrpyc_sha256(zip_path: str) -> bool:
-    """ECO-4: проверяет SHA256 скачанного zip против pinned значения.
-
-    Возвращает True, если совпадает (или если UNRPYC_PINNED_SHA256 is None —
-    для backward compat при обновлении с placeholder).
-    """
-    if UNRPYC_PINNED_SHA256 is None:
-        # Pinned SHA не задан (placeholder) — пропускаем проверку с предупреждением.
-        # Это interim-состояние, пока мейнтейнер не запустит update_unrpyc_pin.py.
-        console.print(
-            "[yellow]WARNING: UNRPYC_PINNED_SHA256 is None — "
-            "SHA256 verification skipped. Run 'python scripts/update_unrpyc_pin.py' "
-            "to enable verification.[/yellow]\n"
-        )
-        return True
-
-    hasher = hashlib.sha256()
-    with open(zip_path, "rb") as f:
-        # Читаем чанками, чтобы не грузить весь zip в память
-        for chunk in iter(lambda: f.read(65536), b""):
-            hasher.update(chunk)
-    actual_sha = hasher.hexdigest()
-
-    if actual_sha != UNRPYC_PINNED_SHA256:
-        console.print(
-            f"[bold red]SHA256 mismatch for unrpyc![/bold red]\n"
-            f"  Expected: {UNRPYC_PINNED_SHA256}\n"
-            f"  Actual:   {actual_sha}\n"
-            f"Possible causes: MITM attack, compromised GitHub, or pinned commit changed.\n"
-            f"Refusing to install."
-        )
-        return False
-    return True
-
-
-def _safe_zip_extract(zip_ref: zipfile.ZipFile, dest_dir: str) -> list[str]:
-    """ECO-4: безопасная распаковка zip с защитой от Zip Slip.
-
-    Python 3.6+ уже санитайзит пути в extractall, но defence-in-depth:
-    явно проверяем, что все пути внутри dest_dir. Возвращает список распакованных файлов.
-    """
-    dest_dir_abs = os.path.abspath(dest_dir)
-    extracted = []
-    for member in zip_ref.namelist():
-        member_path = os.path.abspath(os.path.join(dest_dir, member))
-        # Проверяем, что распаковка не выходит за пределы dest_dir
-        if os.path.commonpath([member_path, dest_dir_abs]) != dest_dir_abs:
-            console.print(f"[red]Zip Slip detected: {member} — skipping[/red]")
-            continue
-        zip_ref.extract(member, dest_dir)
-        extracted.append(member)
-    return extracted
-
-
-def download_unrpyc() -> list[str] | None:
-    """ECO-4: скачивает pinned версию unrpyc с SHA256 verification.
-
-    Изменения vs старой версии:
-    - Качает конкретный commit (UNRPYC_PINNED_COMMIT), не master.
-    - Проверяет SHA256 zip'а (UNRPYC_PINNED_SHA256).
-    - Безопасная распаковка (_safe_zip_extract) с защитой от Zip Slip.
-    """
-    console.print(
-        f"[bold cyan]Downloading unrpyc (commit: {UNRPYC_PINNED_COMMIT}) from GitHub...[/bold cyan]"
-    )
-    os.makedirs(SENPY_CACHE_DIR, exist_ok=True)
-    zip_path = os.path.join(SENPY_CACHE_DIR, "unrpyc.zip")
-
-    try:
-        req = urllib.request.Request(_unrpyc_zip_url(), headers={"User-Agent": "Senpy-Linter"})
-        with urllib.request.urlopen(req) as resp, open(zip_path, "wb") as out:
-            shutil.copyfileobj(resp, out)
-
-        # ECO-4: SHA256 verification
-        if not _verify_unrpyc_sha256(zip_path):
-            with contextlib.suppress(OSError):
-                os.remove(zip_path)
-            return None
-
-        # ECO-4: безопасная распаковка
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            _safe_zip_extract(zip_ref, SENPY_CACHE_DIR)
-
-        with contextlib.suppress(OSError):
-            os.remove(zip_path)
-
-        console.print(
-            "[bold green]✔ Successfully downloaded and installed unrpyc to cache![/bold green]\n"
-        )
-        return find_unrpyc_executable(None, None, auto_download=False)
-    except (urllib.error.URLError, zipfile.BadZipFile, OSError) as e:
-        console.print(f"[bold red]Failed to download unrpyc:[/bold red] {e}\n")
-        return None
-
-
-def find_unrpyc_executable(
-    custom_path: str | None, project_path: str | None, auto_download: bool = True
-) -> list[str] | None:
-    if custom_path and os.path.exists(custom_path):
-        if custom_path.endswith(".py"):
-            return [sys.executable, custom_path]
-        return [custom_path]
-
-    if os.path.exists(SENPY_CACHE_DIR):
-        for root, _, files in os.walk(SENPY_CACHE_DIR):
-            if "unrpyc.py" in files:
-                return [sys.executable, os.path.join(root, "unrpyc.py")]
-
-    which_unrpyc = shutil.which("unrpyc")
-    if which_unrpyc:
-        return [which_unrpyc]
-
-    with contextlib.suppress(subprocess.SubprocessError, OSError):
-        res = subprocess.run(
-            [sys.executable, "-m", "unrpyc", "--help"], capture_output=True, check=False
-        )
-        if res.returncode == 0:
-            return [sys.executable, "-m", "unrpyc"]
-
-    search_dirs = [os.getcwd()]
-    if project_path:
-        search_dirs.append(project_path)
-    local_found = find_in_directory_tree(search_dirs)
-    if local_found:
-        return [sys.executable, local_found]
-
-    if auto_download and hasattr(sys.stdin, "isatty") and sys.stdin.isatty():
-        console.print("[bold yellow]unrpyc was not found on your system.[/bold yellow]")
-        try:
-            ans = (
-                input("Would you like Senpy to automatically download unrpyc from GitHub? [Y/n]: ")
-                .strip()
-                .lower()
-            )
-            if ans in ("", "y", "yes"):
-                return download_unrpyc()
-        except (EOFError, KeyboardInterrupt):
-            pass
-
-    return None
-
-
-def extract_scripts_from_rpa(rpa_path: str, dest_dir: str) -> list[str]:
-    """Быстро и инкрементально извлекает .rpy и .rpyc из архива .rpa в изолированную песочницу с защитой от Path Traversal."""
-    extracted = []
-    rpa_mtime = os.path.getmtime(rpa_path) if os.path.exists(rpa_path) else 0.0
-    dest_dir_abs = os.path.abspath(dest_dir)
-
-    with (
-        contextlib.suppress(OSError, ValueError, TypeError, zlib.error, pickle.PickleError),
-        open(rpa_path, "rb") as f,
-    ):
-        header = f.read(50)
-        parts = header.split()
-        if not parts or not parts[0].startswith((b"RPA-3.0", b"RPA-2.0")):
-            return []
-
-        offset = int(parts[1], 16)
-        key = int(parts[2], 16) if len(parts) > 2 and parts[0].startswith(b"RPA-3.0") else 0
-
-        f.seek(offset)
-        index = safe_load_rpa_index(f.read())
-
-        for filename, segments in index.items():
-            clean_name = filename.replace("\\", "/")
-            base_fn = os.path.basename(clean_name)
-
-            if base_fn.endswith((".rpyc", ".rpy")):
-                dest = os.path.abspath(os.path.join(dest_dir, clean_name))
-
-                # Защита от Path Traversal: блокируем попытки записи вне dest_dir (например, ../../malicious.rpy)
-                try:
-                    if os.path.commonpath([dest, dest_dir_abs]) != dest_dir_abs:
-                        continue
-                except ValueError:
-                    continue
-
-                # Кэш: если файл уже извлечён и свежее архива, пропускаем чтение байт
-                if os.path.exists(dest) and os.path.getmtime(dest) >= rpa_mtime:
-                    extracted.append(dest)
-                    continue
-
-                file_bytes = b""
-                for seg in segments:
-                    seg_offset = seg[0] ^ key
-                    seg_len = seg[1] ^ key
-                    prefix = seg[2] if len(seg) > 2 else b""
-                    f.seek(seg_offset)
-                    file_bytes += prefix + f.read(seg_len - len(prefix))
-
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, "wb") as out:
-                    out.write(file_bytes)
-                extracted.append(dest)
-
-    return extracted
-
-
-def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str], temp_dir: str) -> list[str]:
-    total = len(orphans)
-    prep_label = "[Подготовка]" if IS_RU else "[Preparing]"
-    decomp_label = "[Декомпиляция]" if IS_RU else "[Decompiling]"
-    done_word = "готово" if IS_RU else "done"
-
-    temp_rpyc_files = []
-    for i, f in enumerate(orphans, 1):
-        base_name = os.path.basename(f)
-        dest = os.path.join(temp_dir, base_name)
-        if os.path.exists(f) and os.path.normcase(os.path.abspath(f)) != os.path.normcase(
-            os.path.abspath(dest)
-        ):
-            shutil.copy2(f, dest)
-        temp_rpyc_files.append(dest)
-        msg = f"\r{prep_label} {i}/{total} ({base_name[:25]})"
-        print(msg.ljust(75), end="", flush=True)
-    print()
-
-    cmd = unrpyc_cmd + ["-c"] + temp_rpyc_files
-
-    done = 0
-    try:
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        if process.stdout:
-            for line in process.stdout:
-                if "decompil" in line.lower():
-                    done = min(total, done + 1)
-                    curr_file = ""
-                    for part in line.split():
-                        clean_part = part.strip("\"'()[],:;.")
-                        if clean_part.endswith((".rpyc", ".rpy")):
-                            curr_file = os.path.basename(clean_part)
-                            break
-                    if not curr_file:
-                        curr_file = done_word if done == total else "..."
-                    msg = f"\r{decomp_label} {done}/{total} ({curr_file[:25]})"
-                    print(msg.ljust(75), end="", flush=True)
-        process.wait()
-        print()
-    except (subprocess.SubprocessError, OSError) as e:
-        err_msg = "Ошибка декомпиляции" if IS_RU else "Decompilation error"
-        console.print(f"[bold red]{err_msg}:[/bold red] {e}")
-
-    decompiled_rpy = []
-    for root, _, files in os.walk(temp_dir):
-        for file in files:
-            if file.endswith(".rpy"):
-                decompiled_rpy.append(os.path.join(root, file))
-
-    success_msg = (
-        f"✔ Успешно декомпилировано {len(decompiled_rpy)} файл(ов) в песочницу!"
-        if IS_RU
-        else f"✔ Successfully decompiled {len(decompiled_rpy)} file(s) into sandbox!"
-    )
-    console.print(f"[bold green]{success_msg}[/bold green]\n")
-    return decompiled_rpy
-
-
-# --- P0-1 helpers: file redirect for text-format output ---
 class _ReplaceConsole:
     """Context manager: временно подменяет модульную `console` на `file_console`,
     корректно закрывая файл при выходе (даже при sys.exit внутри блока)."""
@@ -452,7 +131,132 @@ def _null_redirect() -> _NullRedirect:
     return _NullRedirect()
 
 
+def _dispatch_format(argv: list[str]) -> int:
+    """Обработчик подкоманды `senpy format`.
+
+    Использование:
+        senpy format [PATHS...] [OPTIONS]
+
+    Опции:
+        --check              Не записывать файлы, exit 1 если требуются изменения
+        --diff               Показать diff без записи
+        --stdin-filename NAME  Читать из stdin, считать что это NAME
+        --help, -h           Показать справку
+    """
+
+    fmt_parser = argparse.ArgumentParser(
+        prog="senpy format",
+        description="Format .rpy files (Black-style). Idempotent, low-risk, Ren'Py-specific.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    fmt_parser.add_argument(
+        "paths",
+        nargs="*",
+        default=["."],
+        help="Files or directories to format (default: current dir)",
+    )
+    fmt_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Don't write files, exit 1 if any file would be modified (CI-friendly)",
+    )
+    fmt_parser.add_argument(
+        "--diff",
+        action="store_true",
+        help="Print diff of what would be changed, don't write files",
+    )
+    fmt_parser.add_argument(
+        "--stdin-filename",
+        metavar="NAME",
+        help="Read from stdin, format, print to stdout. NAME is used for scope detection.",
+    )
+
+    fmt_args = fmt_parser.parse_args(argv)
+    formatter = Formatter(FormatConfig())
+
+    # Режим stdin
+    if fmt_args.stdin_filename:
+        code = sys.stdin.read()
+        formatted = formatter.format_code(code, filename=fmt_args.stdin_filename)
+        sys.stdout.write(formatted)
+        return 0
+
+    # Сбор .rpy файлов
+    rpy_files: list[Path] = []
+    for p_str in fmt_args.paths:
+        p = Path(p_str)
+        if p.is_file() and p.suffix == ".rpy":
+            rpy_files.append(p)
+        elif p.is_dir():
+            rpy_files.extend(p.rglob("*.rpy"))
+        else:
+            print(f"[yellow]Skipping (not a .rpy file/dir): {p}[/yellow]")
+
+    if not rpy_files:
+        print("[yellow]No .rpy files found.[/yellow]")
+        return 0
+
+    changed_count = 0
+    would_change_count = 0
+
+    for f in rpy_files:
+        try:
+            original = f.read_text(encoding="utf-8")
+        except OSError as e:
+            print(f"[red]Error reading {f}: {e}[/red]")
+            continue
+
+        formatted = formatter.format_code(original, filename=str(f))
+
+        if original == formatted:
+            continue  # already formatted
+
+        if fmt_args.check:
+            would_change_count += 1
+            print(f"[yellow]Would reformat:[/yellow] {f}")
+        elif fmt_args.diff:
+            import difflib
+
+            diff = difflib.unified_diff(
+                original.splitlines(keepends=True),
+                formatted.splitlines(keepends=True),
+                fromfile=str(f),
+                tofile=str(f),
+            )
+            sys.stdout.writelines(diff)
+            would_change_count += 1
+        else:
+            try:
+                f.write_text(formatted, encoding="utf-8")
+                changed_count += 1
+                print(f"[green]Formatted:[/green] {f}")
+            except OSError as e:
+                print(f"[red]Error writing {f}: {e}[/red]")
+
+    # Итоговый вывод
+    if fmt_args.check or fmt_args.diff:
+        if would_change_count > 0:
+            print(
+                f"\n[bold yellow]{would_change_count} file(s) would be reformatted.[/bold yellow]"
+            )
+            return 1
+        print("\n[bold green]All files are already formatted![/bold green]")
+        return 0
+
+    if changed_count > 0:
+        print(f"\n[bold green]{changed_count} file(s) formatted.[/bold green]")
+    else:
+        print("\n[bold green]All files are already formatted![/bold green]")
+    return 0
+
+
 def main():
+
+    # P1-1: Subcommand dispatch (senpy format ...)
+    # Перехватываем подкоманды до основного argparse, чтобы он не пытался
+    # парсить "format" как positional path.
+    if len(sys.argv) > 1 and sys.argv[1] == "format":
+        return _dispatch_format(sys.argv[2:])
 
     parser = argparse.ArgumentParser(
         prog="senpy",
@@ -668,111 +472,21 @@ def main():
     config = load_config(args.path)
     is_tsundere = args.tsundere or config.get("tsundere", False)
 
-    if args.traceback:
-        # P0-3: ранее `--traceback` имел const="traceback.txt", что ломало авто-поиск
-        # errors.txt. Если пользователь не указал имя файла явно (использовал
-        # дефолтный const), и указанного файла нет — пытаемся найти через
-        # find_latest_traceback(args.path), который проверяет и traceback.txt,
-        # и errors.txt, и game/traceback.txt, и game/errors.txt.
-        traceback_arg = args.traceback
-        if not os.path.isfile(traceback_arg):
-            # Не absolute path и не существует в CWD — попробуем относительно args.path
-            relative_to_project = os.path.join(args.path, traceback_arg)
-            if os.path.isfile(relative_to_project):
-                traceback_arg = relative_to_project
-            elif traceback_arg == "traceback.txt":
-                # Дефолтный const, файл не найден нигде — пробуем авто-поиск
-                auto_found = find_latest_traceback(args.path)
-                if auto_found:
-                    traceback_arg = auto_found
+    _ec = handle_traceback(args, console, is_tsundere)
+    if _ec is not None:
+        sys.exit(_ec)
 
-        crash = parse_traceback_file(traceback_arg)
-        if not crash:
-            console.print(
-                f"[yellow]Could not find or parse crash log at '[bold]{traceback_arg}[/bold]'.[/yellow]\n"
-            )
-            # Если ни один файл не нашёлся — подсказываем пользователю
-            if traceback_arg == "traceback.txt" or traceback_arg == args.traceback:
-                console.print(
-                    "[dim]Hint: senpy looks for traceback.txt or errors.txt in project root or game/ subfolder.[/dim]"
-                )
-            sys.exit(0)
+    _ec = handle_init_ci(args, console, is_tsundere)
+    if _ec is not None:
+        sys.exit(_ec)
 
-        t_text = Text()
-        t_text.append("Runtime Crash Report (Post-Mortem Analysis)\n\n", style="bold red")
-        t_text.append(f"Location:  {crash.file_path}:{crash.line_number}\n", style="bold cyan")
-        if crash.code_line:
-            t_text.append(f"Code:      {crash.code_line}\n", style="bright_white")
-        t_text.append(
-            f"Exception: {crash.exception_type}: {crash.exception_message}\n\n", style="bold yellow"
-        )
-        t_text.append(f"Rule [{crash.rule_code}]: ", style="bold red")
-        t_text.append(f"{crash.explanation}\n", style="bright_white")
+    _ec = handle_coverage(args, console, is_tsundere)
+    if _ec is not None:
+        sys.exit(_ec)
 
-        console.print(Panel(t_text, title="Traceback Inspector", border_style="red"))
-        sys.exit(0)
-
-    if args.init_ci:
-        from senpy.ci import init_ci_workflow
-
-        out_path, _created = init_ci_workflow(args.path)
-        rel_out = os.path.relpath(out_path, os.getcwd())
-        if is_tsundere:
-            console.print(
-                f"[bold magenta]{TSUNDERE_UI['init_ci'].format(path=rel_out)}[/bold magenta]\n"
-            )
-        else:
-            console.print(
-                f"[bold green]✔ Successfully created GitHub Actions workflow:[/bold green] [bold cyan]{rel_out}[/bold cyan]\n"
-                "[dim]Commit and push this file to enable automatic GitHub Code Scanning on every Pull Request![/dim]\n"
-            )
-        sys.exit(0)
-
-    if args.coverage:
-        from senpy.coverage import calculate_translation_coverage
-
-        coverage_data = calculate_translation_coverage(args.path)
-
-        if not coverage_data:
-            console.print("[yellow]No translations found in game/tl/ directory.[/yellow]\n")
-            sys.exit(0)
-
-        table = Table(title="Localization Coverage (game/tl/)", border_style="dim")
-        table.add_column("Language", style="bold cyan")
-        table.add_column("Total Strings", justify="right", style="bold white")
-        table.add_column("Translated", justify="right", style="bold green")
-        table.add_column("Missing / Empty", justify="right", style="bold red")
-        table.add_column("Completion", justify="right")
-
-        for lang, stats in sorted(coverage_data.items()):
-            pct = stats.coverage_percent
-            pct_style = (
-                "bold green" if pct >= 95.0 else "bold yellow" if pct >= 70.0 else "bold red"
-            )
-            table.add_row(
-                lang,
-                f"{stats.total_strings:,}",
-                f"{stats.translated_strings:,}",
-                f"{stats.empty_strings:,}",
-                f"[{pct_style}]{pct}%[/{pct_style}]",
-            )
-
-        console.print(table)
-        if is_tsundere:
-            console.print(f"\n[bold magenta]{TSUNDERE_UI['coverage']}[/bold magenta]\n")
-        sys.exit(0)
-
-    if args.clear_cache:
-        from senpy.cache import CacheManager
-
-        cm = CacheManager(args.path)
-        if cm.clear():
-            console.print(
-                f"[bold green]✔ Successfully cleared cache directory: {cm.cache_dir}[/bold green]"
-            )
-        else:
-            console.print("[dim]Cache directory does not exist, nothing to clear.[/dim]")
-        sys.exit(0)
+    _ec = handle_clear_cache(args, console)
+    if _ec is not None:
+        sys.exit(_ec)
 
     cfg_ignore = set(config.get("ignore", []))
     cli_ignore = set(args.ignore) if args.ignore is not None else set()
@@ -985,185 +699,24 @@ def main():
     # Восстанавливаем open()
     if args.diff:
         builtins.open = _real_open
-    if args.stats:
-        # P0-2: ранее здесь создавался НОВЫЙ SenpyAnalyzer(args.path) без extra_files
-        # и без fix=args.fix — это теряло все декомпилированные из .rpyc/.rpa файлы
-        # и заставляло повторно сканировать проект. Теперь переиспользуем уже
-        # готовый analyzer с полным набором файлов.
-        from senpy.stats import collect_story_stats
-
-        stats = collect_story_stats(analyzer)
-
-        if args.output_format == "json":
-            out_data = {
-                "total_dialogue_lines": stats.total_dialogue_lines,
-                "total_words": stats.total_words,
-                "total_chars": stats.total_chars,
-                "reading_time_minutes": stats.reading_time_minutes,
-                "reading_time_formatted": stats.reading_time_formatted,
-                "characters": [
-                    {
-                        "tag": c.tag,
-                        "display_name": c.display_name,
-                        "lines": c.lines_count,
-                        "words": c.words_count,
-                        "chars": c.chars_count,
-                        "percentage": c.percentage_words,
-                    }
-                    for c in stats.characters.values()
-                ],
-            }
-            json_str = json.dumps(out_data, indent=2, ensure_ascii=False)
-            if args.output_file:
-                with open(args.output_file, "w", encoding="utf-8") as f:
-                    f.write(json_str)
-                console.print(f"[bold green]✔ Stats saved to {args.output_file}[/bold green]")
-            else:
-                print(json_str)
-            sys.exit(0)
-
-        # Вывод дашборда в терминал
-        summary_panel = Panel(
-            Text.from_markup(
-                f"[bold cyan]Total Dialogue Lines:[/bold cyan] [bold white]{stats.total_dialogue_lines:,}[/bold white]   "
-                f"[bold cyan]Total Words:[/bold cyan] [bold green]{stats.total_words:,}[/bold green]   "
-                f"[bold cyan]Characters:[/bold cyan] [bold yellow]{stats.total_chars:,}[/bold yellow]\n"
-                f"[bold cyan]Estimated Reading Time:[/bold cyan] [bold magenta]{stats.reading_time_formatted}[/bold magenta] (at 180 wpm)   "
-                f"[bold cyan]Cast Size:[/bold cyan] [bold white]{len(stats.characters)} speakers[/bold white]"
-            ),
-            title="[bold magenta]Story & Script Analytics[/bold magenta]",
-            border_style="cyan",
-        )
-        console.print(summary_panel)
-
-        table = Table(title="Dialogue Speech Share", border_style="dim")
-        table.add_column("Speaker", style="bold cyan")
-        table.add_column("Identifier", style="dim")
-        table.add_column("Lines", justify="right", style="bold white")
-        table.add_column("Words", justify="right", style="bold green")
-        table.add_column("Share", justify="right", style="bold yellow")
-        table.add_column("Distribution Bar", style="bright_magenta")
-
-        for c in stats.characters.values():
-            bar_len = int(c.percentage_words // 5)
-            if bar_len > 0:
-                bar = f"[bright_magenta]{'█' * bar_len}[/][dim]{'░' * (20 - bar_len)}[/dim]"
-            else:
-                bar = f"[dim]{'░' * 20}[/dim]"
-
-            table.add_row(
-                c.display_name,
-                f"`{c.tag}`",
-                f"{c.lines_count:,}",
-                f"{c.words_count:,}",
-                f"{c.percentage_words}%",
-                bar,
-            )
-
-        console.print(table)
-        if is_tsundere and "stats" in TSUNDERE_UI:
-            console.print(
-                f"\n[bold magenta]{TSUNDERE_UI['stats'].format(words=stats.total_words, hours=stats.reading_time_minutes / 60)}[/bold magenta]\n"
-            )
-        sys.exit(0)
-    if args.export_wiki:
-        from senpy.wiki import generate_project_wiki
-
-        wiki_md = generate_project_wiki(analyzer)
-        target_wiki = args.export_wiki
-        with open(target_wiki, "w", encoding="utf-8", newline="\n") as f:
-            f.write(wiki_md)
-        if is_tsundere:
-            console.print(
-                f"\n[bold magenta]{TSUNDERE_UI['export_wiki'].format(path=target_wiki)}[/bold magenta]\n"
-            )
-        else:
-            console.print(
-                f"\n[bold green]✔ Project documentation exported to [bold]{target_wiki}[/bold]![/bold green]\n"
-            )
-        sys.exit(0)
-    if args.export_html:
-        from senpy.html_report import generate_html_report
-
-        # Отфильтруем предварительно диагностики как для терминала
-        active_diagnostics = [
-            e
-            for e in result.diagnostics
-            if e.code not in ignored_codes
-            and (not args.errors_only or e.severity == "ERROR")
-            and (args.info or e.severity != "INFO")
-        ]
-        generate_html_report(
-            diagnostics=active_diagnostics,
-            graph_mermaid=analyzer.export_graph(),
-            file_count=result.file_count,
-            total_lines=result.total_lines,
-            elapsed=elapsed,
-            out_path=args.export_html,
-        )
-        if is_tsundere:
-            console.print(
-                f"[bold magenta](//∇//) «Я... я сгенерировала HTML отчёт в [bold]{args.export_html}[/bold]! Изучай свои сюжетные дыры, бака!»[/bold magenta]\n"
-            )
-        else:
-            console.print(
-                f"[bold green]✔ Autonomous HTML report saved to [bold]{args.export_html}[/bold][/bold green]\n"
-            )
-    if args.graph or args.graph_file:
-        graph_content = analyzer.export_graph()
-        if args.graph_file:
-            with open(args.graph_file, "w", encoding="utf-8") as f:
-                f.write(graph_content)
-            if is_tsundere:
-                console.print(
-                    f"\n[bold magenta](//∇//) «Я... я нарисовала карту твоих переходов в [bold]{args.graph_file}[/bold]! Н-но не думай, что мне интересно, куда пойдёт твой герой, бака!»[/bold magenta]\n"
-                )
-            else:
-                console.print(
-                    f"\n[bold green]✔ Story flow graph saved to [bold]{args.graph_file}[/bold]![/bold green]\n"
-                )
-        else:
-            # Сырой вывод в stdout: расширение парсит блоки ```mermaid``` /
-            # ```senpy-meta``` регулярками. console.print здесь вреден:
-            # soft-wrap ломает однострочный JSON, markup — опасен.
-            # utf-8 обязателен: Node декодирует пайп как utf8.
-            sys.stdout.write(graph_content + "\n")
-        sys.exit(0)
-
-    # Генерация файла senpy_defaults.rpy
-    if args.defaults:
-        out_file, gen_count = analyzer.generate_defaults_file()
-        if gen_count > 0:
-            if is_tsundere:
-                console.print(
-                    f"\n[bold magenta](//∇//) «{TSUNDERE_UI['defaults_generated'].format(path=out_file, count=gen_count)}»[/bold magenta]\n"
-                )
-            else:
-                console.print(
-                    f"\n[bold green]✔ Successfully generated [bold]{out_file}[/bold] with [bold]{gen_count}[/bold] default declaration(s)![/bold green]\n"
-                )
-        else:
-            console.print(
-                "\n[bold green]✔ All variables are already properly declared via 'default'![/bold green]\n"
-            )
-        sys.exit(0)
-
-    if args.stubs:
-        from senpy.stubs import generate_stubs
-
-        out_dir, count = generate_stubs(analyzer, out_dir=args.stubs)
-        rel_out = os.path.relpath(out_dir, os.getcwd())
-        if is_tsundere:
-            console.print(
-                f"\n[bold magenta](//∇//) «{TSUNDERE_UI['generate_stubs'].format(path=rel_out, count=count)}»[/bold magenta]\n"
-            )
-        else:
-            console.print(
-                f"\n[bold green]✔ Successfully generated Python type stubs in [bold]{rel_out}/[/bold] ({count} symbols exported)![/bold green]\n"
-                "[dim]Pylance and MyPy in VS Code will now natively autocomplete and type-check your Ren'Py store.[/dim]\n"
-            )
-        sys.exit(0)
-
+    _ec = handle_stats(args, analyzer, console, is_tsundere)
+    if _ec is not None:
+        sys.exit(_ec)
+    _ec = handle_export_wiki(args, analyzer, console, is_tsundere)
+    if _ec is not None:
+        sys.exit(_ec)
+    _ec = handle_export_html(args, result, analyzer, console, is_tsundere, ignored_codes)
+    if _ec is not None:
+        sys.exit(_ec)
+    _ec = handle_graph(args, analyzer, console, is_tsundere)
+    if _ec is not None:
+        sys.exit(_ec)
+    _ec = handle_defaults(args, analyzer, console, is_tsundere)
+    if _ec is not None:
+        sys.exit(_ec)
+    _ec = handle_stubs(args, analyzer, console, is_tsundere)
+    if _ec is not None:
+        sys.exit(_ec)
     # Фильтруем ошибки по кодам из --ignore и --errors-only
     hidden_info_count = sum(
         1
