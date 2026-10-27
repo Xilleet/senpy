@@ -57,7 +57,7 @@ jobs:
         run: pytest tests/ -v
 
   # ===========================================================================
-  # 2. Сборка wheel + sdist (test)
+  # 2. Сборка wheel + sdist
   # ===========================================================================
   build:
     name: Build sdist + wheel
@@ -127,7 +127,7 @@ jobs:
     # раскомментируйте строку ниже (if: false). Job запустится, но пропустит
     # публикацию. После trial run — закомментируйте обратно.
     # =============================================================================
-    # if: false  # ← раскомментировать для trial run
+    if: false  # ← раскомментировать для trial run
     steps:
       - name: Download dist artifacts
         uses: actions/download-artifact@v4
@@ -224,15 +224,21 @@ jobs:
         run: npm install -g @vscode/vsce
 
       - name: Package VSIX
-        # vsce использует `git ls-files` для списка файлов. senpy.exe собран
-        # PyInstaller в CI и не в git. `git add -f` принудительно добавляет его
-        # в git index (игнорируя .gitignore), чтобы vsce его увидел и включил в VSIX.
-        # Файл не будет закоммичен (мы не делаем git commit), только индексируется.
+        # vsce использует git ls-files и исключает файлы из .gitignore.
+        # Никакие флаги vsce не помогают включить senpy.exe.
+        # Решение: собираем VSIX без senpy.exe, затем добавляем его в ZIP вручную.
         working-directory: senpy-vscode
         shell: bash
         run: |
-          git add -f bin/senpy.exe
           vsce package --no-yarn --no-git-tag-version
+          # VSIX — это ZIP. Внутри файлы extension лежат в extension/.
+          # Добавляем senpy.exe по пути extension/bin/senpy.exe
+          mkdir -p _inject/extension/bin
+          cp bin/senpy.exe _inject/extension/bin/
+          cd _inject
+          zip -g ../senpy-vscode-*.vsix extension/bin/senpy.exe
+          cd ..
+          rm -rf _inject
 
       - name: Verify VSIX
         shell: bash
