@@ -5,6 +5,55 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] — 2026-10-28
+
+### Added
+- **`tests/test_packaging.py`** (459 строк, 46 регрессионных тестов):
+  - `TestLicenseFile` — проверка что LICENSE существует и совпадает с `pyproject.toml:14`
+  - `TestGitignore` — проверка что .gitignore НЕ игнорирует исходники (20 параметризованных тестов) + не содержит личных файлов (7 тестов) + исключает артефакты
+  - `TestChangelog` — проверка что CHANGELOG содержит секцию для текущей версии
+  - `TestLanguageConfiguration` — проверка `senpy-vscode/language-configuration.json`
+  - `TestUnrpycPin` — проверка `UNRPYC_PINNED_SHA256` is not None
+  - `TestRuleCountConsistency` — проверка что нет хардкоженных "All N Rules" в `senpy.toml` и `rules_info.py`
+  - `TestSanity` — проверка `__version__.py`, `pyproject.toml` metadata
+- **`senpy-vscode/language-configuration.json`** — VS Code language configuration для .rpy:
+  - `#` как line comment
+  - brackets: `{}`, `[]`, `()`
+  - autoClosingPairs + surroundingPairs
+  - `autoCloseBefore` для `,)]}'"; \n\t`
+  - `indentationRules` для Ren'Py keywords (label/screen/menu/init python/transform/layeredimage/def/class/if/elif/else/for/while/with/on/when)
+  - `folding.markers` для `# region` / `# endregion`
+  - `onEnterRules` для auto-продолжения `#` комментариев
+- **`tests/test_vscode_extension.py`** — 20 тестов для VS Code extension integration (UX-EXT-1..7)
+- **`tests/test_p0_cli.py`** (расширен) — 9 regression тестов для P0-1, P0-2, P0-3
+
+### Changed
+- **`CHANGELOG.md`** — добавлены секции `[0.5.0]` и `[0.5.1]` (ранее отсутствовали, ECO-8)
+- **`tests/conftest.py`** — больше НЕ подменяет `item._nodeid` через private pytest API (P0'-9). Использует `item.user_title` для отчётов, nodeid остаётся оригинальным. Это чинит `-k` фильтрацию и IDE интеграции.
+- **`senpy.toml:60`** — убрано хардкоженное "All 41 Rules" из комментария (P0'-6). Заменено на "All Senpy Rules".
+- **`senpy/_unrpyc_bootstrap.py:48`** — `UNRPYC_PINNED_SHA256` заполнен реальным значением для unrpyc v2.0.4 (P0'-5): `df7446d89f68a9a94a62378248da875e9e75e983bf81de53d92b2c19f359673e`
+- **`tests/test_rename.py`, `tests/test_ux_ext_5_6_7.py`, `tests/test_vscode_extension.py`, `tests/test_workspace_symbol.py`** — заменён `from tests.test_lsp import ...` на `from test_lsp import ...` (стандартный pytest pattern). Без этого CI на Ubuntu падал с `ModuleNotFoundError: No module named 'tests'`.
+
+### Fixed
+- **P0'-1**: `LICENSE` файл отсутствовал — `pyproject.toml:14` ссылался на него. Создан `LICENSE` (MIT, Copyright 2024-2026 Xilleet). `LICENSE.md` переименован в `LICENSE` (без расширения, по конвенции OSS).
+- **P0'-2**: `.gitignore` отсутствовал или содержал опасные записи (`senpy/analyzer.py`, `bump_version.py`, `senpy.spec`, и т.д. — 9 строк игнорировали исходники) + личные пути мейнтейнера (`Новая папка/`, `пост для реддита.txt`, и т.д. — 11 строк). Создан чистый `.gitignore` (99 строк), полностью заменяющий старый.
+- **P0'-3**: `CHANGELOG.md` не содержал секций для 0.5.0 и 0.5.1. Добавлены обе секции с детальным описанием изменений.
+- **P0'-4**: `senpy-vscode/language-configuration.json` отсутствовал — `package.json:contributes.languages` ссылался на него. Создан полный language configuration (8 ключей).
+- **P0'-5**: `UNRPYC_PINNED_SHA256 = None` — placeholder, verification фактически no-op. Заполнен реальным SHA256 для unrpyc v2.0.4 (`df7446d8...`).
+- **P0'-6**: Rule count discrepancy — `senpy.toml` говорил "All 41 Rules", `rules_info.py` — "All 40 Rules", фактически 45 в `models.RULE_SEVERITY`. Убраны хардкоженные числа.
+- **P0'-9**: `tests/conftest.py:23` переписывал `item._nodeid` через private pytest API — ломал `-k` фильтрацию и IDE интеграции. Исправлено: используется `item.user_title`.
+- **CI regression**: 4 test-файла (`test_rename`, `test_ux_ext_5_6_7`, `test_vscode_extension`, `test_workspace_symbol`) использовали `from tests.test_lsp import ...`, что падает в CI на Ubuntu с `ModuleNotFoundError: No module named 'tests'`. Fixed: стандартный pytest pattern `from test_lsp import ...`.
+
+### Removed
+- **4 дублирующих `.bat` файла**:
+  - `check.bat` — дублировал `ruff check` (теперь в CI)
+  - `reinstall.bat` (корневой) — байт-в-байт дубликат `senpy-vscode/reinstall.bat`
+  - `run_check.bat` — дублировал CI pipeline (Ruff + pytest + pip install)
+  - `senpy/update_reqs.bat` — генерировал `requirements.txt` через pipreqs, конкурирующий с `pyproject.toml [project.dependencies]`
+
+### Security
+- `UNRPYC_PINNED_SHA256` теперь реально проверяется (раньше был None placeholder). Defence-in-depth от MITM/compromised GitHub теперь работает.
+
 ## [0.5.1] — 2026-10-28
 
 ### Added
