@@ -1,0 +1,84 @@
+# =============================================================================
+# Senpy .gitattributes — контроль окончаний строк и бинарных файлов
+# =============================================================================
+# Цель: git ведёт себя ОДИНАКОВО на Windows/Linux/macOS.
+# Без этого файла — каждый коммит с Windows может приносить CRLF,
+# что создаёт шум в diff'ах и конфликтует с Linux-окружением CI.
+#
+# Принцип:
+#   * Текстовые файлы → в repo всегда LF (Unix standard)
+#   * Windows-only файлы (.bat, .ps1, .cmd) → в repo CRLF (т.к. только для Windows)
+#   * Бинарные файлы → git не трогает (no diff, no merge conflicts)
+# =============================================================================
+
+# --- Python: всегда LF в repo, в working copy — по ОС ---
+*.py     text eol=lf diff=python
+
+# --- Markdown, текст, конфиги: всегда LF ---
+*.md     text eol=lf
+*.txt    text eol=lf
+*.toml   text eol=lf
+*.yaml   text eol=lf
+*.yml    text eol=lf
+*.json   text eol=lf
+*.ini    text eol=lf
+*.cfg    text eol=lf
+*.spec   text eol=lf
+*.html   text eol=lf
+*.css    text eol=lf
+*.js     text eol=lf
+*.ts     text eol=lf
+*.mjs    text eol=lf
+*.cjs    text eol=lf
+
+# --- Shell scripts: всегда LF ---
+*.sh     text eol=lf
+
+# --- Windows-only файлы: всегда CRLF (т.к. cmd.exe требует CRLF) ---
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+*.ps1    text eol=crlf
+
+# --- Ren'Py scripts: LF (стандарт Ren'Py) ---
+*.rpy    text eol=lf
+*.rpym   text eol=lf
+*.rpyc   binary
+*.rpyb   binary
+*.rpymc  binary
+
+# --- Бинарные файлы: git не трогает ---
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.svg    text eol=lf
+*.pdf    binary
+*.zip    binary
+*.gz     binary
+*.tar    binary
+*.7z     binary
+*.exe    binary
+*.dll    binary
+*.so     binary
+*.dylib  binary
+*.vsix   binary
+*.whl    binary
+*.egg    binary
+
+# --- Lock files: всегда LF, генерируются автоматически ---
+package-lock.json    text eol=lf
+yarn.lock            text eol=lf
+pnpm-lock.yaml       text eol=lf
+poetry.lock          text eol=lf
+
+# --- Гарантия что .gitattributes и .gitignore сами — LF ---
+.gitattributes  text eol=lf
+.gitignore      text eol=lf
+
+# --- Исключения для vendored unrpyc (их конвенция) ---
+senpy/vendor/unrpyc/**  text eol=lf
+
+# --- GitHub Actions workflows: LF (запускаются на Ubuntu в CI) ---
+.github/workflows/**.yml   text eol=lf
+.github/workflows/**.yaml text eol=lf
