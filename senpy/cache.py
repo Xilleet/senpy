@@ -9,22 +9,14 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from senpy.constants import SENPY_VERSION
+from senpy.cache_manifest import CacheManifest, CachedFileEntry  # Фаза 1.6: вынесено
+
+# CachedFileEntry и CacheManifest вынесены в senpy/cache_manifest.py (Фаза 1.6).
+# Реэкспортируем для backward compat: `from senpy.cache import CachedFileEntry` работает.
 
 if TYPE_CHECKING:
     from senpy.analyzer import SenpyAnalyzer
     from senpy.models import Diagnostic, FileScope
-
-
-@dataclass
-class CachedFileEntry:
-    mtime: float
-    size: int
-    lines_count: int
-    scope: FileScope
-    diagnostics: list[Diagnostic] = field(default_factory=list)
-    used_assets: set[str] = field(default_factory=set)
-    content_hash: str = ""
-    collect_diagnostics: list[Diagnostic] = field(default_factory=list)
 
 
 def compute_file_hash(file_path: str) -> str:
@@ -34,13 +26,6 @@ def compute_file_hash(file_path: str) -> str:
             return hashlib.md5(f.read()).hexdigest()
     except OSError:
         return ""
-
-
-@dataclass
-class CacheManifest:
-    version: str
-    global_symbol_hash: str
-    files: dict[str, CachedFileEntry] = field(default_factory=dict)
 
 
 class SafeCacheUnpickler(pickle.Unpickler):
@@ -55,7 +40,8 @@ class SafeCacheUnpickler(pickle.Unpickler):
 
     ALLOWED_MODULES = frozenset(
         {
-            "senpy.cache",  # CacheManifest, CachedFileEntry
+            "senpy.cache",  # backward compat: старые кэши могут ссылаться сюда
+            "senpy.cache_manifest",  # Фаза 1.6: CacheManifest, CachedFileEntry переехали сюда
             "senpy.models",  # FileScope, Diagnostic
             "senpy.symbols",  # Variable/Label/Screen/Image/TransformSymbol
             "senpy.signature",  # SignatureInfo

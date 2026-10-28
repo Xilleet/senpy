@@ -4,14 +4,12 @@ import ast
 import contextlib
 import difflib
 import textwrap
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from senpy.constants import BUILTIN_SYMBOLS, SCREEN_LOCAL_IGNORE
 from senpy.models import Diagnostic
+from senpy.sink import DiagnosticSink  # Фаза 1.4: Protocol вместо SenpyAnalyzer
 from senpy.text_tags import get_utf16_range, suggest_similar_symbol
-
-if TYPE_CHECKING:
-    from senpy.analyzer import SenpyAnalyzer
 
 
 def infer_ast_type(
@@ -356,7 +354,7 @@ def extract_assigned_names(py_code: str) -> set[str]:
 class PythonAstChecker:
     """Проверяет встроенный Python-код через AST на соблюдение правил Ren'Py."""
 
-    def __init__(self, analyzer: SenpyAnalyzer):
+    def __init__(self, analyzer: DiagnosticSink):
         self.analyzer = analyzer
 
     def collect_from_python_block(self, code_lines: list[str]) -> tuple[dict[str, int], set[str]]:
@@ -1273,5 +1271,4 @@ class PythonAstChecker:
                             branch_uninitialized.pop(target.id, None)
 
 
-# Псевдоним для краткости, если захочешь использовать AstChecker
-AstChecker = PythonAstChecker
+# AstChecker alias удалён в Фазе 1.4 (dead code, P1'-11 из аудита)

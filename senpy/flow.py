@@ -4,8 +4,8 @@ import json
 import re
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
+# from typing import TYPE_CHECKING  # Фаза 1.5: больше не нужен
 from senpy.constants import (
     BUILTIN_SCREENS,
     RE_MENU_CHOICE,
@@ -14,10 +14,8 @@ from senpy.constants import (
 )
 from senpy.models import Diagnostic
 from senpy.python_ast import extract_assigned_names
+from senpy.sink import DiagnosticSink  # Фаза 1.5: Protocol вместо SenpyAnalyzer
 from senpy.text_tags import get_utf16_range
-
-if TYPE_CHECKING:
-    from senpy.analyzer import SenpyAnalyzer
 
 _MERMAID_RESERVED_IDS = {"end"}
 
@@ -123,7 +121,7 @@ def merge_flow_branches(
 class StoryFlowAnalyzer:
     """Анализирует граф переходов, развилки меню и генерирует Mermaid-диаграммы сюжета."""
 
-    def __init__(self, analyzer: SenpyAnalyzer):
+    def __init__(self, analyzer: DiagnosticSink):
         self.analyzer = analyzer
 
     def can_reach_return(self, label_name: str, visited: set[str] | None = None) -> bool:
