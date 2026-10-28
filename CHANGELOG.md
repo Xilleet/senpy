@@ -5,6 +5,34 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] — 2026-10-29
+
+### Changed
+
+Реструктуризация senpy/ в 7 подпакетов (Phase 2):
+
+- core/ (11 файлов): analyzer, cache, cache_manifest, config, constants, coverage, models, scope, signature, sink, symbols
+- rules/ (4 файла): python_ast, flow, deprecated, rules_info
+- rules/checkers/ (5 файлов): formatting, screen, asset, dialogue, state (split из checkers.py)
+- rules/base.py: BaseChecker + IfBlockContext
+- lsp/ (1 файл): server
+- cli/ (3 файла): main, commands, unrpyc + __main__.py для python -m senpy.cli
+- formats/ (7 файлов): sarif, html_report, wiki, stubs, ci, traceback, stats
+- domain/ (5 файлов): renpy_api, text_tags, assets, rpa, tsundere
+- text_utils.py остаётся в корне (используется всеми)
+- Backward compat: senpy/__init__.py re-exports ключевые имена. Старые импорты from senpy import SenpyAnalyzer продолжают работать.
+- CacheManager.ALLOWED_MODULES обновлён с новыми путями senpy.core.* (для pickle backward compat).
+
+### Performance
+
+~17% ускорение холодного прогона на больших проектах до рефакторинга (77k строк: 4.2s → 3.5s). Меньше циклических импортов.
+
+### Tests
+
+434 теста проходят (vs 425 в 0.5.3): +9 тестов после реструктуризации.
+test_imports.py обновлён с новыми путями модулей.
+test_packaging.py обновлён с новыми путями файлов.
+
 ## [0.5.3]
 
 ### Added
