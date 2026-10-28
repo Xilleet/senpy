@@ -213,7 +213,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [build, build-vsix] 
     environment: pypi  # нужно для Trusted Publishing (ВАРИАНТ B)
     # Если используете ВАРИАНТ A (API token) — environment можно убрать
 
