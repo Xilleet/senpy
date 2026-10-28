@@ -150,7 +150,7 @@ jobs:
             --distpath "senpy-vscode/bin" \
             --workpath "build" \
             --specpath "build" \
-            "senpy/cli.py"
+            "senpy/cli/main.py"
 
       - name: Verify senpy.exe
         shell: bash
