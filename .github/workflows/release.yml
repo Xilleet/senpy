@@ -1,20 +1,30 @@
 # =============================================================================
-# Senpy Release — публикация на PyPI по тегу vX.Y.Z
+# Senpy Release — публикация релиза по тегу vX.Y.Z
 # =============================================================================
-# Trigger: push тегов вида v*.*.* (например, v0.4.8)
-# Использует PyPI Trusted Publishing (OIDC) — никаких паролей/API-токенов.
-# Дополнительно: создаёт GitHub Release с артефактами (wheel + vsix)
+# Триггер: push тега v*.*.* (например, v0.5.2, v0.6.0, v1.0.0)
 #
-# Что происходит при git push origin v0.4.8:
-# 1. test job — прогоняет pytest (pre-release проверка)
-# 2. build job — собирает wheel + sdist, проверяет что версия в __version__.py
-#    совпадает с тегом (защита от опечаток)
-# 3. build-vsix job — собирает АВТОНОМНЫЙ VSIX со встроенным senpy.exe
-#    (PyInstaller onefile binary + TypeScript extension)
-# 4. publish-pypi job — публикует wheel + sdist на PyPI через OIDC
-# 5. github-release job — создаёт GitHub Release с:
-#    - auto-generated release notes (из commits между предыдущим и текущим тегом)
-#    - прикреплёнными wheel, sdist, VSIX
+# Что делает (5 jobs, последовательно):
+#   1. test           — pytest (pre-release проверка)
+#   2. build          — собирает wheel + sdist, проверяет версию vs тег
+#   3. build-vsix     — собирает автономный VSIX со встроенным senpy.exe
+#   4. publish-pypi   — публикует wheel на PyPI (через API token или OIDC)
+#   5. github-release — создаёт GitHub Release с wheel + VSIX
+#
+# НАСТРОЙКА (one-time):
+#   1. PyPI API token: https://pypi.org/manage/account/token/
+#      - Add API token → Scope: "Entire account" или "Project: senpy-linter"
+#      - Скопируйте token (начинается с pypi-)
+#
+#   2. GitHub Secret:
+#      - Repository → Settings → Secrets and variables → Actions
+#      - New repository secret:
+#        Name:  PYPI_API_TOKEN
+#        Value: pypi-XXXXXXXX...
+#
+#   После этого публикация будет автоматической при git push origin v0.5.2.
+#
+# Альтернатива (Trusted Publishing/OIDC, без токена):
+#   См. комментарии в publish-pypi job ниже. Сложнее настроить, но безопаснее.
 # =============================================================================
 name: Release
 
@@ -22,21 +32,21 @@ on:
   push:
     tags:
       - 'v*.*.*'
-      # v0.4.8, v1.0.0, v2.3.1 — SemVer
-      # v0.4.8-rc1 → будет помечен как prerelease (см. ниже)
+      # v0.5.2, v1.0.0, v2.3.1 — SemVer
+      # v0.6.0-rc1 → будет помечен как prerelease (см. ниже)
 
-# release job не должен запускаться параллельно с самим собой
+# Release нельзя отменять — даже если запушили новый тег, старый должен дойти
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false  # не отменяем release, даже если запушили новый тег
+  cancel-in-progress: false
 
 permissions:
   contents: write  # для создания GitHub Release
-  id-token: write   # для PyPI Trusted Publishing (OIDC)
+  id-token: write   # для PyPI Trusted Publishing (если используете OIDC вместо API token)
 
 jobs:
   # ===========================================================================
-  # 1. Сначала прогоняем тесты — релизим только зелёное
+  # 1. Pre-release тесты — релизим только зелёное
   # ===========================================================================
   test:
     name: Pre-release tests
@@ -48,10 +58,9 @@ jobs:
           python-version: '3.12'
           cache: pip
       - name: Install dependencies
-        shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install -e .[dev] || pip install -e .
+          pip install -e .
           pip install pytest
       - name: Run tests
         run: pytest tests/ -v
@@ -68,6 +77,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
 
       - name: Install build tools
         run: |
@@ -81,9 +91,8 @@ jobs:
         run: twine check dist/*
 
       - name: Verify version matches tag
-        # Защита: базовая версия тега должна совпадать с __version__.py.
-        # Отрезаем суффиксы (-rc1, -beta) и от тега, и от package version,
-        # чтобы разрешить RC-релизы (v0.4.9-rc2 с __version__.py = 0.4.9-rc2).
+        # Защита от опечаток: базовая версия тега должна совпадать с __version__.py
+        # Разрешаем суффиксы (-rc1, -beta) и на теге, и в package version
         run: |
           TAG_VERSION="${GITHUB_REF#refs/tags/v}"
           PKG_VERSION=$(python -c "from senpy.__version__ import __version__; print(__version__)")
@@ -93,11 +102,11 @@ jobs:
           echo "Package version:   $PKG_VERSION (base: $PKG_BASE)"
           if [ "$TAG_BASE" != "$PKG_BASE" ]; then
             echo ""
-            echo "ERROR: Base tag version ($TAG_BASE) != base package version ($PKG_BASE)"
-            echo "Обнови senpy/__version__.py через 'python bump_version.py' перед созданием тега."
+            echo "ERROR: Base tag version ($TAG_BASE) != package version ($PKG_BASE)"
+            echo "Run: python bump_version.py patch  (or minor/major)"
             exit 1
           fi
-          echo "OK: Base versions match ($PKG_BASE)"
+          echo "OK: Versions match ($PKG_BASE)"
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v4
@@ -106,53 +115,10 @@ jobs:
           path: dist/*
 
   # ===========================================================================
-  # 3. Публикация на PyPI через Trusted Publishing (OIDC)
+  # 3. Сборка автономного VSIX (Windows, со встроенным senpy.exe)
   # ===========================================================================
-  # НАСТРОЙКА ONE-TIME (на стороне PyPI):
-  # 1. Зайди на https://pypi.org/manage/account/publishing/
-  # 2. Add a new publisher → GitHub
-  #    - PyPI Project Name: senpy-linter
-  #    - Owner: Xilleet
-  #    - Repository: senpy
-  #    - Workflow filename: release.yml
-  #    - Environment name: pypi (должно совпадать с environment: ниже)
-  # После этого публикация будет автоматической, без токенов.
-  publish-pypi:
-    name: Publish to PyPI
-    runs-on: ubuntu-latest
-    needs: [build]
-    environment: pypi  # обязателен для Trusted Publishing
-    # =============================================================================
-    # TRIAL RUN: чтобы протестировать release.yml БЕЗ публикации на PyPI,
-    # раскомментируйте строку ниже (if: false). Job запустится, но пропустит
-    # публикацию. После trial run — закомментируйте обратно.
-    # =============================================================================
-    # if: false  # ← раскомментировать для trial run
-    steps:
-      - name: Download dist artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: senpy-dist
-          path: dist/
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        # Никаких токенов — PyPI Trusted Publishing через OIDC.
-        # with: password: ... — НЕ НУЖНО, OIDC работает автоматически.
-
-  # ===========================================================================
-  # 4. Сборка АВТОНОМНОГО VSIX со встроенным senpy.exe
-  # ===========================================================================
-  # PyInstaller собирает senpy.exe (onefile, ~30-50 MB) — автономный бинарь
-  # со встроенным Python runtime. VSIX включает этот бинарь в bin/, поэтому
-  # пользователю НЕ нужен установленный Python — расширение работает «из коробки».
-  #
-  # Сборка на Windows (windows-latest), потому что:
-  # - senpy.exe нужен для Windows-пользователей (основная аудитория VN-сценаристов)
-  # - PyInstaller onefile на Linux соберёт Linux-бинарь, который не запустится на Windows
-  # - macOS-бинарь тоже отдельный (если когда-нибудь добавим — отдельный job)
   build-vsix:
-    name: Build autonomous VSIX (with senpy.exe)
+    name: Build autonomous VSIX
     runs-on: windows-latest
     needs: [test]
     steps:
@@ -173,15 +139,6 @@ jobs:
           pip install pyinstaller
 
       - name: Build senpy.exe with PyInstaller
-        # Аналог build_exe.bat, но cross-shell (bash на Windows через Git Bash)
-        # --onefile: всё в один .exe (30-50 MB, медленнее стартует, но проще дистрибуция)
-        # --name senpy: имя выходного файла (senpy.exe)
-        # --paths .: добавляем текущую директорию в sys.path (для импорта senpy.*)
-        # --distpath senpy-vscode/bin: куда положить готовый .exe
-        # --workpath build: временная папка (не коммитим)
-        # --specpath build: куда положить .spec файл (не коммитим)
-        # --clean: очистить кэш PyInstaller перед сборкой
-        # --noconfirm: перезаписать без вопроса
         shell: bash
         run: |
           python -m PyInstaller \
@@ -196,7 +153,6 @@ jobs:
             "senpy/cli.py"
 
       - name: Verify senpy.exe
-        # Проверяем, что .exe собрался и запускается
         shell: bash
         run: |
           ls -la "senpy-vscode/bin/senpy.exe"
@@ -231,23 +187,63 @@ jobs:
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
         with:
-          name: senpy-vsix-release
+          name: senpy-vsix
           path: senpy-vscode/*.vsix
 
   # ===========================================================================
-  # 5. GitHub Release с артефактами + auto release notes
+  # 4. Публикация на PyPI
+  # ===========================================================================
+  # ДВА ВАРИАНТА настройки (выберите один):
+  #
+  # ВАРИАНТ A (проще, через API token):
+  #   1. Получите API token: https://pypi.org/manage/account/token/
+  #   2. Добавьте GitHub Secret: PYPI_API_TOKEN
+  #   3. Раскомментируйте строки "password:" ниже
+  #   4. Можно удалить `environment: pypi` и `id-token: write` (если не используете OIDC)
+  #
+  # ВАРИАНТ B (безопаснее, через Trusted Publishing/OIDC — без токена):
+  #   1. Настройте на PyPI: https://pypi.org/manage/account/publishing/
+  #      → Add publisher → GitHub → заполнить форму
+  #        (Owner: Xilleet, Repo: senpy, Workflow: release.yml, Environment: pypi)
+  #   2. Создайте GitHub Environment с именем "pypi"
+  #   3. Ничего не раскомментируйте — OIDC работает автоматически
+  #
+  # Сейчас настроен ВАРИАНТ B (OIDC). Если не работает — переключитесь на A.
+  # ===========================================================================
+  publish-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [build]
+    environment: pypi  # нужно для Trusted Publishing (ВАРИАНТ B)
+    # Если используете ВАРИАНТ A (API token) — environment можно убрать
+
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: senpy-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # ВАРИАНТ A (API token) — раскомментируйте 2 строки ниже:
+        # with:
+        #   password: ${{ secrets.PYPI_API_TOKEN }}
+
+        # ВАРИАНТ B (OIDC/Trusted Publishing) — ничего не указываем,
+        # OIDC работает автоматически через `id-token: write` permission выше.
+
+  # ===========================================================================
+  # 5. GitHub Release с артефактами
   # ===========================================================================
   github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    # needs: [publish-pypi, build-vsix]  # ← боевое: ждать и PyPI, и VSIX
-    needs: [publish-pypi, build-vsix]  # ← trial: ждать только VSIX (publish-pypi может быть if: false)
-    # =============================================================================
-    # Для реального релиза: заменить needs: [build-vsix] на needs: [publish-pypi, build-vsix]
-    # Для trial run: оставить needs: [build-vsix] (PyPI может быть отключён)
-    # =============================================================================
+    needs: [publish-pypi, build-vsix]  # ждём и PyPI, и VSIX
+    # Если publish-pypi отключён (if: false) — заменить на:
+    # needs: [build-vsix]
     permissions:
-      contents: write  # для создания release
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -257,7 +253,6 @@ jobs:
           path: release-assets/
 
       - name: Prepare release assets
-        # Складываем всё в одну папку для upload
         shell: bash
         run: |
           mkdir -p release/
@@ -274,13 +269,11 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: Senpy v${{ steps.version.outputs.version }}
-          # generate_release_notes: true → GitHub сам собирает release notes
-          # из commits между предыдущим и текущим тегом.
-          # Группирует по Conventional Commits (feat:, fix:, docs:, chore:).
-          # Добавляет список PR с авторами и ссылку на diff.
+          # GitHub сам собирает release notes из commits между тегами
+          # Группирует по Conventional Commits (feat:, fix:, docs:, chore:)
           generate_release_notes: true
           draft: false
-          # Если тег содержит '-' (например v0.4.8-rc1) → помечаем как prerelease
+          # Если тег содержит '-' (v0.6.0-rc1) → помечаем как prerelease
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             release/*.whl
