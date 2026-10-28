@@ -13,7 +13,6 @@ import pickle
 import shutil
 import subprocess
 import sys
-import tomllib
 import urllib.error
 import urllib.request
 import zipfile
@@ -53,26 +52,11 @@ def _unrpyc_zip_url() -> str:
     """URL для скачивания pinned версии unrpyc."""
     return UNRPYC_GITHUB_ZIP_TEMPLATE.format(commit=UNRPYC_PINNED_COMMIT)
 
-
-def load_config(project_path: str) -> dict:
-    candidates = [
-        os.path.join(project_path, "senpy.toml"),
-        os.path.join(project_path, "pyproject.toml"),
-        os.path.join(os.path.dirname(project_path), "senpy.toml"),
-        os.path.join(os.path.dirname(project_path), "pyproject.toml"),
-        os.path.join(os.getcwd(), "senpy.toml"),
-        os.path.join(os.getcwd(), "pyproject.toml"),
-    ]
-    for c in candidates:
-        if os.path.isfile(c):
-            with (
-                contextlib.suppress(tomllib.TOMLDecodeError, OSError),
-                open(c, "rb") as f,
-            ):
-                data = tomllib.load(f)
-                return data.get("tool", {}).get("senpy", data.get("senpy", {}))
-    return {}
-
+# Фаза 1.2 (0.5.3): load_config вынесен в senpy/config.py для разрыва
+# циклической зависимости analyzer ↔ cli. Реэкспортируем для обратной
+# совместимости (старый импорт `from senpy._unrpyc_bootstrap import load_config`
+# продолжает работать).
+from senpy.config import load_config  # noqa: E402, F401, I001
 
 def find_in_directory_tree(start_dirs: list[str]) -> str | None:
     for base in start_dirs:

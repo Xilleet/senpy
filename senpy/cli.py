@@ -17,9 +17,9 @@ from senpy._unrpyc_bootstrap import (
     decompile_to_sandbox,
     extract_scripts_from_rpa,
     find_unrpyc_executable,
-    load_config,
 )
 from senpy.analyzer import SenpyAnalyzer
+from senpy.config import load_config
 from senpy.constants import IGNORED_DIRS
 from senpy.formatter import FormatConfig, Formatter
 from senpy.traceback import find_latest_traceback, parse_traceback_file

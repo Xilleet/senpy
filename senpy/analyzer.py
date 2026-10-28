@@ -7,6 +7,7 @@ from collections import defaultdict
 
 from senpy.assets import AssetManager, find_orphaned_rpyc
 from senpy.cache import CachedFileEntry, CacheManager, CacheManifest, compute_file_hash
+from senpy.config import load_config
 from senpy.constants import MEDIA_EXTENSIONS, RE_STRING_MATCH
 from senpy.deprecated import DeprecationChecker
 from senpy.flow import StoryFlowAnalyzer
@@ -259,8 +260,6 @@ class SenpyAnalyzer:
                 k.strip().upper(): v.strip().upper() for k, v in severity_overrides.items()
             }
         else:
-            from senpy.cli import load_config
-
             cfg = load_config(self.project_path)
             self.severity_overrides = {
                 k.strip().upper(): v.strip().upper() for k, v in cfg.get("severity", {}).items()
