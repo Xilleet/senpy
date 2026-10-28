@@ -4,7 +4,6 @@ import difflib
 import os
 import re
 import textwrap
-from typing import TYPE_CHECKING
 
 from senpy.constants import (
     BUILTIN_ACTIONS,
@@ -43,13 +42,12 @@ class IfBlockContext:
         self.current_branch: FlowBranch | None = None
 
 
-if TYPE_CHECKING:
-    from senpy.analyzer import SenpyAnalyzer
-    from senpy.scope import ScopeStack
+from senpy.scope import ScopeStack  # noqa: E402
+from senpy.sink import DiagnosticSink  # Фаза 1.3: Protocol вместо SenpyAnalyzer  # noqa: E402
 
 
 class BaseChecker:
-    def __init__(self, analyzer: SenpyAnalyzer):
+    def __init__(self, analyzer: DiagnosticSink):
         self.analyzer = analyzer
 
     def check_line(
@@ -763,9 +761,9 @@ class AssetChecker(BaseChecker):
 
 
 class DialogueChecker(BaseChecker):
-    """RPY3xx — Диалоги, проверка кавычек, переходов jump/call и падений в метки."""
+    """RPY3xx — Диалоги, проверка кавычек, переходов jump/call и падений в меток."""
 
-    def __init__(self, analyzer: SenpyAnalyzer):
+    def __init__(self, analyzer: DiagnosticSink):
         super().__init__(analyzer)
         self.in_label_context = False
         self.current_global_label: str | None = None
@@ -785,8 +783,7 @@ class DialogueChecker(BaseChecker):
         lines: list[str],
         branch_uninitialized: dict | None = None,
     ) -> tuple[str, bool]:
-        from senpy.analyzer import _strip_comment
-
+        from senpy.text_utils import _strip_comment  # Фаза 1.3: вынесено в text_utils
         stripped = clean_line.strip()
         line_indent = len(raw_line) - len(raw_line.lstrip(" "))
         is_in_screen = scope_stack.current_screen_name() is not None
@@ -984,7 +981,7 @@ class DialogueChecker(BaseChecker):
 class StateChecker(BaseChecker):
     """RPY1xx, RPY4xx — Проверка переменных, типов, условий, мутаций и развилок menu."""
 
-    def __init__(self, analyzer: SenpyAnalyzer):
+    def __init__(self, analyzer: DiagnosticSink):
         super().__init__(analyzer)
         self.branch_uninitialized: dict[str, tuple[str, ...]] = {}
         self.guaranteed_vars: set[str] = set()

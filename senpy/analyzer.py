@@ -67,43 +67,9 @@ from senpy.scope import ScopeStack, ScopeType
 _WORD_RE = re.compile(r"\w+")
 
 
-def _strip_comment(line: str) -> str:
-    """Удаляет комментарий (#), не ломая hex-цвета, экранированные кавычки (\") и тройные кавычки."""
-    if "#" not in line:
-        return line
-
-    in_quote = None
-    i = 0
-    n = len(line)
-    while i < n:
-        ch = line[i]
-        if ch == "\\":
-            i += 2
-            continue
-        if in_quote in ('"""', "'''"):
-            if line[i : i + 3] == in_quote:
-                in_quote = None
-                i += 3
-                continue
-            i += 1
-            continue
-        if in_quote:
-            if ch == in_quote:
-                in_quote = None
-            i += 1
-            continue
-        if line[i : i + 3] in ('"""', "'''"):
-            in_quote = line[i : i + 3]
-            i += 3
-            continue
-        if ch in ('"', "'"):
-            in_quote = ch
-            i += 1
-            continue
-        if ch == "#":
-            return line[:i]
-        i += 1
-    return line
+# Фаза 1.3 (0.5.3): _strip_comment вынесен в senpy/text_utils.py для разрыва
+# циклической зависимости checkers/flow → analyzer. Реэкспортируем для backward compat.
+from senpy.text_utils import _strip_comment  # noqa: F401
 
 
 def _count_bracket_delta(s: str) -> int:

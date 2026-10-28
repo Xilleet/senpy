@@ -292,8 +292,8 @@ class StoryFlowAnalyzer:
         file_path: str = "",
         noqa_map: dict | None = None,
     ) -> tuple[int, dict[str, tuple[str, ...]], set[str], bool]:
-        from senpy.analyzer import _strip_comment
         from senpy.constants import RE_MENU_START
+        from senpy.text_utils import _strip_comment  # Фаза 1.3: вынесено в text_utils
 
         idx = start_idx
         choices: list[FlowBranch] = []
