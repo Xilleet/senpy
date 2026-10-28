@@ -45,7 +45,7 @@ SENPY_CACHE_DIR = os.path.expanduser("~/.senpy/tools/unrpyc")
 #
 # Текущий pinned commit:
 UNRPYC_PINNED_COMMIT = "v2.0.4"
-UNRPYC_PINNED_SHA256 = None  # placeholder — будет вычислен при update
+UNRPYC_PINNED_SHA256 = "df7446d89f68a9a94a62378248da875e9e75e983bf81de53d92b2c19f359673e"  # вычислен 2026-10-28 через update_unrpyc_pin.py
 UNRPYC_GITHUB_ZIP_TEMPLATE = "https://github.com/CensoredUsername/unrpyc/archive/{commit}.zip"
 
 
@@ -318,7 +318,7 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str] | None = None
     decompiled_rpy = []
     done = 0
     for rpyc_file in temp_rpyc_files:
-        done += 1
+        done += 1  # noqa: SIM113
         base_name = os.path.basename(rpyc_file)
         if base_name.endswith(".rpyc"):
             rpy_name = base_name[:-1]  # .rpyc -> .rpy

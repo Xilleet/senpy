@@ -5,6 +5,83 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] — 2026-10-28
+
+### Added
+- **5 new LSP handlers** in `senpy/server.py`:
+  - `textDocument/foldingRange` (UX-1) — сворачивание label/screen/menu/init python/transform блоков. 8 тестов в `tests/test_folding_range.py`.
+  - `textDocument/rename` + `textDocument/prepareRename` (UX-2) — переименование меток с обновлением всех `jump`/`call` ссылок через `jump_sources` обратный индекс. `prepare_provider=True` для VS Code preview перед F2. 5 тестов в `tests/test_rename.py`.
+  - `workspace/symbol` (UX-3) — глобальный поиск меток/экранов/трансформов через Ctrl+T. 7 тестов в `tests/test_workspace_symbol.py`.
+  - `textDocument/documentHighlight` (UX-5) — подсветка всех упоминаний переменной/метки/экрана/трансформа в текущем файле.
+  - `initialized` (UX-12) — kickoff diagnostics сразу после LSP init, без 300ms задержки.
+- **3 new rules** (RPY7xx — Dead Code Detection, RULE-3/4/5 выполнены раньше плана 0.7.0):
+  - `RPY701` (HINT) — неиспользуемая `define`-константа (мёртвый код). `analyzer.py:381-397`.
+  - `RPY702` (HINT) — неиспользуемый `transform` (мёртвый код). `analyzer.py:399-413`.
+  - `RPY703` (HINT) — неиспользуемый `screen` (мёртвый код). `analyzer.py:415-440`.
+  - Все три правила автоматически **отключаются** при `analyzer.has_dynamic_jumps = True` (когда в коде есть `renpy.jump()`, `renpy.call()` или `dynamic_jump`) — динамические jump'ы делают статический unreachable-анализ ненадёжным.
+  - 10 тестов в `tests/test_rules_rpy7xx.py`, включая edge-case с `call screen` (считается использованием).
+- **Formatter MVP** (`senpy/formatter/`, EXT-8, 421 строка) — opinionated .rpy code formatter в стиле Black:
+  - 4 правила: `FMT-INDENT` (tab → 4 spaces), `FMT-TRAILING-WS`, `FMT-EOF-NEWLINE`, `FMT-BLANK-LINES` (collapse 3+ подряд пустых до 2).
+  - `@register_rule("FMT-XXX")` декоратор для декларативной регистрации правил (ESLint-style).
+  - Skip-механика: `# senpy: format off` / `# senpy: format on` блоки + `# senpy: format skip` для одной строки.
+  - Subcommand `senpy format [PATHS...]` с флагами `--check`, `--diff`, `--stdin-filename`.
+  - Idempotency: `format(format(x)) == format(x)` — обязательно свойство, тестируется в `tests/test_formatter_idempotency.py` (12 тестов, все pass).
+  - Реализован в соответствии с архитектурой Part 3 предыдущего аудита.
+- **Vendored unrpyc** в `senpy/vendor/unrpyc/` (ECO-5, выполнено раньше плана 0.6.0):
+  - Полный исходник unrpyc (MIT, Yuri K. Schlesner, CensoredUsername, Jackmcbarn) встроен в пакет.
+  - Декомпиляция .rpyc теперь in-process через `from senpy.vendor.unrpyc import decompile_rpyc` — без subprocess overhead.
+  - Decoupling от доступности GitHub / CensoredUsername-аккаунта.
+  - `senpy/vendor/unrpyc/__init__.py` (51 строка) — public API: `decompile_rpyc(rpyc_path) -> str`.
+  - 4 теста в `tests/test_vendored_unrpyc.py`.
+- **`_unrpyc_bootstrap.py`** (356 строк) — выделено из `cli.py`: download/search/verify/extract unrpyc, .rpa extraction. Включает `_verify_unrpyc_sha256()` и `_safe_zip_extract()` (Zip Slip protection).
+- **`_cli_commands.py`** (340 строк) — выделено из `cli.py`: 10 handler'ов (`handle_traceback`, `handle_init_ci`, `handle_coverage`, `handle_clear_cache`, `handle_stats`, `handle_export_wiki`, `handle_export_html`, `handle_graph`, `handle_defaults`, `handle_stubs`).
+- **`examples/test_formatter_demo.py`** — demo-скрипт для ручного тестирования formatter'а.
+- **`scripts/update_unrpyc_pin.py`** — maintainer script для обновления pinned unrpyc commit + SHA256 (ECO-4).
+- **`tests/test_vscode_extension.py`** (382 строки, 20 тестов) — UX-EXT-1..7: проверки `language-configuration.json`, `package.json` reference, prepare_rename handler, `synchronize` для `.senpy.toml`.
+- **`tests/test_lsp_race.py`** (116 строк) — race condition тесты для LSP (concurrent did_change + did_save).
+- **`tests/test_p0_cli.py`** (281 строка, 9 тестов) — регрессии для P0-1, P0-2, P0-3.
+
+### Changed
+- **`server.py`** вырос с 734 до 1 396 строк (+662, +90 %) — 5 новых LSP handler'ов + инфраструктура.
+- **`analyzer.py`** вырос с 1 520 до 1 719 строк (+199) — RPY701-703 + `_check_unused_declarations()`.
+- **`python_ast.py`** вырос с 1 076 до 1 277 строк (+201).
+- **`flow.py:check_story_islands`** — O(N²) → O(N+E) через pre-computed `incoming_jumps` dict (PERF-1, выполнено в 0.4.8, подтверждено в 0.5.1).
+- **`_analyze_tl_file()`** разбит на 3 метода (P1-6 done): `_analyze_tl_file` (19 строк, было 154) + `_parse_tl_pairs` (статический) + `_validate_tl_pairs`.
+- **`_normalize_path()`** helper (P0-6 fix) — единая нормализация путей в 4 местах `server.py`.
+- **`_symbol_snapshot`** в `server.py` — fast-read snapshot для `rename`, `workspace_symbol`, `document_highlight`, `prepare_rename`. Snapshot берётся в `run_full_project_diagnostics` и не блокируется `analyze_file_only`, что позволяет F2/Ctrl+T работать во время typing.
+- **`UNRPYC_PINNED_COMMIT = "v2.0.4"`** — pinned к конкретному тегу (был master-ветка). SHA256 verification structure ready, но `UNRPYC_PINNED_SHA256 = None` placeholder — нужно заполнить через `python scripts/update_unrpyc_pin.py`.
+
+### Fixed
+- **P0-5**: `hover` в LSP падал на `IndexError` при out-of-range line (`server.py:596`). Добавлен guard, matching `definition()` и `references()`.
+- **P0-6**: `code_action` filename-fallback мог выбрать QuickFix из неправильного файла в multi-module проектах (`server.py:239-242`). Добавлен `_normalize_path()` helper, унифицированы 4 места нормализации, удалён небезопасный basename-fallback.
+
+### Known Issues (to be fixed in 0.5.2)
+- `LICENSE` файл отсутствует в корне — `pyproject.toml:14` ссылается на него, PyPI-публикация сломана.
+- `.gitignore` файл отсутствует — артефакты (`senpy.sarif`, `test_report.*`, `__pycache__/`) коммитятся в репо.
+- `CHANGELOG.md` — секции [0.5.0] и [0.5.1] добавлены этим релизом (раньше отсутствовали).
+- `senpy-vscode/language-configuration.json` отсутствует — `package.json` ссылается на него, тесты падают (TDD RED phase).
+- `UNRPYC_PINNED_SHA256 = None` placeholder — verification фактически no-op. Нужно запустить `python scripts/update_unrpyc_pin.py`.
+- Rule count discrepancy: `senpy.toml` говорит "All 41 Rules", `rules_info.py` — "All 40 Rules", фактически 45 в `models.RULE_SEVERITY`.
+- `tests/conftest.py:23` переписывает `item._nodeid` через private pytest API — ломает `-k` фильтрацию.
+- God-функции выросли: `_walk_python_nodes` 404→538, `analyze_menu_flow` 145→285, `_collect_symbols` 340→379, `AssetChecker.check_line` 317→354, `cli.py:main()` 680→721, `sys.exit()` в cli.py 14→25, server.py globals 8→10.
+
+### Tests
+- 12 новых тест-файлов, 88 новых тест-функций (+76 %). Всего теперь 33 файла, 204 тест-функции.
+- pytest pass rate: 99.6 % (284/285). 1 failed (`test_vscode_extension.py::test_file_exists` — TDD RED для language-configuration.json), 7 skipped (RED phase related tests).
+
+## [0.5.0] — 2026-10-27
+
+### Added
+- **Formatter MVP architecture** — подпакет `senpy/formatter/` с `Formatter` class, `FormatConfig`, `FormatContext`, `register_rule` decorator (см. [0.5.1] для деталей реализации).
+- **Subcommand `senpy format`** с флагами `--check`, `--diff`, `--stdin-filename`.
+- **`examples/test_formatter_demo.py`** — demo-скрипт.
+- Базовая структура `senpy/formatter/{__init__,core,rules/{__init__,indent,whitespace}}.py`.
+
+### Changed
+- Начало частичного рефакторинга P1-1: `cli.py` теперь пересылает `sys.argv[1] == "format"` в `_dispatch_format()` до основного argparse.
+- `_cli_commands.py` (340 строк) выделен из `cli.py` — 10 handler'ов для traceback/init_ci/coverage/clear_cache/stats/export_wiki/export_html/graph/defaults/stubs.
+- `_unrpyc_bootstrap.py` (356 строк) выделен из `cli.py` — unrpyc download/search/verify/extract + .rpa extraction.
+
 ## [0.4.8]
 
 ### Added
@@ -84,5 +161,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `_differential_purge_file` for incremental cache invalidation
 - Cross-file symbol resolution in LSP `definition()` handler
 
-[0.4.8]: https://github.com/Xilleet/senpy/compare/v0.4.7...HEAD
+[0.5.1]: https://github.com/Xilleet/senpy/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/Xilleet/senpy/compare/v0.4.8...v0.5.0
+[0.4.8]: https://github.com/Xilleet/senpy/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/Xilleet/senpy/releases/tag/v0.4.7

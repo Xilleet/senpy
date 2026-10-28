@@ -73,6 +73,39 @@ _active_analyzer: SenpyAnalyzer | None = None
 _current_workspace_root: str | None = None
 _is_initialized: bool = False
 
+# UX-EXT-5: snapshot labels/screens/transforms/images для autocomplete/rename/hover.
+# После run() делаем shallow copy этих dict'ов, чтобы analyze_file_only (вызывается
+# при did_change) не выкидывал labels из других файлов из _active_analyzer.labels.
+# Без snapshot'а autocomplete показывает только labels текущего файла —
+# баг "jump в day1a.rpy не предлагает labels из day10a.rpy".
+_symbol_snapshot: dict[str, dict] = {
+    "labels": {},
+    "screens": {},
+    "transforms": {},
+    "variables": {},
+    "images": set(),
+    "jump_sources": {},
+}
+
+
+def _refresh_symbol_snapshot() -> None:
+    """Обновляет snapshot labels/screens/transforms/... из _active_analyzer.
+
+    Вызывается после каждого run() (full project scan). Snapshot используется
+    autocomplete/rename/prepare_rename/hover, чтобы они видели ВСЕ символы
+    проекта, даже если analyze_file_only очистил _active_analyzer.labels.
+    """
+    if _active_analyzer is None:
+        return
+    _symbol_snapshot["labels"] = dict(_active_analyzer.labels)
+    _symbol_snapshot["screens"] = dict(_active_analyzer.screens)
+    _symbol_snapshot["transforms"] = dict(_active_analyzer.transforms)
+    _symbol_snapshot["variables"] = dict(_active_analyzer.variables)
+    _symbol_snapshot["images"] = set(_active_analyzer.images)
+    _symbol_snapshot["jump_sources"] = {
+        k: list(v) for k, v in _active_analyzer.jump_sources.items()
+    }
+
 SEVERITY_MAP = {
     "ERROR": lsp.DiagnosticSeverity.Error,
     "WARNING": lsp.DiagnosticSeverity.Warning,
@@ -144,6 +177,9 @@ def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
 
         result = _active_analyzer.run(quiet=True)
         _is_initialized = True
+        # UX-EXT-5: snapshot символов для autocomplete/rename/hover.
+        # Должен быть ПОСЛЕ run(), но ДО проверки diagnostics.
+        _refresh_symbol_snapshot()
 
         files_diags: dict[str, list[lsp.Diagnostic]] = {}
         new_diagnostics_by_path: dict[str, list[tuple[Diagnostic, lsp.Diagnostic]]] = {}
@@ -348,18 +384,42 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
     """Контекстный автокомплит для меток, спрайтов и экранов."""
     items: list[lsp.CompletionItem] = []
     if _active_analyzer is None or not _is_initialized:
+        ls.show_message_log(
+            f"[completions] NOT INITIALIZED: analyzer={_active_analyzer is not None}, "
+            f"init={_is_initialized}"
+        )
         return lsp.CompletionList(is_incomplete=False, items=items)
 
     doc = ls.workspace.get_text_document(params.text_document.uri)
     if not doc:
+        ls.show_message_log("[completions] no doc")
+        return lsp.CompletionList(is_incomplete=False, items=items)
+
+    if params.position.line >= len(doc.lines):
+        ls.show_message_log(
+            f"[completions] line {params.position.line} out of range "
+            f"(doc has {len(doc.lines)} lines)"
+        )
         return lsp.CompletionList(is_incomplete=False, items=items)
 
     line = doc.lines[params.position.line]
     prefix = line[: params.position.character].lstrip()
 
+    # UX-EXT-5 DEBUG: log what we receive + snapshot state
+    ls.show_message_log(
+        f"[completions] prefix={prefix!r}, "
+        f"snapshot_labels={len(_symbol_snapshot['labels'])}, "
+        f"live_labels={len(_active_analyzer.labels)}, "
+        f"snapshot_images={len(_symbol_snapshot['images'])}, "
+        f"snapshot_screens={len(_symbol_snapshot['screens'])}, "
+        f"snapshot_transforms={len(_symbol_snapshot['transforms'])}"
+    )
+
     # 1. Автокомплит меток для jump / call
     if prefix.startswith(("jump ", "call ")):
-        for label_name, lbl in sorted(_active_analyzer.labels.items()):
+        # UX-EXT-5: используем snapshot, не _active_analyzer.labels,
+        # потому что analyze_file_only очищает labels из других файлов.
+        for label_name, lbl in sorted(_symbol_snapshot["labels"].items()):
             if label_name.startswith("_"):
                 continue
             items.append(
@@ -372,7 +432,7 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
 
     # 2. Автокомплит экранов для show screen / call screen / use
     elif prefix.startswith(("show screen ", "call screen ", "use ")):
-        for screen_name, scr in sorted(_active_analyzer.screens.items()):
+        for screen_name, scr in sorted(_symbol_snapshot["screens"].items()):
             items.append(
                 lsp.CompletionItem(
                     label=screen_name,
@@ -405,7 +465,7 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
                         detail="Position (Built-in)",
                     )
                 )
-            for trans_name, trans_sym in sorted(_active_analyzer.transforms.items()):
+            for trans_name, trans_sym in sorted(_symbol_snapshot["transforms"].items()):
                 items.append(
                     lsp.CompletionItem(
                         label=trans_name,
@@ -416,7 +476,7 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
         else:
             tokens = prefix.split()
             if len(tokens) == 1 or (len(tokens) == 2 and not prefix.endswith(" ")):
-                all_tags = {img.split()[0] for img in _active_analyzer.images}
+                all_tags = {img.split()[0] for img in _symbol_snapshot["images"]}
                 for tag in sorted(all_tags):
                     items.append(
                         lsp.CompletionItem(
@@ -427,7 +487,9 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
                     )
             elif len(tokens) >= 2:
                 base_tag = tokens[1]
-                all_valid = _active_analyzer.valid_images.union(_active_analyzer.images.keys())
+                # UX-EXT-5: используем snapshot для images, но valid_images
+                # берём из _active_analyzer (он не чистится analyze_file_only).
+                all_valid = _active_analyzer.valid_images.union(_symbol_snapshot["images"])
                 attrs = _active_analyzer._get_tag_known_attributes(base_tag, all_valid)
                 for attr in sorted(attrs):
                     items.append(
@@ -437,6 +499,12 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
                             detail=f"Attribute for '{base_tag}'",
                         )
                     )
+
+    # UX-EXT-5 DEBUG: log result
+    ls.show_message_log(
+        f"[completions] RETURN {len(items)} items "
+        f"(prefix={prefix!r}, snapshot_labels={len(_symbol_snapshot['labels'])})"
+    )
 
     return lsp.CompletionList(is_incomplete=False, items=items)
 
@@ -696,24 +764,30 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
             contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=api_content)
         )
 
-    target_var = word if word in _active_analyzer.variables else word.split(".")[-1]
-    if target_var in _active_analyzer.variables:
-        var = _active_analyzer.variables[target_var]
+    target_var = word if word in _symbol_snapshot["variables"] else word.split(".")[-1]
+    if target_var in _symbol_snapshot["variables"]:
+        var = _symbol_snapshot["variables"][target_var]
         fname = os.path.basename(var.file_path)
         kind = "Constant (`define`)" if var.is_constant else "Variable (`default`)"
-
+        # UX-EXT-6: кликабельная Markdown-ссылка на file:// URI с #L<line> anchor.
+        # VS Code откроет файл на нужной строке при клике в hover-карточке.
+        decl_uri = _path_to_uri(var.file_path)
         content = (
             f"**Ren'Py {kind}** — `{target_var}`\n\n"
-            f"*Declared at `{fname}:{var.line_number}`*\n"
+            f"*Declared at [`{fname}:{var.line_number}`]({decl_uri}#L{var.line_number})*\n"
             f"```renpy\n{var.code_line}\n```"
         )
         return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
 
-    if word in _active_analyzer.labels:
-        lbl = _active_analyzer.labels[word]
+    if word in _symbol_snapshot["labels"]:
+        lbl = _symbol_snapshot["labels"][word]
         fname = os.path.basename(lbl.file_path)
-
-        info_lines = [f"**Ren'Py Label** — `{word}`\n\n*Declared at `{fname}:{lbl.line_number}`*"]
+        # UX-EXT-6: кликабельная ссылка на объявление
+        decl_uri = _path_to_uri(lbl.file_path)
+        info_lines = [
+            f"**Ren'Py Label** — `{word}`\n\n"
+            f"*Declared at [`{fname}:{lbl.line_number}`]({decl_uri}#L{lbl.line_number})*"
+        ]
         info_lines.append(f"```renpy\n{lbl.code_line}\n```")
 
         status = []
@@ -730,10 +804,15 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
             contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value="\n".join(info_lines))
         )
 
-    if word in _active_analyzer.screens:
-        scr = _active_analyzer.screens[word]
+    if word in _symbol_snapshot["screens"]:
+        scr = _symbol_snapshot["screens"][word]
         fname = os.path.basename(scr.file_path)
-        content = f"**Ren'Py Screen** — `{word}`\n\n*Declared at `{fname}:{scr.line_number}`*"
+        # UX-EXT-6: кликабельная ссылка на объявление
+        decl_uri = _path_to_uri(scr.file_path)
+        content = (
+            f"**Ren'Py Screen** — `{word}`\n\n"
+            f"*Declared at [`{fname}:{scr.line_number}`]({decl_uri}#L{scr.line_number})*"
+        )
         return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
 
     return None
@@ -940,6 +1019,64 @@ def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[ls
 
 
 # =============================================================================
+# UX-EXT-3: textDocument/prepareRename — preview перед F2 rename
+# =============================================================================
+# VS Code вызывает prepareRename перед самим rename, чтобы:
+# 1. Проверить, что под курсором валидный символ для переименования
+# 2. Показать пользователю Range слова, которое будет переименовано
+# 3. Разрешить отмену до применения изменений (preview mode)
+#
+# Если вернуть None — VS Code покажет "The element can't be renamed" и
+# не даст нажать F2.
+#
+# Алгоритм: находим слово под курсором. Если это label (есть в
+# _active_analyzer.labels) — возвращаем его Range. Иначе None.
+@server.feature(lsp.TEXT_DOCUMENT_PREPARE_RENAME)
+@_with_analysis_lock
+def prepare_rename(
+    ls: LanguageServer, params: lsp.PrepareRenameParams
+) -> lsp.Range | lsp.PrepareRenameResult | None:
+    """Возвращает Range слова под курсором для preview перед rename."""
+    if _active_analyzer is None or not _is_initialized:
+        return None
+
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    if not doc or not doc.lines:
+        return None
+
+    line_idx = params.position.line
+    if line_idx >= len(doc.lines):
+        return None
+
+    line = doc.lines[line_idx]
+    col = params.position.character
+
+    # Ищем слово под курсором (то же правило, что в rename)
+    for m in re.finditer(r"[a-zA-Z_][a-zA-Z0-9_\.]*", line):
+        if m.start() <= col <= m.end():
+            word = m.group(0)
+            # Поддерживаем rename только для label'ов.
+            # Для переменных/transform/screen — пока нет (can't be renamed).
+            # UX-EXT-5: используем snapshot, не _active_analyzer.labels,
+            # чтобы F2 работал даже после did_change (analyze_file_only).
+            if word in _symbol_snapshot["labels"]:
+                # Возвращаем Range слова. pygls/lsprotocol принимает Range
+                # или PrepareRenameResult(placeholder=...). Range достаточно.
+                # UTF-16 позиции для совместимости с VS Code.
+                start_utf16 = len(line[: m.start()].encode("utf-16-le")) // 2
+                end_utf16 = start_utf16 + len(word.encode("utf-16-le")) // 2
+                return lsp.Range(
+                    start=lsp.Position(line=line_idx, character=start_utf16),
+                    end=lsp.Position(line=line_idx, character=end_utf16),
+                )
+            # Слово есть, но не label — можно вернуть None ("can't rename here")
+            return None
+
+    # Нет слова под курсором
+    return None
+
+
+# =============================================================================
 # UX-2: textDocument/rename — переименование меток
 # =============================================================================
 # Переименовывает label во всех местах:
@@ -949,7 +1086,13 @@ def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[ls
 #
 # Использует jump_sources обратный индекс из analyzer.
 # Возвращает WorkspaceEdit с изменениями для всех файлов проекта.
-@server.feature(lsp.TEXT_DOCUMENT_RENAME)
+#
+# UX-EXT-3: prepare_provider=True — VS Code вызывает prepareRename перед F2,
+# чтобы показать preview и разрешить отмену до применения.
+@server.feature(
+    lsp.TEXT_DOCUMENT_RENAME,
+    lsp.RenameOptions(prepare_provider=True),
+)
 @_with_analysis_lock
 def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | None:
     """Переименование метки: обновляет объявление + все jump/call ссылки."""
@@ -978,14 +1121,16 @@ def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | 
         return None
 
     # Пока поддерживаем rename только для label'ов
-    if word not in _active_analyzer.labels:
+    # UX-EXT-5: используем snapshot, не _active_analyzer.labels —
+    # analyze_file_only чистит labels из других файлов.
+    if word not in _symbol_snapshot["labels"]:
         return None
 
     new_name = params.new_name
     changes: dict[str, list[lsp.TextEdit]] = {}
 
     # 1. Объявление (label X:)
-    lbl = _active_analyzer.labels[word]
+    lbl = _symbol_snapshot["labels"][word]
     lbl_uri = _path_to_uri(lbl.file_path)
     lbl_line = max(0, lbl.line_number - 1)  # 0-based
 
@@ -1013,7 +1158,8 @@ def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | 
         pass
 
     # 2. Все jump/call ссылки (из jump_sources)
-    for ref_path, ref_line in _active_analyzer.jump_sources.get(word, []):
+    # UX-EXT-5: тоже из snapshot, чтобы получить ссылки из всех файлов.
+    for ref_path, ref_line in _symbol_snapshot["jump_sources"].get(word, []):
         ref_uri = _path_to_uri(ref_path)
         ref_line_0 = max(0, ref_line - 1)  # 0-based
 
@@ -1076,7 +1222,9 @@ def workspace_symbol(
         return query in name.lower()
 
     # 1. Labels (SymbolKind.Function = 12)
-    for name, lbl in _active_analyzer.labels.items():
+    # UX-EXT-5: используем snapshot, не _active_analyzer.labels —
+    # analyze_file_only чистит labels из других файлов.
+    for name, lbl in _symbol_snapshot["labels"].items():
         if not _matches(name):
             continue
         lbl_line = max(0, lbl.line_number - 1)
@@ -1095,7 +1243,7 @@ def workspace_symbol(
         )
 
     # 2. Screens (SymbolKind.Object = 26)
-    for name, scr in _active_analyzer.screens.items():
+    for name, scr in _symbol_snapshot["screens"].items():
         if not _matches(name):
             continue
         scr_line = max(0, scr.line_number - 1)
@@ -1114,7 +1262,7 @@ def workspace_symbol(
         )
 
     # 3. Transforms (SymbolKind.Function = 12)
-    for name, trn in _active_analyzer.transforms.items():
+    for name, trn in _symbol_snapshot["transforms"].items():
         if not _matches(name):
             continue
         trn_line = max(0, trn.line_number - 1)
@@ -1206,7 +1354,7 @@ def document_highlight(
 
     # Ищем все вхождения слова в текущем файле
     highlights: list[lsp.DocumentHighlight] = []
-    _uri_to_path(params.text_document.uri)
+    file_path = _uri_to_path(params.text_document.uri)
 
     for i, file_line in enumerate(doc.lines):
         # Простое find для каждого вхождения слова в строке

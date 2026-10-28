@@ -109,4 +109,9 @@ RULE_SEVERITY: dict[str, str] = {
     "RPY601": "ERROR",  # Рассинхрон переменных [var] в переводе -> KeyError
     "RPY602": "WARNING",  # Рассинхрон тегов {тег} в переводе
     "RPY603": "WARNING",  # Пустая строка перевода new ""
+
+    # 7xx: Мёртвый код (Dead Code Detection)
+    "RPY701": "HINT",  # Неиспользуемая define-константа (мёртвый код)
+    "RPY702": "HINT",  # Неиспользуемый transform (мёртвый код)
+    "RPY703": "HINT",  # Неиспользуемый screen (мёртвый код)
 }

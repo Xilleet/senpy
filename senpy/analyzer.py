@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import warnings
+from collections import defaultdict
 
 from senpy.assets import AssetManager, find_orphaned_rpyc
 from senpy.cache import CachedFileEntry, CacheManager, CacheManifest, compute_file_hash
@@ -33,6 +34,7 @@ from senpy.checkers import (
 # Импортируем вынесенные модели и константы
 from senpy.constants import (
     BUILTIN_AUDIO_CHANNELS,
+    BUILTIN_SCREENS,
     BUILTIN_SYMBOLS,
     IGNORED_DIRS,
     NON_DIALOGUE_STATEMENTS,
@@ -57,6 +59,11 @@ from senpy.constants import (
 )
 from senpy.models import RULE_SEVERITY, AnalysisResult, Diagnostic, FileScope
 from senpy.scope import ScopeStack, ScopeType
+
+# Pre-compiled regex for word tokenization. Used by _check_unused_declarations
+# to build a word→locations index in a single pass over all files (O(N+M)
+# instead of O(N*M) for naive per-symbol re.search loop).
+_WORD_RE = re.compile(r"\w+")
 
 
 def _strip_comment(line: str) -> str:
@@ -324,6 +331,103 @@ class SenpyAnalyzer:
     def _check_unused_assets(self) -> None:
         self.diagnostics.extend(self.assets.check_unused())
 
+    def _check_unused_declarations(self) -> None:
+        """RPY701-703: Поиск неиспользуемых define/transform/screen (мёртвый код).
+
+        Отключается, если в проекте есть динамические jump'ы.
+        Использует предварительно построенный индекс word → {(file, line_idx)}
+        за один проход по всем файлам — O(total_words + symbols) вместо
+        O(symbols × total_lines) у наивной реализации с re.search в цикле.
+
+        PERF-2: регрессия — изначальная реализация на DDLC (50 файлов,
+        77k строк, ~200 символов) зависала на минуты.
+        """
+        if self.has_dynamic_jumps:
+            return
+
+        # Шаг 1: За один проход по всем файлам строим индекс
+        # word → set of (norm_path, line_idx_0based).
+        # Это позволяет проверять любое количество символов за O(1) lookup каждый.
+        word_locations: dict[str, set[tuple[str, int]]] = defaultdict(set)
+        for norm_path in self.file_scopes:
+            lines = self._stage1_lines.get(norm_path)
+            if lines is None:
+                try:
+                    with open(norm_path, encoding="utf-8", errors="replace") as f:
+                        lines = f.readlines()
+                except OSError:
+                    continue
+                # Кэшируем, чтобы повторные прогоны не перечитывали файл.
+                self._stage1_lines[norm_path] = lines
+            for i, line in enumerate(lines):
+                # \w+ = [A-Za-z0-9_]+ — это и есть "слова" в Ren'Py идентификаторах.
+                # One findall per line is much faster than N regex searches per line.
+                for word in _WORD_RE.findall(line):
+                    word_locations[word].add((norm_path, i))
+
+        def _is_used(name: str, decl_file: str, decl_line: int) -> bool:
+            """O(1) lookup: имя использовано, если оно есть где-то вне строки объявления."""
+            decl_norm = os.path.normcase(os.path.abspath(decl_file))
+            decl_loc = (decl_norm, decl_line - 1)
+            locations = word_locations.get(name)
+            if not locations:
+                return False
+            # Если имя встречается более чем в одном месте — точно используется.
+            # Если только в одном — проверяем, что это не строка объявления.
+            if len(locations) > 1:
+                return True
+            return decl_loc not in locations
+
+        # RPY701: Неиспользуемые define-константы
+        for name, var_sym in self.variables.items():
+            if not var_sym.is_constant:
+                continue
+            if var_sym.is_character:
+                continue
+            if not _is_used(name, var_sym.file_path, var_sym.line_number):
+                self.diagnostics.append(
+                    Diagnostic(
+                        file_path=var_sym.file_path,
+                        line_number=var_sym.line_number,
+                        line_content=var_sym.code_line,
+                        code="RPY701",
+                        message=f"Constant '{name}' is declared with 'define' but never used. Consider removing this dead code.",
+                        severity="HINT",
+                    )
+                )
+
+        # RPY702: Неиспользуемые transform
+        for name, trn_sym in self.transforms.items():
+            if name in BUILTIN_SYMBOLS:
+                continue
+            if not _is_used(name, trn_sym.file_path, trn_sym.line_number):
+                self.diagnostics.append(
+                    Diagnostic(
+                        file_path=trn_sym.file_path,
+                        line_number=trn_sym.line_number,
+                        line_content=trn_sym.code_line,
+                        code="RPY702",
+                        message=f"Transform '{name}' is defined but never used in 'show/scene at'. Consider removing this dead code.",
+                        severity="HINT",
+                    )
+                )
+
+        # RPY703: Неиспользуемые screen
+        for name, scr_sym in self.screens.items():
+            if name in BUILTIN_SCREENS:
+                continue
+            if not _is_used(name, scr_sym.file_path, scr_sym.line_number):
+                self.diagnostics.append(
+                    Diagnostic(
+                        file_path=scr_sym.file_path,
+                        line_number=scr_sym.line_number,
+                        line_content=f"screen {name}():",
+                        code="RPY703",
+                        message=f"Screen '{name}' is defined but never called or shown. Consider removing this dead code.",
+                        severity="HINT",
+                    )
+                )
+
     def run(self, quiet: bool = False) -> AnalysisResult:
         self.file_scopes.clear()
         self.missing_defaults.clear()
@@ -476,6 +580,7 @@ class SenpyAnalyzer:
 
         self._check_unreachable_labels()
         self._check_unused_assets()
+        self._check_unused_declarations()
 
         # [3/3] Валидация файлов перевода (TL-Checker)
         for tl_file in tl_rpy:

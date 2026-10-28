@@ -17,7 +17,19 @@ export function activate(context: vscode.ExtensionContext) {
     };
 
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [{ scheme: "file", language: "renpy" }]
+        documentSelector: [{ scheme: "file", language: "renpy" }],
+        // UX-EXT-4: synchronize - watch .senpy.toml so the LSP server
+        // picks up config changes without VS Code window reload.
+        synchronize: {
+            // configurationSection removed (UX-EXT-7): was causing
+            // "Ignoring notification for unknown method workspace/didChangeConfiguration"
+            // in server logs. pygls does not auto-register this handler.
+            // fileEvents below is sufficient - it triggers
+            // workspace/didChangeWatchedFiles which the server handles.
+            // fileEvents: on .senpy.toml change, fire workspace/didChangeWatchedFiles
+            // so the server recomputes severity_overrides without restart.
+            fileEvents: vscode.workspace.createFileSystemWatcher("**/.senpy.toml")
+        }
     };
 
     client = new LanguageClient(

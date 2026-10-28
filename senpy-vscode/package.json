@@ -7,7 +7,7 @@
   "name": "senpy-vscode",
   "displayName": "senpy-vscode",
   "description": "Notice me, Senpy! Fast semantic Ren'Py linter with LSP support",
-  "version": "0.5.1",
+  "version": "0.4.7",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -65,7 +65,8 @@
         "extensions": [
           ".rpy",
           ".rpym"
-        ]
+        ],
+        "configuration": "./language-configuration.json"
       }
     ],
     "configuration": {

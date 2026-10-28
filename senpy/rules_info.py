@@ -309,6 +309,28 @@ RULES_DATABASE = {
         "bad": 'old "Do you want to exit?"\nnew ""  # Player sees empty dialogue box!',
         "good": 'old "Do you want to exit?"\nnew "Вы хотите выйти?"',
     },
+    # 7xx: Dead Code Detection
+    "RPY701": {
+        "title": "Unused define constant",
+        "severity": "HINT",
+        "why": "A 'define' constant that is never referenced anywhere in the project is dead code. It increases cognitive load and should be removed.",
+        "bad": "define unused_const = 100\nlabel start:\n    return",
+        "good": "define used_const = 100\nlabel start:\n    $ x = used_const\n    return",
+    },
+    "RPY702": {
+        "title": "Unused transform",
+        "severity": "HINT",
+        "why": "A 'transform' that is never used in 'show/scene at' is dead code. It may indicate a forgotten animation or leftover from refactoring.",
+        "bad": "transform unused_slide:\n    easein 0.5 xoffset 0\nlabel start:\n    return",
+        "good": "transform slide_in:\n    easein 0.5 xoffset 0\nlabel start:\n    show bg at slide_in\n    return",
+    },
+    "RPY703": {
+        "title": "Unused screen",
+        "severity": "HINT",
+        "why": "A 'screen' that is never called via 'call screen', 'use', or 'Show' action is dead code. It may indicate a forgotten UI element or leftover from refactoring.",
+        "bad": 'screen unused_screen():\n    textbutton "Do nothing" action NullAction()\nlabel start:\n    return',
+        "good": 'screen my_screen():\n    textbutton "Start" action Start()\nlabel start:\n    call screen my_screen\n    return',
+    },
 }
 
 

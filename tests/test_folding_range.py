@@ -9,10 +9,10 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from lsprotocol import types as lsp
+from test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
 import senpy.server as server_mod
 from senpy.analyzer import SenpyAnalyzer
-from test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
 
 def test_folding_range_label_blocks(tmp_path: Path):

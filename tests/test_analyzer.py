@@ -194,6 +194,11 @@ def test_mega_broken_script_catches_all_rules(tmp_path: Path):
         "RPY601",
         "RPY602",
         "RPY603",
+        # RPY701-702 — нужны unused define/transform, но MEGA_TEST_SCRIPT
+        # использует все свои define/transform. RPY703 ловится (unused screen).
+        # Покрываются отдельными тестами в test_rules_rpy7xx.py.
+        "RPY701",
+        "RPY702",
     }
 
     # Все правила, которые MEGA_TEST_SCRIPT ДОЛЖЕН покрывать

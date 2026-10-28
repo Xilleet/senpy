@@ -12,10 +12,10 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from lsprotocol import types as lsp
-from test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
 import senpy.server as server_mod
 from senpy.analyzer import SenpyAnalyzer
+from tests.test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
 
 def _make_rename_params(uri: str, line: int, char: int, new_name: str) -> lsp.RenameParams:
@@ -156,6 +156,9 @@ def test_rename_label_preserves_jump_syntax(tmp_path: Path):
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
     server_mod._active_analyzer = analyzer
+    server_mod._is_initialized = True
+    # UX-EXT-5: snapshot для autocomplete/rename (handler'ы теперь используют snapshot)
+    server_mod._refresh_symbol_snapshot()
 
     # 0-based lines:
     # 0: label start:

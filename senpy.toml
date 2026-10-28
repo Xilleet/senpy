@@ -57,7 +57,7 @@ ignore = [
 
 
 # =============================================================================
-# [EN] SENPY RULE CHEAT SHEET (All 41 Rules)
+# [EN] SENPY RULE CHEAT SHEET (All Senpy Rules)
 # =============================================================================
 #  RPY001 [ERROR]   - Tab character in indentation (Ren'Py requires 4 spaces).
 #  RPY002 [ERROR]   - Smart/curly quotes in code statements.

@@ -21,9 +21,12 @@ from io import StringIO
 # КРИТИЧЕСКИ ВАЖНО: renpycompat должен быть импортирован ПЕРВЫМ.
 # Он создаёт фейковый `renpy` модуль через magic.fake_package("renpy"),
 # который нужен для импорта остальных модулей декомпилятора.
-from senpy.vendor.unrpyc.decompiler import renpycompat  # noqa: F401
+from senpy.vendor.unrpyc.decompiler import (
+    Options,
+    pprint,
+    renpycompat,  # noqa: F401
+)
 from senpy.vendor.unrpyc.decompiler.renpycompat import CLASS_FACTORY, pickle_safe_loads
-from senpy.vendor.unrpyc.decompiler import pprint, Options
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +43,7 @@ def _decompile_ast(ast: object) -> str:
     return out.getvalue()
 
 
-class BadRpycException(Exception):
+class BadRpycException(Exception):  # noqa: N818
     """.rpyc файл имеет неизвестный или повреждённый формат."""
 
 

@@ -141,6 +141,15 @@ TSUNDERE_FLAVORS = {
     "RPY603": "(￣︿￣) «Ты оставил строку перевода пустой! У игроков там будет пустота вместо текста!»"
     if IS_RU
     else "(￣︿￣) «You left the translation string empty! Players will see blank air instead of text!»",
+    "RPY701": "(︶︿︶) «Эта константа нигде не используется! Зачем ты её объявил?»"
+    if IS_RU
+    else "(︶︿︶) «This constant is never used! Why did you declare it, baka?»",
+    "RPY702": "(︶︿︶) «Этот трансформ нигде не используется! Мёртвый код — это грязно!»"
+    if IS_RU
+    else "(︶︿︶) «This transform is never used! Dead code is dirty, baka!»",
+    "RPY703": "(︶︿︶) «Этот экран нигде не вызывается! Зачем ты его написал?»"
+    if IS_RU
+    else "(︶︿︶) «This screen is never called! Why did you write it, baka?»",
     "RPY100": "(╯°□°)╯︵ ┻━┻ «Этот файл вообще не в UTF-8! Он молча выпал из проверки — ищи кракозябры в игре, бака!»"
     if IS_RU
     else "(╯°□°)╯︵ ┻━┻ «This file isn't even UTF-8! It silently dropped out of the check — enjoy the mojibake in-game, baka!»",

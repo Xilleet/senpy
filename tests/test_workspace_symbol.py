@@ -13,10 +13,10 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from lsprotocol import types as lsp
-from test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
 import senpy.server as server_mod
 from senpy.analyzer import SenpyAnalyzer
+from tests.test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
 
 def _make_symbol_params(query: str = "") -> lsp.WorkspaceSymbolParams:
@@ -59,6 +59,9 @@ def test_workspace_symbol_returns_screens(tmp_path: Path):
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
     server_mod._active_analyzer = analyzer
+    server_mod._is_initialized = True
+    # UX-EXT-5: snapshot для workspace_symbol
+    server_mod._refresh_symbol_snapshot()
 
     params = _make_symbol_params(query="")
     result = server_mod.workspace_symbol(MagicMock(), params)
@@ -83,6 +86,9 @@ def test_workspace_symbol_returns_transforms(tmp_path: Path):
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
     server_mod._active_analyzer = analyzer
+    server_mod._is_initialized = True
+    # UX-EXT-5: snapshot для workspace_symbol
+    server_mod._refresh_symbol_snapshot()
 
     params = _make_symbol_params(query="")
     result = server_mod.workspace_symbol(MagicMock(), params)
@@ -133,6 +139,9 @@ def test_workspace_symbol_symbol_kinds(tmp_path: Path):
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
     server_mod._active_analyzer = analyzer
+    server_mod._is_initialized = True
+    # UX-EXT-5: snapshot для workspace_symbol
+    server_mod._refresh_symbol_snapshot()
 
     params = _make_symbol_params(query="")
     result = server_mod.workspace_symbol(MagicMock(), params)

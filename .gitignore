@@ -1,110 +1,14 @@
-# 1. Байткод и кэш Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-dist/
-build/
-
-# 2. Виртуальное окружение
-venv/
-.venv/
-env/
-
-# 3. Node.js (для senpy-vscode)
-node_modules/
-senpy-vscode/node_modules/
-senpy-vscode/out/
-senpy-vscode/dist/
-*.log
-
-# 4. Байткод Ren'Py и тестовые сейвы
-*.rpyc
-*.rpyb
-*.rpymc
-saves/
-*.vscode-test/
-
-# 5. Тестовый мусор
-report.json
-test_game/
-
-# 6. Мусор ОС
-Thumbs.db
-desktop.ini
-.DS_Store
-
-node_modules/
-out/
-*.vsix
-senpy/update_reqs.bat
-
-# Пакеты и сборка VS Code
-*.vsix
-senpy-vscode/out/
-senpy-vscode/dist/
-senpy-vscode/node_modules/
-
-# Логи и временные файлы
-*.log
-senpy_debug.log
-report.json
-
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-venv/
-.venv/
-
-# VS Code Extension
-senpy-vscode/node_modules/
-senpy-vscode/out/
-*.vsix
-
-# Ren'Py test saves
-*.rpyc
-saves/
-.pytest_cache/
-senpy-vscode/reinstall.bat
-publish_pypi.bat
-bump_version.py
-test_report.json
-test_report.txt
-порядок.txt
-check.bat
-ruff_report.txt
-senpy/analyzer.py
-install_dev.bat
-Новая папка/
-Новая папка (2).zip
-Новая папка (3).zip
-Новая папка.zip
-Семантический_линтер_Senpy_для_RenPy (1).md
-rub_check.bat
-run_check.bat
-Семантический_линтер_Senpy_для_RenPy (1) 1.md
-roadmap.txt
-senpy.sarif
-пост для реддита.txt
-report.txt
-senpy-vscode/src/test/extension.test.ts
-senpy.spec
-senpy-vscode/bin/senpy.exe
-аудит 0.4.5.md
-senpy-vscode/Reload
-test_formatter_demo.py
-
 # =============================================================================
 # Senpy .gitignore
 # =============================================================================
 # ECO-2: ранее отсутствовал — коммитились senpy.sarif (92KB), test_report.*,
 # __pycache__/*.pyc, .pytest_cache/. Теперь всё это исключается.
 #
-# Принцип: gitignore должен быть КОММЕНТИРОВАННЫМ и предсказуемым. Никаких
-# «игнорировать всё, кроме whitelist» — это слишком агрессивно для Python-проекта.
+# Принцип: gitignore должен быть КОММЕНТИРОВАННЫМ и предсказуемым.
+# Никаких «игнорировать всё, кроме whitelist» — это слишком агрессивно для
+# Python-проекта. Никаких личных путей мейнтейнера (Новая папка/, пост для
+# реддита.txt, и т.д.) — для локальных исключений используйте
+# ~/.gitignore_global или .git/info/exclude (не коммитится).
 # =============================================================================
 
 # --- Python bytecode и кэш ---
@@ -122,7 +26,7 @@ coverage.xml
 *.cover
 .tox/
 
-# --- mypy / ruff (когда добавим ECO-10) ---
+# --- mypy / ruff ---
 .mypy_cache/
 .ruff_cache/
 
@@ -147,7 +51,8 @@ develop-eggs/
 sdist/
 wheels/
 *.manifest
-*.spec
+# NOTE: *.spec НЕ игнорируем — senpy.spec это исходник PyInstaller, нужен для сборки.
+# Если у вас есть локальные .spec-файлы, добавляйте их в .git/info/exclude.
 
 # --- Виртуальные окружения ---
 .venv/
@@ -184,13 +89,7 @@ senpy-vscode/bin/
 build_exe/
 senpy_studio.egg-info/
 
-# --- unrpyc cache (скачивается cli.py при первом запуске --decompile) ---
-# Не игнорируем ~/.senpy (это вне репо), но игнорируем локальные копии unrpyc,
-# если кто-то положил их в проект.
-
-
-
-# --- Локальные тестовые Ren'Py-проекты (не коммитим) ---
+# --- Локальные тестовые Ren'Py-проекты (кэш senpy внутри них) ---
 test_game/.senpy_cache/
 
 # --- Логи ---
@@ -198,5 +97,4 @@ test_game/.senpy_cache/
 logs/
 pip-log.txt
 pip-delete-this-directory.txt
-
-main
+.vscode-test/

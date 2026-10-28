@@ -41,6 +41,8 @@ label chapter_two:
 label unreachable_label:
     return
 """
+# 1-based нумерация: 5 = jump chapter_one, 7 = label chapter_one:,
+# 9 = call chapter_two, 14 = jump chapter_one, 16 = label unreachable_label:
 
 
 def setup_test_workspace(tmp_path: Path):
@@ -54,6 +56,8 @@ def setup_test_workspace(tmp_path: Path):
 
     server_mod._active_analyzer = analyzer
     server_mod._is_initialized = True
+    # UX-EXT-5: snapshot для references (handler'ы теперь используют snapshot)
+    server_mod._refresh_symbol_snapshot()
 
     return script_file, analyzer
 
@@ -82,6 +86,7 @@ def test_references_jumps_and_calls(tmp_path: Path):
     script_file, _ = setup_test_workspace(tmp_path)
     uri = server_mod._path_to_uri(str(script_file))
 
+    # Курсор внутри chapter_one на строке "    jump chapter_one" (0-базная строка 4)
     result = server_mod.references(
         _make_ls(uri), _make_params(uri, line=4, character=10, include_declaration=True)
     )
@@ -111,6 +116,7 @@ def test_references_unreferenced_label(tmp_path: Path):
     script_file, _ = setup_test_workspace(tmp_path)
     uri = server_mod._path_to_uri(str(script_file))
 
+    # Курсор на unreachable_label в "label unreachable_label:" (0-базная 15)
     with_decl = server_mod.references(
         _make_ls(uri), _make_params(uri, line=15, character=8, include_declaration=True)
     )
@@ -128,6 +134,7 @@ def test_references_variables_not_supported_yet(tmp_path: Path):
     script_file, _ = setup_test_workspace(tmp_path)
     uri = server_mod._path_to_uri(str(script_file))
 
+    # Курсор на player_gold в строке default (0-базная 0)
     result = server_mod.references(
         _make_ls(uri), _make_params(uri, line=0, character=9, include_declaration=True)
     )

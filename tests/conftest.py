@@ -1,33 +1,68 @@
+"""Pytest configuration и hooks для Senpy.
+
+Этот файл — замена старому conftest.py. Главное изменение (P0'-9):
+
+    БОЛЬШЕ НЕ ПОДМЕНЯЕМ item._nodeid через private pytest API.
+
+Раньше строка `item._nodeid = f"{item.path.as_posix()}::{title}"` ломала:
+    - `pytest -k "test_p0_1"` — поиск по подстроке nodeid не находил тест
+    - `pytest --lf` (last failed) — мог работать некорректно
+    - IDE интеграции (PyCharm, VS Code Test Explorer) — путались в nodeid
+
+Теперь используется `item.user_title` — это официальный pytest API
+для отображения пользовательского имени в отчётах. nodeid остаётся
+оригинальным (`tests/test_x.py::test_function_name`), а user_title
+добавляется как метаданные для отчётов.
+
+Если вам нужно красивое имя в консоли — используйте `pytest --tb=short`
+или кастомный reporter через `pytest_report_header` / `pytest_runtest_logreport`.
+"""
+from __future__ import annotations
+
 import json
 import time
 from pathlib import Path
 
 import pytest
 
-_TEST_RESULTS = []
-_SESSION_START = 0.0
+_TEST_RESULTS: list[dict] = []
+_SESSION_START: float = 0.0
 
 
-def pytest_sessionstart(session):
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Фиксируем время старта сессии."""
     global _SESSION_START
     _SESSION_START = time.perf_counter()
 
 
-def pytest_collection_modifyitems(session, config, items):
-    """Заменяет техническое имя def на понятный английский заголовок из докстринг."""
-    for item in items:
-        doc = (item.function.__doc__ or "").strip()
-        title = doc.splitlines()[0].strip() if doc else item.name
-        item.user_title = title
-        # Подменяем nodeid, чтобы именно он печатался в консоли
+def pytest_collection_modifyitems(
+    session: pytest.Session, config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """P0'-9: НЕ подменяем nodeid, а используем user_title (официальный pytest API).
+
+    Раньше тут было:
         item._nodeid = f"{item.path.as_posix()}::{title}"
+    Что ломало `-k`, `--lf`, IDE интеграции.
+
+    Теперь: сохраняем user_title как метаданные для отчётов
+    (test_report.json/txt, генерируемых в pytest_sessionfinish).
+    nodeid остаётся оригинальным.
+    """
+    for item in items:
+        doc = (item.function.__doc__ or "").strip()  # type: ignore[attr-defined]
+        title = doc.splitlines()[0].strip() if doc else item.name
+        # Сохраняем как атрибут — отчёты будут использовать user_title.
+        # nodeid НЕ трогаем — это private pytest API.
+        item.user_title = title  # type: ignore[attr-defined]
 
 
 @pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(item, call):
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo
+) -> object:
     """Собирает результаты каждого теста для отчётов."""
     outcome = yield
-    report = outcome.get_result()
+    report: pytest.TestReport = outcome.get_result()
 
     if report.when == "call" or (report.when == "setup" and report.failed):
         title = getattr(item, "user_title", item.name)
@@ -42,8 +77,12 @@ def pytest_runtest_makereport(item, call):
         )
 
 
-def pytest_sessionfinish(session, exitstatus):
-    """По завершении тестов сохраняет test_report.txt и test_report.json."""
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """По завершении тестов сохраняет test_report.txt и test_report.json.
+
+    Эти файлы добавлены в .gitignore — НЕ коммитятся (P0'-12 fix).
+    Генерируются только для локального просмотра.
+    """
     total_duration = time.perf_counter() - _SESSION_START
     total = len(_TEST_RESULTS)
     passed = sum(1 for r in _TEST_RESULTS if r["status"] == "PASSED")
@@ -109,7 +148,7 @@ def pytest_sessionfinish(session, exitstatus):
     Path("test_report.txt").write_text("\n".join(txt_lines), encoding="utf-8")
 
 
-def pytest_addoption(parser):
+def pytest_addoption(parser: pytest.Parser) -> None:
     """Добавляем флаг для автоматического обновления JSON-снимков."""
     parser.addoption(
         "--update-snapshots",
@@ -120,5 +159,6 @@ def pytest_addoption(parser):
 
 
 @pytest.fixture
-def update_snapshots(request):
+def update_snapshots(request: pytest.FixtureRequest) -> bool:
+    """Fixture: возвращает True если передан --update-snapshots."""
     return request.config.getoption("--update-snapshots")
