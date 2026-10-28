@@ -9,7 +9,7 @@ senpy-vscode/package.json) должны синхронизироваться с 
 """
 from __future__ import annotations
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 # Удобные алиасы для использования в разных местах кода
 # (например, в LSP-сервере часто нужен "v0.4.7" с префиксом).
@@ -18,6 +18,6 @@ VERSION_WITH_PREFIX = f"v{__version__}"
 # Semver-разбор для сложных проверок (например, cache invalidation по major.minor)
 MAJOR: int = 0
 MINOR: int = 5
-PATCH: int = 1
+PATCH: int = 2
 
 __all__ = ["__version__", "VERSION_WITH_PREFIX", "MAJOR", "MINOR", "PATCH"]
