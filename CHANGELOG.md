@@ -5,10 +5,78 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.2] — 2026-10-28
+## [0.5.3]
 
 ### Added
-- **`tests/test_packaging.py`** (459 строк, 46 регрессионных тестов):
+- **`senpy/config.py`** (new file) — вынесена `load_config()` из `_unrpyc_bootstrap.py`. Чистая функция чтения `senpy.toml`/`pyproject.toml`, без зависимостей от analyzer/cli. Разрывает цикл `analyzer ↔ cli` (Фаза 1.2).
+- **`senpy/sink.py`** (new file) — `DiagnosticSink` Protocol. Определяет минимальный контракт для объектов, принимающих diagnostics: `_add_diagnostic()`, `_get_utf16_range()`, `fixable_count`, `fixed_count`, `fix`. Позволяет чекерам/AST/flow зависеть от Protocol, а не от `SenpyAnalyzer` (Фазы 1.3-1.5).
+- **`senpy/text_utils.py`** (new file) — вынесена `_strip_comment()` из `analyzer.py`. Чистая функция удаления `#`-комментариев с учётом кавычек/hex-цветов, без зависимостей. Разрывает lazy-импорт циклы `checkers → analyzer` и `flow → analyzer` (Фаза 1.3).
+- **`senpy/cache_manifest.py`** (new file) — вынесены `CachedFileEntry` и `CacheManifest` dataclasses из `cache.py`. Не имеют зависимостей от analyzer. Разрывает импортный цикл `analyzer ↔ cache` (Фаза 1.6).
+- **`scripts/check_cycles.py`** (new file) — статический детектор циклических импортов через AST. Парсит все `.py` в `senpy/`, строит граф, ищет циклы через DFS. Игнорирует `if TYPE_CHECKING:` блоки (type hints, не runtime). Фаза 1.7 — safety net для архитектуры.
+- **`check_cycles.bat`** (new file, корень проекта) — Windows-обёртка для `check_cycles.py`. Двойной клик в Explorer → проверка → пауза → закрытие.
+- **`tests/test_imports.py`** (81 тест) — characterization tests для всех public импортов Senpy. Safety net: после реструктуризации 0.5.4 (перемещение файлов по папкам) все эти импорты должны продолжать работать через re-exports.
+
+### Changed
+- **`senpy/_unrpyc_bootstrap.py`**: `def load_config` заменён на `from senpy.config import load_config` (реэкспорт для backward compat). Старый импорт `from senpy._unrpyc_bootstrap import load_config` продолжает работать.
+- **`senpy/cli.py`**: `load_config` теперь импортируется из `senpy.config`, не из `_unrpyc_bootstrap`.
+- **`senpy/analyzer.py`**:
+  - `from senpy.cli import load_config` → `from senpy.config import load_config` (разрыв цикла analyzer ↔ cli)
+  - `def _strip_comment` заменён на `from senpy.text_utils import _strip_comment` (реэкспорт для backward compat)
+- **`senpy/checkers.py`**:
+  - `TYPE_CHECKING` импорт `SenpyAnalyzer` заменён на `from senpy.sink import DiagnosticSink`
+  - Все 3 `__init__` метода (`BaseChecker`, `DialogueChecker`, `StateChecker`) теперь принимают `DiagnosticSink` вместо `SenpyAnalyzer`
+  - Lazy импорт `_strip_comment` теперь из `senpy.text_utils`
+- **`senpy/python_ast.py`**:
+  - `TYPE_CHECKING` импорт `SenpyAnalyzer` заменён на `from senpy.sink import DiagnosticSink`
+  - `PythonAstChecker.__init__` теперь принимает `DiagnosticSink`
+  - Убран `TYPE_CHECKING` из typing импорта (больше не нужен)
+- **`senpy/flow.py`**:
+  - `TYPE_CHECKING` импорт `SenpyAnalyzer` заменён на `from senpy.sink import DiagnosticSink`
+  - `StoryFlowAnalyzer.__init__` теперь принимает `DiagnosticSink`
+  - Lazy импорт `_strip_comment` теперь из `senpy.text_utils`
+- **`senpy/cache.py`**:
+  - `CachedFileEntry` и `CacheManifest` импортируются из нового `senpy.cache_manifest` (реэкспорт для backward compat)
+  - `SafeCacheUnpickler.ALLOWED_MODULES` обновлён: добавлен `"senpy.cache_manifest"` (для новых кэшей) рядом с `"senpy.cache"` (для старых, сериализованных до рефакторинга)
+- **`.github/workflows/ci.yml`**: добавлен новый job `check-cycles` — запускается первым (~5 секунд), до matrix-тестов. Если найден цикл — CI падает быстро, не тратя минуты на тесты. `test` и `build-check` теперь зависят от `check-cycles` (`needs: [check-cycles]`).
+
+### Removed
+- **`senpy/python_ast.py`**: удалён dead code `AstChecker = PythonAstChecker` alias (P1'-11 из аудита v0.5.1) — нигде не импортировался, только путал.
+
+### Architecture
+- **Разорваны все 5 циклических зависимостей** из аудита v0.5.1 (через `analyzer.py`):
+  - ✅ `analyzer ↔ cli` (Фаза 1.2 — `load_config` → `senpy/config.py`)
+  - ✅ `analyzer ↔ checkers` (Фаза 1.3 — `DiagnosticSink` Protocol + `_strip_comment` → `text_utils.py`)
+  - ✅ `analyzer ↔ python_ast` (Фаза 1.4 — `DiagnosticSink` Protocol)
+  - ✅ `analyzer ↔ flow` (Фаза 1.5 — `DiagnosticSink` Protocol)
+  - ✅ `analyzer ↔ cache` (Фаза 1.6 — `cache_manifest.py` extraction)
+- `analyzer.py` больше не входит ни в один цикл. Граф импортов теперь **ациклический**.
+- **Note**: разрыв **импортных** циклов. Runtime coupling частично остаётся (чекеры дёргают `self.analyzer.screens`, `compute_global_hash` обращается к `analyzer.labels` и т.д.) — полная развязка запланирована на 0.5.5 (`SymbolProvider` Protocol, вместе с разбиением `_collect_symbols`).
+
+### Tests
+- **`tests/test_imports.py`** (81 тест) — characterization tests для всех public импортов:
+  - `TestCoreImports` (5) — SenpyAnalyzer, Diagnostic, RULE_SEVERITY, CacheManager, SENPY_VERSION
+  - `TestEntrypoints` (3) — cli.main, 10 handlers, 20 LSP handlers
+  - `TestCheckers` (4) — BaseChecker, 5 чекеров, PythonAstChecker, StoryFlowAnalyzer
+  - `TestDomain` (7) — RENPY_API_DOCS, text_tags, AssetManager, tsundere, DEPRECATED_APIS, BUILTIN_*
+  - `TestSymbolsAndScope` (3) — 5 Symbol классов, Scope/ScopeStack, SignatureInfo
+  - `TestIOFormats` (9) — sarif, html_report, wiki, stubs, ci, traceback, stats, coverage, RULES_DATABASE
+  - `TestFormatter` (3) — Formatter, FormatConfig, 4 правила, idempotency
+  - `TestVendoredUnrpyc` (2) — decompile_rpyc, exceptions
+  - `TestSenpyPackageInit` (2) — import senpy, __version__
+  - `TestModuleIntegrity` (35) — все 35 модулей импортируемы
+  - `TestNoCircularImports` (5) — analyzer ↔ {cli, checkers, python_ast, flow, cache} в любом порядке
+- **Всего теперь 425 тестов** (vs 344 в v0.5.2): +81 новых characterization test.
+- **Все 425 тестов проходят** локально и в CI (Python 3.11/3.12/3.13 × Ubuntu/Windows).
+
+### Lessons learned (из worklog)
+- **При реэкспорте `from X import Y` ставьте импорт на место бывшей функции** (в середине файла), не вверху со всеми импортами — иначе Python может попасть в циклическую инициализацию модулей.
+- **`if TYPE_CHECKING:` блоки не создают runtime циклов** — это только type hints. `check_cycles.py` корректно их игнорирует.
+- **Локальный pytest ≠ CI pytest** — на чистом CI могут всплыть import-баги, замаскированные локально rootdir detection. Всегда прогонять `pytest tests/` перед коммитом.
+
+## [0.5.2]
+
+### Added
+- **`tests/test_packaging.py`** (459 строк, 46 регрессионных тестов) — safety net для всех P0'-багов из аудита 0.5.1:
   - `TestLicenseFile` — проверка что LICENSE существует и совпадает с `pyproject.toml:14`
   - `TestGitignore` — проверка что .gitignore НЕ игнорирует исходники (20 параметризованных тестов) + не содержит личных файлов (7 тестов) + исключает артефакты
   - `TestChangelog` — проверка что CHANGELOG содержит секцию для текущей версии
@@ -54,7 +122,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - `UNRPYC_PINNED_SHA256` теперь реально проверяется (раньше был None placeholder). Defence-in-depth от MITM/compromised GitHub теперь работает.
 
-## [0.5.1] — 2026-10-28
+## [0.5.1]
 
 ### Added
 - **5 new LSP handlers** in `senpy/server.py`:
@@ -118,7 +186,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 12 новых тест-файлов, 88 новых тест-функций (+76 %). Всего теперь 33 файла, 204 тест-функции.
 - pytest pass rate: 99.6 % (284/285). 1 failed (`test_vscode_extension.py::test_file_exists` — TDD RED для language-configuration.json), 7 skipped (RED phase related tests).
 
-## [0.5.0] — 2026-10-27
+## [0.5.0]
 
 ### Added
 - **Formatter MVP architecture** — подпакет `senpy/formatter/` с `Formatter` class, `FormatConfig`, `FormatContext`, `register_rule` decorator (см. [0.5.1] для деталей реализации).
@@ -188,7 +256,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `tests/test_p0_cli.py` with 9 regression tests for P0-1, P0-2, P0-3
 - `test_mega_broken_script_catches_all_rules` now dynamically checks all 42 rules (was 29)
 
-## [0.4.7] — 2026-10-26
+## [0.4.7]
 
 ### Added
 - 13 new rules: RPY100, RPY107-109, RPY207-208, RPY309-310, RPY404, RPY505, RPY601-603

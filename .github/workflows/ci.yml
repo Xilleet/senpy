@@ -43,11 +43,32 @@ permissions:
 
 jobs:
   # ===========================================================================
+  # 0. Быстрая проверка циклических импортов (Ubuntu только, Python 3.12)
+  # ===========================================================================
+  # Фаза 1.7 (0.5.3): safety net для архитектуры. Если кто-то случайно
+  # создаст новый цикл (analyzer ↔ X) — этот job упадёт ДО matrix-тестов.
+  # Запускается первым, ~5 секунд.
+  check-cycles:
+    name: Check circular imports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run check_cycles.py
+        run: python scripts/check_cycles.py
+
+  # ===========================================================================
   # 1. Matrix-тесты: Python × OS
   # ===========================================================================
   test:
     name: Tests (Python ${{ matrix.python-version }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    needs: [check-cycles]  # не запускаем тесты, если найдены циклы
     strategy:
       fail-fast: false  # прогоняем все комбинации, даже если одна упала
       matrix:
@@ -91,6 +112,7 @@ jobs:
   build-check:
     name: Build check (wheel)
     runs-on: ubuntu-latest
+    needs: [check-cycles]  # не запускаем build, если найдены циклы
     # Только на main/develop — не тратим минуты на feature-ветках
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event_name == 'pull_request'
     steps:
