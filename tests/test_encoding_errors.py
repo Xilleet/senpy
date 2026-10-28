@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from senpy.analyzer import SenpyAnalyzer
+from senpy.core.analyzer import SenpyAnalyzer
 
 
 def make_broken_main(tmp_path: Path) -> None:

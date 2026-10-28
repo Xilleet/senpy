@@ -6,10 +6,10 @@ import difflib
 import textwrap
 from typing import Any
 
-from senpy.constants import BUILTIN_SYMBOLS, SCREEN_LOCAL_IGNORE
-from senpy.models import Diagnostic
-from senpy.sink import DiagnosticSink  # Фаза 1.4: Protocol вместо SenpyAnalyzer
-from senpy.text_tags import get_utf16_range, suggest_similar_symbol
+from senpy.core.constants import BUILTIN_SYMBOLS, SCREEN_LOCAL_IGNORE
+from senpy.core.models import Diagnostic
+from senpy.core.sink import DiagnosticSink  # Фаза 1.4: Protocol вместо SenpyAnalyzer
+from senpy.domain.text_tags import get_utf16_range, suggest_similar_symbol
 
 
 def infer_ast_type(

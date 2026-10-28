@@ -13,17 +13,17 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from senpy._unrpyc_bootstrap import (
+from senpy.cli.unrpyc import (
     decompile_to_sandbox,
     extract_scripts_from_rpa,
     find_unrpyc_executable,
 )
-from senpy.analyzer import SenpyAnalyzer
-from senpy.config import load_config
-from senpy.constants import IGNORED_DIRS
+from senpy.core.analyzer import SenpyAnalyzer
+from senpy.core.config import load_config
+from senpy.core.constants import IGNORED_DIRS
+from senpy.domain.tsundere import TSUNDERE_FLAVORS, TSUNDERE_UI
+from senpy.formats.traceback import find_latest_traceback, parse_traceback_file
 from senpy.formatter import FormatConfig, Formatter
-from senpy.traceback import find_latest_traceback, parse_traceback_file
-from senpy.tsundere import TSUNDERE_FLAVORS, TSUNDERE_UI
 
 # Пайпы (VS Code-расширение, >file, CI) всегда получают utf-8: дефолтная
 # кодировка пайпа Windows = locale (cp1251) -> UnicodeEncodeError на ✔/(//∇//)
@@ -47,7 +47,7 @@ SEVERITY_STYLES = {
 
 # P1-1: unrpyc/rpa функции вынесены в senpy/_unrpyc_bootstrap.py
 # (Вариант B — умеренный рефакторинг cli.py)
-from senpy._cli_commands import (  # noqa: E402
+from senpy.cli.commands import (  # noqa: E402
     handle_clear_cache,
     handle_coverage,
     handle_defaults,
@@ -455,13 +455,13 @@ def main():
         sys.exit(0)
 
     if args.lsp:
-        from senpy.server import start_lsp
+        from senpy.lsp.server import start_lsp
 
         start_lsp()
         sys.exit(0)
 
     if args.rules or args.rule:
-        from senpy.rules_info import show_rule_detail, show_rules_table
+        from senpy.rules.rules_info import show_rule_detail, show_rules_table
 
         if args.rule:
             show_rule_detail(args.rule.upper())
@@ -733,7 +733,7 @@ def main():
 
     # --- ВЫВОД В ФОРМАТЕ SARIF ДЛЯ GITHUB ACTIONS ---
     if args.output_format == "sarif":
-        from senpy.sarif import generate_sarif
+        from senpy.formats.sarif import generate_sarif
 
         sarif_str = generate_sarif(active_diagnostics, args.path)
 

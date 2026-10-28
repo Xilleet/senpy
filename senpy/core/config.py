@@ -4,7 +4,7 @@
 циклической зависимости analyzer ↔ cli.
 
 Раньше load_config лежала в _unrpyc_bootstrap.py, и analyzer.py делал
-`from senpy.cli import load_config` (cli просто реэкспортировал её из
+`from senpy.cli.main import load_config` (cli просто реэкспортировал её из
 _unrpyc_bootstrap). Это создавало цикл:
     analyzer.py → cli.py → analyzer.py
 

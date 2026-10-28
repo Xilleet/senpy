@@ -4,7 +4,7 @@ import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from senpy.analyzer import SenpyAnalyzer
+    from senpy.core.analyzer import SenpyAnalyzer
 
 
 def generate_project_wiki(analyzer: SenpyAnalyzer) -> str:

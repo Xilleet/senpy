@@ -1,7 +1,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from senpy.analyzer import SenpyAnalyzer
+from senpy.core.analyzer import SenpyAnalyzer
 
 
 def test_performance_python_asset_scan_is_localized(tmp_path: Path):

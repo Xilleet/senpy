@@ -18,9 +18,9 @@ from unittest.mock import MagicMock
 
 import pytest
 from lsprotocol import types as lsp
-
-import senpy.server as server_mod
 from test_lsp import MockDocument, MockWorkspace, setup_test_workspace
+
+import senpy.lsp.server as server_mod
 
 # Путь к senpy-vscode/ относительно tests/
 _VSCODE_DIR = Path(__file__).parent.parent / "senpy-vscode"

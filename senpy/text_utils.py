@@ -6,7 +6,7 @@
     - flow.py → analyzer._strip_comment
 
 Раньше _strip_comment лежал в analyzer.py, и checkers/flow делали lazy
-импорт `from senpy.analyzer import _strip_comment` внутри методов. Это
+импорт `from senpy.core.analyzer import _strip_comment` внутри методов. Это
 создавало цикл (хотя и через runtime, не через top-level import).
 
 Теперь _strip_comment в этом модуле (senpy/text_utils.py), все зависят
@@ -16,7 +16,7 @@
     flow.py → senpy.text_utils
 
 Для обратной совместимости _strip_comment реэкспортируется из analyzer.py
-(старый импорт `from senpy.analyzer import _strip_comment` продолжает работать).
+(старый импорт `from senpy.core.analyzer import _strip_comment` продолжает работать).
 
 Public API:
     _strip_comment(line: str) -> str

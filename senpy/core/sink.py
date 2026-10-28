@@ -28,7 +28,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from senpy.models import Diagnostic
+    from senpy.core.models import Diagnostic
 
 
 @runtime_checkable

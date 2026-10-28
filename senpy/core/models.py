@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from senpy.symbols import (
+    from senpy.core.symbols import (
         ImageSymbol,
         LabelSymbol,
         ScreenSymbol,

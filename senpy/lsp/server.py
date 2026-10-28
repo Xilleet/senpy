@@ -7,24 +7,21 @@ import threading
 import warnings
 from urllib.parse import unquote, urlparse
 
-warnings.filterwarnings("ignore", category=SyntaxWarning)
-
 from lsprotocol import types as lsp
+
+from senpy.__version__ import VERSION_WITH_PREFIX as _SENPY_VERSION
+from senpy.core.analyzer import Diagnostic, SenpyAnalyzer
+from senpy.core.constants import CLAUSE_KEYWORDS
+from senpy.domain.renpy_api import get_renpy_api_hover
+
+warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 try:
     from pygls.lsp.server import LanguageServer
 except ImportError:
     from pygls.server import LanguageServer
 
-# ECO-9: читаем версию из единого источника (senpy/__version__.py),
-# а не хардкодим здесь. Раньше это была одна из 4 точек правды о версии.
-from senpy.__version__ import VERSION_WITH_PREFIX as _SENPY_VERSION
-from senpy.analyzer import Diagnostic, SenpyAnalyzer
-from senpy.constants import CLAUSE_KEYWORDS
-from senpy.renpy_api import get_renpy_api_hover
-
 server = LanguageServer("senpy-lsp", _SENPY_VERSION)
-
 
 def _uri_to_path(uri: str) -> str:
     parsed = urlparse(uri)

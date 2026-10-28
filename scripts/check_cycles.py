@@ -1,5 +1,48 @@
 #!/usr/bin/env python3
 """check_cycles.py — статический детектор циклических зависимостей в senpy/.
+
+Фаза 1.7 (0.5.3): финальная проверка что все 5 циклов из аудита v0.5.1
+разорваны, и что новые циклы не появляются.
+
+Принцип:
+    1. Парсит все .py файлы в senpy/ (без vendor/) через ast.
+    2. Строит граф импортов: edge A → B если A импортирует B (через
+       `from senpy.B import ...` или `import senpy.B`).
+    3. Ищет циклы через DFS с цветовой маркировкой (white/gray/black).
+    4. Если цикл найден — печатает его и выходит с code 1.
+
+Запуск:
+    python scripts/check_cycles.py            # проверить, exit 0/1
+    python scripts/check_cycles.py --verbose  # показать граф целиком
+
+CI интеграция:
+    В .github/workflows/ci.yml добавить шаг:
+        - name: Check for circular imports
+          run: python scripts/check_cycles.py
+
+Ложные срабатывания:
+    Скрипт учитывает что `if TYPE_CHECKING:` блоки НЕ создают runtime
+    циклов (это только type hints, не выполняются при import). Поэтому
+    такие блоки игнорируются при построении графа.
+
+    Например, это НЕ цикл:
+        # cache.py
+        if TYPE_CHECKING:
+            from senpy.analyzer import SenpyAnalyzer  # type hint only
+
+    А это цикл:
+        # cache.py
+        from senpy.analyzer import SenpyAnalyzer  # runtime import — цикл!
+
+История:
+    В аудите v0.5.1 (2026-10-28) найдено 5 циклов через analyzer.py:
+        analyzer ↔ cli
+        analyzer ↔ checkers
+        analyzer ↔ python_ast
+        analyzer ↔ flow
+        analyzer ↔ cache
+    Все разорваны в Фазах 1.2-1.6 (0.5.3). Этот скрипт — safety net
+    чтобы они не вернулись.
 """
 from __future__ import annotations
 
@@ -27,14 +70,18 @@ class ImportVisitor(ast.NodeVisitor):
 
     def _is_type_checking_test(self, test: ast.AST) -> bool:
         """Проверяет, является ли условие if TYPE_CHECKING."""
+        # if TYPE_CHECKING:
         if isinstance(test, ast.Name) and test.id == "TYPE_CHECKING":
             return True
+        # if typing.TYPE_CHECKING:
         return bool(isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING")
 
     def visit_If(self, node: ast.If) -> None:
         """Перехватываем if TYPE_CHECKING: — игнорируем его содержимое."""
         if self._is_type_checking_test(node.test):
+            # Не заходим в тело — там только type hints
             return
+        # Обычный if — заходим в обе ветки
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
@@ -145,6 +192,8 @@ def find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
 
         path.pop()
         color[node] = BLACK
+
+    # Запускаем DFS из каждой вершины (граф может быть несвязным)
     for node in graph:
         if color[node] == WHITE:
             dfs(node)
@@ -230,11 +279,11 @@ def main() -> int:
     unique_cycles = deduplicate_cycles(cycles)
 
     if not unique_cycles:
-        print(f"✓ No circular imports found in '{args.package}'/")
+        print(f"[OK] No circular imports found in '{args.package}'/")
         print(f"  Analyzed {len(graph)} modules.")
         return 0
 
-    print(f"\n✗ Found {len(unique_cycles)} circular import(s):\n", file=sys.stderr)
+    print(f"\n[FAIL] Found {len(unique_cycles)} circular import(s):\n", file=sys.stderr)
     for cycle in unique_cycles:
         print(f"  {' → '.join(cycle)}", file=sys.stderr)
     print(file=sys.stderr)

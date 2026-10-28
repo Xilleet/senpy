@@ -14,8 +14,8 @@ from unittest.mock import MagicMock, patch
 from lsprotocol import types as lsp
 from test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
-import senpy.server as server_mod
-from senpy.analyzer import SenpyAnalyzer
+import senpy.lsp.server as server_mod
+from senpy.core.analyzer import SenpyAnalyzer
 
 # =============================================================================
 # UX-12: initialized handler

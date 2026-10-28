@@ -5,18 +5,16 @@ import hashlib
 import os
 import pickle
 import shutil
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from senpy.constants import SENPY_VERSION
-from senpy.cache_manifest import CacheManifest, CachedFileEntry  # Фаза 1.6: вынесено
+from senpy.core.cache_manifest import CachedFileEntry, CacheManifest  # Фаза 1.6: вынесено
+from senpy.core.constants import SENPY_VERSION
 
 # CachedFileEntry и CacheManifest вынесены в senpy/cache_manifest.py (Фаза 1.6).
-# Реэкспортируем для backward compat: `from senpy.cache import CachedFileEntry` работает.
+# Реэкспортируем для backward compat: `from senpy.core.cache import CachedFileEntry` работает.
 
 if TYPE_CHECKING:
-    from senpy.analyzer import SenpyAnalyzer
-    from senpy.models import Diagnostic, FileScope
+    from senpy.core.analyzer import SenpyAnalyzer
 
 
 def compute_file_hash(file_path: str) -> str:
@@ -40,11 +38,16 @@ class SafeCacheUnpickler(pickle.Unpickler):
 
     ALLOWED_MODULES = frozenset(
         {
-            "senpy.cache",  # backward compat: старые кэши могут ссылаться сюда
-            "senpy.cache_manifest",  # Фаза 1.6: CacheManifest, CachedFileEntry переехали сюда
-            "senpy.models",  # FileScope, Diagnostic
-            "senpy.symbols",  # Variable/Label/Screen/Image/TransformSymbol
-            "senpy.signature",  # SignatureInfo
+            "senpy.cache",  # backward compat
+            "senpy.cache_manifest",  # backward compat
+            "senpy.core.cache",  # Фаза 2: новый путь
+            "senpy.core.cache_manifest",  # Фаза 2: новый путь
+            "senpy.models",  # backward compat
+            "senpy.core.models",  # Фаза 2: новый путь
+            "senpy.symbols",  # backward compat
+            "senpy.core.symbols",  # Фаза 2: новый путь
+            "senpy.signature",  # backward compat
+            "senpy.core.signature",  # Фаза 2: новый путь
         }
     )
 

@@ -4,7 +4,7 @@ import difflib
 import os
 import re
 
-from senpy.constants import (
+from senpy.core.constants import (
     MEDIA_EXTENSIONS,
     NAMED_COLORS,
     PAIR_TAGS,
@@ -13,7 +13,7 @@ from senpy.constants import (
     RE_TAG,
     SELF_CLOSING_TAGS,
 )
-from senpy.models import Diagnostic
+from senpy.core.models import Diagnostic
 
 
 def get_utf16_range(line: str, sub: str | None = None) -> tuple[int, int]:

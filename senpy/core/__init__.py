@@ -1,0 +1,1 @@
+"""Senpy core subpackage."""

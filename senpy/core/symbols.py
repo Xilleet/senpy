@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from senpy.signature import SignatureInfo
+    from senpy.core.signature import SignatureInfo
 
 
 @dataclass

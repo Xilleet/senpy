@@ -19,8 +19,8 @@ from unittest.mock import MagicMock
 
 from lsprotocol import types as lsp
 
-import senpy.server as server_mod
-from senpy.analyzer import SenpyAnalyzer
+import senpy.lsp.server as server_mod
+from senpy.core.analyzer import SenpyAnalyzer
 
 
 class MockDocument:

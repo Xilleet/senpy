@@ -11,7 +11,7 @@ import zlib
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from senpy._unrpyc_bootstrap import decompile_to_sandbox
+from senpy.cli.unrpyc import decompile_to_sandbox
 
 
 def test_vendored_unrpyc_import():
@@ -23,13 +23,10 @@ def test_vendored_unrpyc_import():
 
 def test_vendored_unrpyc_decompile_rpyc_bytes():
     """decompile_rpyc_bytes принимает bytes и возвращает str."""
-    from senpy.vendor.unrpyc import decompile_rpyc_bytes
-
-    # Создадим минимальный правильный .rpyc v2 файл
-    # Формат: b"RENPY RPC2" + slot 1 (slot=1, start, length) + slot 0 (terminator)
-    # slot 1 = zlib pickle пустого AST []
     import pickle
     import struct
+
+    from senpy.vendor.unrpyc import decompile_rpyc_bytes
 
     slot1_data = zlib.compress(pickle.dumps(({}, [])))
     # Позиция slot 1 данных: 10 (header) + 12 (slot 1 header) + 12 (slot 0 terminator) = 34

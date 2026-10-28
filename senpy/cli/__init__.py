@@ -1,0 +1,1 @@
+"""Senpy cli subpackage."""

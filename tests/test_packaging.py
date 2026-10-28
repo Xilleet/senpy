@@ -33,9 +33,9 @@ _GITIGNORE = _PROJECT_ROOT / ".gitignore"
 _CHANGELOG = _PROJECT_ROOT / "CHANGELOG.md"
 _VERSION_PY = _PROJECT_ROOT / "senpy" / "__version__.py"
 _LANG_CONFIG = _PROJECT_ROOT / "senpy-vscode" / "language-configuration.json"
-_UNRPYC_BOOTSTRAP = _PROJECT_ROOT / "senpy" / "_unrpyc_bootstrap.py"
-_MODELS_PY = _PROJECT_ROOT / "senpy" / "models.py"
-_RULES_INFO_PY = _PROJECT_ROOT / "senpy" / "rules_info.py"
+_UNRPYC_BOOTSTRAP = _PROJECT_ROOT / "senpy" / "cli" / "unrpyc.py"
+_MODELS_PY = _PROJECT_ROOT / "senpy" / "core" / "models.py"
+_RULES_INFO_PY = _PROJECT_ROOT / "senpy" / "rules" / "rules_info.py"
 
 
 # =============================================================================

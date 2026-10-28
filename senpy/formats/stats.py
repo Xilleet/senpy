@@ -5,11 +5,11 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from senpy.analyzer import _get_logical_line
-from senpy.constants import NON_DIALOGUE_STATEMENTS
+from senpy.core.analyzer import _get_logical_line
+from senpy.core.constants import NON_DIALOGUE_STATEMENTS
 
 if TYPE_CHECKING:
-    from senpy.analyzer import SenpyAnalyzer
+    from senpy.core.analyzer import SenpyAnalyzer
 
 
 @dataclass

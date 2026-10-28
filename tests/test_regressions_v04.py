@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from senpy.analyzer import SenpyAnalyzer
-from senpy.cli import main as cli_main
+from senpy.cli.main import main as cli_main
+from senpy.core.analyzer import SenpyAnalyzer
 
 
 def run_analyzer(code: str, tmp_path: Path, filename: str = "script.rpy"):

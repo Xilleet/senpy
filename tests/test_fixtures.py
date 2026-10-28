@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from senpy.analyzer import SenpyAnalyzer
+from senpy.core.analyzer import SenpyAnalyzer
 
 # Путь к папке с фикстурами: tests/fixtures/rules/
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "rules"

@@ -6,14 +6,14 @@ import pickle
 import zlib
 from typing import ClassVar
 
-from senpy.constants import (
+from senpy.core.constants import (
     AUDIO_EXTENSIONS,
     BUILTIN_COLORS,
     IGNORED_DIRS,
     MEDIA_EXTENSIONS,
 )
-from senpy.models import Diagnostic
-from senpy.rpa import safe_load_rpa_index
+from senpy.core.models import Diagnostic
+from senpy.domain.rpa import safe_load_rpa_index
 
 
 def find_orphaned_rpyc(project_path: str) -> list[str]:

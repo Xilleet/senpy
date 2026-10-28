@@ -7,7 +7,7 @@ Stage 1 (_collect_symbols) и stage 2 (_analyze_file) работают на од
 
 from pathlib import Path
 
-from senpy.analyzer import SenpyAnalyzer
+from senpy.core.analyzer import SenpyAnalyzer
 
 
 def test_cold_run_reads_each_rpy_once(tmp_path: Path, monkeypatch):
@@ -25,7 +25,7 @@ def test_cold_run_reads_each_rpy_once(tmp_path: Path, monkeypatch):
             text_reads[p] = text_reads.get(p, 0) + 1
         return real_open(path, mode, *args, **kwargs)
 
-    monkeypatch.setattr("senpy.analyzer.open", counting_open, raising=False)
+    monkeypatch.setattr("senpy.core.analyzer.open", counting_open, raising=False)
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)

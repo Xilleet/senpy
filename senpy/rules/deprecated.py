@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import re
 
-from senpy.models import Diagnostic
-from senpy.text_tags import get_utf16_range
+from senpy.core.models import Diagnostic
+from senpy.domain.text_tags import get_utf16_range
 
 # Словарь устаревших API:
 # Имя функции -> (Совет/пояснение, 1-к-1 замена для автофикса или None)

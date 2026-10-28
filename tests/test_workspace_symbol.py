@@ -13,10 +13,10 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from lsprotocol import types as lsp
-
-import senpy.server as server_mod
-from senpy.analyzer import SenpyAnalyzer
 from test_lsp import MockDocument, MockWorkspace, setup_test_workspace
+
+import senpy.lsp.server as server_mod
+from senpy.core.analyzer import SenpyAnalyzer
 
 
 def _make_symbol_params(query: str = "") -> lsp.WorkspaceSymbolParams:

@@ -24,7 +24,7 @@ API_FILE_PATH = os.path.abspath(
 )
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from senpy.renpy_api import RENPY_API_DOCS, RENPY_DOC_VERSION
+from senpy.domain.renpy_api import RENPY_API_DOCS, RENPY_DOC_VERSION
 
 RELEASES_URL = "https://api.github.com/repos/renpy/renpy/releases/latest"
 CONTENTS_API_URL = "https://api.github.com/repos/renpy/renpy/contents/renpy/exports?ref={ref}"

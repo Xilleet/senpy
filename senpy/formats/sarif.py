@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import os
 
-from senpy.models import Diagnostic
-from senpy.rules_info import RULES_DATABASE
+from senpy.core.models import Diagnostic
+from senpy.rules.rules_info import RULES_DATABASE
 
 
 def generate_sarif(diagnostics: list[Diagnostic], project_path: str) -> str:

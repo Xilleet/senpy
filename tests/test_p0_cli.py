@@ -123,7 +123,7 @@ import os
 import sys
 
 # Перехватываем SenpyAnalyzer до импорта cli
-from senpy.analyzer import SenpyAnalyzer
+from senpy.core.analyzer import SenpyAnalyzer
 _original_init = SenpyAnalyzer.__init__
 _counter = [0]
 
@@ -144,7 +144,7 @@ def _capturing_exit(code=0):
 sys.exit = _capturing_exit
 
 # Теперь запускаем CLI
-from senpy.cli import main
+from senpy.cli.main import main
 sys.argv = ["senpy", os.environ["PROJECT_PATH"], "--stats", "--output-format", "json"]
 try:
     main()
@@ -156,7 +156,7 @@ except SystemExit:
 
     env = os.environ.copy()
     env["PROJECT_PATH"] = str(project)
-    # PYTHONPATH указывает на корень проекта, чтобы `from senpy.analyzer import ...` работал
+    # PYTHONPATH указывает на корень проекта, чтобы `from senpy.core.analyzer import ...` работал
     env["PYTHONPATH"] = str(Path(__file__).parent.parent)
 
     result = subprocess.run(

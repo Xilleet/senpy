@@ -11,9 +11,9 @@ SafeRPAUnpickler из rpa.py); мусор/чужие объекты -> None -> �
 
 import pickle
 
-from senpy.analyzer import SenpyAnalyzer
-from senpy.cache import CacheManager, CacheManifest
-from senpy.constants import SENPY_VERSION
+from senpy.core.analyzer import SenpyAnalyzer
+from senpy.core.cache import CacheManager, CacheManifest
+from senpy.core.constants import SENPY_VERSION
 
 
 def test_malicious_cache_does_not_execute_code(tmp_path):

@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from senpy.analyzer import SenpyAnalyzer
-from senpy.rpa import safe_load_rpa_index
+from senpy.core.analyzer import SenpyAnalyzer
+from senpy.domain.rpa import safe_load_rpa_index
 
 
 def run_senpy_on_code(
@@ -149,7 +149,7 @@ def test_mega_broken_script_catches_all_rules(tmp_path: Path):
     специальные условия — переводческие файлы, init python blocks, etc.),
     перечислены в MEGA_UNCOVERED_RULES с пояснением.
     """
-    from senpy.models import RULE_SEVERITY
+    from senpy.core.models import RULE_SEVERITY
 
     # Создаём файл ассета, на который нет ни одной ссылки в коде (вызывает RPY503)
     extra_files = {"images/completely_unused_background.png": b"dummy_png_bytes"}
@@ -493,7 +493,7 @@ def test_deterministic_file_traversal_order(tmp_path: Path):
 
 def test_rpa_sandbox_path_traversal_guard(tmp_path: Path):
     """Verify extract_scripts_from_rpa rejects paths trying to escape dest_dir (Path Traversal)"""
-    from senpy.cli import extract_scripts_from_rpa
+    from senpy.cli.main import extract_scripts_from_rpa
 
     fake_archive = tmp_path / "archive.rpa"
     # Создаём фейковый заголовок RPA-3.0
@@ -571,7 +571,7 @@ init python:
 
 def test_init_ci_generates_workflow_file(tmp_path: Path):
     """Verify --init-ci generates a valid .github/workflows/senpy.yml workflow"""
-    from senpy.ci import init_ci_workflow
+    from senpy.formats.ci import init_ci_workflow
 
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True, exist_ok=True)
@@ -593,7 +593,7 @@ def test_init_ci_generates_workflow_file(tmp_path: Path):
 
 def test_translation_coverage_calculation(tmp_path: Path):
     """Verify --coverage accurately computes translation progress percentages across languages"""
-    from senpy.coverage import calculate_translation_coverage
+    from senpy.core.coverage import calculate_translation_coverage
 
     game_dir = tmp_path / "game"
     tl_ru = game_dir / "tl" / "russian"
@@ -643,7 +643,7 @@ translate spanish strings:
 
 def test_export_wiki_generation(tmp_path: Path):
     """Verify --export-wiki extracts characters, typed variables, and terminal endings"""
-    from senpy.wiki import generate_project_wiki
+    from senpy.formats.wiki import generate_project_wiki
 
     code = """
 define e = Character("Eileen")
@@ -681,7 +681,7 @@ label good_end:
 
 def test_generate_stubs_creates_valid_pyi_files(tmp_path: Path):
     """Verify --generate-stubs creates store.pyi and renpy.pyi with accurate types"""
-    from senpy.stubs import generate_stubs
+    from senpy.formats.stubs import generate_stubs
 
     code = """
 default player_gold = 100
@@ -716,7 +716,7 @@ label start:
 
 def test_traceback_inspector_parses_crash_log(tmp_path: Path):
     """Verify Traceback Inspector parses traceback.txt and maps runtime crashes to Senpy rules"""
-    from senpy.traceback import parse_traceback_file
+    from senpy.formats.traceback import parse_traceback_file
 
     fake_traceback = """
 I'm sorry, but an uncaught exception occurred.
@@ -777,8 +777,8 @@ label start:
 
 def test_rules_database_completeness():
     """RULES_DATABASE и RULE_SEVERITY совпадают ключ-в-ключ"""
-    from senpy.models import RULE_SEVERITY
-    from senpy.rules_info import RULES_DATABASE
+    from senpy.core.models import RULE_SEVERITY
+    from senpy.rules.rules_info import RULES_DATABASE
 
     missing = set(RULE_SEVERITY.keys()) - set(RULES_DATABASE.keys())
     assert not missing, f"RULES_DATABASE is missing rules: {missing}"
@@ -788,8 +788,8 @@ def test_rules_database_completeness():
 
 def test_tsundere_flavors_completeness():
     """TSUNDERE_FLAVORS и RULE_SEVERITY совпадают ключ-в-ключ"""
-    from senpy.models import RULE_SEVERITY
-    from senpy.tsundere import TSUNDERE_FLAVORS
+    from senpy.core.models import RULE_SEVERITY
+    from senpy.domain.tsundere import TSUNDERE_FLAVORS
 
     missing = set(RULE_SEVERITY.keys()) - set(TSUNDERE_FLAVORS.keys())
     assert not missing, f"TSUNDERE_FLAVORS is missing phrases for rules: {missing}"
@@ -1090,7 +1090,7 @@ screen shop(discount_rate=0.1):
 
 def test_story_stats_word_count_and_character_balance(tmp_path: Path):
     """Verify story stats correctly calculates word count, reading time and character speech shares."""
-    from senpy.stats import collect_story_stats
+    from senpy.formats.stats import collect_story_stats
 
     code = """
 define s = Character("Сайори")

@@ -5,39 +5,14 @@ import re
 import warnings
 from collections import defaultdict
 
-from senpy.assets import AssetManager, find_orphaned_rpyc
-from senpy.cache import CachedFileEntry, CacheManager, CacheManifest, compute_file_hash
-from senpy.config import load_config
-from senpy.constants import MEDIA_EXTENSIONS, RE_STRING_MATCH
-from senpy.deprecated import DeprecationChecker
-from senpy.flow import StoryFlowAnalyzer
-from senpy.python_ast import PythonAstChecker, infer_expr_type
-from senpy.signature import parse_signature
-from senpy.symbols import (
-    ImageSymbol,
-    LabelSymbol,
-    ScreenSymbol,
-    TransformSymbol,
-    VariableSymbol,
-)
-from senpy.text_tags import get_utf16_range, process_quoted_strings
-
-warnings.filterwarnings("ignore", category=SyntaxWarning)
-
-from senpy.checkers import (
-    AssetChecker,
-    DialogueChecker,
-    FormattingChecker,
-    ScreenChecker,
-    StateChecker,
-)
-
-# Импортируем вынесенные модели и константы
-from senpy.constants import (
+from senpy.core.cache import CachedFileEntry, CacheManager, CacheManifest, compute_file_hash
+from senpy.core.config import load_config
+from senpy.core.constants import (
     BUILTIN_AUDIO_CHANNELS,
     BUILTIN_SCREENS,
     BUILTIN_SYMBOLS,
     IGNORED_DIRS,
+    MEDIA_EXTENSIONS,
     NON_DIALOGUE_STATEMENTS,
     RE_DEFAULT,
     RE_DEFINE,
@@ -55,11 +30,36 @@ from senpy.constants import (
     RE_SCREEN_JUMP_ACTION,
     RE_SCREEN_SHOW_ACTION,
     RE_SCREEN_START,
+    RE_STRING_MATCH,
     RE_TRANSFORM,
     SENPY_VERSION,
 )
-from senpy.models import RULE_SEVERITY, AnalysisResult, Diagnostic, FileScope
-from senpy.scope import ScopeStack, ScopeType
+from senpy.core.models import RULE_SEVERITY, AnalysisResult, Diagnostic, FileScope
+from senpy.core.scope import ScopeStack, ScopeType
+from senpy.core.signature import parse_signature
+from senpy.core.symbols import (
+    ImageSymbol,
+    LabelSymbol,
+    ScreenSymbol,
+    TransformSymbol,
+    VariableSymbol,
+)
+from senpy.domain.assets import AssetManager, find_orphaned_rpyc
+from senpy.domain.text_tags import get_utf16_range, process_quoted_strings
+from senpy.rules.checkers import (
+    AssetChecker,
+    DialogueChecker,
+    FormattingChecker,
+    ScreenChecker,
+    StateChecker,
+)
+from senpy.rules.deprecated import DeprecationChecker
+from senpy.rules.flow import StoryFlowAnalyzer
+from senpy.rules.python_ast import PythonAstChecker, infer_expr_type
+
+warnings.filterwarnings("ignore", category=SyntaxWarning)
+
+
 
 # Pre-compiled regex for word tokenization. Used by _check_unused_declarations
 # to build a word→locations index in a single pass over all files (O(N+M)
@@ -69,7 +69,7 @@ _WORD_RE = re.compile(r"\w+")
 
 # Фаза 1.3 (0.5.3): _strip_comment вынесен в senpy/text_utils.py для разрыва
 # циклической зависимости checkers/flow → analyzer. Реэкспортируем для backward compat.
-from senpy.text_utils import _strip_comment  # noqa: F401
+from senpy.text_utils import _strip_comment  # noqa: E402, F401
 
 
 def _count_bracket_delta(s: str) -> int:

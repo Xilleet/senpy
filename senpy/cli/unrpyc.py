@@ -20,8 +20,8 @@ import zlib
 
 from rich.console import Console
 
-from senpy.rpa import safe_load_rpa_index
-from senpy.tsundere import IS_RU
+from senpy.domain.rpa import safe_load_rpa_index
+from senpy.domain.tsundere import IS_RU
 
 # Console для unrpyc-блока (не зависит от глобального console из cli.py)
 console = Console(legacy_windows=sys.stdout.isatty())
@@ -54,9 +54,9 @@ def _unrpyc_zip_url() -> str:
 
 # Фаза 1.2 (0.5.3): load_config вынесен в senpy/config.py для разрыва
 # циклической зависимости analyzer ↔ cli. Реэкспортируем для обратной
-# совместимости (старый импорт `from senpy._unrpyc_bootstrap import load_config`
+# совместимости (старый импорт `from senpy.cli.unrpyc import load_config`
 # продолжает работать).
-from senpy.config import load_config  # noqa: E402, F401, I001
+from senpy.core.config import load_config  # noqa: E402, F401, I001
 
 def find_in_directory_tree(start_dirs: list[str]) -> str | None:
     for base in start_dirs:

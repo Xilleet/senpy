@@ -6,16 +6,16 @@ from collections import deque
 from dataclasses import dataclass, field
 
 # from typing import TYPE_CHECKING  # Фаза 1.5: больше не нужен
-from senpy.constants import (
+from senpy.core.constants import (
     BUILTIN_SCREENS,
     RE_MENU_CHOICE,
     RE_STRING_MATCH,
     SYSTEM_LABELS,
 )
-from senpy.models import Diagnostic
-from senpy.python_ast import extract_assigned_names
-from senpy.sink import DiagnosticSink  # Фаза 1.5: Protocol вместо SenpyAnalyzer
-from senpy.text_tags import get_utf16_range
+from senpy.core.models import Diagnostic
+from senpy.core.sink import DiagnosticSink  # Фаза 1.5: Protocol вместо SenpyAnalyzer
+from senpy.domain.text_tags import get_utf16_range
+from senpy.rules.python_ast import extract_assigned_names
 
 _MERMAID_RESERVED_IDS = {"end"}
 
@@ -254,7 +254,7 @@ class StoryFlowAnalyzer:
         noqa_map: dict,
     ) -> None:
         """RPY404: Проверяет [var] в тексте после меню с переменными в статусе MAYBE_SET."""
-        from senpy.constants import RE_INTERPOLATION
+        from senpy.core.constants import RE_INTERPOLATION
 
         for match in RE_STRING_MATCH.finditer(line_content):
             s = match.group(0)
@@ -290,7 +290,7 @@ class StoryFlowAnalyzer:
         file_path: str = "",
         noqa_map: dict | None = None,
     ) -> tuple[int, dict[str, tuple[str, ...]], set[str], bool]:
-        from senpy.constants import RE_MENU_START
+        from senpy.core.constants import RE_MENU_START
         from senpy.text_utils import _strip_comment  # Фаза 1.3: вынесено в text_utils
 
         idx = start_idx

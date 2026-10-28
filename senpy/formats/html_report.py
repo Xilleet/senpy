@@ -5,7 +5,7 @@ import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from senpy.models import Diagnostic
+    from senpy.core.models import Diagnostic
 
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
@@ -84,7 +84,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             margin-left: 5px; transition: 0.2s;
         }}
         .controls button:hover {{ background: #555; }}
-        
+
         /* Diagnostic Cards */
         .diag-card {{
             background: var(--bg-card);
@@ -97,19 +97,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .diag-card.ERROR {{ border-left-color: var(--error); }}
         .diag-card.WARNING {{ border-left-color: var(--warning); }}
         .diag-card.INFO, .diag-card.HINT {{ border-left-color: var(--info); }}
-        
+
         .diag-header {{ display: flex; justify-content: space-between; margin-bottom: 6px; }}
         .diag-rule {{ font-weight: bold; font-size: 14px; }}
         .diag-loc {{ font-size: 12px; color: #888; }}
         .diag-msg {{ font-size: 13px; line-height: 1.4; color: #ccc; margin-bottom: 8px; }}
-        
+
         .code-snippet {{
             background: #111; padding: 8px; border-radius: 4px;
             font-family: 'Consolas', 'Courier New', monospace;
             font-size: 12px; color: #ddd;
             overflow-x: auto; white-space: pre; border: 1px solid #222;
         }}
-        
+
         #mermaid-graph {{
             flex: 1;
             background: var(--bg-main);
@@ -135,7 +135,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             {diagnostics_html}
         </div>
     </div>
-    
+
     <div class="main">
         <div class="topbar">
             <h3>Interactive Story Graph <i>(Scroll to zoom, drag to pan)</i></h3>
@@ -154,9 +154,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <!-- Load Mermaid as an ES module for modern async rendering -->
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-        mermaid.initialize({{ 
-            startOnLoad: false, 
-            theme: 'dark', 
+        mermaid.initialize({{
+            startOnLoad: false,
+            theme: 'dark',
             maxTextSize: 90000,
             // P0-11: 'strict' (default в новых Mermaid) — отключает HTML
             // в нодах графа. Раньше было 'loose', что позволяло XSS через
@@ -164,20 +164,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             // только текст, HTML-теги экранируются.
             securityLevel: 'strict'
         }});
-        
+
         const graphDef = `{mermaid_code}`;
-        
+
         async function renderGraph() {{
             const container = document.getElementById('mermaid-graph');
             try {{
                 const {{ svg }} = await mermaid.render('m-svg', graphDef);
                 container.innerHTML = svg;
-                
+
                 const svgElem = container.querySelector('svg');
                 svgElem.style.width = '100%';
                 svgElem.style.height = '100%';
                 svgElem.style.maxWidth = '100%';
-                
+
                 // Initialize SVG Pan/Zoom
                 window.panZoom = svgPanZoom(svgElem, {{
                     zoomEnabled: true,
@@ -198,7 +198,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 container.appendChild(errDiv);
             }}
         }}
-        
+
         if (graphDef.trim().length > 0) {{
             renderGraph();
         }} else {{

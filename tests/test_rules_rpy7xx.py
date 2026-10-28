@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from senpy.analyzer import SenpyAnalyzer
+from senpy.core.analyzer import SenpyAnalyzer
 
 
 def _run_senpy(code: str, tmp_path: Path, extra_files: dict[str, bytes] | None = None):

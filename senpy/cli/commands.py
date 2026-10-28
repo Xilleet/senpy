@@ -17,8 +17,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from senpy.traceback import find_latest_traceback, parse_traceback_file
-from senpy.tsundere import TSUNDERE_UI
+from senpy.domain.tsundere import TSUNDERE_UI
+from senpy.formats.traceback import find_latest_traceback, parse_traceback_file
 
 
 def handle_traceback(args, console: Console, is_tsundere: bool) -> int | None:
@@ -67,7 +67,7 @@ def handle_init_ci(args, console: Console, is_tsundere: bool) -> int | None:
     if not args.init_ci:
         return None
 
-    from senpy.ci import init_ci_workflow
+    from senpy.formats.ci import init_ci_workflow
 
     out_path, _created = init_ci_workflow(args.path)
     rel_out = os.path.relpath(out_path, os.getcwd())
@@ -88,7 +88,7 @@ def handle_coverage(args, console: Console, is_tsundere: bool) -> int | None:
     if not args.coverage:
         return None
 
-    from senpy.coverage import calculate_translation_coverage
+    from senpy.core.coverage import calculate_translation_coverage
 
     coverage_data = calculate_translation_coverage(args.path)
 
@@ -125,7 +125,7 @@ def handle_clear_cache(args, console: Console) -> int | None:
     if not args.clear_cache:
         return None
 
-    from senpy.cache import CacheManager
+    from senpy.core.cache import CacheManager
 
     cm = CacheManager(args.path)
     if cm.clear():
@@ -140,7 +140,7 @@ def handle_stats(args, analyzer, console: Console, is_tsundere: bool) -> int | N
     if not args.stats:
         return None
 
-    from senpy.stats import collect_story_stats
+    from senpy.formats.stats import collect_story_stats
 
     stats = collect_story_stats(analyzer)
 
@@ -223,7 +223,7 @@ def handle_export_wiki(args, analyzer, console: Console, is_tsundere: bool) -> i
     if not args.export_wiki:
         return None
 
-    from senpy.wiki import generate_project_wiki
+    from senpy.formats.wiki import generate_project_wiki
 
     wiki_md = generate_project_wiki(analyzer)
     target_wiki = args.export_wiki
@@ -247,7 +247,7 @@ def handle_export_html(
     if not args.export_html:
         return None
 
-    from senpy.html_report import generate_html_report
+    from senpy.formats.html_report import generate_html_report
 
     active_diagnostics = [
         e
@@ -324,7 +324,7 @@ def handle_stubs(args, analyzer, console: Console, is_tsundere: bool) -> int | N
     if not args.stubs:
         return None
 
-    from senpy.stubs import generate_stubs
+    from senpy.formats.stubs import generate_stubs
 
     out_dir, count = generate_stubs(analyzer, out_dir=args.stubs)
     rel_out = os.path.relpath(out_dir, os.getcwd())
