@@ -20,7 +20,7 @@ import pytest
 from lsprotocol import types as lsp
 
 import senpy.server as server_mod
-from tests.test_lsp import MockDocument, MockWorkspace, setup_test_workspace
+from test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
 # Путь к senpy-vscode/ относительно tests/
 _VSCODE_DIR = Path(__file__).parent.parent / "senpy-vscode"

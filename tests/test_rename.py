@@ -15,7 +15,7 @@ from lsprotocol import types as lsp
 
 import senpy.server as server_mod
 from senpy.analyzer import SenpyAnalyzer
-from tests.test_lsp import MockDocument, MockWorkspace, setup_test_workspace
+from test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
 
 def _make_rename_params(uri: str, line: int, char: int, new_name: str) -> lsp.RenameParams:

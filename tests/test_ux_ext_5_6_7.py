@@ -22,7 +22,7 @@ from lsprotocol import types as lsp
 
 import senpy.server as server_mod
 from senpy.analyzer import SenpyAnalyzer
-from tests.test_lsp import MockDocument, MockWorkspace, setup_test_workspace
+from test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
 
 _VSCODE_DIR = Path(__file__).resolve().parent.parent / "senpy-vscode"
