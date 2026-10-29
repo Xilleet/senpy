@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-senpy-plugin"
+version = "0.1.0"
+description = "Example Senpy plugin: flags hard-coded dialogue without _() for translation"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Senpy Example" }]
+dependencies = [
+    "senpy-linter>=0.6.0",
+]
+
+# EXT-1: This is how Senpy discovers the plugin.
+# Key = logical name (used in trust store, e.g. "my-senpy-plugin" = package name)
+# Value = "module.path:ClassName" — Rule subclass to load
+[project.entry-points."senpy.plugins"]
+my-senpy-plugin = "my_senpy_plugin.rules:HardcodedDialogueRule"
+
+[tool.setuptools.packages.find]
+include = ["my_senpy_plugin*"]
