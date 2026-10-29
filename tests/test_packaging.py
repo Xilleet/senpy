@@ -391,15 +391,23 @@ class TestRuleCountConsistency:
         return len(set(matches))  # уникальные
 
     def test_rules_info_py_uses_dynamic_count(self):
-        """rules_info.py НЕ должен хардкодить число правил."""
+        """rules_info.py НЕ должен хардкодить число правил.
+
+        DOC-8a: фикс должен использовать f-string с len(RULES_DATABASE),
+        чтобы число правил автоматически подтягивалось из dict'а.
+        """
         if not _RULES_INFO_PY.exists():
             pytest.skip("rules_info.py отсутствует")
         content = _RULES_INFO_PY.read_text(encoding="utf-8")
-        # Ищем хардкоженные "All N Rules" строки
-        hardcoded = re.findall(r'["\']All\s+\d+\s+Rules["\']', content, re.IGNORECASE)
+        # Исправлен регэксп): ищем любую строку вида "All N Rules"
+        # внутри любой Python-строки — это хардкод. Раньше регэксп требовал,
+        # чтобы вся строка была "All N Rules", но реально хардкод встречается
+        # как часть title="... (All 45 Rules)" — и тест его пропускал.
+        hardcoded = re.findall(r'All\s+\d+\s+Rules', content, re.IGNORECASE)
         assert not hardcoded, (
             f"rules_info.py содержит хардкоженные числа правил: {hardcoded}. "
-            f"Замените на f-string: f\"All {{len(RULES_DATABASE)}} Rules\""
+            f"Замените на f-string: f\"All {{len(RULES_DATABASE)}} Rules\" "
+            f"или f\"... (All {{len(RULES_DATABASE)}} Rules)\""
         )
 
     def test_no_hardcoded_rule_count_in_senpy_toml(self):
