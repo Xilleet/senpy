@@ -694,7 +694,12 @@ class SenpyAnalyzer:
         old_diags = self.diagnostics
         self.diagnostics = file_diags
         norm_path = os.path.normcase(os.path.abspath(file_path))
-        rel_parts = os.path.relpath(file_path, self.project_path).replace("\\", "/").split("/")
+        try:
+            rel_parts = os.path.relpath(file_path, self.project_path).replace("\\", "/").split("/")
+        except ValueError:
+            # Windows: file_path и project_path на разных дисках (D: vs C:)
+            # — os.path.relpath падает. Используем абсолютный путь как fallback.
+            rel_parts = file_path.replace("\\", "/").split("/")
         try:
             if "tl" in rel_parts:
                 self._analyze_tl_file(file_path)

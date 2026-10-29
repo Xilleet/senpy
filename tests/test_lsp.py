@@ -15,6 +15,7 @@ class MockDocument:
     def __init__(self, uri: str, content: str):
         self.uri = uri
         self.lines = content.splitlines(keepends=True)
+        self.source = content  # для совместимости с pygls TextDocument API
 
 
 class MockWorkspace:

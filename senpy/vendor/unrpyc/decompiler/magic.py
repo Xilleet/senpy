@@ -22,6 +22,28 @@
 
 import sys
 
+# blocklist модулей, которые НИКОГДА не должны
+# импортироваться через __import__ в SafeUnpickler.find_class, даже если
+# они случайно оказались в safe_modules. Это страховка от человеческой
+# ошибки при расширении safe_modules — без этой проверки подложенный .rpyc
+# с pickle, ссылающимся на os.system, выполнит __import__('os') и
+# потенциально активирует custom loader с RCE.
+#
+# Список синхронизирован с tests/test_unrpyc_security.py:DANGEROUS_MODULES.
+_DANGEROUS_MODULES_BLOCKLIST = frozenset({
+    "os",
+    "sys",
+    "subprocess",
+    "socket",
+    "shutil",
+    "pathlib",
+    "builtins",
+    "ctypes",
+    "multiprocessing",
+    "pickle",
+    "marshal",
+})
+
 PY3 = sys.version_info >= (3, 0)
 PY2 = not PY3
 
@@ -537,6 +559,13 @@ class SafeUnpickler(FakeUnpickler):
         self.use_copyreg = use_copyreg
 
     def find_class(self, module, name):
+        # defense-in-depth: блокируем dangerous модули даже если
+        # кто-то случайно добавил их в safe_modules. Это страховка от
+        # человеческой ошибки при расширении safe_modules — без этой проверки
+        # подложенный .rpyc с pickle, ссылающимся на os.system, выполнит
+        # __import__('os') и потенциально активирует custom loader с RCE.
+        if module in _DANGEROUS_MODULES_BLOCKLIST:
+            return self.class_factory(name, module)
         if module in self.safe_modules:
             __import__(module)
             mod = sys.modules[module]

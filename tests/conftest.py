@@ -162,3 +162,53 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def update_snapshots(request: pytest.FixtureRequest) -> bool:
     """Fixture: возвращает True если передан --update-snapshots."""
     return request.config.getoption("--update-snapshots")
+
+
+@pytest.fixture(autouse=True)
+def _clean_lsp_state_after_test():
+    """Autouse fixture: чистит LSP-серверный state после каждого теста.
+
+    Проблема: LSP-тесты (test_lsp*, test_ux_ext_5_6_7, ...) мутируют
+    module-level state в senpy.lsp.server (_active_analyzer, _change_timer,
+    _full_timer, _lsp_server.change_timers). Если тест создаёт реальный
+    timer (не замоканный) и не отменяет его — timer срабатывает через
+    0.15-0.3s в фоновом потоке, вызывая run_single_file_diagnostics или
+    run_full_project_diagnostics. На Windows это может упасть с
+    ValueError: path is on mount 'D:', start on mount 'C:' (cross-mount
+    relpath), что проявляется как PytestUnhandledThreadExceptionWarning
+    в последующих test_p0_cli тестах.
+
+    Решение: после каждого теста отменяем все pending timer'ы и сбрасываем
+    LSP state. Это не влияет на тесты, которые используют patch() для
+    mock'а schedule_* — patch восстанавливается автоматически.
+    """
+    yield  # тест выполняется здесь
+
+    # Cleanup после теста
+    try:
+        import senpy.lsp.server as server_mod
+        # Отменим все timer'ы
+        if getattr(server_mod, "_full_timer", None) is not None:
+            try:
+                server_mod._full_timer.cancel()
+            except Exception:
+                pass
+            server_mod._full_timer = None
+        if getattr(server_mod, "_change_timer", None) is not None:
+            try:
+                server_mod._change_timer.cancel()
+            except Exception:
+                pass
+            server_mod._change_timer = None
+        # Per-URI timer'ы
+        lsp_server = getattr(server_mod, "_lsp_server", None)
+        if lsp_server is not None and hasattr(lsp_server, "change_timers"):
+            for t in list(lsp_server.change_timers.values()):
+                try:
+                    t.cancel()
+                except Exception:
+                    pass
+            lsp_server.change_timers.clear()
+    except ImportError:
+        # senpy.lsp.server ещё не импортирован этим тестом — ничего не делаем
+        pass
