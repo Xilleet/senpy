@@ -1,6 +1,6 @@
 """senpy.lsp.handlers — LSP-обработчики, вынесенные из server.py.
 
-Введено в 0.6.0 (Фаза 5) при рефакторинге lsp/server.py в class SenpyLSPServer.
+Введено в 0.6.0 при рефакторинге lsp/server.py в class SenpyLSPServer.
 Каждый модуль содержит handler-функции для своей группы LSP-методов:
 
   text_document.py  ← did_open / did_save / did_change / did_close / did_change_watched_files
