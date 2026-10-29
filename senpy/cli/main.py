@@ -249,15 +249,20 @@ def _dispatch_format(argv: list[str]) -> int:
         print("\n[bold green]All files are already formatted![/bold green]")
     return 0
 
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Создаёт argparse parser и парсит аргументы CLI.
 
-def main():
+    Вынесено из main() в Phase 3 Step 1 (0.5.6) для:
+    - Тестируемости (можно вызывать с произвольным argv)
+    - Уменьшения main() с 719 до ~530 строк
+    - Подготовки к dispatch_subcommand() pattern
 
-    # P1-1: Subcommand dispatch (senpy format ...)
-    # Перехватываем подкоманды до основного argparse, чтобы он не пытался
-    # парсить "format" как positional path.
-    if len(sys.argv) > 1 and sys.argv[1] == "format":
-        return _dispatch_format(sys.argv[2:])
+    Args:
+        argv: Аргументы командной строки. None = использовать sys.argv.
 
+    Returns:
+        argparse.Namespace с распарсенными аргументами.
+    """
     parser = argparse.ArgumentParser(
         prog="senpy",
         description="Notice me, Senpy! Fast semantic linter & LSP for Ren'Py.",
@@ -445,7 +450,349 @@ def main():
         help="B-Baka! It's not like I want to check your visual novel!",
     )
 
-    args = parser.parse_args()
+    return parser.parse_args(argv)
+
+def filter_diagnostics(
+    result,
+    args,
+    ignored_codes: set[str],
+) -> tuple[list, int]:
+    """Фильтрует diagnostics по --ignore, --errors-only, --info.
+
+    Вынесено из main() в Phase 3 Step 2a (0.5.6) для:
+    - Тестируемости (чистая функция, без side effects)
+    - Уменьшения main()
+    - Подготовки к render_output()
+
+    Args:
+        result: AnalysisResult с .diagnostics list.
+        args: Namespace с .ignore, .errors_only, .info.
+        ignored_codes: Set кодов правил для игнорирования.
+
+    Returns:
+        Кортеж (active_diagnostics, hidden_info_count):
+        - active_diagnostics: отфильтрованный список для вывода
+        - hidden_info_count: сколько INFO скрыто (для сообщения "use --info")
+    """
+    hidden_info_count = sum(
+        1
+        for e in result.diagnostics
+        if e.severity == "INFO"
+        and e.code not in ignored_codes
+        and not args.info
+    )
+    active_diagnostics = [
+        e
+        for e in result.diagnostics
+        if e.code not in ignored_codes
+        and (not args.errors_only or e.severity == "ERROR")
+        and (args.info or e.severity != "INFO")
+    ]
+    return active_diagnostics, hidden_info_count
+
+def render_sarif(active_diagnostics, args, console) -> int:
+    """Рендерит diagnostics в SARIF формат. Возвращает exit code (не вызывает sys.exit).
+
+    Вынесено из main() в Phase 3 Step 2b (0.5.6).
+    """
+    from senpy.formats.sarif import generate_sarif
+    sarif_str = generate_sarif(active_diagnostics, args.path)
+    if args.output_file:
+        with open(args.output_file, "w", encoding="utf-8") as f:
+            f.write(sarif_str)
+        console.print(f"[bold green]✔ SARIF report saved to {args.output_file}[/bold green]")
+    else:
+        print(sarif_str)
+    error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
+    return 1 if error_count > 0 else 0
+
+
+def render_json(active_diagnostics, result, elapsed, args, console) -> int:
+    """Рендерит diagnostics в JSON формат. Возвращает exit code (не вызывает sys.exit).
+
+    Вынесено из main() в Phase 3 Step 2b (0.5.6).
+    """
+    json_output = []
+    for err in active_diagnostics:
+        json_output.append(
+            {
+                "file": err.file_path,
+                "line": err.line_number,
+                "col": err.col,
+                "end_col": err.end_col,
+                "code": err.code,
+                "severity": err.severity.lower(),
+                "message": err.message,
+            }
+        )
+    output_data = {
+        "diagnostics": json_output,
+        "summary": {
+            "total_lines": result.total_lines,
+            "fixed": result.fixed_count,
+            "time_sec": round(elapsed, 3),
+        },
+    }
+    json_str = json.dumps(output_data, indent=2, ensure_ascii=False)
+    if args.output_file:
+        with open(args.output_file, "w", encoding="utf-8") as f:
+            f.write(json_str)
+        console.print(f"[bold green]✔ Report saved to {args.output_file}[/bold green]")
+    else:
+        print(json_str)
+    error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
+    return 1 if error_count > 0 else 0
+
+def render_text(
+    active_diagnostics,
+    hidden_info_count: int,
+    result,
+    args,
+    console: Console,
+    is_tsundere: bool,
+    elapsed: float,
+    max_errors: int,
+) -> int:
+    """Рендерит diagnostics в text-формате (карточки + таблица + summary).
+
+    Возвращает exit code (не вызывает sys.exit).
+    Вынесено из main() в Phase 3 Step 2c (0.5.6).
+    """
+    # 0 ПРОБЛЕМ
+    if not active_diagnostics:
+        if is_tsundere:
+            console.print(
+                f"[bold magenta](⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄) «{TSUNDERE_UI['clean_title']}»[/bold magenta]\n"
+                f"[dim]{TSUNDERE_UI['clean_sub'].format(lines=result.total_lines, elapsed=elapsed)}[/dim]"
+            )
+        else:
+            msg = f"[bold green]✔ All clean![/bold green] Scanned [bold]{result.total_lines:,}[/bold] lines across [bold]{result.file_count}[/bold] file(s) in [cyan]{elapsed:.3f}s[/cyan]."
+            if result.fixed_count > 0:
+                msg += f" [bold cyan]({result.fixed_count} fix(es) applied!)[/bold cyan]"
+            console.print(msg)
+        return 0
+
+    # ВЫВОД КАРТОЧЕК С УЧЕТОМ SEVERITY
+    displayed = active_diagnostics[:max_errors]
+    for err in displayed:
+        text = Text()
+        text.append(f"{err.file_path}:{err.line_number}\n", style="bold cyan")
+        text.append(f"  {err.line_number} │ ", style="dim")
+        text.append(f"{err.line_content}\n\n", style="bright_white")
+
+        if is_tsundere and err.code in TSUNDERE_FLAVORS:
+            text.append(f"  {TSUNDERE_FLAVORS[err.code]}\n", style="bold italic #ff79c6")
+
+        badge_style, border_style = SEVERITY_STYLES.get(err.severity, ("bold red", "red dim"))
+        text.append(f"  [{err.severity}] {err.code}: ", style=badge_style)
+        text.append(f"{err.message}", style="bright_white")
+
+        panel_border = "magenta dim" if is_tsundere else border_style
+        console.print(Panel(text, border_style=panel_border, expand=False))
+
+    if len(active_diagnostics) > max_errors:
+        hidden = len(active_diagnostics) - max_errors
+        console.print(
+            f"\n[dim]... and {hidden} more diagnostic(s) omitted (use --max-errors to show more).[/dim]\n"
+        )
+
+    # СВОДНАЯ ТАБЛИЦА С УРОВНЯМИ СТРОГОСТИ
+    counts = Counter((e.code, e.severity) for e in active_diagnostics)
+    table = Table(
+        title="Diagnostics Summary" if not is_tsundere else TSUNDERE_UI["summary"],
+        border_style="dim",
+    )
+    table.add_column("Rule", style="bold cyan")
+    table.add_column("Severity", justify="center")
+    table.add_column("Count", justify="right", style="bold white")
+
+    for (code, severity), count in sorted(counts.items()):
+        sev_badge = Text(severity, style=SEVERITY_STYLES.get(severity, ("white", ""))[0])
+        table.add_row(code, sev_badge, str(count))
+
+    console.print(table)
+
+    if result.fixed_count > 0:
+        if is_tsundere:
+            console.print(
+                f"\n[bold magenta](//∇//) «{TSUNDERE_UI['fixed'].format(count=result.fixed_count)}»[/bold magenta]"
+            )
+        else:
+            console.print(
+                f"\n[bold green]✔ Automatically fixed {result.fixed_count} error(s)![/bold green]"
+            )
+    elif result.fixable_count > 0 and not args.fix:
+        if is_tsundere:
+            console.print(
+                f"\n[dim magenta][*] {TSUNDERE_UI['fixable'].format(count=result.fixable_count)}[/dim magenta]"
+            )
+        else:
+            console.print(
+                f"\n[dim][*] {result.fixable_count} fixable with the --fix option[/dim]"
+            )
+
+    if hidden_info_count > 0:
+        if is_tsundere:
+            console.print(
+                f"\n[dim magenta](¬_¬ ) «{TSUNDERE_UI['info_omitted'].format(count=hidden_info_count)}»[/dim magenta]"
+            )
+        else:
+            console.print(
+                f"\n[dim]ℹ {hidden_info_count} info notice(s) omitted (use --info to view them).[/dim]"
+            )
+
+    # Подсчет по категориям
+    error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
+    warn_count = sum(1 for e in active_diagnostics if e.severity == "WARNING")
+    hint_count = sum(1 for e in active_diagnostics if e.severity == "HINT")
+    info_count = sum(1 for e in active_diagnostics if e.severity == "INFO")
+
+    summary_parts = []
+    if error_count:
+        summary_parts.append(f"[bold red]{error_count} error(s)[/bold red]")
+    if warn_count:
+        summary_parts.append(f"[bold yellow]{warn_count} warning(s)[/bold yellow]")
+    if hint_count:
+        summary_parts.append(f"[bold cyan]{hint_count} hint(s)[/bold cyan]")
+    if info_count:
+        summary_parts.append(f"[bold blue]{info_count} info notice(s)[/bold blue]")
+
+    summary_str = ", ".join(summary_parts)
+
+    if is_tsundere:
+        if error_count > 0:
+            console.print(
+                f"\n[bold magenta](╬ Ò﹏Ó) {TSUNDERE_UI['errors'].format(summary_str=summary_str, elapsed=elapsed)}[/bold magenta]"
+            )
+        else:
+            console.print(
+                f"\n[bold magenta](¬_¬ ) {TSUNDERE_UI['warnings'].format(summary_str=summary_str, elapsed=elapsed)}[/bold magenta]"
+            )
+    else:
+        status_icon = (
+            "[bold red]✖[/bold red]" if error_count > 0 else "[bold yellow]⚠[/bold yellow]"
+        )
+        console.print(
+            f"\n{status_icon} Found {summary_str} "
+            f"across [bold]{result.file_count}[/bold] file(s) ({result.total_lines:,} lines) "
+            f"in [cyan]{elapsed:.3f}s[/cyan]."
+        )
+
+    # UX-15: --exit-zero форсирует exit 0 даже при ошибках (для non-blocking CI).
+    return 0 if args.exit_zero else (1 if error_count > 0 else 0)
+
+def discover_files(args, config: dict, project_path: str) -> list[str]:
+    """Находит .rpy файлы, .rpyc orphans, извлекает RPA, декомпилирует .rpyc.
+
+    Вынесено из main() в Phase 3 Step 3 (0.5.6).
+    Возвращает список extra_rpy_files — путей к .rpy файлам из RPA/декомпиляции.
+    """
+    decomp_sandbox = os.path.join(os.path.abspath(args.path), ".senpy_cache", "decompiled")
+    rpa_sandbox = os.path.join(os.path.abspath(args.path), ".senpy_cache", "rpa_extracted")
+    os.makedirs(decomp_sandbox, exist_ok=True)
+    os.makedirs(rpa_sandbox, exist_ok=True)
+
+    raw_orphans = SenpyAnalyzer.find_orphaned_rpyc(args.path)
+    orphaned_rpyc = []
+    extra_rpy_files = []
+
+    # P0-4: ДВА множества для дедупликации
+    existing_rpy_files = set()
+    existing_rpy_basenames = set()
+    for root, dirs, files in os.walk(args.path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
+        for f in files:
+            if f.endswith(".rpy"):
+                full_path = os.path.join(root, f)
+                try:
+                    rel = os.path.relpath(full_path, args.path)
+                except ValueError:
+                    rel = f
+                existing_rpy_files.add(rel)
+                existing_rpy_basenames.add(f)
+
+    # 2. RPA
+    rpa_files = []
+    for root, dirs, files in os.walk(args.path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
+        for f in files:
+            if f.lower().endswith(".rpa"):
+                rpa_files.append(os.path.join(root, f))
+
+    for rpa in rpa_files:
+        rpa_base = os.path.splitext(os.path.basename(rpa))[0].lower()
+        if (
+            any(term in rpa_base for term in ("script", "archive", "data", "game", "code"))
+            or not raw_orphans
+        ):
+            extracted = extract_scripts_from_rpa(rpa, rpa_sandbox)
+            for item in extracted:
+                base_name = os.path.basename(item)
+                rpy_name = base_name[:-1] if base_name.endswith(".rpyc") else base_name
+                if rpy_name not in existing_rpy_basenames:
+                    if item.endswith(".rpy"):
+                        extra_rpy_files.append(item)
+                    elif item.endswith(".rpyc"):
+                        raw_orphans.append(item)
+
+    # 3. Синхронизация
+    for f in extra_rpy_files:
+        existing_rpy_basenames.add(os.path.basename(f))
+
+    # 4. Кэш декомпиляции
+    for rpyc in raw_orphans:
+        rpy_name = os.path.basename(rpyc)[:-1]
+        if rpy_name in existing_rpy_basenames:
+            continue
+        cached_rpy = os.path.join(decomp_sandbox, rpy_name)
+        if os.path.exists(cached_rpy) and os.path.getmtime(cached_rpy) >= os.path.getmtime(rpyc):
+            if cached_rpy not in extra_rpy_files:
+                extra_rpy_files.append(cached_rpy)
+        else:
+            if rpyc not in orphaned_rpyc:
+                orphaned_rpyc.append(rpyc)
+
+    # 5. Декомпиляция
+    if orphaned_rpyc:
+        should_decompile = config.get("decompile", False) or args.decompile
+        is_interactive = hasattr(sys.stdin, "isatty") and sys.stdin.isatty()
+        if (
+            not should_decompile
+            and is_interactive
+            and not (args.graph or args.graph_file or args.stats)
+        ):
+            console.print(
+                f"[bold yellow]Found {len(orphaned_rpyc)} compiled .rpyc file(s) without source code.[/bold yellow]"
+            )
+            try:
+                answer = (
+                    input("Decompile them into a sandbox for analysis? [y/N]: ").strip().lower()
+                )
+                should_decompile = answer in ("y", "yes")
+            except (EOFError, KeyboardInterrupt):
+                should_decompile = False
+
+        if should_decompile:
+            custom_unrpyc = args.unrpyc or config.get("unrpyc_path")
+            unrpyc_cmd = find_unrpyc_executable(
+                custom_unrpyc, args.path, auto_download=is_interactive
+            )
+            if unrpyc_cmd:
+                new_decompiled = decompile_to_sandbox(orphaned_rpyc, unrpyc_cmd, decomp_sandbox)
+                for f_rpy in new_decompiled:
+                    if f_rpy not in extra_rpy_files:
+                        extra_rpy_files.append(f_rpy)
+
+    return extra_rpy_files
+
+def main():
+
+    # P1-1: Subcommand dispatch (senpy format ...)
+    if len(sys.argv) > 1 and sys.argv[1] == "format":
+        return _dispatch_format(sys.argv[2:])
+
+    # Phase 3 Step 1: argparse вынесен в parse_args()
+    args = parse_args()
 
     # UX-15: --version — печатает и выходит.
     if args.version:
@@ -493,118 +840,9 @@ def main():
     ignored_codes = {c.strip().upper() for c in (cli_ignore or cfg_ignore)}
 
     max_errors = args.max_errors or config.get("max_errors", 50)
-    auto_decompile = args.decompile or config.get("decompile", False)
 
-    # 1. Песочницы внутри кэша
-    decomp_sandbox = os.path.join(os.path.abspath(args.path), ".senpy_cache", "decompiled")
-    rpa_sandbox = os.path.join(os.path.abspath(args.path), ".senpy_cache", "rpa_extracted")
-    os.makedirs(decomp_sandbox, exist_ok=True)
-    os.makedirs(rpa_sandbox, exist_ok=True)
-
-    raw_orphans = SenpyAnalyzer.find_orphaned_rpyc(args.path)
-    orphaned_rpyc = []
-    extra_rpy_files = []
-
-    # Предварительно собираем список существующих .rpy строго без учета .senpy_cache
-    # P0-4: ранее existing_rpy_files хранил basenames, что ломало multi-module
-    # проекты (game/script.rpy и mods/script.rpy коллайдили, второй .rpyc
-    # пропускался как «уже есть»). Теперь храним ДВА множества:
-    #   existing_rpy_files    — relpath относительно args.path (уникальные пути)
-    #   existing_rpy_basenames — basenames для совместимости со старой логикой
-    #                            дедупликации .rpyc (один .rpyc → один .rpy по basename)
-    existing_rpy_files = set()
-    existing_rpy_basenames = set()
-    for root, dirs, files in os.walk(args.path):
-        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
-        for f in files:
-            if f.endswith(".rpy"):
-                full_path = os.path.join(root, f)
-                try:
-                    rel = os.path.relpath(full_path, args.path)
-                except ValueError:
-                    # Cross-drive на Windows — fallback на basename
-                    rel = f
-                existing_rpy_files.add(rel)
-                existing_rpy_basenames.add(f)
-
-    # 2. Умная работа с RPA: ищем скрипты в архивах (для релизных сборок и модов)
-    rpa_files = []
-    for root, dirs, files in os.walk(args.path):
-        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
-        for f in files:
-            if f.lower().endswith(".rpa"):
-                rpa_files.append(os.path.join(root, f))
-
-    for rpa in rpa_files:
-        rpa_base = os.path.splitext(os.path.basename(rpa))[0].lower()
-        if (
-            any(term in rpa_base for term in ("script", "archive", "data", "game", "code"))
-            or not raw_orphans
-        ):
-            extracted = extract_scripts_from_rpa(rpa, rpa_sandbox)
-            for item in extracted:
-                base_name = os.path.basename(item)
-                rpy_name = base_name[:-1] if base_name.endswith(".rpyc") else base_name
-                # Если такой .rpy уже есть в game/, пропускаем архивную копию
-                # P0-4: сравнение по basename (как раньше) — это правильно для
-                # дедупликации .rpyc vs .rpy (один .rpyc → один .rpy с тем же именем).
-                if rpy_name not in existing_rpy_basenames:
-                    if item.endswith(".rpy"):
-                        extra_rpy_files.append(item)
-                    elif item.endswith(".rpyc"):
-                        raw_orphans.append(item)
-
-    # 3. Синхронизируем исходники для дедупликации (не декомпилируем .rpyc, если уже найден .rpy)
-    for f in extra_rpy_files:
-        existing_rpy_basenames.add(os.path.basename(f))
-
-    # 4. Проверяем кэш декомпиляции для всех .rpyc (с диска и из .rpa)
-    for rpyc in raw_orphans:
-        rpy_name = os.path.basename(rpyc)[:-1]
-
-        # Если .rpy исходник уже найден в папке или вытащен из архива — игнорируем его .rpyc
-        # P0-4: сравнение по basename (как раньше) — .rpyc-дедупликация корректна по basename.
-        if rpy_name in existing_rpy_basenames:
-            continue
-
-        cached_rpy = os.path.join(decomp_sandbox, rpy_name)
-        if os.path.exists(cached_rpy) and os.path.getmtime(cached_rpy) >= os.path.getmtime(rpyc):
-            if cached_rpy not in extra_rpy_files:
-                extra_rpy_files.append(cached_rpy)
-        else:
-            if rpyc not in orphaned_rpyc:
-                orphaned_rpyc.append(rpyc)
-
-    # 5. Если появились новые/изменённые .rpyc — декомпилируем в песочницу
-    if orphaned_rpyc:
-        should_decompile = auto_decompile
-        is_interactive = hasattr(sys.stdin, "isatty") and sys.stdin.isatty()
-        if (
-            not should_decompile
-            and is_interactive
-            and not (args.graph or args.graph_file or args.stats)
-        ):
-            console.print(
-                f"[bold yellow]Found {len(orphaned_rpyc)} compiled .rpyc file(s) without source code.[/bold yellow]"
-            )
-            try:
-                answer = (
-                    input("Decompile them into a sandbox for analysis? [y/N]: ").strip().lower()
-                )
-                should_decompile = answer in ("y", "yes")
-            except (EOFError, KeyboardInterrupt):
-                should_decompile = False
-
-        if should_decompile:
-            custom_unrpyc = args.unrpyc or config.get("unrpyc_path")
-            unrpyc_cmd = find_unrpyc_executable(
-                custom_unrpyc, args.path, auto_download=is_interactive
-            )
-            if unrpyc_cmd:
-                new_decompiled = decompile_to_sandbox(orphaned_rpyc, unrpyc_cmd, decomp_sandbox)
-                for f_rpy in new_decompiled:
-                    if f_rpy not in extra_rpy_files:
-                        extra_rpy_files.append(f_rpy)
+    # Phase 3 Step 3: file discovery вынесено в discover_files()
+    extra_rpy_files = discover_files(args, config, args.path)
 
     is_quiet_mode = bool(
         args.graph or args.graph_file or args.stats or args.output_format in ("json", "sarif")
@@ -717,69 +955,16 @@ def main():
     _ec = handle_stubs(args, analyzer, console, is_tsundere)
     if _ec is not None:
         sys.exit(_ec)
-    # Фильтруем ошибки по кодам из --ignore и --errors-only
-    hidden_info_count = sum(
-        1
-        for e in result.diagnostics
-        if e.severity == "INFO" and e.code not in ignored_codes and not args.info
-    )
-    active_diagnostics = [
-        e
-        for e in result.diagnostics
-        if e.code not in ignored_codes
-        and (not args.errors_only or e.severity == "ERROR")
-        and (args.info or e.severity != "INFO")
-    ]
+    # Phase 3 Step 2a: фильтрация вынесена в filter_diagnostics()
+    active_diagnostics, hidden_info_count = filter_diagnostics(result, args, ignored_codes)
 
     # --- ВЫВОД В ФОРМАТЕ SARIF ДЛЯ GITHUB ACTIONS ---
     if args.output_format == "sarif":
-        from senpy.formats.sarif import generate_sarif
-
-        sarif_str = generate_sarif(active_diagnostics, args.path)
-
-        if args.output_file:
-            with open(args.output_file, "w", encoding="utf-8") as f:
-                f.write(sarif_str)
-            console.print(f"[bold green]✔ SARIF report saved to {args.output_file}[/bold green]")
-        else:
-            print(sarif_str)
-
-        error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
-        sys.exit(1 if error_count > 0 else 0)
+        sys.exit(render_sarif(active_diagnostics, args, console))
 
     # --- ВЫВОД В ФОРМАТЕ JSON ДЛЯ VS CODE ---
     elif args.output_format == "json":
-        json_output = []
-        for err in active_diagnostics:
-            json_output.append(
-                {
-                    "file": err.file_path,
-                    "line": err.line_number,
-                    "col": err.col,
-                    "end_col": err.end_col,
-                    "code": err.code,
-                    "severity": err.severity.lower(),
-                    "message": err.message,
-                }
-            )
-
-        output_data = {
-            "diagnostics": json_output,
-            "summary": {
-                "total_lines": result.total_lines,
-                "fixed": result.fixed_count,
-                "time_sec": round(elapsed, 3),
-            },
-        }
-        json_str = json.dumps(output_data, indent=2, ensure_ascii=False)
-        if args.output_file:
-            with open(args.output_file, "w", encoding="utf-8") as f:
-                f.write(json_str)
-            console.print(f"[bold green]✔ Report saved to {args.output_file}[/bold green]")
-        else:
-            print(json_str)
-        error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
-        sys.exit(1 if error_count > 0 else 0)
+        sys.exit(render_json(active_diagnostics, result, elapsed, args, console))
 
     # P0-1: --output-file для text-формата.
     # Раньше --output-file молча игнорировался: rich Console пишет в sys.stdout,
@@ -845,128 +1030,10 @@ def main():
             sys.exit(0)
 
     with output_redirect:
-        # 0 ПРОБЛЕМ
-        if not active_diagnostics:
-            if is_tsundere:
-                console.print(
-                    f"[bold magenta](⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄) «{TSUNDERE_UI['clean_title']}»[/bold magenta]\n"
-                    f"[dim]{TSUNDERE_UI['clean_sub'].format(lines=result.total_lines, elapsed=elapsed)}[/dim]"
-                )
-            else:
-                msg = f"[bold green]✔ All clean![/bold green] Scanned [bold]{result.total_lines:,}[/bold] lines across [bold]{result.file_count}[/bold] file(s) in [cyan]{elapsed:.3f}s[/cyan]."
-                if result.fixed_count > 0:
-                    msg += f" [bold cyan]({result.fixed_count} fix(es) applied!)[/bold cyan]"
-                console.print(msg)
-            _exit_with_output_redirect(args, 0)
-
-        # ВЫВОД КАРТОЧЕК С УЧЕТОМ SEVERITY
-        displayed = active_diagnostics[:max_errors]
-        for err in displayed:
-            text = Text()
-            text.append(f"{err.file_path}:{err.line_number}\n", style="bold cyan")
-            text.append(f"  {err.line_number} │ ", style="dim")
-            text.append(f"{err.line_content}\n\n", style="bright_white")
-
-            if is_tsundere and err.code in TSUNDERE_FLAVORS:
-                text.append(f"  {TSUNDERE_FLAVORS[err.code]}\n", style="bold italic #ff79c6")
-
-            badge_style, border_style = SEVERITY_STYLES.get(err.severity, ("bold red", "red dim"))
-            text.append(f"  [{err.severity}] {err.code}: ", style=badge_style)
-            text.append(f"{err.message}", style="bright_white")
-
-            panel_border = "magenta dim" if is_tsundere else border_style
-            console.print(Panel(text, border_style=panel_border, expand=False))
-
-        if len(active_diagnostics) > max_errors:
-            hidden = len(active_diagnostics) - max_errors
-            console.print(
-                f"\n[dim]... and {hidden} more diagnostic(s) omitted (use --max-errors to show more).[/dim]\n"
-            )
-
-        # СВОДНАЯ ТАБЛИЦА С УРОВНЯМИ СТРОГОСТИ
-        counts = Counter((e.code, e.severity) for e in active_diagnostics)
-        table = Table(
-            title="Diagnostics Summary" if not is_tsundere else TSUNDERE_UI["summary"],
-            border_style="dim",
+        _exit_with_output_redirect(
+            args,
+            render_text(active_diagnostics, hidden_info_count, result, args, console, is_tsundere, elapsed, max_errors)
         )
-        table.add_column("Rule", style="bold cyan")
-        table.add_column("Severity", justify="center")
-        table.add_column("Count", justify="right", style="bold white")
-
-        for (code, severity), count in sorted(counts.items()):
-            sev_badge = Text(severity, style=SEVERITY_STYLES.get(severity, ("white", ""))[0])
-            table.add_row(code, sev_badge, str(count))
-
-        console.print(table)
-
-        if result.fixed_count > 0:
-            if is_tsundere:
-                console.print(
-                    f"\n[bold magenta](//∇//) «{TSUNDERE_UI['fixed'].format(count=result.fixed_count)}»[/bold magenta]"
-                )
-            else:
-                console.print(
-                    f"\n[bold green]✔ Automatically fixed {result.fixed_count} error(s)![/bold green]"
-                )
-        elif result.fixable_count > 0 and not args.fix:
-            if is_tsundere:
-                console.print(
-                    f"\n[dim magenta][*] {TSUNDERE_UI['fixable'].format(count=result.fixable_count)}[/dim magenta]"
-                )
-            else:
-                console.print(
-                    f"\n[dim][*] {result.fixable_count} fixable with the --fix option[/dim]"
-                )
-
-        if hidden_info_count > 0:
-            if is_tsundere:
-                console.print(
-                    f"\n[dim magenta](¬_¬ ) «{TSUNDERE_UI['info_omitted'].format(count=hidden_info_count)}»[/dim magenta]"
-                )
-            else:
-                console.print(
-                    f"\n[dim]ℹ {hidden_info_count} info notice(s) omitted (use --info to view them).[/dim]"
-                )
-
-        # Подсчет по категориям
-        error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
-        warn_count = sum(1 for e in active_diagnostics if e.severity == "WARNING")
-        hint_count = sum(1 for e in active_diagnostics if e.severity == "HINT")
-        info_count = sum(1 for e in active_diagnostics if e.severity == "INFO")
-
-        summary_parts = []
-        if error_count:
-            summary_parts.append(f"[bold red]{error_count} error(s)[/bold red]")
-        if warn_count:
-            summary_parts.append(f"[bold yellow]{warn_count} warning(s)[/bold yellow]")
-        if hint_count:
-            summary_parts.append(f"[bold cyan]{hint_count} hint(s)[/bold cyan]")
-        if info_count:
-            summary_parts.append(f"[bold blue]{info_count} info notice(s)[/bold blue]")
-
-        summary_str = ", ".join(summary_parts)
-
-        if is_tsundere:
-            if error_count > 0:
-                console.print(
-                    f"\n[bold magenta](╬ Ò﹏Ó) {TSUNDERE_UI['errors'].format(summary_str=summary_str, elapsed=elapsed)}[/bold magenta]"
-                )
-            else:
-                console.print(
-                    f"\n[bold magenta](¬_¬ ) {TSUNDERE_UI['warnings'].format(summary_str=summary_str, elapsed=elapsed)}[/bold magenta]"
-                )
-        else:
-            status_icon = (
-                "[bold red]✖[/bold red]" if error_count > 0 else "[bold yellow]⚠[/bold yellow]"
-            )
-            console.print(
-                f"\n{status_icon} Found {summary_str} "
-                f"across [bold]{result.file_count}[/bold] file(s) ({result.total_lines:,} lines) "
-                f"in [cyan]{elapsed:.3f}s[/cyan]."
-            )
-
-        # UX-15: --exit-zero форсирует exit 0 даже при ошибках (для non-blocking CI).
-        _exit_with_output_redirect(args, 0 if args.exit_zero else (1 if error_count > 0 else 0))
 
 
 if __name__ == "__main__":
