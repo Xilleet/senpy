@@ -5,7 +5,19 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.5] — 2026-10-29
+## [0.5.6]
+
+### Changed
+* **Разбиты 3 god-функции (Phase 3):**
+  * `cli/main.py:main()` (719 → 220 строк): извлечены `parse_args()`, `filter_diagnostics()`, `render_sarif()`, `render_json()`, `render_text()`, `discover_files()`
+  * `rules/python_ast.py:_walk_python_nodes` (479 → 30 строк dispatcher): извлечены 8 `_visit_*` методов
+  * `core/analyzer.py:_collect_symbols` (378 → 80 строк dispatcher): извлечены 7 `_collect_*` методов
+
+### Fixed
+* `_collect_screen_transform`: early return делал transform-обработку dead code (исправлено)
+* `current_screen` context не сбрасывался для non-screen top-level строк (исправлено)
+
+## [0.5.5]
 
 ### Changed
 
