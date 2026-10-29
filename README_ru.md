@@ -7,7 +7,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/Ren'Py-6.99%20%7C%207%20%7C%208-ff69b4?logo=renpy&logoColor=white" alt="Ren'Py 6.99 / 7 / 8">
-  <img src="https://img.shields.io/badge/Rules-40%20Правил-orange" alt="40+ Правил">
+  <img src="https://img.shields.io/badge/Rules-45%20Правил-orange" alt="45+ Правил">
   <img src="https://img.shields.io/badge/Speed-77k%20строк%20за%200.04с%20(кэш)-brightgreen" alt="77k строк за 0.04с">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
   <img src="https://img.shields.io/badge/Code%20Style-Ruff-000000.svg" alt="Ruff">
@@ -34,7 +34,7 @@
 - **Контроль сохранений и отката (RPY104–RPY106):** защищает от мутаций констант `define`, нативного `random` и переменных без `default`.
 - **Метрики локализации (`--coverage`):** рассчитывает процент готовности перевода по каждому языку в `game/tl/`.
 - **Постморт-анализ крашей (`--traceback`):** сопоставляет логи падений (`traceback.txt`) с кодом новеллы и объясняет причины сбоя сценаристу.
-- **Интеграция с VS Code и CI/CD:** двусторонний граф сюжета, F12 переход, автокомплит, автообновление расширения и генератор GitHub Actions (`--init-ci`).
+- **Интеграция с VS Code и CI/CD:** двусторонний граф сюжета, F12 переход к определению, автокомплит, переименование меток с обновлением всех ссылок (`F2`), поиск всех упоминаний (`Shift+F12`), сворачивание блоков, подсветка вхождений, поиск символов в рабочем пространстве (`Ctrl+T`), автообновление расширения и генератор GitHub Actions (`--init-ci`).
 - **Безопасное автоисправление (`--fix`):** автоматически исправляет однозначные синтаксические недочёты, например незакрытые текстовые теги.
 - **Режим цундэрэ (`--tsundere`):** выводит диагностические сообщения в аниме-стилистике. Потому что даже линтеру необязательно быть эмоционально доступным.
 
@@ -101,30 +101,38 @@ senpy "path/to/game" --graph-file "story_graph.md"
 # Очистить кэш (.senpy_cache)
 senpy --clear-cache
 
-# Декомпилировать найденные .rpyc без исходных .rpy
-senpy "path/to/game" --decompile
+# Отключить дисковый кэш для разового холодного прогона
+senpy "path/to/game" --no-cache
 
-# Ограничить количество выводимых сообщений
-senpy "path/to/game" --max-errors 30
+# Вывести диагностику в формате SARIF (GitHub Actions), JSON или text
+senpy "path/to/game" --output-format sarif --output-file senpy.sarif
+senpy "path/to/game" --output-format json
 
-# Игнорировать определённые коды правил
-senpy "path/to/game" --ignore RPY104 RPY303
+# Всегда возвращать код 0 (полезно для CI: отчёт без завала сборки)
+senpy "path/to/game" --exit-zero
 
-# Показать подробную справку по конкретному правилу
-senpy --rule RPY108
+# Показать статистику проекта (количество файлов, строк, меток, экранов)
+senpy "path/to/game" --stats
 
-# Перечислить все 40 доступных правил
+# Указать свой путь к unrpyc.py или исполняемому файлу unrpyc
+senpy "path/to/game" --decompile --unrpyc /path/to/unrpyc.py
+
+# Перечислить все 45 доступных правил
 senpy --rules
 
 # Включить режим цундэрэ
 senpy "path/to/game" --tsundere
+
+# Генерация HTML-отчета с интерактивным графом сюжета
+senpy "path/to/game" --export-html "report.html"
+
 ```
 
 ---
 
 ## Справочник диагностик
 
-Senpy включает **40 специализированных семантических правил**:
+Senpy включает **45 специализированных семантических правил**:
 
 | Серия | Категория | Описание |
 | :--- | :--- | :--- |
@@ -135,6 +143,7 @@ Senpy включает **40 специализированных семанти�
 | **RPY4xx** | Развилки и логика | Асимметрия в `menu:` (`RPY401`), пустые выборы (`RPY402`), противоречивые условия (`RPY403`), чтение переменных в статусе `MAYBE_SET` (`RPY404`). |
 | **RPY5xx** | Ресурсы и медиа | Потерянные аудиофайлы, ненайденные спрайты, неиспользуемые ассеты (`RPY503`), дубликаты `image`, незарегистрированные аудиоканалы (`RPY505`). |
 | **RPY6xx** | Локализация | Рассинхрон переменных в `game/tl/` (`RPY601`), рассинхрон тегов форматирования, пустые строки перевода (`RPY603`). |
+| **RPY7xx** | Dead code and unused declarations | Labels unreachable via jump/call (`RPY701`), unused define constants (`RPY702`), unused default variables (`RPY703`). |
 
 *Подробные пояснения и примеры кода см. в полной **[документации по правилам](RULES.md)***.
 
@@ -219,6 +228,53 @@ ignore = [
 $ dynamic_var = 1              # noqa: RPY104
 $ temp_calc = 100              # senpy: ignore[RPY104]
 ```
+
+---
+
+## Интеграция с GitHub Actions
+
+Senpy полностью поддерживает стандартный формат вывода **SARIF**. Это позволяет автоматически сканировать вашу визуальную новеллу на наличие ошибок при каждом Pull Request. GitHub будет нативно подсвечивать баги и риски падения игры прямо в интерфейсе обзора кода (code review)!
+
+Чтобы включить интеграцию в один клик, запустите:
+
+```bash
+senpy --init-ci
+```
+
+Или создайте файл `.github/workflows/senpy.yml` вручную:
+
+```yaml
+name: Senpy Code Scanning
+
+on:
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python & Senpy
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install senpy-linter
+
+      - name: Run Senpy Analysis
+        run: senpy game/ --format sarif --output-file senpy.sarif
+        continue-on-error: true
+
+      - name: Upload SARIF report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: senpy.sarif
+```
+
 
 ---
 

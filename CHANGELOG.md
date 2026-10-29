@@ -5,6 +5,17 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.7]
+
+### Changed
+* **Разбиты 3 god-функции:**
+  * `rules/checkers/asset.py:AssetChecker.check_line` (352 → 23 строки dispatcher): извлечены `_check_show_scene()` (RPY502: show/scene/ATL/transitions) и `_check_audio_statement()` (RPY501/RPY505: play/queue/stop)
+  * `rules/flow.py:StoryFlowAnalyzer.analyze_menu_flow` (151 → 25 строк dispatcher): извлечены `_parse_menu_choices()`, `_analyze_choice_body()`, `_merge_menu_branches()`
+  * `rules/flow.py:StoryFlowAnalyzer.generate_mermaid_graph` (133 → 8 строк dispatcher): вынесен в модульный класс `MermaidBuilder` (`build()` метод). Тонкий диспетчер сохранён для обратной совместимости (`core/analyzer.py:1559` вызывает `self.flow.generate_mermaid_graph()`)
+
+### Notes
+* Это минорный рефакторинг-релиз: поведение неизменно, 497 тестов зелёные.
+
 ## [0.5.6]
 
 ### Changed
@@ -44,6 +55,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 434 теста проходят (vs 425 в 0.5.3): +9 тестов после реструктуризации.
 test_imports.py обновлён с новыми путями модулей.
 test_packaging.py обновлён с новыми путями файлов.
+
+
+## [0.5.4] ⚠️ YANKED
+
+> **Важно:** Этот релиз был опубликован на PyPI и сразу же отозван (*yanked*). Версия содержит критическую ошибку сборки. **Не используйте её в проектах.**
+
+### Причина отзыва
+Шаг `publish-pypi` в CI/CD выполнился успешно, но последующий шаг `build-vsix` завершился ошибкой. 
+
+В рамках реструктуризации в версии 0.5.4 файл `senpy/cli.py` был перенесен в `senpy/cli/main.py`. Однако конфигурационный файл `senpy.spec` для PyInstaller не был обновлен и продолжал ссылаться на старый путь, из-за чего сборка артефакта упала.
+
+Поскольку PyPI иммутабелен (неизменяем), опубликованный релиз 0.5.4 нельзя перезаписать или удалить — его можно было только пометить как **yanked**.
+
 
 ## [0.5.3]
 

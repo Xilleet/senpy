@@ -282,16 +282,24 @@ class StoryFlowAnalyzer:
                         noqa_map,
                     )
 
-    def analyze_menu_flow(
+    # =========================================================================
+    # analyze_menu_flow разбит на 3 метода.
+    # analyze_menu_flow — теперь dispatcher.
+    # =========================================================================
+
+    def _parse_menu_choices(
         self,
         lines: list[str],
         start_idx: int,
         menu_indent: int,
-        file_path: str = "",
-        noqa_map: dict | None = None,
-    ) -> tuple[int, dict[str, tuple[str, ...]], set[str], bool]:
-        from senpy.core.constants import RE_MENU_START
-        from senpy.text_utils import _strip_comment  # Фаза 1.3: вынесено в text_utils
+        file_path: str,
+        noqa_map: dict,
+    ) -> tuple[int, list[FlowBranch], dict[str, tuple[str, ...]]]:
+        """Парсит choices из menu-блока. Возвращает (idx, choices, uninitialized_vars).
+
+        Вынесено из analyze_menu_flow в Phase 4 Step 2 (0.5.7).
+        """
+        from senpy.text_utils import _strip_comment
 
         idx = start_idx
         choices: list[FlowBranch] = []
@@ -299,7 +307,6 @@ class StoryFlowAnalyzer:
         choice_indent: int | None = None
         statement_counts: dict[int, int] = {}
         uninitialized_vars: dict[str, tuple[str, ...]] = {}
-        noqa_map = noqa_map or {}
 
         def check_empty_choice(branch: FlowBranch | None):
             if branch and statement_counts.get(id(branch), 0) == 0 and file_path:
@@ -359,30 +366,12 @@ class StoryFlowAnalyzer:
                     statement_counts.get(id(current_choice), 0) + 1
                 )
 
-                if RE_MENU_START.match(raw_line):
-                    consumed_idx, sub_uninit, sub_guaranteed, sub_term = self.analyze_menu_flow(
-                        lines,
-                        idx + 1,
-                        line_indent,
-                        file_path=file_path,
-                        noqa_map=noqa_map,
-                    )
-                    current_choice.defined_vars.update(sub_guaranteed)
-                    uninitialized_vars.update(sub_uninit)
-                    if sub_term:
-                        current_choice.terminates = True
-                    idx = consumed_idx
-                    continue
-
-                if stripped.startswith("$"):
-                    py = stripped[1:].strip()
-                    current_choice.defined_vars.update(extract_assigned_names(py))
-
-                if re.match(
-                    r"^\s*(?:jump\b|return\b|\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b)",
-                    stripped,
-                ):
-                    current_choice.terminates = True
+                idx, current_choice, uninitialized_vars = self._analyze_choice_body(
+                    lines, idx, line_indent, stripped, raw_line,
+                    current_choice, uninitialized_vars,
+                    file_path, noqa_map,
+                )
+                continue
 
             idx += 1
 
@@ -390,6 +379,65 @@ class StoryFlowAnalyzer:
             check_empty_choice(current_choice)
             choices.append(current_choice)
 
+        return idx, choices, uninitialized_vars
+
+    def _analyze_choice_body(
+        self,
+        lines: list[str],
+        idx: int,
+        line_indent: int,
+        stripped: str,
+        raw_line: str,
+        current_choice: FlowBranch,
+        uninitialized_vars: dict[str, tuple[str, ...]],
+        file_path: str,
+        noqa_map: dict,
+    ) -> tuple[int, FlowBranch, dict[str, tuple[str, ...]]]:
+        """Анализирует тело choice (вложенные menu, jump, $). Возвращает (idx, choice, uninit).
+
+        Вынесено из analyze_menu_flow в Phase 4 Step 2 (0.5.7).
+        """
+        from senpy.core.constants import RE_MENU_START
+
+        if RE_MENU_START.match(raw_line):
+            consumed_idx, sub_uninit, sub_guaranteed, sub_term = self.analyze_menu_flow(
+                lines,
+                idx + 1,
+                line_indent,
+                file_path=file_path,
+                noqa_map=noqa_map,
+            )
+            current_choice.defined_vars.update(sub_guaranteed)
+            uninitialized_vars.update(sub_uninit)
+            if sub_term:
+                current_choice.terminates = True
+            idx = consumed_idx
+            return idx, current_choice, uninitialized_vars
+
+        if stripped.startswith("$"):
+            py = stripped[1:].strip()
+            current_choice.defined_vars.update(extract_assigned_names(py))
+
+        if re.match(
+            r"^\s*(?:jump\b|return\b|\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b)",
+            stripped,
+        ):
+            current_choice.terminates = True
+
+        idx += 1
+        return idx, current_choice, uninitialized_vars
+
+    def _merge_menu_branches(
+        self,
+        choices: list[FlowBranch],
+        start_idx: int,
+        file_path: str,
+        noqa_map: dict,
+    ) -> tuple[set[str], dict[str, tuple[str, ...]], bool]:
+        """Слияние веток menu + RPY401 диагностика. Возвращает (guaranteed, uninit, all_terminates).
+
+        Вынесено из analyze_menu_flow в Phase 4 Step 2 (0.5.7).
+        """
         merging_choices = [c for c in choices if not c.terminates]
 
         # RPY401: Диагностика асимметрии между нетерминирующими ветками меню
@@ -430,12 +478,55 @@ class StoryFlowAnalyzer:
             known_symbols=self.analyzer.user_symbols,
             already_guaranteed=set(),
         )
+
+        return guaranteed_vars, merged_uninit, all_terminates
+
+    def generate_mermaid_graph(self) -> str:
+        """Делегирует в MermaidBuilder. Сохранён для backward compat."""
+        return MermaidBuilder(self.analyzer).build()
+
+    def analyze_menu_flow(
+        self,
+        lines: list[str],
+        start_idx: int,
+        menu_indent: int,
+        file_path: str = "",
+        noqa_map: dict | None = None,
+    ) -> tuple[int, dict[str, tuple[str, ...]], set[str], bool]:
+        """Анализирует menu-блок: парсит choices, анализирует тела, мержит ветки.
+
+        Phase 4 Step 2 (0.5.7): разбит с 152 строк на 3 метода + dispatcher.
+        """
+        noqa_map = noqa_map or {}
+
+        idx, choices, uninitialized_vars = self._parse_menu_choices(
+            lines, start_idx, menu_indent, file_path, noqa_map
+        )
+
+        guaranteed_vars, merged_uninit, all_terminates = self._merge_menu_branches(
+            choices, start_idx, file_path, noqa_map
+        )
+
         uninitialized_vars.update(merged_uninit)
 
         return idx, uninitialized_vars, guaranteed_vars, all_terminates
 
-    def generate_mermaid_graph(self) -> str:
-        """Генерирует чистую Mermaid.js диаграмму графа сюжета новеллы."""
+    # =========================================================================
+    # generate_mermaid_graph → MermaidBuilder class.
+    # =========================================================================
+
+
+class MermaidBuilder:
+    """Строит Mermaid.js диаграмму графа сюжета новеллы.
+
+    Вынесено из StoryFlowAnalyzer.generate_mermaid_graph в Phase 4 Step 3 (0.5.7).
+    """
+
+    def __init__(self, analyzer):
+        self.analyzer = analyzer
+
+    def build(self) -> str:
+        """Строит полный Mermaid-граф с метаданными."""
         lines = [
             "```mermaid",
             "graph TD",
@@ -444,6 +535,7 @@ class StoryFlowAnalyzer:
 
         labels = self.analyzer.labels
 
+        # --- Узлы меток ---
         for label, lbl_sym in sorted(labels.items()):
             if label.startswith("_"):
                 continue
@@ -460,13 +552,10 @@ class StoryFlowAnalyzer:
 
             lines.append(f"    {_mermaid_safe_id(label)}{shape_start}{label}{shape_end}")
 
-        # --- Экраны: узлы (follow-up; префикс screen_ разводит
-        # id-пространства label/screen в Mermaid) ---
+        # --- Узлы экранов ---
         screens_registry = self.analyzer.screens
         screen_action_jumps = getattr(self.analyzer, "screen_action_jumps", {}) or {}
         used_screens = getattr(self.analyzer, "used_screens", set()) or set()
-        # источники screen_uses (лейблы с call/show screen и экраны
-        # с use) — тоже участники графа, их узлы должны существовать
         screen_uses = getattr(self.analyzer, "screen_uses", {}) or {}
         graph_screens = sorted(
             (set(screen_action_jumps) | set(used_screens) | set(screen_uses))
@@ -477,6 +566,7 @@ class StoryFlowAnalyzer:
 
         lines.append("")
 
+        # --- Рёбра меток ---
         edges_added = False
         for src, lbl_sym in sorted(labels.items()):
             if src.startswith("_"):
@@ -495,8 +585,7 @@ class StoryFlowAnalyzer:
                     )
                     edges_added = True
 
-        # --- Экраны: рёбра Jump-экшенов (существующая метка = сплошное,
-        # отсутствующая = пунктир с классом missing) ---
+        # --- Рёбра экранов: Jump-экшены ---
         for scr in graph_screens:
             for tgt in sorted(screen_action_jumps.get(scr, ())):
                 if tgt in labels:
@@ -509,13 +598,13 @@ class StoryFlowAnalyzer:
                     )
                 edges_added = True
 
-        # --- рёбра label -- call screen --> screen и screen -- use --> screen ---
+        # --- Рёбра label -- call screen --> screen и screen -- use --> screen ---
         for src_name in sorted(screen_uses):
             if src_name.startswith("_"):
                 continue
             for tgt in sorted(screen_uses[src_name]):
                 if tgt not in screens_registry:
-                    continue  # несуществующие экраны — территория RPY204
+                    continue
                 if src_name in labels:
                     lines.append(f"    {src_name} -- call screen --> screen_{tgt}")
                     edges_added = True
@@ -526,6 +615,7 @@ class StoryFlowAnalyzer:
         if not edges_added:
             lines.append("    %% No static jumps detected")
 
+        # --- CSS классы ---
         lines.append("\n    classDef missing fill:#ff4d4f,stroke:#333,stroke-width:1px,color:#fff;")
         lines.append(
             "    classDef fallthrough fill:#faad14,stroke:#333,stroke-width:1px,color:#fff;"
@@ -533,6 +623,7 @@ class StoryFlowAnalyzer:
         lines.append("    classDef screen fill:#1890ff,stroke:#333,stroke-width:1px,color:#fff;")
         lines.append("```")
 
+        # --- Метаданные (senpy-meta) ---
         meta = {"locations": {}}
         for lbl_name, lbl_sym in labels.items():
             meta["locations"][lbl_name] = {
@@ -541,7 +632,6 @@ class StoryFlowAnalyzer:
                 "type": "label",
             }
 
-        # Координаты экранов для навигации из senpy-meta
         for scr in graph_screens:
             scr_sym = screens_registry.get(scr)
             if scr_sym is not None:

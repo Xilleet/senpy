@@ -7,7 +7,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/Ren'Py-6.99%20%7C%207%20%7C%208-ff69b4?logo=renpy&logoColor=white" alt="Ren'Py 6.99 / 7 / 8">
-  <img src="https://img.shields.io/badge/Rules-40%20Semantic%20Rules-orange" alt="40+ Rules">
+  <img src="https://img.shields.io/badge/Rules-45%20Правил-orange" alt="45+ Rules"
   <img src="https://img.shields.io/badge/Speed-77k%20lines%20in%200.04s%20(cached)-brightgreen" alt="Speed: 77k lines in 0.04s">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
   <img src="https://img.shields.io/badge/Code%20Style-Ruff-000000.svg" alt="Ruff">
@@ -38,6 +38,8 @@ The standard built-in `renpy lint` command only checks for basic syntax errors a
 * **Translation Validator & Coverage:** Audits `game/tl/` formatting, catches broken interpolation variables (`RPY601`), and calculates localization completion metrics via `senpy --coverage`.
 * **Runtime Crash Inspector:** Parses `traceback.txt` post-mortem crash logs, explaining failures in human-readable terms (`senpy --traceback`).
 * **LSP & VS Code Superpowers:** Real-time diagnostics (~0.04s incremental cache), full-spectrum Go-to-Definition (`F12`), Document Symbols / Breadcrumbs (`Ctrl+Shift+O`), hover docs for 220+ Ren'Py APIs, QuickFix (`Ctrl+.`), and interactive story maps.
+* **VS Code & CI/CD Integration:** bidirectional story graph, Go to Definition (F12), autocomplete, label renaming with automatic reference updates (F2), Find All References (Shift+F12), code folding, occurrence highlighting, workspace symbol search (Ctrl+T), extension auto-updates, and a GitHub Actions generator (--init-ci).
+
 
 ---
 
@@ -106,11 +108,24 @@ senpy "path/to/game" --export-html "report.html"
 # Clear disk cache (.senpy_cache)
 senpy --clear-cache
 
-# List all 40 available rules
+# List all 45 available rules
 senpy --rules
 
 # Enable anime-style tsundere diagnostic messages
 senpy "path/to/game" --tsundere
+
+# Output diagnostics in SARIF (GitHub Actions), JSON, or text format
+senpy "path/to/game" --output-format sarif --output-file senpy.sarif
+senpy "path/to/game" --output-format json
+
+# Always return exit code 0 (useful for CI to report without failing the build)
+senpy "path/to/game" --exit-zero
+
+# Show project statistics (file, line, label, and screen counts)
+senpy "path/to/game" --stats
+
+# Specify a custom path to unrpyc.py or the unrpyc executable
+senpy "path/to/game" --decompile --unrpyc /path/to/unrpyc.py
 ```
 
 ---
@@ -128,6 +143,7 @@ Senpy includes **40 specialized semantic rules** tailored to Ren'Py scripting:
 | **RPY4xx** | Branching & Logic | Branch asymmetry in menus & if/else (`RPY401`), empty choices (`RPY402`), contradictory conditions (`RPY403`), reading uninitialized `MAYBE_SET` variables (`RPY404`). |
 | **RPY5xx** | Assets & Media | Missing audio files, unresolved sprites, layered image attributes, undefined transforms (`at`) & transitions (`with`) (`RPY502`), unused assets (`RPY503`), duplicate image declarations, unregistered audio channels (`RPY505`). |
 | **RPY6xx** | Translations & Localization | Variable mismatches in `game/tl/` (`RPY601`), formatting tag mismatches (`RPY602`), blank translation strings (`RPY603`). |
+| **RPY7xx** | Мёртвый код и неиспользуемые объявления | Метки, недостижимые через `jump`/`call` (`RPY701`), неиспользуемые константы `define` (`RPY702`), неиспользуемые переменные `default` (`RPY703`). |
 
 For full descriptions, rationale, and bad/good examples, read the complete **[Rules Documentation](RULES.md)**.
 

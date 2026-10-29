@@ -56,20 +56,26 @@ class AssetChecker(BaseChecker):
                 noqa_map,
             )
 
-    def check_line(
+    # =========================================================================
+    # check_line разбит на 2 метода.
+    # check_line — теперь dispatcher
+    # =========================================================================
+
+    def _check_show_scene(
         self,
         file_path: str,
         idx: int,
         raw_line: str,
-        clean_line: str,
+        stripped: str,
         scope_stack: ScopeStack,
-        noqa_map: dict[int, set[str] | None],
-        lines: list[str],
-    ) -> tuple[str, bool]:
-        stripped = clean_line.strip()
+        noqa_map: dict,
+    ) -> None:
+        """RPY502: Проверка show / scene — спрайты, ATL-трансформации, переходы.
+
+        Вынесено из check_line в Phase 4 Step 1 (0.5.7).
+        """
         is_in_screen = scope_stack.current_screen_name() is not None
 
-        # RPY502: Проверка show / scene
         m_show = (
             RE_SHOW_SCENE.match(stripped)
             if (not is_in_screen and stripped.startswith(("show ", "scene ")))
@@ -86,9 +92,7 @@ class AssetChecker(BaseChecker):
                 if t.endswith(":"):
                     break
 
-            # "show layer <имя>" — очистка слоя (renpy.show_layer_at), а НЕ показ
-            # изображения: слово layer зарезервировано парсером Ren'Py и не может
-            # быть тегом картинки. АТ-трансформы ниже проверяются как раньше.
+            # "show layer <имя>" — очистка слоя, а НЕ показ изображения
             if img_tokens and img_tokens[0] == "layer" and m_show.group(1) == "show":
                 img_tokens = []
 
@@ -164,7 +168,8 @@ class AssetChecker(BaseChecker):
                         noqa_map,
                     )
 
-            # RPY502: Проверка валидности ATL-трансформаций в конструкции 'show ... at ...'
+        # RPY502: Проверка валидности ATL-трансформаций в конструкции 'show ... at ...'
+        if m_show:
             m_at = re.search(
                 r"\bat\s+([^:]+?)(?:\s+(?:with|as|zorder|behind|onlayer)\b|:|$)", stripped
             )
@@ -244,7 +249,20 @@ class AssetChecker(BaseChecker):
                 self._validate_transition_expr(
                     file_path, idx, raw_line, stripped, trans_expr, noqa_map
                 )
-        # RPY505: Проверка stop <channel> (Задача 6: раньше stop не проверялся вовсе)
+
+    def _check_audio_statement(
+        self,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        stripped: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY501/RPY505: Проверка play / queue / stop (каналы и файлы).
+
+        Вынесено из check_line в Phase 4 Step 1 (0.5.7).
+        """
+        # RPY505: Проверка stop <channel>
         m_stop = RE_STOP_STATEMENT.match(stripped) if stripped.startswith("stop ") else None
         if m_stop:
             stop_channel = m_stop.group(1).lower()
@@ -406,5 +424,27 @@ class AssetChecker(BaseChecker):
                         ),
                         noqa_map,
                     )
+
+    def check_line(
+        self,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        clean_line: str,
+        scope_stack: ScopeStack,
+        noqa_map: dict[int, set[str] | None],
+        lines: list[str],
+    ) -> tuple[str, bool]:
+        """Dispatcher: проверяет show/scene и audio через _check_* методы.
+
+        Phase 4 Step 1 (0.5.7): разбит с 351 строк на 2 метода + dispatcher.
+        """
+        stripped = clean_line.strip()
+
+        # RPY502: show / scene + ATL + transitions
+        self._check_show_scene(file_path, idx, raw_line, stripped, scope_stack, noqa_map)
+
+        # RPY501/RPY505: play / queue / stop
+        self._check_audio_statement(file_path, idx, raw_line, stripped, noqa_map)
 
         return raw_line, False
