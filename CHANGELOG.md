@@ -5,6 +5,35 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.8]
+
+### Security
+* **Defense-in-depth blocklist в `SafeUnpickler.find_class`** (`senpy/vendor/unrpyc/decompiler/magic.py`).**
+  Добавлен `_DANGEROUS_MODULES_BLOCKLIST` (frozenset из 11 модулей: `os`, `sys`, `subprocess`, `socket`, `shutil`, `pathlib`, `builtins`, `ctypes`, `multiprocessing`, `pickle`, `marshal`). Если кто-то случайно добавит опасный модуль в `safe_modules`, `SafeUnpickler` отклонит его и вернёт `FakeClass` вместо `__import__('os')`. Сверка подтвердила: Senpy уже использовал `SafeUnpickler` через `pickle_safe_loads` (main path безопасен) — фикс закрывает defense-in-depth риск. 5 новых тестов в `tests/test_aud_001_security.py`.
+
+### Packaging
+* **`lsprotocol` добавлен в `pyproject.toml [project] dependencies`**. Раньше `pip install senpy-linter` падал на `from lsprotocol import types as lsp`, потому что зависимость отсутствовала в METADATA.
+* **Синхронизированы `pyproject.toml` и `senpy/requirements.txt`**. В `pyproject.toml` установлены compatible-release constraints (`rich~=15.0`, `pygls~=2.1`, `lsprotocol>=2025.0.0`). `requirements.txt` остаётся dev lock file с `==` pinned версиями.
+* **Удалён `types_or: [python, text]` из `.pre-commit-hooks.yaml`**. Hook никогда не запускался для `.rpy` файлов, потому что `.rpy` не имеет типа `python` или `text`. Теперь hook корректно фильтрует через `files: \.(rpy|rpym)$`.
+
+### Documentation
+* **Исправлен unclosed `<img>` тег в `README.md`** (строка 10). Сломанный HTML рендерился криво на GitHub.
+* **Унифицировано число правил во всех источниках**. `senpy/rules/rules_info.py:show_rules_table()` теперь использует `f"... (All {len(RULES_DATABASE)} Rules)"` вместо хардкода «45» (DOC-8a). README badge уже был «45». `senpy.toml` использует «All Senpy Rules» без числа с 0.5.2.
+* **Динамический подсчёт числа правил** через `len(RULES_DATABASE)`. Если завтра добавят 46-е правило — заголовок автоматически обновится, ничего править не нужно. Также исправлен регэксп в `test_rules_info_py_uses_dynamic_count` (он пропускал хардкод внутри `title="... (All 45 Rules)"`).
+* **Добавлена секция «Dead Code Detection (RPY7xx)» в `RULES.md`** с описаниями RPY701 (unused `define`), RPY702 (unused `transform`), RPY703 (unused `screen`). Навигация в начале `RULES.md` обновлена. RPY701/702/703 добавлены в EN cheat sheet в `senpy.toml`.
+
+### CI
+* **Coverage gate добавлен в CI**. `pytest tests/ -v --tb=short` → `pytest tests/ --cov=senpy --cov-fail-under=75 --tb=short`. Порог 75% (текущий coverage 77% без vendor). Поднимем до 80% после QUA-7 (типизация 95%+). `senpy/vendor/*` добавлен в `pyproject.toml [tool.coverage.run] omit` — vendored unrpyc — чужой код.
+* **macOS добавлен в matrix** (Python 3.12, 1 добавочный job). Safety net для контрибьюторов на macOS (path separators, case-sensitivity FS, framework Python). Не полный matrix 3×3=9 jobs — экономит минуты.
+
+### Tests
+* 553 passed (548 existing + 5 новых security-тестов в `tests/test_unrpyc_security.py`).
+* Coverage 77.37% без vendor (vendored unrpyc исключён из подсчёта).
+
+### Notes
+* Это stability & cleanup релиз: закрыты все хвосты v0.5.7, CI gates налажены, документация актуализирована. Подготовка фундамента под 0.6.0 (LSP killer-features + plugin system).
+
+
 ## [0.5.7]
 
 ### Changed
