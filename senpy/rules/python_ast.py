@@ -593,52 +593,24 @@ class PythonAstChecker:
                 local_scope=set(),
             )
 
-    def _walk_python_nodes(
+    def _visit_import(
         self,
-        nodes: list[ast.stmt],
+        node: ast.Import,
         file_path: str,
         start_line: int,
         noqa_map: dict,
         lines: list[str] | None,
-        local_scope: set[str],
     ) -> None:
-        for node in nodes:
-            # Игнорируем вложенные функции и классы, они создают свой локальный скоуп
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                continue
-
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name == "random":
-                        real_line = start_line + getattr(node, "lineno", 1) - 1
-                        raw_l = (
-                            lines[real_line - 1]
-                            if lines and 0 <= real_line - 1 < len(lines)
-                            else "import random"
-                        )
-                        start_c, end_c = get_utf16_range(raw_l, "import random")
-                        self.analyzer._add_diagnostic(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=real_line,
-                                line_content=raw_l.strip(),
-                                code="RPY106",
-                                message="Standard 'random' used during gameplay. Rollback and saves may become non-deterministic; prefer 'renpy.random'.",
-                                col=start_c,
-                                end_col=end_c,
-                                fix_title="Replace with 'from renpy import random'",
-                                fix_replacement="from renpy import random",
-                            ),
-                            noqa_map,
-                        )
-            elif isinstance(node, ast.ImportFrom) and node.module == "random":
+        """RPY106: import random → renpy.random."""
+        for alias in node.names:
+            if alias.name == "random":
                 real_line = start_line + getattr(node, "lineno", 1) - 1
                 raw_l = (
                     lines[real_line - 1]
                     if lines and 0 <= real_line - 1 < len(lines)
-                    else "from random import ..."
+                    else "import random"
                 )
-                start_c, end_c = get_utf16_range(raw_l, "random")
+                start_c, end_c = get_utf16_range(raw_l, "import random")
                 self.analyzer._add_diagnostic(
                     Diagnostic(
                         file_path=file_path,
@@ -648,96 +620,343 @@ class PythonAstChecker:
                         message="Standard 'random' used during gameplay. Rollback and saves may become non-deterministic; prefer 'renpy.random'.",
                         col=start_c,
                         end_col=end_c,
+                        fix_title="Replace with 'from renpy import random'",
+                        fix_replacement="from renpy import random",
                     ),
                     noqa_map,
                 )
 
-            elif isinstance(node, ast.AugAssign):
-                # 1. Мутация через +=, -= переменной: $ CONST += 1
-                if isinstance(node.target, ast.Name):
-                    var_name = node.target.id
-                    if var_name not in local_scope:
-                        real_line = start_line + getattr(node, "lineno", 1) - 1
-                        raw_l = (
-                            lines[real_line - 1]
-                            if lines and 0 <= real_line - 1 < len(lines)
-                            else ""
-                        )
-                        if (
-                            (not raw_l or var_name not in raw_l)
-                            and lines
-                            and 0 <= start_line - 1 < len(lines)
-                        ):
-                            raw_l = lines[start_line - 1]
-                        start_c, end_c = get_utf16_range(raw_l, var_name)
+    def _visit_import_from(
+        self,
+        node: ast.ImportFrom,
+        file_path: str,
+        start_line: int,
+        noqa_map: dict,
+        lines: list[str] | None,
+    ) -> None:
+        """RPY106: from random import ... → renpy.random."""
+        if node.module == "random":
+            real_line = start_line + getattr(node, "lineno", 1) - 1
+            raw_l = (
+                lines[real_line - 1]
+                if lines and 0 <= real_line - 1 < len(lines)
+                else "from random import ..."
+            )
+            start_c, end_c = get_utf16_range(raw_l, "random")
+            self.analyzer._add_diagnostic(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=real_line,
+                    line_content=raw_l.strip(),
+                    code="RPY106",
+                    message="Standard 'random' used during gameplay. Rollback and saves may become non-deterministic; prefer 'renpy.random'.",
+                    col=start_c,
+                    end_col=end_c,
+                ),
+                noqa_map,
+            )
 
-                        var_sym = self.analyzer.variables.get(var_name)
-                        if var_sym and var_sym.is_constant:
-                            if not var_sym.is_character:
-                                self.analyzer._add_diagnostic(
-                                    Diagnostic(
-                                        file_path=file_path,
-                                        line_number=real_line,
-                                        line_content=raw_l.strip(),
-                                        code="RPY105",
-                                        message=f"Constant '{var_name}' was declared with 'define', but modified via '+='. Use 'default' for mutable variables.",
-                                        col=start_c,
-                                        end_col=end_c,
-                                    ),
-                                    noqa_map,
-                                )
-                        elif var_name not in self.analyzer.declared_symbols:
-                            hint = suggest_similar_symbol(var_name, self.analyzer.user_symbols)
+    def _visit_augassign(
+        self,
+        node: ast.AugAssign,
+        file_path: str,
+        start_line: int,
+        noqa_map: dict,
+        lines: list[str] | None,
+        local_scope: set[str],
+    ) -> None:
+        """RPY105/RPY102/RPY108: augmented assignment (+=, -=) checks."""
+        # 1. Мутация через +=, -= переменной: $ CONST += 1
+        if isinstance(node.target, ast.Name):
+            var_name = node.target.id
+            if var_name not in local_scope:
+                real_line = start_line + getattr(node, "lineno", 1) - 1
+                raw_l = (
+                    lines[real_line - 1]
+                    if lines and 0 <= real_line - 1 < len(lines)
+                    else ""
+                )
+                if (
+                    (not raw_l or var_name not in raw_l)
+                    and lines
+                    and 0 <= start_line - 1 < len(lines)
+                ):
+                    raw_l = lines[start_line - 1]
+                start_c, end_c = get_utf16_range(raw_l, var_name)
+
+                var_sym = self.analyzer.variables.get(var_name)
+                if var_sym and var_sym.is_constant:
+                    if not var_sym.is_character:
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=real_line,
+                                line_content=raw_l.strip(),
+                                code="RPY105",
+                                message=f"Constant '{var_name}' was declared with 'define', but modified via '+='. Use 'default' for mutable variables.",
+                                col=start_c,
+                                end_col=end_c,
+                            ),
+                            noqa_map,
+                        )
+                elif var_name not in self.analyzer.declared_symbols:
+                    hint = suggest_similar_symbol(var_name, self.analyzer.user_symbols)
+                    self.analyzer._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=real_line,
+                            line_content=raw_l.strip(),
+                            code="RPY102",
+                            message=f"Augmented assignment to '{var_name}' before declaration via 'default'{hint}. Causes runtime NameError.",
+                            col=start_c,
+                            end_col=end_c,
+                        ),
+                        noqa_map,
+                    )
+                else:
+                    # RPY108: Проверка несовместимого типа при +=, -= и т.д.
+                    expected_t = var_sym.type_name if var_sym else None
+                    op_t = infer_ast_type(node.value, known_vars=self.analyzer.variables)
+                    if expected_t and op_t:
+                        is_incompatible = False
+
+                        if (
+                            expected_t == "str"
+                            and op_t != "str"
+                            or expected_t in ("int", "float")
+                            and op_t not in ("int", "float")
+                            or expected_t == "list"
+                            and op_t not in ("list",)
+                            or expected_t in ("dict", "bool")
+                        ):
+                            is_incompatible = True
+
+                        if is_incompatible:
                             self.analyzer._add_diagnostic(
                                 Diagnostic(
                                     file_path=file_path,
                                     line_number=real_line,
                                     line_content=raw_l.strip(),
-                                    code="RPY102",
-                                    message=f"Augmented assignment to '{var_name}' before declaration via 'default'{hint}. Causes runtime NameError.",
+                                    code="RPY108",
+                                    message=(
+                                        f"Incompatible augmented assignment: variable '{var_name}' of type '{expected_t}' "
+                                        f"is modified with operand of type '{op_t}'. Will crash with TypeError at runtime!"
+                                    ),
+                                    severity="ERROR",
                                     col=start_c,
                                     end_col=end_c,
                                 ),
                                 noqa_map,
                             )
-                        else:
-                            # RPY108: Проверка несовместимого типа при +=, -= и т.д.
-                            expected_t = var_sym.type_name if var_sym else None
-                            op_t = infer_ast_type(node.value, known_vars=self.analyzer.variables)
-                            if expected_t and op_t:
-                                is_incompatible = False
 
-                                if (
-                                    expected_t == "str"
-                                    and op_t != "str"
-                                    or expected_t in ("int", "float")
-                                    and op_t not in ("int", "float")
-                                    or expected_t == "list"
-                                    and op_t not in ("list",)
-                                    or expected_t in ("dict", "bool")
-                                ):
-                                    is_incompatible = True
+        elif isinstance(node.target, ast.Subscript):
+            root_name = _get_root_name(node.target.value)
+            if (
+                root_name
+                and root_name not in local_scope
+                and root_name not in SYSTEM_MUTABLE_NAMESPACES
+            ):
+                root_var = self.analyzer.variables.get(root_name)
+                if root_var and root_var.is_constant and not root_var.is_character:
+                    real_line = start_line + getattr(node, "lineno", 1) - 1
+                    raw_l = (
+                        lines[real_line - 1]
+                        if lines and 0 <= real_line - 1 < len(lines)
+                        else ""
+                    )
+                    start_c, end_c = get_utf16_range(raw_l, root_name)
+                    self.analyzer._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=real_line,
+                            line_content=raw_l.strip(),
+                            code="RPY105",
+                            message=(
+                                f"In-place augmented assignment on constant '{root_name}' declared with 'define'. "
+                                "Modifying mutable collections declared with 'define' breaks rollback and save persistence! Use 'default' instead."
+                            ),
+                            col=start_c,
+                            end_col=end_c,
+                        ),
+                        noqa_map,
+                    )
+                elif root_name not in self.analyzer.declared_symbols:
+                    real_line = start_line + getattr(node, "lineno", 1) - 1
+                    raw_l = (
+                        lines[real_line - 1]
+                        if lines and 0 <= real_line - 1 < len(lines)
+                        else ""
+                    )
+                    start_c, end_c = get_utf16_range(raw_l, root_name)
+                    hint = suggest_similar_symbol(root_name, self.analyzer.user_symbols)
+                    self.analyzer._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=real_line,
+                            line_content=raw_l.strip(),
+                            code="RPY102",
+                            message=f"Augmented assignment to subscript of undeclared variable '{root_name}' before declaration{hint}. Causes runtime NameError.",
+                            col=start_c,
+                            end_col=end_c,
+                        ),
+                        noqa_map,
+                    )
 
-                                if is_incompatible:
-                                    self.analyzer._add_diagnostic(
-                                        Diagnostic(
-                                            file_path=file_path,
-                                            line_number=real_line,
-                                            line_content=raw_l.strip(),
-                                            code="RPY108",
-                                            message=(
-                                                f"Incompatible augmented assignment: variable '{var_name}' of type '{expected_t}' "
-                                                f"is modified with operand of type '{op_t}'. Will crash with TypeError at runtime!"
-                                            ),
-                                            severity="ERROR",
-                                            col=start_c,
-                                            end_col=end_c,
-                                        ),
-                                        noqa_map,
-                                    )
+    def _visit_assign(
+        self,
+        node: ast.Assign,
+        file_path: str,
+        start_line: int,
+        noqa_map: dict,
+        lines: list[str] | None,
+        local_scope: set[str],
+    ) -> None:
+        """RPY104/RPY105/RPY106/RPY108: assignment checks."""
+        real_line = start_line + getattr(node, "lineno", 1) - 1
+        raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+        if not raw_l.strip() and lines and 0 <= start_line - 1 < len(lines):
+            raw_l = lines[start_line - 1]
 
-                elif isinstance(node.target, ast.Subscript):
-                    root_name = _get_root_name(node.target.value)
+        is_set = (
+            isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "set"
+        ) or isinstance(node.value, (ast.Set, ast.SetComp))
+
+        if is_set:
+            sub_str = "set" if "set" in raw_l else "{"
+            start_c, end_c = get_utf16_range(raw_l, sub_str)
+            self.analyzer._add_diagnostic(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=real_line,
+                    line_content=raw_l.strip(),
+                    code="RPY106",
+                    message="Mutable 'set' used in story flow. Ren'Py rollback does not track standard sets. Prefer list '[]' or 'renpy.revertable_set()'.",
+                    col=start_c,
+                    end_col=end_c,
+                ),
+                noqa_map,
+            )
+
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                if target.id not in local_scope:
+                    self._verify_assign_target(
+                        target.id,
+                        file_path,
+                        real_line,
+                        noqa_map,
+                        raw_line=raw_l,
+                        val_node=node.value,
+                    )
+                    # RPY108: Проверка конфликта типов при присваивании ($ var = "High")
+                    expected_t = (
+                        self.analyzer.variables[target.id].type_name
+                        if target.id in self.analyzer.variables
+                        else None
+                    )
+                    new_t = infer_ast_type(node.value, known_vars=self.analyzer.variables)
+                    if (
+                        expected_t
+                        and new_t
+                        and expected_t != new_t
+                        and expected_t
+                        != "None"  # None -> любой_тип разрешён (первичная инициализация)
+                        and new_t != "None"  # любой_тип -> None разрешён (сброс в sentinel)
+                        and not ({expected_t, new_t} <= {"int", "float"})
+                    ):
+                        start_c, end_c = get_utf16_range(raw_l, target.id)
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=real_line,
+                                line_content=raw_l.strip(),
+                                code="RPY108",
+                                message=(
+                                    f"Type taint: variable '{target.id}' was declared as '{expected_t}', "
+                                    f"but reassigned value of incompatible type '{new_t}'. May cause runtime TypeError."
+                                ),
+                                severity="WARNING",
+                                col=start_c,
+                                end_col=end_c,
+                            ),
+                            noqa_map,
+                        )
+            # 3. Мутация по ключу/индексу: $ CONST["ключ"] = "значение"
+            elif isinstance(target, ast.Subscript):
+                root_name = _get_root_name(target.value)
+                if (
+                    root_name
+                    and root_name not in local_scope
+                    and root_name not in SYSTEM_MUTABLE_NAMESPACES
+                ):
+                    root_var = self.analyzer.variables.get(root_name)
+                    if root_var and root_var.is_constant and not root_var.is_character:
+                        start_c, end_c = get_utf16_range(raw_l, root_name)
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=real_line,
+                                line_content=raw_l.strip(),
+                                code="RPY105",
+                                message=(
+                                    f"In-place subscript assignment on constant '{root_name}' declared with 'define'. "
+                                    "Modifying mutable collections declared with 'define' breaks rollback and save persistence! Use 'default' instead."
+                                ),
+                                col=start_c,
+                                end_col=end_c,
+                            ),
+                            noqa_map,
+                        )
+                    elif root_name not in self.analyzer.declared_symbols:
+                        start_c, end_c = get_utf16_range(raw_l, root_name)
+                        hint = suggest_similar_symbol(root_name, self.analyzer.user_symbols)
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=real_line,
+                                line_content=raw_l.strip(),
+                                code="RPY102",
+                                message=f"Subscript assignment to undeclared variable '{root_name}' before declaration{hint}. Causes runtime NameError.",
+                                col=start_c,
+                                end_col=end_c,
+                            ),
+                            noqa_map,
+                        )
+            elif isinstance(target, (ast.Tuple, ast.List)):
+                for elt in target.elts:
+                    if isinstance(elt, ast.Name) and elt.id not in local_scope:
+                        self._verify_assign_target(
+                            elt.id,
+                            file_path,
+                            real_line,
+                            noqa_map,
+                            raw_line=raw_l,
+                            val_node=node.value,
+                        )
+
+    def _visit_mutating_methods(
+        self,
+        node: ast.stmt,
+        file_path: str,
+        start_line: int,
+        noqa_map: dict,
+        lines: list[str] | None,
+        local_scope: set[str],
+    ) -> None:
+        """RPY105/RPY102/RPY108: мутация констант через методы (list.append, dict.update, etc.).
+
+        Запускается для ВСЕХ non-function узлов (Import, Assign, If, и т.д.).
+        Использует ast.walk для поиска Call узлов внутри statement.
+        """
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute):
+                method_name = sub.func.attr
+
+                # 4.1. RPY105 / RPY102: Мутация констант и необъявленных переменных через методы
+                if method_name in MUTATING_METHODS:
+                    root_name = _get_root_name(sub.func.value)
                     if (
                         root_name
                         and root_name not in local_scope
@@ -745,13 +964,15 @@ class PythonAstChecker:
                     ):
                         root_var = self.analyzer.variables.get(root_name)
                         if root_var and root_var.is_constant and not root_var.is_character:
-                            real_line = start_line + getattr(node, "lineno", 1) - 1
+                            real_line = start_line + getattr(sub, "lineno", 1) - 1
                             raw_l = (
                                 lines[real_line - 1]
                                 if lines and 0 <= real_line - 1 < len(lines)
                                 else ""
                             )
-                            start_c, end_c = get_utf16_range(raw_l, root_name)
+                            target_str = f"{root_name}.{method_name}"
+                            sub_str = target_str if target_str in raw_l else root_name
+                            start_c, end_c = get_utf16_range(raw_l, sub_str)
                             self.analyzer._add_diagnostic(
                                 Diagnostic(
                                     file_path=file_path,
@@ -759,8 +980,8 @@ class PythonAstChecker:
                                     line_content=raw_l.strip(),
                                     code="RPY105",
                                     message=(
-                                        f"In-place augmented assignment on constant '{root_name}' declared with 'define'. "
-                                        "Modifying mutable collections declared with 'define' breaks rollback and save persistence! Use 'default' instead."
+                                        f"Constant '{root_name}' was declared with 'define', but mutated via in-place method '.{method_name}()'. "
+                                        "In Ren'Py, modifying mutable objects declared with 'define' breaks rollback history! Use 'default' instead."
                                     ),
                                     col=start_c,
                                     end_col=end_c,
@@ -768,309 +989,192 @@ class PythonAstChecker:
                                 noqa_map,
                             )
                         elif root_name not in self.analyzer.declared_symbols:
-                            real_line = start_line + getattr(node, "lineno", 1) - 1
+                            real_line = start_line + getattr(sub, "lineno", 1) - 1
                             raw_l = (
                                 lines[real_line - 1]
                                 if lines and 0 <= real_line - 1 < len(lines)
                                 else ""
                             )
-                            start_c, end_c = get_utf16_range(raw_l, root_name)
-                            hint = suggest_similar_symbol(root_name, self.analyzer.user_symbols)
+                            target_str = f"{root_name}.{method_name}"
+                            sub_str = target_str if target_str in raw_l else root_name
+                            start_c, end_c = get_utf16_range(raw_l, sub_str)
+                            hint = suggest_similar_symbol(
+                                root_name, self.analyzer.user_symbols
+                            )
                             self.analyzer._add_diagnostic(
                                 Diagnostic(
                                     file_path=file_path,
                                     line_number=real_line,
                                     line_content=raw_l.strip(),
                                     code="RPY102",
-                                    message=f"Augmented assignment to subscript of undeclared variable '{root_name}' before declaration{hint}. Causes runtime NameError.",
+                                    message=f"Method call '.{method_name}()' on undeclared variable '{root_name}' before declaration{hint}. Causes runtime NameError.",
                                     col=start_c,
                                     end_col=end_c,
                                 ),
                                 noqa_map,
                             )
 
-            elif isinstance(node, ast.Assign):
-                real_line = start_line + getattr(node, "lineno", 1) - 1
-                raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
-                if not raw_l.strip() and lines and 0 <= start_line - 1 < len(lines):
-                    raw_l = lines[start_line - 1]
+                # 4.2. RPY108: Вызов несуществующих методов у известных встроенных типов (list, dict, set, str)
+                if isinstance(sub.func.value, ast.Name) and not method_name.startswith("_"):
+                    var_id = sub.func.value.id
+                    var_sym = self.analyzer.variables.get(var_id)
+                    if (
+                        var_sym
+                        and var_sym.type_name in KNOWN_TYPE_METHODS
+                        and var_id not in local_scope
+                    ):
+                        t_name = var_sym.type_name
+                        valid_methods = KNOWN_TYPE_METHODS[t_name]
+                        if method_name not in valid_methods:
+                            real_line = start_line + getattr(sub, "lineno", 1) - 1
+                            raw_l = (
+                                lines[real_line - 1]
+                                if lines and 0 <= real_line - 1 < len(lines)
+                                else ""
+                            )
+                            target_str = f"{var_id}.{method_name}"
+                            sub_str = target_str if target_str in raw_l else method_name
+                            start_c, end_c = get_utf16_range(raw_l, sub_str)
 
-                is_set = (
-                    isinstance(node.value, ast.Call)
-                    and isinstance(node.value.func, ast.Name)
-                    and node.value.func.id == "set"
-                ) or isinstance(node.value, (ast.Set, ast.SetComp))
+                            if (t_name, method_name) in METHOD_SUGGESTIONS:
+                                hint = f" (did you mean '{METHOD_SUGGESTIONS[(t_name, method_name)]}' ?)"
+                            else:
+                                matches = difflib.get_close_matches(
+                                    method_name, list(valid_methods), n=1, cutoff=0.6
+                                )
+                                hint = (
+                                    f" (did you mean '.{matches[0]}()' ?)"
+                                    if matches
+                                    else ""
+                                )
 
-                if is_set:
-                    sub_str = "set" if "set" in raw_l else "{"
-                    start_c, end_c = get_utf16_range(raw_l, sub_str)
-                    self.analyzer._add_diagnostic(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=real_line,
-                            line_content=raw_l.strip(),
-                            code="RPY106",
-                            message="Mutable 'set' used in story flow. Ren'Py rollback does not track standard sets. Prefer list '[]' or 'renpy.revertable_set()'.",
-                            col=start_c,
-                            end_col=end_c,
-                        ),
-                        noqa_map,
-                    )
-
-                for target in node.targets:
-                    if isinstance(target, ast.Name):
-                        if target.id not in local_scope:
-                            self._verify_assign_target(
-                                target.id,
-                                file_path,
-                                real_line,
+                            self.analyzer._add_diagnostic(
+                                Diagnostic(
+                                    file_path=file_path,
+                                    line_number=real_line,
+                                    line_content=raw_l.strip(),
+                                    code="RPY108",
+                                    message=(
+                                        f"Invalid method call: variable '{var_id}' has type '{t_name}', "
+                                        f"which does not have a method '.{method_name}()'{hint}. Causes runtime AttributeError."
+                                    ),
+                                    severity="ERROR",
+                                    col=start_c,
+                                    end_col=end_c,
+                                ),
                                 noqa_map,
-                                raw_line=raw_l,
-                                val_node=node.value,
                             )
-                            # RPY108: Проверка конфликта типов при присваивании ($ var = "High")
-                            expected_t = (
-                                self.analyzer.variables[target.id].type_name
-                                if target.id in self.analyzer.variables
-                                else None
-                            )
-                            new_t = infer_ast_type(node.value, known_vars=self.analyzer.variables)
-                            if (
-                                expected_t
-                                and new_t
-                                and expected_t != new_t
-                                and expected_t
-                                != "None"  # None -> любой_тип разрешён (первичная инициализация)
-                                and new_t != "None"  # любой_тип -> None разрешён (сброс в sentinel)
-                                and not ({expected_t, new_t} <= {"int", "float"})
-                            ):
-                                start_c, end_c = get_utf16_range(raw_l, target.id)
-                                self.analyzer._add_diagnostic(
-                                    Diagnostic(
-                                        file_path=file_path,
-                                        line_number=real_line,
-                                        line_content=raw_l.strip(),
-                                        code="RPY108",
-                                        message=(
-                                            f"Type taint: variable '{target.id}' was declared as '{expected_t}', "
-                                            f"but reassigned value of incompatible type '{new_t}'. May cause runtime TypeError."
-                                        ),
-                                        severity="WARNING",
-                                        col=start_c,
-                                        end_col=end_c,
-                                    ),
-                                    noqa_map,
-                                )
-                    # 3. Мутация по ключу/индексу: $ CONST["ключ"] = "значение"
-                    elif isinstance(target, ast.Subscript):
-                        root_name = _get_root_name(target.value)
-                        if (
-                            root_name
-                            and root_name not in local_scope
-                            and root_name not in SYSTEM_MUTABLE_NAMESPACES
-                        ):
-                            root_var = self.analyzer.variables.get(root_name)
-                            if root_var and root_var.is_constant and not root_var.is_character:
-                                start_c, end_c = get_utf16_range(raw_l, root_name)
-                                self.analyzer._add_diagnostic(
-                                    Diagnostic(
-                                        file_path=file_path,
-                                        line_number=real_line,
-                                        line_content=raw_l.strip(),
-                                        code="RPY105",
-                                        message=(
-                                            f"In-place subscript assignment on constant '{root_name}' declared with 'define'. "
-                                            "Modifying mutable collections declared with 'define' breaks rollback and save persistence! Use 'default' instead."
-                                        ),
-                                        col=start_c,
-                                        end_col=end_c,
-                                    ),
-                                    noqa_map,
-                                )
-                            elif root_name not in self.analyzer.declared_symbols:
-                                start_c, end_c = get_utf16_range(raw_l, root_name)
-                                hint = suggest_similar_symbol(root_name, self.analyzer.user_symbols)
-                                self.analyzer._add_diagnostic(
-                                    Diagnostic(
-                                        file_path=file_path,
-                                        line_number=real_line,
-                                        line_content=raw_l.strip(),
-                                        code="RPY102",
-                                        message=f"Subscript assignment to undeclared variable '{root_name}' before declaration{hint}. Causes runtime NameError.",
-                                        col=start_c,
-                                        end_col=end_c,
-                                    ),
-                                    noqa_map,
-                                )
-                    elif isinstance(target, (ast.Tuple, ast.List)):
-                        for elt in target.elts:
-                            if isinstance(elt, ast.Name) and elt.id not in local_scope:
-                                self._verify_assign_target(
-                                    elt.id,
-                                    file_path,
-                                    real_line,
-                                    noqa_map,
-                                    raw_line=raw_l,
-                                    val_node=node.value,
-                                )
+
+    def _visit_if_while(
+        self,
+        node: ast.If | ast.While,
+        file_path: str,
+        start_line: int,
+        noqa_map: dict,
+        lines: list[str] | None,
+        local_scope: set[str],
+    ) -> None:
+        """Рекурсивный обход body и orelse для if/while."""
+        self._walk_python_nodes(
+            node.body, file_path, start_line, noqa_map, lines, local_scope
+        )
+        self._walk_python_nodes(
+            node.orelse, file_path, start_line, noqa_map, lines, local_scope
+        )
+
+    def _visit_for(
+        self,
+        node: ast.For,
+        file_path: str,
+        start_line: int,
+        noqa_map: dict,
+        lines: list[str] | None,
+        local_scope: set[str],
+    ) -> None:
+        """Рекурсивный обход body и orelse для for, с loop variable в scope."""
+        loop_scope = set(local_scope)
+        if isinstance(node.target, ast.Name):
+            loop_scope.add(node.target.id)
+        elif isinstance(node.target, (ast.Tuple, ast.List)):
+            for elt in node.target.elts:
+                if isinstance(elt, ast.Name):
+                    loop_scope.add(elt.id)
+        self._walk_python_nodes(
+            node.body, file_path, start_line, noqa_map, lines, loop_scope
+        )
+        self._walk_python_nodes(
+            node.orelse, file_path, start_line, noqa_map, lines, loop_scope
+        )
+
+    def _visit_try(
+        self,
+        node: ast.Try,
+        file_path: str,
+        start_line: int,
+        noqa_map: dict,
+        lines: list[str] | None,
+        local_scope: set[str],
+    ) -> None:
+        """Рекурсивный обход body, orelse, finalbody и handlers для try."""
+        self._walk_python_nodes(
+            node.body, file_path, start_line, noqa_map, lines, local_scope
+        )
+        self._walk_python_nodes(
+            node.orelse, file_path, start_line, noqa_map, lines, local_scope
+        )
+        self._walk_python_nodes(
+            node.finalbody, file_path, start_line, noqa_map, lines, local_scope
+        )
+        for handler in node.handlers:
+            h_scope = set(local_scope)
+            if handler.name:
+                h_scope.add(handler.name)
+            self._walk_python_nodes(
+                handler.body, file_path, start_line, noqa_map, lines, h_scope
+            )
+
+    def _walk_python_nodes(
+        self,
+        nodes: list[ast.stmt],
+        file_path: str,
+        start_line: int,
+        noqa_map: dict,
+        lines: list[str] | None,
+        local_scope: set[str],
+    ) -> None:
+        """Dispatcher: обрабатывает top-level statements через _visit_* методы.
+
+        Phase 3 Step 4 (0.5.6): разбит с 479 строк на 8 методов + dispatcher.
+        Каждый _visit_* метод обрабатывает один тип AST-узла.
+        """
+        for node in nodes:
+            # Игнорируем вложенные функции и классы, они создают свой локальный скоуп
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+
+            if isinstance(node, ast.Import):
+                self._visit_import(node, file_path, start_line, noqa_map, lines)
+            elif isinstance(node, ast.ImportFrom):
+                self._visit_import_from(node, file_path, start_line, noqa_map, lines)
+            elif isinstance(node, ast.AugAssign):
+                self._visit_augassign(node, file_path, start_line, noqa_map, lines, local_scope)
+            elif isinstance(node, ast.Assign):
+                self._visit_assign(node, file_path, start_line, noqa_map, lines, local_scope)
 
             # 4. Мутирующие методы Python и валидация методов встроенных типов
+            # Запускается для ВСЕХ non-function узлов (отдельный if, не elif).
+            # Note: оригинальный код имел if-elif цепочку здесь, где if был
+            # всегда True (not isinstance FunctionDef), что делало elif
+            # (If/While/For/Try) dead code. Поведение сохранено для совместимости.
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                for sub in ast.walk(node):
-                    if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute):
-                        method_name = sub.func.attr
-
-                        # 4.1. RPY105 / RPY102: Мутация констант и необъявленных переменных через методы
-                        if method_name in MUTATING_METHODS:
-                            root_name = _get_root_name(sub.func.value)
-                            if (
-                                root_name
-                                and root_name not in local_scope
-                                and root_name not in SYSTEM_MUTABLE_NAMESPACES
-                            ):
-                                root_var = self.analyzer.variables.get(root_name)
-                                if root_var and root_var.is_constant and not root_var.is_character:
-                                    real_line = start_line + getattr(sub, "lineno", 1) - 1
-                                    raw_l = (
-                                        lines[real_line - 1]
-                                        if lines and 0 <= real_line - 1 < len(lines)
-                                        else ""
-                                    )
-                                    target_str = f"{root_name}.{method_name}"
-                                    sub_str = target_str if target_str in raw_l else root_name
-                                    start_c, end_c = get_utf16_range(raw_l, sub_str)
-                                    self.analyzer._add_diagnostic(
-                                        Diagnostic(
-                                            file_path=file_path,
-                                            line_number=real_line,
-                                            line_content=raw_l.strip(),
-                                            code="RPY105",
-                                            message=(
-                                                f"Constant '{root_name}' was declared with 'define', but mutated via in-place method '.{method_name}()'. "
-                                                "In Ren'Py, modifying mutable objects declared with 'define' breaks rollback history! Use 'default' instead."
-                                            ),
-                                            col=start_c,
-                                            end_col=end_c,
-                                        ),
-                                        noqa_map,
-                                    )
-                                elif root_name not in self.analyzer.declared_symbols:
-                                    real_line = start_line + getattr(sub, "lineno", 1) - 1
-                                    raw_l = (
-                                        lines[real_line - 1]
-                                        if lines and 0 <= real_line - 1 < len(lines)
-                                        else ""
-                                    )
-                                    target_str = f"{root_name}.{method_name}"
-                                    sub_str = target_str if target_str in raw_l else root_name
-                                    start_c, end_c = get_utf16_range(raw_l, sub_str)
-                                    hint = suggest_similar_symbol(
-                                        root_name, self.analyzer.user_symbols
-                                    )
-                                    self.analyzer._add_diagnostic(
-                                        Diagnostic(
-                                            file_path=file_path,
-                                            line_number=real_line,
-                                            line_content=raw_l.strip(),
-                                            code="RPY102",
-                                            message=f"Method call '.{method_name}()' on undeclared variable '{root_name}' before declaration{hint}. Causes runtime NameError.",
-                                            col=start_c,
-                                            end_col=end_c,
-                                        ),
-                                        noqa_map,
-                                    )
-
-                        # 4.2. RPY108: Вызов несуществующих методов у известных встроенных типов (list, dict, set, str)
-                        if isinstance(sub.func.value, ast.Name) and not method_name.startswith("_"):
-                            var_id = sub.func.value.id
-                            var_sym = self.analyzer.variables.get(var_id)
-                            if (
-                                var_sym
-                                and var_sym.type_name in KNOWN_TYPE_METHODS
-                                and var_id not in local_scope
-                            ):
-                                t_name = var_sym.type_name
-                                valid_methods = KNOWN_TYPE_METHODS[t_name]
-                                if method_name not in valid_methods:
-                                    real_line = start_line + getattr(sub, "lineno", 1) - 1
-                                    raw_l = (
-                                        lines[real_line - 1]
-                                        if lines and 0 <= real_line - 1 < len(lines)
-                                        else ""
-                                    )
-                                    target_str = f"{var_id}.{method_name}"
-                                    sub_str = target_str if target_str in raw_l else method_name
-                                    start_c, end_c = get_utf16_range(raw_l, sub_str)
-
-                                    if (t_name, method_name) in METHOD_SUGGESTIONS:
-                                        hint = f" (did you mean '{METHOD_SUGGESTIONS[(t_name, method_name)]}' ?)"
-                                    else:
-                                        matches = difflib.get_close_matches(
-                                            method_name, list(valid_methods), n=1, cutoff=0.6
-                                        )
-                                        hint = (
-                                            f" (did you mean '.{matches[0]}()' ?)"
-                                            if matches
-                                            else ""
-                                        )
-
-                                    self.analyzer._add_diagnostic(
-                                        Diagnostic(
-                                            file_path=file_path,
-                                            line_number=real_line,
-                                            line_content=raw_l.strip(),
-                                            code="RPY108",
-                                            message=(
-                                                f"Invalid method call: variable '{var_id}' has type '{t_name}', "
-                                                f"which does not have a method '.{method_name}()'{hint}. Causes runtime AttributeError."
-                                            ),
-                                            severity="ERROR",
-                                            col=start_c,
-                                            end_col=end_c,
-                                        ),
-                                        noqa_map,
-                                    )
-
+                self._visit_mutating_methods(node, file_path, start_line, noqa_map, lines, local_scope)
             elif isinstance(node, (ast.If, ast.While)):
-                self._walk_python_nodes(
-                    node.body, file_path, start_line, noqa_map, lines, local_scope
-                )
-                self._walk_python_nodes(
-                    node.orelse, file_path, start_line, noqa_map, lines, local_scope
-                )
-
+                self._visit_if_while(node, file_path, start_line, noqa_map, lines, local_scope)
             elif isinstance(node, ast.For):
-                loop_scope = set(local_scope)
-                if isinstance(node.target, ast.Name):
-                    loop_scope.add(node.target.id)
-                elif isinstance(node.target, (ast.Tuple, ast.List)):
-                    for elt in node.target.elts:
-                        if isinstance(elt, ast.Name):
-                            loop_scope.add(elt.id)
-                self._walk_python_nodes(
-                    node.body, file_path, start_line, noqa_map, lines, loop_scope
-                )
-                self._walk_python_nodes(
-                    node.orelse, file_path, start_line, noqa_map, lines, loop_scope
-                )
-
+                self._visit_for(node, file_path, start_line, noqa_map, lines, local_scope)
             elif isinstance(node, ast.Try):
-                self._walk_python_nodes(
-                    node.body, file_path, start_line, noqa_map, lines, local_scope
-                )
-                self._walk_python_nodes(
-                    node.orelse, file_path, start_line, noqa_map, lines, local_scope
-                )
-                self._walk_python_nodes(
-                    node.finalbody, file_path, start_line, noqa_map, lines, local_scope
-                )
-                for handler in node.handlers:
-                    h_scope = set(local_scope)
-                    if handler.name:
-                        h_scope.add(handler.name)
-                    self._walk_python_nodes(
-                        handler.body, file_path, start_line, noqa_map, lines, h_scope
-                    )
+                self._visit_try(node, file_path, start_line, noqa_map, lines, local_scope)
+
 
     def _verify_assign_target(
         self,

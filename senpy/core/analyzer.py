@@ -742,7 +742,414 @@ class SenpyAnalyzer:
             )
         )
 
+    def _collect_default(
+        self,
+        m_def,
+        clean: str,
+        line: str,
+        file_path: str,
+        idx: int,
+        scope: FileScope,
+    ) -> None:
+        """Обработка `default var = expr` — RPY105, VariableSymbol."""
+        var = m_def.group(1)
+        if "." in clean.split("=")[0]:
+            return
+        val_str = m_def.group(2)
+        scope.user_symbols.add(var)
+        scope.declared_symbols.add(var)
+        self.user_symbols.add(var)
+        self.declared_symbols.add(var)
+
+        prev_var = self.variables.get(var)
+        if prev_var and prev_var.is_constant and not prev_var.is_character:
+            prev_file = os.path.basename(prev_var.file_path)
+            prev_line = prev_var.line_number
+            start_c, end_c = self._get_utf16_range(line, var)
+            self.diagnostics.append(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=idx + 1,
+                    line_content=clean,
+                    code="RPY105",
+                    message=(
+                        f"Variable '{var}' is declared with both 'define' and 'default'. "
+                        f"Previously declared with 'define' at {prev_file}:{prev_line}. "
+                        "Define is for constants and default is for mutable state; choose one to prevent save and rollback corruption."
+                    ),
+                    severity="ERROR",
+                    col=start_c,
+                    end_col=end_c,
+                )
+            )
+
+        inferred_t = infer_expr_type(val_str, known_vars=self.variables)
+        var_sym = VariableSymbol(
+            name=var,
+            file_path=file_path,
+            line_number=idx + 1,
+            code_line=clean,
+            type_name=inferred_t,
+            is_constant=False,
+            is_character=False,
+        )
+        scope.variables[var] = var_sym
+        self.variables[var] = var_sym
+
+    def _collect_define(
+        self,
+        m_define,
+        clean: str,
+        line: str,
+        file_path: str,
+        idx: int,
+        scope: FileScope,
+    ) -> None:
+        """Обработка `define var = expr` — RPY105, VariableSymbol."""
+        var = m_define.group(1)
+        if "." in clean.split("=")[0]:
+            return
+        val_str = m_define.group(2)
+        scope.user_symbols.add(var)
+        scope.declared_symbols.add(var)
+        self.user_symbols.add(var)
+        self.declared_symbols.add(var)
+
+        prev_var = self.variables.get(var)
+        if prev_var and not prev_var.is_constant:
+            prev_file = os.path.basename(prev_var.file_path)
+            prev_line = prev_var.line_number
+            start_c, end_c = self._get_utf16_range(line, var)
+            self.diagnostics.append(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=idx + 1,
+                    line_content=clean,
+                    code="RPY105",
+                    message=(
+                        f"Variable '{var}' is declared with both 'define' and 'default'. "
+                        f"Previously declared with 'default' at {prev_file}:{prev_line}. "
+                        "Define is for constants and default is for mutable state; choose one to prevent save and rollback corruption."
+                    ),
+                    severity="ERROR",
+                    col=start_c,
+                    end_col=end_c,
+                )
+            )
+
+        inferred_t = infer_expr_type(val_str, known_vars=self.variables)
+        is_const = "." not in clean.split("=")[0]
+        is_char = "Character" in clean or "DynamicCharacter" in clean
+        var_sym = VariableSymbol(
+            name=var,
+            file_path=file_path,
+            line_number=idx + 1,
+            code_line=clean,
+            type_name=inferred_t,
+            is_constant=is_const,
+            is_character=is_char,
+        )
+        scope.variables[var] = var_sym
+        self.variables[var] = var_sym
+
+    def _collect_define_audio(self, m_audio_def, scope: FileScope) -> None:
+        """Обработка `define audio.NAME = "file.ogg"`."""
+        alias = m_audio_def.group(1)
+        target_file = m_audio_def.group(2).replace("\\", "/").lower()
+        scope.defined_audio_map[alias] = target_file
+        scope.declared_symbols.add(alias)
+        scope.declared_symbols.add(f"audio.{alias}")
+        self.defined_audio_map[alias] = target_file
+        self.declared_symbols.add(alias)
+        self.declared_symbols.add(f"audio.{alias}")
+
+    def _collect_screen_transform(
+        self,
+        m_screen_def,
+        m_trans,
+        clean: str,
+        line: str,
+        file_path: str,
+        idx: int,
+        scope: FileScope,
+    ) -> str | None:
+        """Обработка `screen name(...)` и `transform name(...)`.
+
+        Возвращает текущий screen name (или None) для контекста.
+        """
+        if m_screen_def:
+            s_name = m_screen_def.group(2)
+            s_params = m_screen_def.group(3)
+            sig = parse_signature(s_params)
+            scr_sym = ScreenSymbol(
+                name=s_name, file_path=file_path, line_number=idx + 1, signature=sig
+            )
+            scope.screens[s_name] = scr_sym
+            self.screens[s_name] = scr_sym
+
+        new_screen = None
+
+        # Контекст экрана (screen-блоки всегда top-level)
+        if len(line) - len(line.lstrip(" ")) == 0:
+            new_screen = m_screen_def.group(2) if m_screen_def else None
+
+        if m_trans:
+            trans_name = m_trans.group(1)
+            trans_sym = TransformSymbol(
+                name=trans_name,
+                file_path=file_path,
+                line_number=idx + 1,
+                code_line=clean,
+            )
+            scope.transforms[trans_name] = trans_sym
+            self.transforms[trans_name] = trans_sym
+            scope.user_symbols.add(trans_name)
+            scope.declared_symbols.add(trans_name)
+            self.user_symbols.add(trans_name)
+            self.declared_symbols.add(trans_name)
+
+        return new_screen
+
+    def _collect_label(
+        self,
+        m_label,
+        clean: str,
+        file_path: str,
+        idx: int,
+        scope: FileScope,
+        current_global_label: str | None,
+    ) -> tuple[str, str, str | None]:
+        """Обработка `label name(params):` — RPY307, LabelSymbol.
+
+        Возвращает (label_name, current_global_label, current_label).
+        """
+        raw_name = m_label.group(1)
+        if raw_name.startswith("."):
+            label_name = (
+                f"{current_global_label}{raw_name}"
+                if current_global_label
+                else raw_name
+            )
+        else:
+            label_name = raw_name
+            current_global_label = label_name
+        if label_name in self.labels:
+            if not label_name.startswith("_"):
+                prev_file = self.labels[label_name].file_path
+                prev_line = self.labels[label_name].line_number
+                self.diagnostics.append(
+                    Diagnostic(
+                        file_path=file_path,
+                        line_number=idx + 1,
+                        line_content=clean,
+                        code="RPY307",
+                        message=f"Duplicate label '{label_name}'. Previously declared at {os.path.basename(prev_file)}:{prev_line}. Causes fatal ScriptError.",
+                        severity="ERROR",
+                    )
+                )
+        else:
+            sig = parse_signature(m_label.group(2))
+            lbl_sym = LabelSymbol(
+                name=label_name,
+                file_path=file_path,
+                line_number=idx + 1,
+                code_line=clean,
+                signature=sig,
+            )
+            scope.labels[label_name] = lbl_sym
+            self.labels[label_name] = lbl_sym
+
+        return label_name, current_global_label, label_name
+
+    def _collect_label_body(
+        self,
+        clean: str,
+        file_path: str,
+        idx: int,
+        scope: FileScope,
+        current_label: str | None,
+        current_global_label: str | None,
+        current_screen: str | None,
+    ) -> None:
+        """Обработка jump/call/return внутри label + screen edges."""
+        if current_label:
+            if RE_RETURN.match(clean):
+                if current_label in scope.labels:
+                    scope.labels[current_label].has_return = True
+                if current_label in self.labels:
+                    self.labels[current_label].has_return = True
+
+            m_jump_in_label = RE_JUMP_TARGET.match(clean)
+            if m_jump_in_label:
+                raw_target_j = m_jump_in_label.group(1)
+                if raw_target_j.startswith("."):
+                    target_j = (
+                        f"{current_global_label}{raw_target_j}"
+                        if current_global_label
+                        else raw_target_j
+                    )
+                else:
+                    target_j = raw_target_j
+
+                if current_label in scope.labels:
+                    scope.labels[current_label].outgoing_jumps.add(target_j)
+                if current_label in self.labels:
+                    self.labels[current_label].outgoing_jumps.add(target_j)
+                scope.referenced_labels.add(target_j)
+                self.referenced_labels.add(target_j)
+
+                self.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
+                scope.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
+
+        # Рёбра из экранов (Jump/Call-экшены) и использования экранов
+        if current_screen:
+            for m_act in RE_SCREEN_JUMP_ACTION.finditer(clean):
+                scope.screen_action_jumps.setdefault(current_screen, set()).add(
+                    m_act.group(1)
+                )
+                self.screen_action_jumps.setdefault(current_screen, set()).add(
+                    m_act.group(1)
+                )
+
+        for m_usage in RE_SCREEN_CALL.finditer(clean):
+            scope.used_screens.add(m_usage.group(1))
+            self.used_screens.add(m_usage.group(1))
+            usage_src = current_screen or current_label
+            if usage_src:
+                scope.screen_uses.setdefault(usage_src, set()).add(m_usage.group(1))
+                self.screen_uses.setdefault(usage_src, set()).add(m_usage.group(1))
+
+        for m_show in RE_SCREEN_SHOW_ACTION.finditer(clean):
+            scope.used_screens.add(m_show.group(1))
+            self.used_screens.add(m_show.group(1))
+
+    def _collect_images(
+        self,
+        clean: str,
+        clean_line: str,
+        file_path: str,
+        idx: int,
+        lines: list[str],
+        scope: FileScope,
+    ) -> tuple[bool, int]:
+        """Обработка layeredimage и image declarations — RPY504.
+
+        Возвращает (was_handled, new_idx).
+        """
+        m_limg = RE_LAYEREDIMAGE_START.match(clean_line)
+        if m_limg:
+            limg_indent = len(m_limg.group(1))
+            limg_tag = m_limg.group(2).strip()
+            next_block_idx, block_lines = self._consume_block(lines, idx + 1, limg_indent)
+
+            attrs: set[str] = set()
+            for bl in block_lines:
+                clean_bl = _strip_comment(bl).strip()
+                m_attr = RE_LAYEREDIMAGE_ATTR.match(clean_bl)
+                if m_attr:
+                    attrs.add(m_attr.group(1).strip())
+
+            img_sym = ImageSymbol(
+                name=limg_tag,
+                file_path=file_path,
+                line_number=idx + 1,
+                body="layeredimage",
+                is_layered=True,
+                attributes=attrs,
+            )
+            scope.images[limg_tag] = img_sym
+            self.images[limg_tag] = img_sym
+
+            return True, next_block_idx
+
+        m_img = RE_IMAGE_DEF.match(clean)
+        if m_img:
+            img_name = m_img.group(1).strip()
+            img_body = m_img.group(2).strip()
+
+            if img_name in self.images:
+                prev_file = self.images[img_name].file_path
+                prev_line = self.images[img_name].line_number
+                prev_body = self.images[img_name].body
+                is_exact_dup = img_body == prev_body
+                msg = (
+                    f"Duplicate image declaration '{img_name}'. Identical to declaration at {os.path.basename(prev_file)}:{prev_line}."
+                    if is_exact_dup
+                    else f"Image '{img_name}' is redefined (override). Previously declared at {os.path.basename(prev_file)}:{prev_line}."
+                )
+                self.diagnostics.append(
+                    Diagnostic(
+                        file_path=file_path,
+                        line_number=idx + 1,
+                        line_content=clean,
+                        code="RPY504",
+                        message=msg,
+                        severity="WARNING" if not is_exact_dup else "INFO",
+                    )
+                )
+            img_sym = ImageSymbol(
+                name=img_name,
+                file_path=file_path,
+                line_number=idx + 1,
+                body=img_body,
+                is_layered=False,
+            )
+            scope.images[img_name] = img_sym
+            self.images[img_name] = img_sym
+            return True, idx  # caller will use next_idx
+
+        return False, idx
+
+    def _collect_misc(
+        self,
+        clean: str,
+        line: str,
+        file_path: str,
+        idx: int,
+        lines: list[str],
+        scope: FileScope,
+    ) -> tuple[bool, int]:
+        """Обработка channels, dynamic jumps, quoted strings, init python.
+
+        Возвращает (was_init_python, new_idx).
+        """
+        m_chan = re.search(
+            r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', clean
+        )
+        if m_chan:
+            chan_name = m_chan.group(1).lower()
+            scope.registered_audio_channels.add(chan_name)
+            self.registered_audio_channels.add(chan_name)
+
+        if (
+            "renpy.call(" in clean
+            or "renpy.jump(" in clean
+            or "call expression" in clean
+            or "jump expression" in clean
+        ):
+            self.has_dynamic_jumps = True
+
+        if '"' in clean or "'" in clean:
+            for str_match in RE_QUOTED_IDENTIFIER.finditer(clean):
+                candidate = str_match.group(1)
+                if candidate.isidentifier():
+                    scope.referenced_labels.add(candidate)
+                    self.referenced_labels.add(candidate)
+
+        m_init = RE_INIT_PYTHON_START.match(line)
+        if m_init:
+            indent = len(m_init.group(1))
+            next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
+            self._collect_from_python_block(block_lines, scope, file_path, idx + 2)
+            return True, next_idx
+
+        return False, idx
+
     def _collect_symbols(self, file_path: str):
+        """Собирает символы из .rpy файла (default/define/screen/label/image/...).
+
+        Phase 3 Step 5 (0.5.6): разбит с 378 строк на 7 методов + dispatcher.
+        """
         try:
             norm_path = os.path.normcase(os.path.abspath(file_path))
             scope = FileScope()
@@ -771,345 +1178,70 @@ class SenpyAnalyzer:
                     idx = next_idx
                     continue
 
+                # --- default ---
                 m_def = RE_DEFAULT.match(clean)
                 if m_def:
-                    var = m_def.group(1)
-                    # Если настраивается атрибут (config.xxx, gui.xxx, persistent.xxx), пропускаем
-                    if "." in clean.split("=")[0]:
-                        idx = next_idx
-                        continue
-                    val_str = m_def.group(2)
-                    scope.user_symbols.add(var)
-                    scope.declared_symbols.add(var)
-                    self.user_symbols.add(var)
-                    self.declared_symbols.add(var)
-
-                    # RPY105: Проверка конфликта — переменная уже была объявлена через define
-                    prev_var = self.variables.get(var)
-                    if prev_var and prev_var.is_constant and not prev_var.is_character:
-                        prev_file = os.path.basename(prev_var.file_path)
-                        prev_line = prev_var.line_number
-                        start_c, end_c = self._get_utf16_range(line, var)
-                        self.diagnostics.append(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=idx + 1,
-                                line_content=clean,
-                                code="RPY105",
-                                message=(
-                                    f"Variable '{var}' is declared with both 'define' and 'default'. "
-                                    f"Previously declared with 'define' at {prev_file}:{prev_line}. "
-                                    "Define is for constants and default is for mutable state; choose one to prevent save and rollback corruption."
-                                ),
-                                severity="ERROR",
-                                col=start_c,
-                                end_col=end_c,
-                            )
-                        )
-
-                    inferred_t = infer_expr_type(val_str, known_vars=self.variables)
-                    var_sym = VariableSymbol(
-                        name=var,
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        code_line=clean,
-                        type_name=inferred_t,
-                        is_constant=False,
-                        is_character=False,
-                    )
-                    scope.variables[var] = var_sym
-                    self.variables[var] = var_sym
-
+                    self._collect_default(m_def, clean, line, file_path, idx, scope)
                     idx = next_idx
                     continue
 
+                # --- define audio ---
                 m_audio_def = RE_DEFINE_AUDIO.match(clean)
                 if m_audio_def:
-                    alias = m_audio_def.group(1)
-                    target_file = m_audio_def.group(2).replace("\\", "/").lower()
-                    scope.defined_audio_map[alias] = target_file
-                    scope.declared_symbols.add(alias)
-                    scope.declared_symbols.add(f"audio.{alias}")
-                    self.defined_audio_map[alias] = target_file
-                    self.declared_symbols.add(alias)
-                    self.declared_symbols.add(f"audio.{alias}")
+                    self._collect_define_audio(m_audio_def, scope)
                     idx = next_idx
                     continue
 
+                # --- define ---
                 m_define = RE_DEFINE.match(clean)
                 if m_define:
-                    var = m_define.group(1)
-                    # Если настраивается атрибут (config.xxx, gui.xxx, persistent.xxx), пропускаем
-                    if "." in clean.split("=")[0]:
-                        idx = next_idx
-                        continue
-                    val_str = m_define.group(2)
-                    scope.user_symbols.add(var)
-                    scope.declared_symbols.add(var)
-                    self.user_symbols.add(var)
-                    self.declared_symbols.add(var)
-
-                    # RPY105: Проверка конфликта — переменная уже была объявлена через default
-                    prev_var = self.variables.get(var)
-                    if prev_var and not prev_var.is_constant:
-                        prev_file = os.path.basename(prev_var.file_path)
-                        prev_line = prev_var.line_number
-                        start_c, end_c = self._get_utf16_range(line, var)
-                        self.diagnostics.append(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=idx + 1,
-                                line_content=clean,
-                                code="RPY105",
-                                message=(
-                                    f"Variable '{var}' is declared with both 'define' and 'default'. "
-                                    f"Previously declared with 'default' at {prev_file}:{prev_line}. "
-                                    "Define is for constants and default is for mutable state; choose one to prevent save and rollback corruption."
-                                ),
-                                severity="ERROR",
-                                col=start_c,
-                                end_col=end_c,
-                            )
-                        )
-
-                    inferred_t = infer_expr_type(val_str, known_vars=self.variables)
-                    is_const = "." not in clean.split("=")[0]
-                    is_char = "Character" in clean or "DynamicCharacter" in clean
-                    var_sym = VariableSymbol(
-                        name=var,
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        code_line=clean,
-                        type_name=inferred_t,
-                        is_constant=is_const,
-                        is_character=is_char,
-                    )
-                    scope.variables[var] = var_sym
-                    self.variables[var] = var_sym
-
+                    self._collect_define(m_define, clean, line, file_path, idx, scope)
                     idx = next_idx
                     continue
 
+                # --- screen + transform ---
                 m_screen_def = RE_SCREEN_START.match(line)
-                if m_screen_def:
-                    s_name = m_screen_def.group(2)
-                    s_params = m_screen_def.group(3)
-                    sig = parse_signature(s_params)
-                    scr_sym = ScreenSymbol(
-                        name=s_name, file_path=file_path, line_number=idx + 1, signature=sig
+                m_trans = RE_TRANSFORM.match(clean)
+                if m_screen_def or m_trans:
+                    self._collect_screen_transform(
+                        m_screen_def, m_trans, clean, line, file_path, idx, scope
                     )
-                    scope.screens[s_name] = scr_sym
-                    self.screens[s_name] = scr_sym
 
-                # Задача 5: контекст экрана (screen-блоки всегда top-level)
+                # Контекст экрана (screen-блоки всегда top-level)
+                # Важно: current_screen сбрасывается в None для ЛЮБОЙ top-level строки,
+                # не только screen. Это нужно чтобы label start: сбрасывал screen context.
                 if len(line) - len(line.lstrip(" ")) == 0:
                     current_screen = m_screen_def.group(2) if m_screen_def else None
 
-                m_trans = RE_TRANSFORM.match(clean)
-                if m_trans:
-                    trans_name = m_trans.group(1)
-                    trans_sym = TransformSymbol(
-                        name=trans_name,
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        code_line=clean,
-                    )
-                    scope.transforms[trans_name] = trans_sym
-                    self.transforms[trans_name] = trans_sym
-                    scope.user_symbols.add(trans_name)
-                    scope.declared_symbols.add(trans_name)
-                    self.user_symbols.add(trans_name)
-                    self.declared_symbols.add(trans_name)
-
+                # --- label ---
                 m_label = RE_LABEL.match(clean)
                 if m_label:
-                    raw_name = m_label.group(1)
-                    if raw_name.startswith("."):
-                        label_name = (
-                            f"{current_global_label}{raw_name}"
-                            if current_global_label
-                            else raw_name
-                        )
-                    else:
-                        label_name = raw_name
-                        current_global_label = label_name
-                    if label_name in self.labels:
-                        if not label_name.startswith("_"):
-                            prev_file = self.labels[label_name].file_path
-                            prev_line = self.labels[label_name].line_number
-                            self.diagnostics.append(
-                                Diagnostic(
-                                    file_path=file_path,
-                                    line_number=idx + 1,
-                                    line_content=clean,
-                                    code="RPY307",
-                                    message=f"Duplicate label '{label_name}'. Previously declared at {os.path.basename(prev_file)}:{prev_line}. Causes fatal ScriptError.",
-                                    severity="ERROR",
-                                )
-                            )
-                    else:
-                        sig = parse_signature(m_label.group(2))
-                        lbl_sym = LabelSymbol(
-                            name=label_name,
-                            file_path=file_path,
-                            line_number=idx + 1,
-                            code_line=clean,
-                            signature=sig,
-                        )
-                        scope.labels[label_name] = lbl_sym
-                        self.labels[label_name] = lbl_sym
-
-                    current_label = label_name
+                    label_name, current_global_label, current_label = self._collect_label(
+                        m_label, clean, file_path, idx, scope, current_global_label
+                    )
                     idx = next_idx
                     continue
 
-                if current_label:
-                    if RE_RETURN.match(clean):
-                        if current_label in scope.labels:
-                            scope.labels[current_label].has_return = True
-                        if current_label in self.labels:
-                            self.labels[current_label].has_return = True
-
-                    m_jump_in_label = RE_JUMP_TARGET.match(clean)
-                    if m_jump_in_label:
-                        raw_target_j = m_jump_in_label.group(1)
-                        if raw_target_j.startswith("."):
-                            target_j = (
-                                f"{current_global_label}{raw_target_j}"
-                                if current_global_label
-                                else raw_target_j
-                            )
-                        else:
-                            target_j = raw_target_j
-
-                        if current_label in scope.labels:
-                            scope.labels[current_label].outgoing_jumps.add(target_j)
-                        if current_label in self.labels:
-                            self.labels[current_label].outgoing_jumps.add(target_j)
-                        # таргет jump/call — статическая ссылка; RPY303 не должен
-                        # зависеть от stage-2 (детерминизм кэша)
-                        scope.referenced_labels.add(target_j)
-                        self.referenced_labels.add(target_j)
-
-                        self.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
-                        scope.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
-
-                # Задача 5: рёбра из экранов (Jump/Call-экшены) и использования экранов
-                if current_screen:
-                    for m_act in RE_SCREEN_JUMP_ACTION.finditer(clean):
-                        scope.screen_action_jumps.setdefault(current_screen, set()).add(
-                            m_act.group(1)
-                        )
-                        self.screen_action_jumps.setdefault(current_screen, set()).add(
-                            m_act.group(1)
-                        )
-
-                for m_usage in RE_SCREEN_CALL.finditer(clean):
-                    scope.used_screens.add(m_usage.group(1))
-                    self.used_screens.add(m_usage.group(1))
-                    # Задача 11: атрибуция «кто использует экран» для рёбер графа
-                    usage_src = current_screen or current_label
-                    if usage_src:
-                        scope.screen_uses.setdefault(usage_src, set()).add(m_usage.group(1))
-                        self.screen_uses.setdefault(usage_src, set()).add(m_usage.group(1))
-
-                for m_show in RE_SCREEN_SHOW_ACTION.finditer(clean):
-                    scope.used_screens.add(m_show.group(1))
-                    self.used_screens.add(m_show.group(1))
-
-                m_limg = RE_LAYEREDIMAGE_START.match(clean_line)
-                if m_limg:
-                    limg_indent = len(m_limg.group(1))
-                    limg_tag = m_limg.group(2).strip()
-                    next_block_idx, block_lines = self._consume_block(lines, idx + 1, limg_indent)
-
-                    attrs: set[str] = set()
-                    for bl in block_lines:
-                        clean_bl = _strip_comment(bl).strip()
-                        m_attr = RE_LAYEREDIMAGE_ATTR.match(clean_bl)
-                        if m_attr:
-                            attrs.add(m_attr.group(1).strip())
-
-                    img_sym = ImageSymbol(
-                        name=limg_tag,
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        body="layeredimage",
-                        is_layered=True,
-                        attributes=attrs,
-                    )
-                    scope.images[limg_tag] = img_sym
-                    self.images[limg_tag] = img_sym
-
-                    idx = next_block_idx
-                    continue
-
-                m_img = RE_IMAGE_DEF.match(clean)
-                if m_img:
-                    img_name = m_img.group(1).strip()
-                    img_body = m_img.group(2).strip()
-
-                    if img_name in self.images:
-                        prev_file = self.images[img_name].file_path
-                        prev_line = self.images[img_name].line_number
-                        prev_body = self.images[img_name].body
-                        is_exact_dup = img_body == prev_body
-                        msg = (
-                            f"Duplicate image declaration '{img_name}'. Identical to declaration at {os.path.basename(prev_file)}:{prev_line}."
-                            if is_exact_dup
-                            else f"Image '{img_name}' is redefined (override). Previously declared at {os.path.basename(prev_file)}:{prev_line}."
-                        )
-                        self.diagnostics.append(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=idx + 1,
-                                line_content=clean,
-                                code="RPY504",
-                                message=msg,
-                                severity="WARNING" if not is_exact_dup else "INFO",
-                            )
-                        )
-                    img_sym = ImageSymbol(
-                        name=img_name,
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        body=img_body,
-                        is_layered=False,
-                    )
-                    scope.images[img_name] = img_sym
-                    self.images[img_name] = img_sym
-                    idx = next_idx
-                    continue
-
-                m_chan = re.search(
-                    r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', clean
+                # --- label body (jumps, returns, screen edges) ---
+                self._collect_label_body(
+                    clean, file_path, idx, scope,
+                    current_label, current_global_label, current_screen
                 )
-                if m_chan:
-                    chan_name = m_chan.group(1).lower()
-                    scope.registered_audio_channels.add(chan_name)
-                    self.registered_audio_channels.add(chan_name)
 
-                if (
-                    "renpy.call(" in clean
-                    or "renpy.jump(" in clean
-                    or "call expression" in clean
-                    or "jump expression" in clean
-                ):
-                    self.has_dynamic_jumps = True
+                # --- images (layeredimage + image) ---
+                img_handled, img_new_idx = self._collect_images(
+                    clean, clean_line, file_path, idx, lines, scope
+                )
+                if img_handled:
+                    idx = img_new_idx if img_new_idx != idx else next_idx
+                    continue
 
-                if '"' in clean or "'" in clean:
-                    for str_match in RE_QUOTED_IDENTIFIER.finditer(clean):
-                        candidate = str_match.group(1)
-                        if candidate.isidentifier():
-                            scope.referenced_labels.add(candidate)
-                            self.referenced_labels.add(candidate)
-
-                m_init = RE_INIT_PYTHON_START.match(line)
-                if m_init:
-                    indent = len(m_init.group(1))
-                    next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
-                    self._collect_from_python_block(block_lines, scope, file_path, idx + 2)
-                    idx = next_idx
+                # --- misc (channels, dynamic jumps, strings, init python) ---
+                init_handled, init_new_idx = self._collect_misc(
+                    clean, line, file_path, idx, lines, scope
+                )
+                if init_handled:
+                    idx = init_new_idx
                     continue
 
                 idx = next_idx
@@ -1120,6 +1252,7 @@ class SenpyAnalyzer:
             self._emit_encoding_error(file_path, e)
         except OSError:
             pass
+
 
     def _collect_from_python_block(
         self,
