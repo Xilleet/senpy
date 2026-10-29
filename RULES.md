@@ -12,6 +12,7 @@ Comprehensive guide to all semantic and static rules implemented in the **Senpy*
 - **Branching & Conditions (RPY4xx)**: [RPY401](#rpy401) | [RPY402](#rpy402) | [RPY403](#rpy403) | [RPY404](#rpy404)
 - **Assets & Media (RPY5xx)**: [RPY501](#rpy501) | [RPY502](#rpy502) | [RPY503](#rpy503) | [RPY504](#rpy504) | [RPY505](#rpy505)
 - **Translations & Localization (RPY6xx)**: [RPY601](#rpy601) | [RPY602](#rpy602) | [RPY603](#rpy603)
+- **Dead Code*: (RPY7xx): [RPY701](#rpy701) | [RPY702](#rpy702) | [RPY703](#rpy703)
 
 ---
 
@@ -782,3 +783,55 @@ new ""  # Player sees an empty dialogue box!
 # Good
 old "Do you want to exit?"
 new "Вы хотите выйти?"
+```
+
+---
+
+## Dead Code Detection (RPY7xx)
+
+<a id="rpy701"></a>
+### RPY701: Unused define constant
+-**Severity**: 'HINT'
+
+- **Why**: A define statement declares a constant, but if no code references it, it adds dead weight to the project and may confuse future maintainers. Removing unused defines keeps the codebase lean and prevents accidental reliance on stale values.
+
+Baddefine DEBUG_MODE = False  # Never referenced anywhere in the codebase# Gooddefine DEBUG_MODE = False  # Used in `if DEBUG_MODE:` somewhere
+
+---
+
+<a id="rpy702"></a>
+### RPY702: Unused transform definition
+- **Severity**: HINT
+- **Why**: A transform is declared but never applied to any show/scene statement via at <transform>. This is dead code that increases project size without benefit. Remove or apply the transform.
+
+```renpy
+# Bad
+transform slide_in:
+    easein 0.5 xoffset 100
+# ...never used: no `show X at slide_in` anywhere
+
+# Good
+transform slide_in:
+    easein 0.5 xoffset 100
+show eileen at slide_in
+```
+
+---
+
+<a id="rpy703"></a>
+### RPY703: Unused screen definition
+- **Severity**: HINT
+- **Why**: A screen is declared but never shown via show screen, call screen, or use statement. Dead UI code increases maintenance burden and may hide stale logic. Note: screens referenced dynamically (via string expressions) are exempt.
+
+```renpy
+# Bad
+screen debug_overlay():
+    text "Debug info"
+# ...never called: no `show screen debug_overlay` anywhere
+
+# Good
+screen debug_overlay():
+    text "Debug info"
+
+# Used: `show screen debug_overlay` (or `call screen debug_overlay`, or `use debug_overlay`)
+```

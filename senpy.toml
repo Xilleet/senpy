@@ -100,6 +100,9 @@ ignore = [
 #  RPY601 [ERROR]   - Variable mismatch in translation string [var].
 #  RPY602 [WARNING] - Formatting tag mismatch in translation string.
 #  RPY603 [WARNING] - Empty translation string ('new ""').
+#  RPY701 [HINT]    - Unused define constant (dead code).
+#  RPY702 [HINT]    - Unused transform definition (dead code).
+#  RPY703 [HINT]    - Unused screen definition (dead code).
 
 
 # =============================================================================

@@ -335,7 +335,7 @@ RULES_DATABASE = {
 
 
 def show_rules_table():
-    table = Table(title="Senpy Linter Rules Reference (All 40 Rules)", border_style="dim")
+    table = Table(title="Senpy Linter Rules Reference (All 45 Rules)", border_style="dim")
     table.add_column("Rule", style="bold cyan")
     table.add_column("Severity", justify="center")
     table.add_column("Description", style="bright_white")
