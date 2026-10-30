@@ -33,7 +33,7 @@ from __future__ import annotations
 import re
 
 from senpy.formatter.core import FormatConfig, FormatContext, register_rule
-from senpy.formatter.rules.op_spacing import _split_by_strings, _is_dialogue_line
+from senpy.formatter.rules.op_spacing import _is_dialogue_line, _split_by_strings
 
 # Pattern: space before colon, where colon is followed by end-of-line or # comment.
 # Match: (non-space) (one or more spaces) (:) (end of line OR # comment)

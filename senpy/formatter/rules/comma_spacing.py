@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 
 from senpy.formatter.core import FormatConfig, FormatContext, register_rule
-from senpy.formatter.rules.op_spacing import _split_by_strings, _is_dialogue_line
+from senpy.formatter.rules.op_spacing import _is_dialogue_line, _split_by_strings
 
 # Pattern: comma followed by 0+ spaces, then a non-space, non-newline, non-close-bracket char.
 # Replace with: ", " (comma + single space).

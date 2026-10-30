@@ -98,9 +98,18 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
         if lbl.has_return:
             status.append("✔ Has return")
         if lbl.outgoing_jumps:
-            status.append(
-                f"➔ Jumps to: {', '.join(f'`{j}`' for j in sorted(lbl.outgoing_jumps)[:4])}"
-            )
+            # Make jump targets clickable markdown links (like "Declared at" above).
+            # For each jump target, look up its definition and create a file:// link.
+            jump_links = []
+            for j in sorted(lbl.outgoing_jumps)[:4]:
+                if j in server_mod._symbol_snapshot["labels"]:
+                    target = server_mod._symbol_snapshot["labels"][j]
+                    target_uri = server_mod._path_to_uri(target.file_path)
+                    jump_links.append(f"[`{j}`]({target_uri}#L{target.line_number})")
+                else:
+                    # Label not found (might be RPY302 broken jump) — just show as code
+                    jump_links.append(f"`{j}`")
+            status.append(f"➔ Jumps to: {', '.join(jump_links)}")
         if status:
             info_lines.append("\n" + " • ".join(status))
 

@@ -7,7 +7,7 @@ import pickle
 import shutil
 from typing import TYPE_CHECKING
 
-from senpy.core.cache_manifest import CachedFileEntry, CacheManifest  # Фаза 1.6: вынесено
+from senpy.core.cache_manifest import CacheManifest
 from senpy.core.constants import SENPY_VERSION
 
 # CachedFileEntry и CacheManifest вынесены в senpy/cache_manifest.py (Фаза 1.6).
@@ -51,9 +51,23 @@ class SafeCacheUnpickler(pickle.Unpickler):
         }
     )
 
+    # Redirect old module paths to new ones (0.5.5 restructuring).
+    # Old cache.pkl files may reference senpy.cache, senpy.models, etc.
+    # which no longer exist as physical modules. We redirect them to
+    # the new senpy.core.* paths so old caches can still be loaded.
+    _MODULE_REDIRECTS = {
+        "senpy.cache": "senpy.core.cache",
+        "senpy.cache_manifest": "senpy.core.cache_manifest",
+        "senpy.models": "senpy.core.models",
+        "senpy.symbols": "senpy.core.symbols",
+        "senpy.signature": "senpy.core.signature",
+    }
+
     def find_class(self, module: str, name: str):
         if module in self.ALLOWED_MODULES:
-            return super().find_class(module, name)
+            # Redirect old module paths to new ones (backward compat)
+            actual_module = self._MODULE_REDIRECTS.get(module, module)
+            return super().find_class(actual_module, name)
         raise pickle.UnpicklingError(
             f"Security Error: Forbidden import '{module}.{name}' in senpy cache"
         )
