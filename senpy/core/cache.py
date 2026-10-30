@@ -5,16 +5,46 @@ import hashlib
 import os
 import pickle
 import shutil
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from senpy.core.cache_manifest import CacheManifest
 from senpy.core.constants import SENPY_VERSION
 
-# CachedFileEntry и CacheManifest вынесены в senpy/cache_manifest.py (Фаза 1.6).
-# Реэкспортируем для backward compat: `from senpy.core.cache import CachedFileEntry` работает.
+# CachedFileEntry и CacheManifest определены ЗДЕСЬ (в cache.py), а не в
+# отдельном cache_manifest.py. Причина: Python 3.14 изменил dataclasses._is_type(),
+# который лезет в sys.modules при декорации @dataclass. Если dataclass'ы
+# в отдельном модуле, который импортируется во время загрузки __init__.py,
+# Python 3.14 падает с AttributeError: 'NoneType' object has no attribute '__dict__'.
+# Инлайнинг в cache.py решает проблему — нет отдельного модуля для импорта.
+#
+# Phase 1.6 (0.5.3) разорвала цикл analyzer ↔ cache через вынесение dataclass'ов.
+# В 0.6.1 мы возвращаем их обратно, т.к. цикл уже разорван через DiagnosticSink
+# Protocol (Phase 1.3) и TYPE_CHECKING guard. Вынесение больше не нужно.
 
 if TYPE_CHECKING:
     from senpy.core.analyzer import SenpyAnalyzer
+    from senpy.core.models import Diagnostic, FileScope
+
+
+@dataclass
+class CachedFileEntry:
+    """Метаданные одного закэшированного файла (для Tier 1 cache)."""
+    mtime: float
+    size: int
+    lines_count: int
+    scope: FileScope
+    diagnostics: list[Diagnostic] = field(default_factory=list)
+    used_assets: set[str] = field(default_factory=set)
+    content_hash: str = ""
+    collect_diagnostics: list[Diagnostic] = field(default_factory=list)
+
+
+@dataclass
+class CacheManifest:
+    """Полный манифест кэша: версия Senpy + global symbol hash + все файлы."""
+    version: str
+    global_symbol_hash: str
+    files: dict[str, CachedFileEntry] = field(default_factory=dict)
 
 
 def compute_file_hash(file_path: str) -> str:

@@ -62,6 +62,42 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
     if not word:
         return None
 
+    # 0. Проверяем, является ли слово частью show/scene/hide токена (image + attributes).
+    # Если да — показываем hover для image (если найдено), иначе ничего не показываем.
+    # Это предотвращает ложные hover'ы на переменные, когда курсор на атрибуте спрайта
+    # (например, `show sayori 1b` → `b` не должен показывать `define b = Character(...)`).
+    stripped_line = line.strip()
+    if stripped_line.startswith(("show ", "scene ", "hide ")):
+        parts = stripped_line.split()[1:]
+        img_tokens = []
+        from senpy.core.constants import CLAUSE_KEYWORDS
+        for p in parts:
+            clean_p = p.rstrip(":")
+            if clean_p in CLAUSE_KEYWORDS:
+                break
+            img_tokens.append(clean_p)
+            if p.endswith(":"):
+                break
+
+        if img_tokens:
+            full_tag = " ".join(img_tokens)
+            base_tag = img_tokens[0]
+            tag_start = line.find(base_tag)
+            tag_end = tag_start + len(full_tag) if tag_start != -1 else -1
+
+            # Если курсор находится в пределах image tag/attributes
+            if tag_start != -1 and tag_start <= col <= tag_end:
+                # Проверяем, есть ли такое изображение
+                for candidate in (full_tag, base_tag):
+                    if candidate in server_mod._symbol_snapshot.get("images", set()):
+                        # TODO: можно добавить image hover в будущем
+                        # Пока просто возвращаем None, чтобы не показывать
+                        # ложный hover для переменной
+                        return None
+                # Image не найден в declarations — тоже не показываем
+                # ложный hover для переменной
+                return None
+
     api_content = get_renpy_api_hover(word)
     if api_content:
         return lsp.Hover(
