@@ -913,8 +913,8 @@ def main():
     if args.version:
         from senpy.__version__ import __version__
 
-        print(f"senpy {__version__}")
-        sys.exit(0)
+        print(f"senpy {__version__}", flush=True)
+        return 0
 
     if args.lsp:
         from senpy.lsp.server import start_lsp

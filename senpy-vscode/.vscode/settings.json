@@ -18,5 +18,7 @@
         "dist": true
     },
 
-    "js/ts.tsc.autoDetect": "off"
+    "js/ts.tsc.autoDetect": "off",
+
+    "senpy.executablePath": "D:\\translator\\vers\\Senpy\\Scripts\\senpy.exe"
 }

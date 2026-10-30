@@ -23,9 +23,9 @@ if errorlevel 1 (
 )
 
 :: =============================================================================
-:: STEP 1/7: Check environment
+:: STEP 1/6: Check environment
 :: =============================================================================
-echo [1/7] Checking environment...
+echo [1/6] Checking environment...
 
 :: Python
 python --version >nul 2>&1
@@ -88,45 +88,27 @@ if not exist "senpy-vscode\node_modules" (
 echo.
 
 :: =============================================================================
-:: STEP 2/7: pip install -e . (editable Senpy)
-:: =============================================================================
-echo [2/7] Installing Senpy as editable package (pip install -e .)...
-
-:: Activate venv if present
-if exist "venv\Scripts\activate.bat" (
-    call venv\Scripts\activate.bat
-)
-
-python -m pip install -e . 2>&1 | findstr /V "already satisfied"
-if errorlevel 1 (
-    echo   [FAIL] pip install -e . failed
-    goto :error_pause
-)
-echo   [OK] Senpy installed in editable mode
-echo.
-
-:: =============================================================================
-:: STEP 3/7: PyInstaller: build senpy.exe
+:: STEP 2/6: PyInstaller: build senpy.exe
 :: =============================================================================
 if /I "%MODE%"=="noexe" (
-    echo [3/7] SKIPPED: senpy.exe build (--noexe mode)
+    echo [2/6] SKIPPED: senpy.exe build (--noexe mode)
     echo       VSIX will not contain senpy.exe. Extension will use 'senpy' from PATH.
     echo.
-    goto :step4
+    goto :step3
 )
 
 if /I "%MODE%"=="quick" (
     if exist "senpy-vscode\bin\senpy.exe" (
-        echo [3/7] SKIPPED: senpy.exe build (--quick mode, using existing exe)
+        echo [2/6] SKIPPED: senpy.exe build (--quick mode, using existing exe)
         echo       File: senpy-vscode\bin\senpy.exe
         echo.
-        goto :step4
+        goto :step3
     ) else (
-        echo [3/7] --quick mode but senpy.exe not found, building anyway...
+        echo [2/6] --quick mode but senpy.exe not found, building anyway...
     )
 )
 
-echo [3/7] Building senpy.exe with PyInstaller (2-5 minutes)...
+echo [2/6] Building senpy.exe with PyInstaller (2-5 minutes)...
 
 :: Ensure PyInstaller
 python -m pip show pyinstaller >nul 2>&1
@@ -144,10 +126,13 @@ if exist "senpy-vscode\bin\senpy.exe" del /q "senpy-vscode\bin\senpy.exe"
 if exist "build" rmdir /s /q "build"
 
 :: Build (onefile)
+:: Changed "senpy\cli.py" to "senpy\cli\__init__.py" (0.5.5 restructure)
+:: Added --hidden-import for new modules (0.6.0 plugin system, formatter, api)
 echo   Running PyInstaller...
 python -m PyInstaller --noconfirm --clean --onefile --name senpy ^
     --paths . --distpath "senpy-vscode\bin" ^
-    --workpath "build" --specpath "build" "senpy\cli.py"
+    --workpath "build" --specpath "build" "senpy\cli\__main__.py" ^
+    --collect-all senpy
 if errorlevel 1 (
     echo   [FAIL] PyInstaller build failed
     goto :error_pause
@@ -163,11 +148,11 @@ for /f "tokens=*" %%v in ('"senpy-vscode\bin\senpy.exe" --version 2^>^&1') do se
 echo   [OK] Built senpy.exe: !SENPY_VER!
 echo.
 
-:step4
+:step3
 :: =============================================================================
-:: STEP 4/7: Compile TypeScript extension
+:: STEP 3/6: Compile TypeScript extension
 :: =============================================================================
-echo [4/7] Compiling TypeScript extension (esbuild)...
+echo [3/6] Compiling TypeScript extension (esbuild)...
 
 pushd senpy-vscode
 call npm run compile
@@ -181,9 +166,9 @@ echo   [OK] extension.js compiled
 echo.
 
 :: =============================================================================
-:: STEP 5/7: Package VSIX with dev version (timestamp)
+:: STEP 4/6: Package VSIX with dev version (timestamp)
 :: =============================================================================
-echo [5/7] Packaging VSIX with dev version...
+echo [4/6] Packaging VSIX with dev version...
 
 :: Read base version from package.json
 pushd senpy-vscode
@@ -239,19 +224,19 @@ popd
 echo.
 
 :: =============================================================================
-:: STEP 6/7: Install in VS Code
+:: STEP 5/6: Install in VS Code
 :: =============================================================================
-echo [6/7] Installing VSIX in VS Code...
+echo [5/6] Installing VSIX in VS Code...
 
 if "!CODE_CLI!"=="NO" (
     echo   [SKIP] 'code' CLI not in PATH.
     echo          Install manually: VS Code Extensions -> '...' -> Install from VSIX
     echo          File: senpy-vscode\!VSIX!
     echo.
-    goto :step7
+    goto :step6
 )
 
-call code --install-extension "senpy-vscode\!VSIX!" --force
+call code --install-extension "!CD!\!VSIX!" --force
 if errorlevel 1 (
     echo   [FAIL] code --install-extension failed
     echo          Install manually: VS Code Extensions -> '...' -> Install from VSIX
@@ -261,9 +246,9 @@ if errorlevel 1 (
 echo   [OK] Installed in VS Code
 echo.
 
-:step7
+:step6
 :: =============================================================================
-:: STEP 7/7: Done — remind to reload
+:: STEP 6/6: Done — remind to reload
 :: =============================================================================
 echo ==========================================================
 echo   SUCCESS!  All steps complete.
@@ -272,11 +257,9 @@ echo   Next: in VS Code, press Ctrl+Shift+P and run:
 echo         Developer: Reload Window
 echo.
 echo   Then test:
-echo     1. Open DDLC project, wait 10 sec for scan
-echo     2. In day1a.rpy type 'jump '  -> should show labels from ALL files
-echo     3. F2 on label -> preview + rename
-echo     4. Hover on variable -> 'Declared at' is clickable
-echo     5. Output -> Senpy Language Server -> [completions] debug logs
+echo     1. Open your Ren'Py project, wait 10 sec for scan
+echo     2. Hover on label -> should show clickable links
+echo     3. Ctrl+Shift+P -> "Senpy: Restart Language Server"
 echo ==========================================================
 echo.
 echo   Build artifacts:

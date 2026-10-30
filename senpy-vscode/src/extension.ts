@@ -162,6 +162,20 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(statsCmd);
     context.subscriptions.push(graphCmd);
+
+    // 5. Команда: Restart Language Server (Ctrl+Shift+P → "Senpy: Restart Language Server")
+    let restartCmd = vscode.commands.registerCommand('senpy.restartLanguageServer', async () => {
+        if (!client) {
+            vscode.window.showWarningMessage("Senpy Language Server is not running.");
+            return;
+        }
+        await client.stop();
+        // Clear cached state
+        client.outputChannel.clear();
+        client.start();
+        vscode.window.showInformationMessage("Senpy Language Server restarted.");
+    });
+    context.subscriptions.push(restartCmd);
     
 // Пробрасываем папку bin/ расширения в PATH встроенного терминала VS Code
     const binDir = path.join(context.extensionPath, 'bin');

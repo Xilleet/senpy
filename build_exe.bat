@@ -23,7 +23,7 @@ if exist "build" rmdir /s /q "build"
 
 echo.
 echo [3/4] Сборка onefile (2-5 минут, не закрывай окно)...
-python -m PyInstaller --noconfirm --clean --onefile --name senpy --paths . --distpath "senpy-vscode\bin" --workpath "build" --specpath "build" "senpy\cli.py"
+python -m PyInstaller --noconfirm --clean --onefile --name senpy --paths . --distpath "senpy-vscode\bin" --workpath "build" --specpath "build" "senpy\cli\__init__.py" --hidden-import senpy.api --hidden-import senpy.plugins.base --hidden-import senpy.plugins.registry --hidden-import senpy.plugins.security --hidden-import senpy.plugins.loader --hidden-import senpy.formatter.rules.quotes --hidden-import senpy.formatter.rules.op_spacing --hidden-import senpy.formatter.rules.comma_spacing --hidden-import senpy.formatter.rules.colon_spacing
 if %errorlevel% neq 0 (
     echo [ОШИБКА] Сборка не удалась!
     pause

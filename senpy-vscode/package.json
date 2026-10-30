@@ -31,6 +31,11 @@
         "command": "senpy.showStoryStats",
         "title": "Senpy: Show Story & Character Analytics",
         "icon": "$(graph-line)"
+      },
+      {
+        "command": "senpy.restartLanguageServer",
+        "title": "Senpy: Restart Language Server",
+        "category": "Senpy"
       }
     ],
     "menus": {
@@ -52,6 +57,9 @@
         },
         {
           "command": "senpy.showStoryStats"
+        },
+        {
+          "command": "senpy.restartLanguageServer"
         }
       ]
     },
