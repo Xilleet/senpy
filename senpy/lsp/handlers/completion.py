@@ -11,6 +11,7 @@ server_mod._X (lazy import разрывает цикл импортов).
 from __future__ import annotations
 
 import os
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -156,3 +157,155 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
     )
 
     return lsp.CompletionList(is_incomplete=False, items=items)
+
+
+# =============================================================================
+# textDocument/signatureHelp — parameter hints for call/use
+# =============================================================================
+# When user types `call my_label(` and cursor is inside parens, VS Code calls
+# signatureHelp to display the parameter list.
+#
+# Returns SignatureHelp with:
+#   - signatures[0].label: "my_label(name, age=18)" — full signature text
+#   - signatures[0].parameters: list of ParameterInformation
+#   - activeSignature: 0 (we only return one signature per call)
+#   - activeParameter: index of parameter cursor is on (based on comma count)
+
+# Regex to find `call NAME(` or `use NAME(` patterns
+_RE_CALL_USE = re.compile(r"\b(?:call|use)\s+([a-zA-Z_][a-zA-Z0-9_\.]*)\s*\(")
+
+
+def _count_active_parameter(line: str, cursor_pos: int, paren_start: int) -> int:
+    """Count commas between opening paren and cursor — that's the active param index.
+
+    `call f(a, b, c)` with cursor after `b` (between b and c):
+    - paren_start = position of `(`
+    - cursor_pos = position after `b, ` (before `c`)
+    - count commas in line[paren_start+1:cursor_pos] = 1 → activeParameter = 1
+    """
+    if cursor_pos <= paren_start:
+        return 0
+    segment = line[paren_start + 1:cursor_pos]
+    # Count commas NOT inside nested parens/brackets
+    depth = 0
+    comma_count = 0
+    for ch in segment:
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth = max(0, depth - 1)
+        elif ch == "," and depth == 0:
+            comma_count += 1
+    return comma_count
+
+
+def signature_help(
+    ls: LanguageServer, params: lsp.SignatureHelpParams
+) -> lsp.SignatureHelp | None:
+    """LSP-6: Provide parameter hints for call label(...) / use screen(...).
+
+    Returns None if:
+        - Analyzer not initialized
+        - Cursor not inside call/use parens
+        - Target label/screen not found
+
+    Returns SignatureHelp with single SignatureInformation otherwise.
+    """
+    server_mod = _get_server_mod()
+    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+        return None
+
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    if not doc or not doc.lines:
+        return None
+
+    line_idx = params.position.line
+    if line_idx >= len(doc.lines):
+        return None
+
+    line = doc.lines[line_idx]
+    cursor_pos = params.position.character
+
+    # Find call/use pattern on this line, with cursor inside the parens
+    match = None
+    paren_start = -1
+    for m in _RE_CALL_USE.finditer(line):
+        # Check if cursor is after the opening paren
+        if m.end() - 1 <= cursor_pos:  # cursor is at or after the `(`
+            # Find closing paren
+            paren_start = m.end() - 1
+            # Find closing paren after cursor
+            close_pos = line.find(")", cursor_pos)
+            if close_pos == -1:
+                close_pos = len(line)
+            if paren_start <= cursor_pos <= close_pos:
+                match = m
+                break
+    else:
+        return None  # no call/use pattern with cursor inside
+
+    if match is None:
+        return None
+
+    target_name = match.group(1)
+    # Handle dotted names (label.sublabel) — take the last part for lookup
+    if "." in target_name:
+        target_name = target_name.split(".")[-1]
+
+    # Look up in labels and screens (snapshot for cross-file stability,
+    # fallback to analyzer for cases where snapshot is not yet refreshed)
+    labels = server_mod._symbol_snapshot.get("labels", {})
+    screens = server_mod._symbol_snapshot.get("screens", {})
+    # Fallback: if not in snapshot, check analyzer directly (test scenarios,
+    # or immediately after did_change before snapshot refresh)
+    if target_name not in labels and server_mod._active_analyzer is not None:
+        labels = server_mod._active_analyzer.labels
+    if target_name not in screens and server_mod._active_analyzer is not None:
+        screens = server_mod._active_analyzer.screens
+
+    symbol = None
+    is_label = False
+    if target_name in labels:
+        symbol = labels[target_name]
+        is_label = True
+    elif target_name in screens:
+        symbol = screens[target_name]
+    else:
+        return None  # unknown label/screen
+
+    # Build signature label
+    sig = symbol.signature
+    if sig and sig.has_params:
+        # Build "name(param1, param2=default)" style
+        param_parts = []
+        for i, name in enumerate(sig.pos_names):
+            param_parts.append(name)
+        # Note: we don't have default values in SignatureInfo, only names
+        # So we just show names. If we had defaults, we'd append "=default"
+        params_str = ", ".join(param_parts)
+    else:
+        params_str = ""
+
+    sig_label = f"{target_name}({params_str})"
+
+    # Build ParameterInformation list
+    param_infos: list[lsp.ParameterInformation] = []
+    if sig and sig.has_params:
+        for name in sig.pos_names:
+            param_infos.append(lsp.ParameterInformation(label=name))
+
+    sig_info = lsp.SignatureInformation(
+        label=sig_label,
+        parameters=param_infos,
+    )
+
+    # Calculate active parameter (which param cursor is on)
+    active_param = _count_active_parameter(line, cursor_pos, paren_start)
+    if active_param >= len(param_infos):
+        active_param = max(0, len(param_infos) - 1)
+
+    return lsp.SignatureHelp(
+        signatures=[sig_info],
+        active_signature=0,
+        active_parameter=active_param,
+    )

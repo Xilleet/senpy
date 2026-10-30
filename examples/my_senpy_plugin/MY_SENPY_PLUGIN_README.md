@@ -1,4 +1,4 @@
-# my_senpy_plugin — Example Senpy Plugin
+# Example Senpy Plugin
 
 Minimal working example of a Senpy lint plugin. Use it as a template for your own plugins.
 
@@ -343,7 +343,7 @@ After publishing, when a user runs `senpy`, your plugin is auto-discovered and t
 
 ---
 
-## 🔍 Debugging: why isn't my plugin loading?
+## Debugging: why isn't my plugin loading?
 
 ### Check 1: Is the plugin installed?
 

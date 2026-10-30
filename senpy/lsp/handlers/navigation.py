@@ -18,16 +18,15 @@ import os
 import re
 from typing import TYPE_CHECKING
 
-from lsprotocol import types as lsp
-
-from senpy.core.constants import CLAUSE_KEYWORDS
-
 if TYPE_CHECKING:
     try:
         from pygls.lsp.server import LanguageServer
     except ImportError:
         from pygls.server import LanguageServer
 
+from lsprotocol import types as lsp
+
+from senpy.core.constants import CLAUSE_KEYWORDS
 
 
 def _get_server_mod():
@@ -506,3 +505,206 @@ def prepare_rename(
 
     # Нет слова под курсором
     return None
+
+
+# =============================================================================
+# textDocument/prepareCallHierarchy + incomingCalls + outgoingCalls
+# =============================================================================
+# Right-click on label → "Find Callers" / "Find References".
+#
+# Pipeline:
+#   1. prepareCallHierarchy(item under cursor) → list[CallHierarchyItem]
+#   2. callHierarchy/incomingCalls(item) → list[CallHierarchyIncomingCall] (who calls this?)
+#   3. callHierarchy/outgoingCalls(item) → list[CallHierarchyOutgoingCall] (where does this go?)
+#
+# Sources:
+#   - server_mod._symbol_snapshot["labels"] for label lookup
+#   - server_mod._symbol_snapshot["jump_sources"] for incoming calls (who jumps to this label)
+#   - LabelSymbol.outgoing_jumps for outgoing calls (where this label jumps to)
+
+
+def prepare_call_hierarchy(
+    ls: LanguageServer, params: lsp.CallHierarchyPrepareParams
+) -> list[lsp.CallHierarchyItem]:
+    """LSP-5: Return CallHierarchyItem for label under cursor.
+
+    Returns empty list if cursor is not on a label declaration or reference.
+    """
+    server_mod = _get_server_mod()
+    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+        return []
+
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    if not doc or not doc.lines:
+        return []
+
+    line_idx = params.position.line
+    if line_idx >= len(doc.lines):
+        return []
+
+    line = doc.lines[line_idx]
+    col = params.position.character
+
+    # Find word under cursor
+    word = None
+    for m in re.finditer(r"[a-zA-Z_][a-zA-Z0-9_\.]*", line):
+        if m.start() <= col <= m.end():
+            word = m.group(0)
+            break
+
+    if not word:
+        return []
+
+    # Check if word is a label (in snapshot, with fallback to analyzer)
+    labels = server_mod._symbol_snapshot.get("labels", {})
+    if word not in labels and server_mod._active_analyzer is not None:
+        labels = server_mod._active_analyzer.labels
+    if word not in labels:
+        return []
+
+    label = labels[word]
+    # Build CallHierarchyItem
+    return [
+        lsp.CallHierarchyItem(
+            name=word,
+            kind=lsp.SymbolKind.Function,  # labels are like functions
+            uri=server_mod._path_to_uri(label.file_path),
+            range=lsp.Range(
+                start=lsp.Position(line=max(0, label.line_number - 1), character=0),
+                end=lsp.Position(line=max(0, label.line_number - 1), character=len(line.rstrip())),
+            ),
+            selection_range=lsp.Range(
+                start=lsp.Position(line=max(0, label.line_number - 1), character=0),
+                end=lsp.Position(line=max(0, label.line_number - 1), character=len(word)),
+            ),
+        )
+    ]
+
+
+def incoming_calls(
+    ls: LanguageServer, params: lsp.CallHierarchyIncomingCallsParams
+) -> list[lsp.CallHierarchyIncomingCall]:
+    """LSP-5: Find all labels that call/jump to the given label.
+
+    Uses jump_sources reverse index from analyzer snapshot.
+    """
+    server_mod = _get_server_mod()
+    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+        return []
+
+    target_name = params.item.name
+    labels = server_mod._symbol_snapshot.get("labels", {})
+    jump_sources = server_mod._symbol_snapshot.get("jump_sources", {})
+    # Fallback: if not in snapshot, check analyzer directly
+    if not jump_sources and server_mod._active_analyzer is not None:
+        jump_sources = server_mod._active_analyzer.jump_sources
+    if not labels and server_mod._active_analyzer is not None:
+        labels = server_mod._active_analyzer.labels
+
+    incoming: list[lsp.CallHierarchyIncomingCall] = []
+
+    # jump_sources maps: target_label → list of (file_path, line_number)
+    for caller_path, caller_line in jump_sources.get(target_name, []):
+        # Find the label that contains this call site
+        # (label whose line_number <= caller_line and is in the same file)
+        caller_label = None
+        for name, lbl in labels.items():
+            if lbl.file_path == caller_path and lbl.line_number <= caller_line:  # noqa: SIM102
+                if caller_label is None or lbl.line_number > caller_label.line_number:
+                    caller_label = lbl
+                    caller_name = name
+
+        if caller_label is None:
+            # Fallback: use the file/line without a label name
+            caller_name = "<anonymous>"
+            caller_label_uri = server_mod._path_to_uri(caller_path)
+            caller_range = lsp.Range(
+                start=lsp.Position(line=max(0, caller_line - 1), character=0),
+                end=lsp.Position(line=max(0, caller_line - 1), character=80),
+            )
+        else:
+            caller_label_uri = server_mod._path_to_uri(caller_label.file_path)
+            caller_range = lsp.Range(
+                start=lsp.Position(line=max(0, caller_label.line_number - 1), character=0),
+                end=lsp.Position(line=max(0, caller_label.line_number - 1), character=80),
+            )
+
+        # Build the caller's CallHierarchyItem
+        caller_item = lsp.CallHierarchyItem(
+            name=caller_name,
+            kind=lsp.SymbolKind.Function,
+            uri=caller_label_uri,
+            range=caller_range,
+            selection_range=caller_range,
+        )
+
+        # fromRanges: where the call happens (the line with jump/call)
+        call_range = lsp.Range(
+            start=lsp.Position(line=max(0, caller_line - 1), character=0),
+            end=lsp.Position(line=max(0, caller_line - 1), character=80),
+        )
+
+        incoming.append(lsp.CallHierarchyIncomingCall(
+            from_=caller_item,
+            from_ranges=[call_range],
+        ))
+
+    return incoming
+
+
+def outgoing_calls(
+    ls: LanguageServer, params: lsp.CallHierarchyOutgoingCallsParams
+) -> list[lsp.CallHierarchyOutgoingCall]:
+    """LSP-5: Find all labels that this label jumps/calls to.
+
+    Uses LabelSymbol.outgoing_jumps from analyzer snapshot.
+    """
+    server_mod = _get_server_mod()
+    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+        return []
+
+    source_name = params.item.name
+    labels = server_mod._symbol_snapshot.get("labels", {})
+    # Fallback: if not in snapshot, check analyzer directly
+    if source_name not in labels and server_mod._active_analyzer is not None:
+        labels = server_mod._active_analyzer.labels
+
+    if source_name not in labels:
+        return []
+
+    source_label = labels[source_name]
+    outgoing: list[lsp.CallHierarchyOutgoingCall] = []
+
+    # outgoing_jumps is a set of target label names
+    for target_name in source_label.outgoing_jumps:
+        if target_name not in labels:
+            continue  # target doesn't exist (will be flagged by RPY302)
+
+        target_label = labels[target_name]
+        target_item = lsp.CallHierarchyItem(
+            name=target_name,
+            kind=lsp.SymbolKind.Function,
+            uri=server_mod._path_to_uri(target_label.file_path),
+            range=lsp.Range(
+                start=lsp.Position(line=max(0, target_label.line_number - 1), character=0),
+                end=lsp.Position(line=max(0, target_label.line_number - 1), character=80),
+            ),
+            selection_range=lsp.Range(
+                start=lsp.Position(line=max(0, target_label.line_number - 1), character=0),
+                end=lsp.Position(line=max(0, target_label.line_number - 1), character=len(target_name)),
+            ),
+        )
+
+        # fromRanges: where the call happens in the source label
+        # We don't track exact line of each jump, so use the label's range
+        from_range = lsp.Range(
+            start=lsp.Position(line=max(0, source_label.line_number - 1), character=0),
+            end=lsp.Position(line=max(0, source_label.line_number - 1), character=80),
+        )
+
+        outgoing.append(lsp.CallHierarchyOutgoingCall(
+            to=target_item,
+            from_ranges=[from_range],
+        ))
+
+    return outgoing

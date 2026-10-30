@@ -371,6 +371,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Always exit 0, even if errors found. Useful for non-blocking CI runs "
         "(e.g. nightly reports). Still prints diagnostics to stdout.",
     )
+    g_lint.add_argument(
+        "--show-fixes",
+        action="store_true",
+        help="Show detailed list of fixes applied by --fix (file:line: rule — message). "
+        "Without --fix, shows '0 fixes applied'. Useful for CI logs and audit.",
+    )
 
     # 4. Визуализация и форматы отчётов
     g_export = parser.add_argument_group("Visualization & Reports")
@@ -400,9 +406,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--output-format",
         "--format",
         dest="output_format",
-        choices=["text", "json", "sarif"],
+        choices=["text", "json", "sarif", "junit", "github"],
         default="text",
-        help="Output format: 'text' (default), 'json' for VS Code, or 'sarif' for GitHub Actions",
+        help="Output format: 'text' (default), 'json' for VS Code, 'sarif' for "
+             "GitHub Actions, 'junit' for CI (XML), 'github' for PR annotations",
     )
     g_export.add_argument(
         "--output-file",
@@ -543,6 +550,101 @@ def render_json(active_diagnostics, result, elapsed, args, console) -> int:
     error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
     return 1 if error_count > 0 else 0
 
+def render_junit(active_diagnostics, args, console) -> int:
+    """Рендерит diagnostics в JUnit XML формат для CI. Возвращает exit code.
+
+    JUnit XML format compatible with
+    Jenkins, GitLab CI, TeamCity, etc.
+    """
+    error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
+    warning_count = sum(1 for e in active_diagnostics if e.severity == "WARNING")
+
+    # Group diagnostics by file
+    by_file: dict[str, list] = {}
+    for err in active_diagnostics:
+        by_file.setdefault(err.file_path, []).append(err)
+
+    # Build JUnit XML
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>']
+    lines.append(
+        f'<testsuites name="senpy" tests="{len(active_diagnostics)}" '
+        f'failures="{error_count}" errors="0" skipped="{warning_count}">'
+    )
+    for file_path, diags in sorted(by_file.items()):
+        suite_name = os.path.basename(file_path)
+        lines.append(
+            f'  <testsuite name="{_xml_escape(suite_name)}" '
+            f'tests="{len(diags)}" failures="{sum(1 for d in diags if d.severity == "ERROR")}" '
+            f'errors="0" skipped="{sum(1 for d in diags if d.severity == "WARNING")}">'
+        )
+        for diag in diags:
+            case_name = f"{diag.code}: {diag.message[:80]}"
+            lines.append(f'    <testcase name="{_xml_escape(case_name)}" classname="{_xml_escape(suite_name)}">')
+            if diag.severity == "ERROR":
+                lines.append(
+                    f'      <failure message="{_xml_escape(diag.message)}" '
+                    f'type="{diag.code}">line {diag.line_number}: {diag.line_content.strip()}</failure>'
+                )
+            elif diag.severity == "WARNING":
+                lines.append(
+                    f'      <skipped message="{_xml_escape(diag.message)}" '
+                    f'type="{diag.code}">line {diag.line_number}</skipped>'
+                )
+            lines.append('    </testcase>')
+        lines.append('  </testsuite>')
+    lines.append('</testsuites>')
+
+    junit_str = "\n".join(lines)
+    if args.output_file:
+        with open(args.output_file, "w", encoding="utf-8") as f:
+            f.write(junit_str)
+        console.print(f"[bold green]✔ JUnit report saved to {args.output_file}[/bold green]")
+    else:
+        print(junit_str)
+    return 1 if error_count > 0 else 0
+
+
+def render_github(active_diagnostics, args, console) -> int:
+    """Рендерит diagnostics в GitHub Actions format для PR annotations.
+
+    ::error file=X,line=N::message format.
+    GitHub Actions automatically picks these up and shows them as PR annotations.
+    """
+    error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
+
+    for diag in active_diagnostics:
+        # GitHub Actions workflow command format:
+        # ::error file=app/index.js,line=10,col=15::Something went wrong
+        file_rel = os.path.relpath(diag.file_path, args.path) if args.path else diag.file_path
+        level = "error" if diag.severity == "ERROR" else "warning" if diag.severity == "WARNING" else "notice"
+        # Escape message: newlines and special chars
+        msg = diag.message.replace("\n", " ").replace("::", " ")
+        print(f"::{level} file={file_rel},line={diag.line_number},col={diag.col}::{diag.code}: {msg}")
+
+    if args.output_file:
+        # Also save to file if requested
+        with open(args.output_file, "w", encoding="utf-8") as f:
+            for diag in active_diagnostics:
+                file_rel = os.path.relpath(diag.file_path, args.path) if args.path else diag.file_path
+                level = "error" if diag.severity == "ERROR" else "warning" if diag.severity == "WARNING" else "notice"
+                msg = diag.message.replace("\n", " ").replace("::", " ")
+                f.write(f"::{level} file={file_rel},line={diag.line_number},col={diag.col}::{diag.code}: {msg}\n")
+        console.print(f"[bold green]✔ GitHub annotations saved to {args.output_file}[/bold green]")
+    return 1 if error_count > 0 else 0
+
+
+def _xml_escape(text: str) -> str:
+    """Escape special XML characters for JUnit output."""
+    return (
+        text
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
+
+
 def render_text(
     active_diagnostics,
     hidden_info_count: int,
@@ -621,6 +723,16 @@ def render_text(
             console.print(
                 f"\n[bold green]✔ Automatically fixed {result.fixed_count} error(s)![/bold green]"
             )
+        # --show-fixes — детальный отчёт "что было исправлено"
+        if getattr(args, "show_fixes", False):
+            console.print("\n[bold cyan]Applied fixes:[/bold cyan]")
+            for diag in active_diagnostics:
+                if diag.fix_title:
+                    file_name = os.path.basename(diag.file_path)
+                    console.print(
+                        f"  [dim]{file_name}:{diag.line_number}[/dim] "
+                        f"[bold yellow]{diag.code}[/bold yellow] — {diag.fix_title}"
+                    )
     elif result.fixable_count > 0 and not args.fix:
         if is_tsundere:
             console.print(
@@ -630,6 +742,9 @@ def render_text(
             console.print(
                 f"\n[dim][*] {result.fixable_count} fixable with the --fix option[/dim]"
             )
+    elif getattr(args, "show_fixes", False) and result.fixed_count == 0:
+        # CLI-3: --show-fixes без --fix — "0 fixes applied"
+        console.print("\n[dim]0 fixes applied (use --fix to apply fixes).[/dim]")
 
     if hidden_info_count > 0:
         if is_tsundere:
@@ -845,7 +960,7 @@ def main():
     extra_rpy_files = discover_files(args, config, args.path)
 
     is_quiet_mode = bool(
-        args.graph or args.graph_file or args.stats or args.output_format in ("json", "sarif")
+        args.graph or args.graph_file or args.stats or args.output_format in ("json", "sarif", "junit", "github")
     )
 
     if not is_quiet_mode:
@@ -965,6 +1080,14 @@ def main():
     # --- ВЫВОД В ФОРМАТЕ JSON ДЛЯ VS CODE ---
     elif args.output_format == "json":
         sys.exit(render_json(active_diagnostics, result, elapsed, args, console))
+
+    # ---  ВЫВОД В ФОРМАТЕ JUNIT XML ДЛЯ CI ---
+    elif args.output_format == "junit":
+        sys.exit(render_junit(active_diagnostics, args, console))
+
+    # --- ВЫВОД В ФОРМАТЕ GITHUB ACTIONS ANNOTATIONS ---
+    elif args.output_format == "github":
+        sys.exit(render_github(active_diagnostics, args, console))
 
     # P0-1: --output-file для text-формата.
     # Раньше --output-file молча игнорировался: rich Console пишет в sys.stdout,

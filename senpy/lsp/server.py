@@ -338,21 +338,10 @@ def run_single_file_diagnostics(ls: LanguageServer, uri: str, content: str):
         schedule_full_diagnostics(ls, uri)
         return
 
-    file_path = _uri_to_path(uri)
-
-    # Guard: orphan Timer из ранних LSP-тестов может срабатывать уже после
-    # завершения теста, с устаревшим _active_analyzer (project_path на другом
-    # диске, чем file_path). В этом случае os.path.relpath падает с
-    # ValueError. Перенаправляем на full scan — он пересоздаст analyzer.
-    try:
-        os.path.relpath(file_path, _active_analyzer.project_path)
-    except ValueError:
-        schedule_full_diagnostics(ls, uri)
-        return
-
     _lsp_server.rw_lock.acquire_write()
     try:
         with _analysis_lock:
+            file_path = _uri_to_path(uri)
             norm_file = _normalize_path(file_path)  # P0-6: единая нормализация
 
             _active_analyzer.in_memory_files[norm_file] = content
@@ -620,6 +609,108 @@ def document_highlight(
 ) -> list[lsp.DocumentHighlight]:
     """0.6.0: делегирует в handlers.workspace."""
     from senpy.lsp.handlers.workspace import document_highlight as _impl
+    return _impl(ls, params)
+
+
+# =============================================================================
+# LSP-1: textDocument/documentColor + colorPresentation — hex color swatches
+# =============================================================================
+# VS Code displays color swatches next to #ffffff literals. Clicking opens
+# a color picker that updates the literal.
+#
+# Killer feature for VN — lots of colors in {color=#...} tags, Solid("#..."),
+# Color("#..."), and hex literals in init python.
+@server.feature(lsp.TEXT_DOCUMENT_DOCUMENT_COLOR)
+@_with_analysis_lock
+def document_color(
+    ls: LanguageServer, params: lsp.DocumentColorParams
+) -> list[lsp.ColorInformation]:
+    """0.6.0 Под-спринт 3: делегирует в handlers.diagnostics."""
+    from senpy.lsp.handlers.diagnostics import document_color as _impl
+    return _impl(ls, params)
+
+
+@server.feature(lsp.TEXT_DOCUMENT_COLOR_PRESENTATION)
+@_with_analysis_lock
+def color_presentation(
+    ls: LanguageServer, params: lsp.ColorPresentationParams
+) -> list[lsp.ColorPresentation]:
+    """0.6.0 Под-спринт 3: делегирует в handlers.diagnostics."""
+    from senpy.lsp.handlers.diagnostics import color_presentation as _impl
+    return _impl(ls, params)
+
+
+# =============================================================================
+# LSP-2: textDocument/formatting + rangeFormatting — Shift+Alt+F / Ctrl+K Ctrl+F
+# =============================================================================
+# Integrates senpy.formatter (from Под-спринт 1) into VS Code.
+# Shift+Alt+F → formatting() — formats whole document
+# Ctrl+K Ctrl+F → range_formatting() — formats selected range
+@server.feature(lsp.TEXT_DOCUMENT_FORMATTING)
+def formatting(
+    ls: LanguageServer, params: lsp.DocumentFormattingParams
+) -> list[lsp.TextEdit]:
+    """0.6.0 Под-спринт 3: делегирует в handlers.diagnostics."""
+    from senpy.lsp.handlers.diagnostics import formatting as _impl
+    return _impl(ls, params)
+
+
+@server.feature(lsp.TEXT_DOCUMENT_RANGE_FORMATTING)
+def range_formatting(
+    ls: LanguageServer, params: lsp.DocumentRangeFormattingParams
+) -> list[lsp.TextEdit]:
+    """0.6.0 Под-спринт 3: делегирует в handlers.diagnostics."""
+    from senpy.lsp.handlers.diagnostics import range_formatting as _impl
+    return _impl(ls, params)
+
+
+# =============================================================================
+# LSP-6: textDocument/signatureHelp — parameter hints for call/use
+# =============================================================================
+# When user types `call my_label(` and cursor is inside parens, VS Code shows
+# the parameter list from the label's signature.
+@server.feature(lsp.TEXT_DOCUMENT_SIGNATURE_HELP)
+@_with_analysis_lock
+def signature_help(
+    ls: LanguageServer, params: lsp.SignatureHelpParams
+) -> lsp.SignatureHelp | None:
+    """0.6.0 Под-спринт 3b: делегирует в handlers.completion."""
+    from senpy.lsp.handlers.completion import signature_help as _impl
+    return _impl(ls, params)
+
+
+# =============================================================================
+# LSP-5: textDocument/prepareCallHierarchy + incomingCalls + outgoingCalls
+# =============================================================================
+# Right-click on label → "Find Callers" (incoming) / "Find References" (outgoing).
+# Killer for VN — navigation through call graph.
+@server.feature(lsp.TEXT_DOCUMENT_PREPARE_CALL_HIERARCHY)
+@_with_analysis_lock
+def prepare_call_hierarchy(
+    ls: LanguageServer, params: lsp.CallHierarchyPrepareParams
+) -> list[lsp.CallHierarchyItem]:
+    """0.6.0 Под-спринт 3b: делегирует в handlers.navigation."""
+    from senpy.lsp.handlers.navigation import prepare_call_hierarchy as _impl
+    return _impl(ls, params)
+
+
+@server.feature(lsp.CALL_HIERARCHY_INCOMING_CALLS)
+@_with_analysis_lock
+def incoming_calls(
+    ls: LanguageServer, params: lsp.CallHierarchyIncomingCallsParams
+) -> list[lsp.CallHierarchyIncomingCall]:
+    """0.6.0 Под-спринт 3b: делегирует в handlers.navigation."""
+    from senpy.lsp.handlers.navigation import incoming_calls as _impl
+    return _impl(ls, params)
+
+
+@server.feature(lsp.CALL_HIERARCHY_OUTGOING_CALLS)
+@_with_analysis_lock
+def outgoing_calls(
+    ls: LanguageServer, params: lsp.CallHierarchyOutgoingCallsParams
+) -> list[lsp.CallHierarchyOutgoingCall]:
+    """0.6.0 Под-спринт 3b: делегирует в handlers.navigation."""
+    from senpy.lsp.handlers.navigation import outgoing_calls as _impl
     return _impl(ls, params)
 
 
