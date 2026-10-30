@@ -5,65 +5,98 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1]
+
+### Fixed
+* **PyInstaller entry point fix** (`senpy.spec`, `senpy/cli/__main__.py`): Root cause of VSIX/LSP crashes. `senpy.spec` pointed to `senpy/cli/main.py` which only *defines* `main()` but doesn't call it. Changed to `senpy/cli/__main__.py` which actually executes `main()`. Also wrapped `__main__.py` in `try/except` to catch and display any future import errors instead of silently crashing.
+* **Python 3.14 `@dataclass` compatibility** (`senpy/core/cache.py`): Inlined `CachedFileEntry` and `CacheManifest` dataclasses back into `cache.py`. Python 3.14 changed `dataclasses._is_type()` to access `sys.modules` during decoration, which crashed with `AttributeError` when loading `cache_manifest.py` during `__init__.py` chain. `cache_manifest.py` kept as backward-compat re-export.
+* **Old cache module redirect** (`senpy/core/cache.py`): Added `_MODULE_REDIRECTS` dict in `SafeCacheUnpickler`. Old `cache.pkl` files (created before 0.5.5) referenced `senpy.cache`, `senpy.models`, etc. which no longer exist. Now redirected to `senpy.core.*` paths automatically.
+* **Hover on `show/scene/hide` attributes** (`senpy/lsp/handlers/hover.py`): Hovering over sprite attributes (e.g., `1b` in `show sayori 1b`) no longer incorrectly shows `define b = DynamicCharacter(...)`. Added guard that checks if cursor is within image tag tokens.
+* **Clickable jump targets in hover** (`senpy/lsp/handlers/hover.py`): "Jumps to: `credits2`, `hideconsole`" links are now clickable and navigate to the target label's definition, same as "Declared at" links.
+* **`--version` output buffering** (`senpy/cli/main.py`): Changed `sys.exit(0)` to `return 0` for `--version` flag. Fixes PyInstaller on Windows not flushing stdout buffer before process exit when output is captured by a pipe.
+* **`executablePath` validation** (`senpy-vscode/src/extension.ts`): Added `fs.existsSync()` check. If user configures `executablePath` but the file doesn't exist (e.g., dev path not present on user machine), Senpy now silently falls back to bundled binary instead of crashing.
+
+### Added
+* **"Senpy: Restart Language Server" command** (`senpy-vscode/package.json`, `extension.ts`): New command available via `Ctrl+Shift+P`. Stops and restarts the LSP server without reloading the VS Code window.
+* **`--show-fixes` CLI flag** (`senpy/cli/main.py`): Shows detailed list of applied fixes (`file:line: rule — fix_title`) when used with `--fix`.
+* **`--output-format junit` and `--output-format github`** (`senpy/cli/main.py`): JUnit XML format for CI systems (Jenkins, GitLab). GitHub Actions `::error file=X,line=N::message` annotations for PR reviews.
+
+### Changed
+* **Build scripts consolidation**: Replaced `build_exe.bat` and `build_vsix_dev.bat` with a single `reinstall.bat` that handles the full build cycle (PyInstaller → TypeScript compile → VSIX package → install).
+* **`senpy.spec`**: Added `collect_all('senpy')` to ensure all submodules (including dynamically imported `senpy.plugins.*` and `senpy.formatter.rules.*`) are bundled into `senpy.exe`.
+
 ## [0.6.0]
 
-### Plugin System
-- `senpy.api` public module — explicitly stable API for plugin developers.
-- `Rule` base class with `RuleMeta` (ESLint-style) and `RuleContext`.
-- `@register_rule("RPYxxx")` decorator for lint rules.
-- Plugin loading via `[project.entry-points."senpy.plugins"]`.
-- `examples/my_senpy_plugin/` — working example plugin with README (454 lines).
+### Plugin System (EXT-1..7, EXT-11)
+* **EXT-7: `senpy.api` public module** — explicitly stable API for plugin developers and library users. Re-exports `Diagnostic`, `RULE_SEVERITY`, `AnalysisResult`, adds `Location` dataclass and `analyze_code(code: str) -> list[Diagnostic]` high-level one-liner function. Internal modules (`senpy.core.*`, `senpy.rules.*`) may change between minor versions, but `senpy.api` stays backward-compatible within the same major.
+* **EXT-3: `Rule` base class** with `RuleMeta` (ESLint-style: `code`, `docs`, `severity`, `fixable`, `tags`, `deprecated`, `replaced_by`) and `RuleContext` (`file_path`, `lines`, `symbols`, optional `analyzer` and `config`).
+* **EXT-2: `@register_rule("RPYxxx")` decorator** for lint rules (previously only existed for formatter rules).
+* **EXT-1: Plugin loading via `[project.entry-points."senpy.plugins"]`** — `discover_plugins()`, `load_plugin()`, `load_all_plugins()`, `register_loaded_plugins()`. Plugins discovered via `importlib.metadata.entry_points`. Each plugin loaded with isolation (failed plugin skipped, others continue).
+* **EXT-11: `examples/my_senpy_plugin/`** — working example plugin (RPY901: flags dialogue without `_()` for translation). Includes `pyproject.toml` with entry_points declaration, comprehensive README (454 lines) covering installation, trust flow, plugin authoring, QuickFix, testing, PyPI publishing, debugging.
 
 ### Plugin Security (SEC-P1, SEC-P2)
-- `PLUGIN_API_VERSION = "1.0"` — api_version compatibility check.
-- Trust-on-first-use — `~/.senpy/trusted_plugins.json` trust store, TTY prompt, CI fail-safe.
+* **SEC-P1: `PLUGIN_API_VERSION = "1.0"`** — each plugin declares which Senpy plugin API version it targets. `check_api_version()` verifies compatibility (same major required; plugin minor > Senpy minor rejected). Incompatible plugins are skipped with a warning, not crashed.
+* **SEC-P2: Trust-on-first-use security model**. Trust store at `~/.senpy/trusted_plugins.json` (or `$SENPY_HOME/trusted_plugins.json`). First plugin load in TTY prompts `[y/N]`; choice persisted. Non-interactive (CI, no TTY) skips untrusted plugins (fail-safe). Pre-trust API: `trust_plugin(name)`, `untrust_plugin(name)`, `is_plugin_trusted(name)`, `get_trusted_plugins()`.
 
 ### LSP Killer-Features (LSP-1, LSP-2, LSP-5, LSP-6)
-- `textDocument/documentColor` — hex color swatches in VS Code.
-- `textDocument/formatting` — `Shift+Alt+F` integrates formatter.
-- `textDocument/signatureHelp` — parameter hints for `call`/`use`.
-- `textDocument/prepareCallHierarchy` — Find Callers/Callees.
+* **LSP-1: `textDocument/documentColor` + `colorPresentation`** — hex colors (`#rrggbb`, `#rrggbbaa`) in `.rpy` files shown as color swatches in VS Code. Detects colors in `{color=#...}` tags, `Solid("#...")`, `Color("#...")`, and init python literals. Skips `#` comments. Clicking a swatch opens VS Code's color picker; selecting a new color updates the literal via `colorPresentation`.
+* **LSP-2: `textDocument/formatting` + `rangeFormatting`** — Shift+Alt+F (Format Document) and Ctrl+K Ctrl+F (Format Selection) in VS Code now run the Senpy formatter. Integrates all 8 formatter rules (FMT-INDENT, FMT-TRAILING-WS, FMT-EOF-NEWLINE, FMT-BLANK-LINES, FMT-QUOTES, FMT-OP-SPACING, FMT-COMMA-SPACING, FMT-COLON-SPACING). Idempotent: formatting already-formatted code produces no edits.
+* **LSP-6: `textDocument/signatureHelp`** — parameter hints for `call label(...)` and `use screen(...)`. When typing `call my_label(`, VS Code shows the label's signature (e.g. `my_label(name, age)`). Active parameter tracking via comma counting (cursor on 2nd param highlights it). Falls back to analyzer when snapshot is stale.
+* **LSP-5: `textDocument/prepareCallHierarchy` + `incomingCalls` + `outgoingCalls`** — right-click on label → "Find Callers" shows all `jump`/`call` sites across the project (via `jump_sources` reverse index). "Find References" shows all outgoing jumps (via `LabelSymbol.outgoing_jumps`). Killer feature for VN — navigate the call graph visually.
 
-### Formatter Stage
-- 4 new formatter rules + idempotency tests (37 tests).
+### Formatter Stage 2 (FMT-1, FMT-3, FMT-4, FMT-5, FMT-6)
+* **FMT-1: `FMT-QUOTES`** — smart/curly quotes (`“”`, `‘’`, `«»`) → straight quotes in CODE statements. Dialogue lines (starting with `"` or `'`) preserve smart quotes (stylistic).
+* **FMT-3: `FMT-OP-SPACING`** — binary operators (`+ - * / % = == != < > <= >= += -= *= /= // ** << >> & | ^`) → single space around. Unary preserved (`-5` stays `-5`, not `- 5`). String contents untouched.
+* **FMT-4: `FMT-COMMA-SPACING`** — comma followed by word/quote/opening-bracket → add space. Trailing comma before `) ] }` → leave (no space). String contents untouched.
+* **FMT-5: `FMT-COLON-SPACING`** — remove space before block-opening colon (`if x :` → `if x:`). Dict colons `{a:1}` and slice colons `a[1:2]` untouched. String contents untouched.
+* **FMT-6: Idempotency tests** — all 4 new rules + combined interaction + skip-block preservation covered (37 tests total in `tests/test_0_6_0_subprint.py`).
 
-### CLI UX
-- `--show-fixes`, `--output-format junit`, `--output-format github`, `--defaults`.
+### CLI UX (CLI-3, CLI-10, CLI-19)
+* **CLI-3: `--show-fixes`** — detailed list of applied fixes (`file:line: rule — fix_title`). Without `--fix`, shows "0 fixes applied". Useful for CI logs and audit.
+* **CLI-10: `--output-format junit`** — JUnit XML output for CI systems (Jenkins, GitLab CI, TeamCity). Groups diagnostics by file into `<testsuite>` elements with `<failure>`/`<skipped>` tags.
+* **CLI-10: `--output-format github`** — GitHub Actions `::error file=X,line=N::message` annotations. GitHub automatically renders these as PR annotations with clickable file:line links.
+* **CLI-19: `--defaults` flag** (already existed, verified with tests) — generates `senpy_defaults.rpy` with `default x = 0` for variables created via `$ x = 1` without `default` declaration (RPY104).
 
 ### Tests
-- 689 passed (548 existing + 141 new).
-- Coverage: **77.37%**.
+* 689 passed (548 existing + 141 new across 6 test files).
+* Coverage 77.37% (without vendored unrpyc, which is excluded from `pyproject.toml [tool.coverage.run] omit`).
 
-
+### Notes
+* This is a **feature release**: plugin system + 4 LSP killer-features + 4 formatter rules + CLI UX. No breaking changes to existing API — all new features are additive.
+* Plugin system is foundation for community contributions: anyone can now write a lint rule as a pip package and Senpy picks it up automatically (with trust prompt).
+* LSP features bring Senpy closer to parity with rust-analyzer / pyright for Ren'Py development.
 
 ## [0.5.8]
 
 ### Security
-* **Defense-in-depth blocklist в `SafeUnpickler.find_class`** (`senpy/vendor/unrpyc/decompiler/magic.py`).**
+* **AUD-001: Defense-in-depth blocklist в `SafeUnpickler.find_class`** (`senpy/vendor/unrpyc/decompiler/magic.py`).
   Добавлен `_DANGEROUS_MODULES_BLOCKLIST` (frozenset из 11 модулей: `os`, `sys`, `subprocess`, `socket`, `shutil`, `pathlib`, `builtins`, `ctypes`, `multiprocessing`, `pickle`, `marshal`). Если кто-то случайно добавит опасный модуль в `safe_modules`, `SafeUnpickler` отклонит его и вернёт `FakeClass` вместо `__import__('os')`. Сверка подтвердила: Senpy уже использовал `SafeUnpickler` через `pickle_safe_loads` (main path безопасен) — фикс закрывает defense-in-depth риск. 5 новых тестов в `tests/test_aud_001_security.py`.
 
 ### Packaging
-* **`lsprotocol` добавлен в `pyproject.toml [project] dependencies`**. Раньше `pip install senpy-linter` падал на `from lsprotocol import types as lsp`, потому что зависимость отсутствовала в METADATA.
-* **Синхронизированы `pyproject.toml` и `senpy/requirements.txt`**. В `pyproject.toml` установлены compatible-release constraints (`rich~=15.0`, `pygls~=2.1`, `lsprotocol>=2025.0.0`). `requirements.txt` остаётся dev lock file с `==` pinned версиями.
-* **Удалён `types_or: [python, text]` из `.pre-commit-hooks.yaml`**. Hook никогда не запускался для `.rpy` файлов, потому что `.rpy` не имеет типа `python` или `text`. Теперь hook корректно фильтрует через `files: \.(rpy|rpym)$`.
+* **AUD-002: `lsprotocol` добавлен в `pyproject.toml [project] dependencies`**. Раньше `pip install senpy-linter` падал на `from lsprotocol import types as lsp`, потому что зависимость отсутствовала в METADATA.
+* **AUD-003: Синхронизированы `pyproject.toml` и `senpy/requirements.txt`**. В `pyproject.toml` установлены compatible-release constraints (`rich~=15.0`, `pygls~=2.1`, `lsprotocol>=2025.0.0`). `requirements.txt` остаётся dev lock file с `==` pinned версиями.
+* **AUD-004: Удалён `types_or: [python, text]` из `.pre-commit-hooks.yaml`**. Hook никогда не запускался для `.rpy` файлов, потому что `.rpy` не имеет типа `python` или `text`. Теперь hook корректно фильтрует через `files: \.(rpy|rpym)$`.
 
 ### Documentation
-* **Исправлен unclosed `<img>` тег в `README.md`** (строка 10). Сломанный HTML рендерился криво на GitHub.
-* **Унифицировано число правил во всех источниках**. `senpy/rules/rules_info.py:show_rules_table()` теперь использует `f"... (All {len(RULES_DATABASE)} Rules)"` вместо хардкода «45» (DOC-8a). README badge уже был «45». `senpy.toml` использует «All Senpy Rules» без числа с 0.5.2.
-* **Динамический подсчёт числа правил** через `len(RULES_DATABASE)`. Если завтра добавят 46-е правило — заголовок автоматически обновится, ничего править не нужно. Также исправлен регэксп в `test_rules_info_py_uses_dynamic_count` (он пропускал хардкод внутри `title="... (All 45 Rules)"`).
-* **Добавлена секция «Dead Code Detection (RPY7xx)» в `RULES.md`** с описаниями RPY701 (unused `define`), RPY702 (unused `transform`), RPY703 (unused `screen`). Навигация в начале `RULES.md` обновлена. RPY701/702/703 добавлены в EN cheat sheet в `senpy.toml`.
+* **DOC-7: Исправлен unclosed `<img>` тег в `README.md`** (строка 10). Сломанный HTML рендерился криво на GitHub.
+* **DOC-8: Унифицировано число правил во всех источниках**. `senpy/rules/rules_info.py:show_rules_table()` теперь использует `f"... (All {len(RULES_DATABASE)} Rules)"` вместо хардкода «45» (DOC-8a). README badge уже был «45». `senpy.toml` использует «All Senpy Rules» без числа с 0.5.2.
+* **DOC-8a: Динамический подсчёт числа правил** через `len(RULES_DATABASE)`. Если завтра добавят 46-е правило — заголовок автоматически обновится, ничего править не нужно. Также исправлен регэксп в `test_rules_info_py_uses_dynamic_count` (он пропускал хардкод внутри `title="... (All 45 Rules)"`).
+* **DOC-9a: Добавлена секция «Dead Code Detection (RPY7xx)» в `RULES.md`** с описаниями RPY701 (unused `define`), RPY702 (unused `transform`), RPY703 (unused `screen`). Навигация в начале `RULES.md` обновлена. RPY701/702/703 добавлены в EN cheat sheet в `senpy.toml`.
 
 ### CI
-* **Coverage gate добавлен в CI**. `pytest tests/ -v --tb=short` → `pytest tests/ --cov=senpy --cov-fail-under=75 --tb=short`. Порог 75% (текущий coverage 77% без vendor). Поднимем до 80% после QUA-7 (типизация 95%+). `senpy/vendor/*` добавлен в `pyproject.toml [tool.coverage.run] omit` — vendored unrpyc — чужой код.
-* **macOS добавлен в matrix** (Python 3.12, 1 добавочный job). Safety net для контрибьюторов на macOS (path separators, case-sensitivity FS, framework Python). Не полный matrix 3×3=9 jobs — экономит минуты.
+* **CI-1 (НЕ добавлен): Ruff lint в CI — сознательный отказ мейнтейнера**. Ruff's придирки к пустым строкам и стилю не меняют сути рабочего кода, а цена gate превышает пользу. Шапка `ci.yml` обновлена с явным обоснованием. Ruff доступен локально через `pyproject.toml [tool.ruff]` для желающих.
+* **CI-3: Coverage gate добавлен в CI**. `pytest tests/ -v --tb=short` → `pytest tests/ --cov=senpy --cov-fail-under=75 --tb=short`. Порог 75% (текущий coverage 77% без vendor). Поднимем до 80% после QUA-7 (типизация 95%+). `senpy/vendor/*` добавлен в `pyproject.toml [tool.coverage.run] omit` — vendored unrpyc — чужой код.
+* **CI-4: macOS добавлен в matrix** (Python 3.12, 1 добавочный job). Safety net для контрибьюторов на macOS (path separators, case-sensitivity FS, framework Python). Не полный matrix 3×3=9 jobs — экономит минуты.
+
+### Decisions (отказ от задач)
+* **QUA-1, QUA-2, QUA-5 — НЕ сделаны** (сознательный отказ вместе с CI-1): ruff не включается ни в CI, ни в ручной workflow. `ruff check --fix` и `ruff format` переписали бы 34+ файлов косметически без функциональной пользы и ухудшили blame-историю. Если в будущем ruff снова включат — задачи вернутся.
 
 ### Tests
-* 553 passed (548 existing + 5 новых security-тестов в `tests/test_unrpyc_security.py`).
+* 553 passed (548 existing + 5 новых security-тестов в `tests/test_aud_001_security.py`).
 * Coverage 77.37% без vendor (vendored unrpyc исключён из подсчёта).
 
 ### Notes
-* Это stability & cleanup релиз: закрыты все хвосты v0.5.7, CI gates налажены, документация актуализирована. Подготовка фундамента под 0.6.0 (LSP killer-features + plugin system).
-
+* Это stability & cleanup релиз: закрыты все P0 из аудита v0.5.7 (AUD-001..004), CI gates налажены, документация актуализирована. Никаких breaking changes, никаких новых фич — подготовка фундамента под 0.6.0 (LSP killer-features + plugin system).
 
 ## [0.5.7]
 
