@@ -22,6 +22,8 @@
   <i>Fast semantic linter, control-flow analyzer, and language server for Ren'Py visual novels.</i>
 </p>
 
+![](https://github.com/Xilleet/senpy/blob/main/docs/images/senpy-lsp-demo.gif)
+
 ---
 
 ## Quick Install
@@ -98,6 +100,8 @@ Senpy includes a full **Language Server Protocol** implementation with 20+ handl
 | **Signature Help** | `0.6.0+` | Parameter hints for `call label(...)` / `use screen(...)` |
 | **Call Hierarchy** | `0.6.0+` | Right-click → "Find Callers" / "Find References" |
 | **Story Graph** | command | Interactive Mermaid.js flowchart of all labels and jumps |
+
+![](https://github.com/Xilleet/senpy/blob/main/docs/images/senpy-vscode-autocomplete.png)
 
 ---
 
@@ -199,6 +203,12 @@ senpy --rules
 # Enable tsundere mode
 senpy "path/to/game" --tsundere
 ```
+
+![](https://github.com/Xilleet/senpy/blob/main/docs/images/senpy-cli-diagnostics.png)
+
+![](https://github.com/Xilleet/senpy/blob/main/docs/images/senpy-summary-table.png)
+
+![](https://github.com/Xilleet/senpy/blob/main/docs/images/senpy-cli-warnings.png)
 
 ---
 

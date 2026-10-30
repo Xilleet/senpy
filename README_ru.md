@@ -22,6 +22,8 @@
   <i>Сверхбыстрый семантический линтер, анализатор потока управления и персональная цундэрэ для визуальных новелл на Ren'Py.</i>
 </p>
 
+![](https://github.com/Xilleet/senpy/blob/main/docs/images/senpy-lsp-demo.gif)
+
 ---
 
 ## Быстрая установка
@@ -97,6 +99,8 @@ Senpy включает полноценную реализацию **Language Se
 | **Подсказки параметров** | `0.6.0+` | Параметры для `call label(...)` / `use screen(...)` |
 | **Иерархия вызовов** | `0.6.0+` | ПКМ → «Найти вызывающих» / «Найти ссылки» |
 | **Граф сюжета** | команда | Интерактивная блок-схема Mermaid.js всех меток и переходов |
+
+![](https://github.com/Xilleet/senpy/blob/main/docs/images/senpy-vscode-autocomplete.png)
 
 ---
 
@@ -198,6 +202,13 @@ senpy --rules
 # Включить режим цундэрэ
 senpy "path/to/game" --tsundere
 ```
+
+
+![](https://github.com/Xilleet/senpy/blob/main/docs/images/senpy-cli-diagnostics.png)
+
+![](https://github.com/Xilleet/senpy/blob/main/docs/images/senpy-summary-table.png)
+
+![](https://github.com/Xilleet/senpy/blob/main/docs/images/senpy-cli-warnings.png)
 
 ---
 
