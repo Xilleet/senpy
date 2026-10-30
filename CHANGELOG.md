@@ -5,6 +5,37 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0]
+
+### Plugin System
+- `senpy.api` public module — explicitly stable API for plugin developers.
+- `Rule` base class with `RuleMeta` (ESLint-style) and `RuleContext`.
+- `@register_rule("RPYxxx")` decorator for lint rules.
+- Plugin loading via `[project.entry-points."senpy.plugins"]`.
+- `examples/my_senpy_plugin/` — working example plugin with README (454 lines).
+
+### Plugin Security (SEC-P1, SEC-P2)
+- `PLUGIN_API_VERSION = "1.0"` — api_version compatibility check.
+- Trust-on-first-use — `~/.senpy/trusted_plugins.json` trust store, TTY prompt, CI fail-safe.
+
+### LSP Killer-Features (LSP-1, LSP-2, LSP-5, LSP-6)
+- `textDocument/documentColor` — hex color swatches in VS Code.
+- `textDocument/formatting` — `Shift+Alt+F` integrates formatter.
+- `textDocument/signatureHelp` — parameter hints for `call`/`use`.
+- `textDocument/prepareCallHierarchy` — Find Callers/Callees.
+
+### Formatter Stage
+- 4 new formatter rules + idempotency tests (37 tests).
+
+### CLI UX
+- `--show-fixes`, `--output-format junit`, `--output-format github`, `--defaults`.
+
+### Tests
+- 689 passed (548 existing + 141 new).
+- Coverage: **77.37%**.
+
+
+
 ## [0.5.8]
 
 ### Security
