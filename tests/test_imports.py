@@ -483,14 +483,19 @@ class TestSenpyPackageInit:
         assert senpy is not None
 
     def test_senpy_version_attribute(self):
-        """senpy.__version__ — должно быть доступно."""
+        """senpy.__version__ — должно быть доступно и иметь semver-формат."""
+        # Проверяем, что версия доступна и имеет формат X.Y.Z (semver)
+        # Не хардкодим конкретную версию — тест должен работать для всех
+        # будущих релизов (0.6.0, 0.7.0, 1.0.0, и т.д.)
+        import re
+
         import senpy
 
-        # На момент 0.5.2 __version__ может не быть в senpy/__init__.py,
-        # но это планируется добавить в 0.5.3 (см. worklog Фаза 1.1)
-        # Пока проверяем через senpy.__version__ submodule
+        # __version__ хранится в senpy/__version__.py (single source of truth)
         from senpy.__version__ import __version__
-        assert __version__ == "0.5.2" or __version__.startswith("0.5.")
+        assert re.match(r"^\d+\.\d+\.\d+", __version__), (
+            f"__version__ should be in semver format (X.Y.Z), got: {__version__!r}"
+        )
 
 
 # =============================================================================
