@@ -7,16 +7,50 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/Ren'Py-6.99%20%7C%207%20%7C%208-ff69b4?logo=renpy&logoColor=white" alt="Ren'Py 6.99 / 7 / 8">
-  <img src="https://img.shields.io/badge/Rules-45%20Правил-orange" alt="45+ Правил">
+  <img src="https://img.shields.io/badge/Rules-45-orange" alt="45 Правил">
   <img src="https://img.shields.io/badge/Speed-77k%20строк%20за%200.04с%20(кэш)-brightgreen" alt="77k строк за 0.04с">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
-  <img src="https://img.shields.io/badge/Code%20Style-Ruff-000000.svg" alt="Ruff">
+  <br>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue" alt="Платформы: Windows | Linux | macOS">
+  <img src="https://img.shields.io/badge/LSP-20%2B%20handlers-purple" alt="LSP: 20+ обработчиков">
+  <img src="https://img.shields.io/badge/Plugins-API%20v1.0-teal" alt="Plugin API v1.0">
+  <img src="https://img.shields.io/badge/tests-689%20passed-success" alt="689 тестов пройдено">
 </p>
 
 <p align="center">
   <b>«Notice me, Senpy! (⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄)»</b><br>
   <i>Сверхбыстрый семантический линтер, анализатор потока управления и персональная цундэрэ для визуальных новелл на Ren'Py.</i>
 </p>
+
+---
+
+## Быстрая установка
+
+**CLI / CI / Linux / macOS:**
+```bash
+pip install senpy-linter
+```
+
+**Расширение для VS Code (Windows, без установки Python):**
+Скачайте `senpy-vscode-X.X.X.vsix` со страницы [Releases](https://github.com/Xilleet/senpy/releases) → Установить из VSIX в VS Code.
+
+---
+
+## Что нового в 0.6.0
+
+| Функция | Описание |
+|---|---|
+| **Система плагинов** | Пишите свои правила линтера как pip-пакеты. Senpy находит их автоматически через `entry_points`. [Гайд по плагинам →](https://github.com/Xilleet/senpy/blob/main/examples/my_senpy_plugin/MY_SENPY_PLUGIN_README.md) |
+| **Безопасность плагинов** | Модель доверия при первом запуске. Первый запуск спросит `[y/N]`, сохранит в `~/.senpy/trusted_plugins.json`. В CI недоверенные плагины пропускаются (fail-safe). |
+| **Цветовые свотчи** | `textDocument/documentColor` — hex-цвета (`#ff0000`) отображаются как кликабельные квадратики с палитрой в VS Code. |
+| **Форматирование** | `textDocument/formatting` — Shift+Alt+F в VS Code запускает форматтер Senpy (8 правил: отступы, кавычки, пробелы вокруг операторов/запятых/двоеточий, trailing-WS, EOF, пустые строки). |
+| **Подсказки параметров** | `textDocument/signatureHelp` — параметры для `call label(...)` и `use screen(...)`. |
+| **Иерархия вызовов** | `textDocument/prepareCallHierarchy` — ПКМ на метке → «Найти вызывающих» / «Найти ссылки» по всему проекту. |
+| **Публичный API** | Модуль `senpy.api` — стабильный контракт для разработчиков плагинов: `analyze_code(code) → list[Diagnostic]`. |
+| **Новые форматы вывода** | `--output-format junit` (XML для CI), `--output-format github` (аннотации для PR). |
+| **`--show-fixes`** | Детальный отчёт о том, что `--fix` исправил (файл:строка: правило — описание). |
+
+Полный changelog: [CHANGELOG.md](https://github.com/Xilleet/senpy/blob/main/CHANGELOG.md)
 
 ---
 
@@ -28,47 +62,95 @@
 
 - **Высокая скорость и дисковый кэш:** анализирует **более 77 000 строк в 50 файлах за ~3.5 секунды на холодном старте и за 0.04 секунды из кэша**.
 - **Граф зависимостей фазы init (RPY109):** отслеживает алфавитный порядок загрузки файлов в `init python:` и ловит падения с `NameError` до старта игры.
-- **Трекинг конфликтов типов (RPY108):** выявляет несовместимые `+=` (`str += int`) и опасные перезаписи типов (`int` -> `str`), ломающие откат назад.
+- **Трекинг конфликтов типов (RPY108):** выявляет несовместимые `+=` (`str += int`) и опасные перезаписи типов (`int` → `str`), ломающие откат назад.
 - **Проверка сигнатур параметров (RPY310, RPY207):** сверяет аргументы при вызовах `call label(...)` и `use screen(...)`.
 - **Анализ развилок меню (RPY401, RPY404):** находит переменные, объявленные только в одной ветке `menu:`, и ловит их чтение в статусе `MAYBE_SET`.
 - **Контроль сохранений и отката (RPY104–RPY106):** защищает от мутаций констант `define`, нативного `random` и переменных без `default`.
+- **Мёртвый код (RPY701–703):** находит неиспользуемые `define`, `transform` и `screen` объявления.
 - **Метрики локализации (`--coverage`):** рассчитывает процент готовности перевода по каждому языку в `game/tl/`.
 - **Постморт-анализ крашей (`--traceback`):** сопоставляет логи падений (`traceback.txt`) с кодом новеллы и объясняет причины сбоя сценаристу.
-- **Интеграция с VS Code и CI/CD:** двусторонний граф сюжета, F12 переход к определению, автокомплит, переименование меток с обновлением всех ссылок (`F2`), поиск всех упоминаний (`Shift+F12`), сворачивание блоков, подсветка вхождений, поиск символов в рабочем пространстве (`Ctrl+T`), автообновление расширения и генератор GitHub Actions (`--init-ci`).
-- **Безопасное автоисправление (`--fix`):** автоматически исправляет однозначные синтаксические недочёты, например незакрытые текстовые теги.
-- **Режим цундэрэ (`--tsundere`):** выводит диагностические сообщения в аниме-стилистике. Потому что даже линтеру необязательно быть эмоционально доступным.
+- **Безопасное автоисправление (`--fix`):** автоматически исправляет однозначные синтаксические недочёты.
+- **Режим цундэрэ (`--tsundere`):** выводит диагностические сообщения в аниме-стилистике.
 
 ---
 
-## Установка
+## LSP и интеграция с VS Code
 
-Senpy доступен в двух вариантах: **автономное расширение для VS Code** (на Windows установка Python не требуется) или **консольная утилита / CI инструмент через pip**.
+Senpy включает полноценную реализацию **Language Server Protocol** с 20+ обработчиками:
 
-### Вариант А: Расширение для VS Code (Рекомендуется для сценаристов)
-
-> **Для Windows установка Python не требуется!** Расширение поставляется со встроенным автономным движком Senpy.
-
-1. Скачайте свежий файл `senpy-vscode-X.X.X.vsix` со страницы [Releases](https://github.com/Xilleet/senpy/releases).
-2. В VS Code откройте панель расширений (`Ctrl+Shift+X`).
-3. Нажмите на меню `...` (Дополнительно) в правом верхнем углу панели.
-4. Выберите **Установить из VSIX...** (`Install from VSIX...`) и укажите скачанный файл.
-5. *(Бонус)* Все консольные команды (например, `senpy --coverage` или `senpy --export-wiki`) будут доступны прямо во встроенном терминале VS Code!
+| Функция | Горячие клавиши | Описание |
+|---|---|---|
+| **Диагностика** | автоматически | Ошибки и предупреждения в реальном времени (~0.04с из кэша) |
+| **Переход к определению** | `F12` | Переход к метке/экрану/переменной/ассету |
+| **Hover** | наведение | Документация для 220+ функций Ren'Py API |
+| **Автодополнение** | `Ctrl+Space` | Метки, экраны, трансформы, переменные, атрибуты спрайтов |
+| **Символы документа** | `Ctrl+Shift+O` | Дерево меток/экранов/трансформов в файле |
+| **Символы проекта** | `Ctrl+T` | Глобальный поиск по всем файлам |
+| **Переименование** | `F2` | Переименование метки → обновление всех `jump`/`call` |
+| **Найти упоминания** | `Shift+F12` | Все jump/call к метке |
+| **Сворачивание кода** | автоматически | Сворачивание `label`/`screen`/`menu`/`init` блоков |
+| **Подсветка вхождений** | курсор | Подсветка всех упоминаний слова в файле |
+| **QuickFix** | `Ctrl+.` | Автоисправления (табы→пробелы, кавычки, теги) |
+| **Цветовые свотчи** | `0.6.0+` | Hex-цвета как кликабельные квадратики с палитрой |
+| **Форматирование** | `Shift+Alt+F` | Запуск форматтера Senpy (8 правил) |
+| **Формат выделения** | `Ctrl+K Ctrl+F` | Форматирование выделенного фрагмента |
+| **Подсказки параметров** | `0.6.0+` | Параметры для `call label(...)` / `use screen(...)` |
+| **Иерархия вызовов** | `0.6.0+` | ПКМ → «Найти вызывающих» / «Найти ссылки» |
+| **Граф сюжета** | команда | Интерактивная блок-схема Mermaid.js всех меток и переходов |
 
 ---
 
-### Вариант Б: Консольная утилита и CI/CD (pip)
+## Система плагинов
 
-Для пользователей Linux/macOS, любителей чистой консоли или автоматических проверок в GitHub Actions:
+Senpy 0.6.0 представляет **систему плагинов** — пишите свои правила линтера как pip-пакеты.
+
+### Быстрый старт
 
 ```bash
-pip install senpy-linter
+# 1. Создайте проект плагина (см. пример ниже)
+cd examples/my_senpy_plugin
+pip install -e .
+
+# 2. Запустите Senpy — плагин обнаружится автоматически
+senpy /path/to/game
+# Первый запуск: "Plugin 'my-senpy-plugin' wants to load. Trust and enable? [y/N]"
 ```
+
+### Напишите своё правило за 30 строк
+
+```python
+from senpy.api import Diagnostic
+from senpy.plugins import Rule, RuleContext, RuleMeta, register_rule
+
+PLUGIN_API_VERSION = "1.0"
+
+@register_rule("RPY902")
+class TodoCommentRule(Rule):
+    meta = RuleMeta(
+        code="RPY902",
+        docs="Обнаруживает TODO-комментарии в коде",
+        severity="HINT",
+        tags=["productivity"],
+    )
+
+    def check(self, ctx: RuleContext) -> list[Diagnostic]:
+        diags = []
+        for i, line in enumerate(ctx.lines, start=1):
+            if "TODO" in line.upper():
+                diags.append(Diagnostic(
+                    file_path=ctx.file_path, line_number=i,
+                    line_content=line, code="RPY902",
+                    message=f"TODO комментарий: {line.strip()}",
+                    severity="HINT",
+                ))
+        return diags
+```
+
+Полный гайд: **[README по разработке плагинов](https://github.com/Xilleet/senpy/blob/main/examples/my_senpy_plugin/MY_SENPY_PLUGIN_README.md)**
 
 ---
 
 ## Использование
-
-Запустите Senpy из терминала, передав путь к каталогу игры на Ren'Py:
 
 ```bash
 # Проверить каталог игры
@@ -77,19 +159,22 @@ senpy "path/to/game"
 # Применить безопасные исправления (теги, кавычки, табы)
 senpy "path/to/game" --fix
 
+# Показать, что было исправлено (детальный отчёт)
+senpy "path/to/game" --fix --show-fixes
+
 # Посчитать процент готовности перевода в game/tl/
 senpy "path/to/game" --coverage
 
 # Сгенерировать документацию (диздок) проекта в Markdown
 senpy "path/to/game" --export-wiki "PROJECT_WIKI.md"
 
-# Создать заглушки типов (.pyi) для Pylance / MyPy в VS Code
+# Создать заглушки типов (.pyi) для Pylance / MyPy
 senpy "path/to/game" --stubs
 
-# Разобрать краш-лог игры (traceback.txt) с пояснениями ошибок
+# Разобрать краш-лог игры
 senpy --traceback "path/to/traceback.txt"
 
-# Создать GitHub Actions workflow (.github/workflows/senpy.yml) в 1 клик
+# Создать GitHub Actions workflow в 1 клик
 senpy --init-ci
 
 # Создать файл «senpy_defaults.rpy» для защиты файлов сохранений
@@ -98,158 +183,82 @@ senpy "path/to/game" --defaults
 # Выгрузить граф сюжета в файл Mermaid.js
 senpy "path/to/game" --graph-file "story_graph.md"
 
-# Очистить кэш (.senpy_cache)
-senpy --clear-cache
+# Генерация HTML-отчёта с интерактивным графом сюжета
+senpy "path/to/game" --export-html "report.html"
 
-# Отключить дисковый кэш для разового холодного прогона
-senpy "path/to/game" --no-cache
-
-# Вывести диагностику в формате SARIF (GitHub Actions), JSON или text
+# Вывод в формате SARIF, JSON, JUnit XML или GitHub Actions
 senpy "path/to/game" --output-format sarif --output-file senpy.sarif
 senpy "path/to/game" --output-format json
+senpy "path/to/game" --output-format junit
+senpy "path/to/game" --output-format github
 
-# Всегда возвращать код 0 (полезно для CI: отчёт без завала сборки)
-senpy "path/to/game" --exit-zero
-
-# Показать статистику проекта (количество файлов, строк, меток, экранов)
-senpy "path/to/game" --stats
-
-# Указать свой путь к unrpyc.py или исполняемому файлу unrpyc
-senpy "path/to/game" --decompile --unrpyc /path/to/unrpyc.py
-
-# Перечислить все 45 доступных правил
+# Перечислить все доступные правила
 senpy --rules
 
 # Включить режим цундэрэ
 senpy "path/to/game" --tsundere
-
-# Генерация HTML-отчета с интерактивным графом сюжета
-senpy "path/to/game" --export-html "report.html"
-
 ```
 
 ---
 
 ## Справочник диагностик
 
-Senpy включает **45 специализированных семантических правил**:
+Senpy включает **45 специализированных семантических правил** в 8 категориях:
 
 | Серия | Категория | Описание |
 | :--- | :--- | :--- |
-| **RPY0xx** | Отступы и синтаксис | Табуляция в отступах (`RPY001`), типографские кавычки в коде (`RPY002`). |
-| **RPY1xx** | Состояние и переменные | Переменные в диалогах, `NameError` на `+=`, переменные в `if`, мутации `define`, не-откатываемые типы, устаревший API (`RPY107`), конфликты типов (`RPY108`), порядок загрузки init (`RPY109`). |
-| **RPY2xx** | Экраны и UI | Предиктивные мутации, переменные без `default`, мёртвые кнопки, циклы в экранах, вызовы функций в `action` (`RPY206`), параметры экранов (`RPY207`). |
-| **RPY3xx** | Сюжет и диалоги | Незакрытые теги `{b}`, прыжки в никуда, мёртвые метки, битые hex-цвета, неэкранированные кавычки, вызовы без `return`, дубликаты меток, провалы сюжета (`RPY308`), сюжетные острова (`RPY309`), параметры вызовов (`RPY310`). |
-| **RPY4xx** | Развилки и логика | Асимметрия в `menu:` (`RPY401`), пустые выборы (`RPY402`), противоречивые условия (`RPY403`), чтение переменных в статусе `MAYBE_SET` (`RPY404`). |
-| **RPY5xx** | Ресурсы и медиа | Потерянные аудиофайлы, ненайденные спрайты, неиспользуемые ассеты (`RPY503`), дубликаты `image`, незарегистрированные аудиоканалы (`RPY505`). |
-| **RPY6xx** | Локализация | Рассинхрон переменных в `game/tl/` (`RPY601`), рассинхрон тегов форматирования, пустые строки перевода (`RPY603`). |
-| **RPY7xx** | Dead code and unused declarations | Labels unreachable via jump/call (`RPY701`), unused define constants (`RPY702`), unused default variables (`RPY703`). |
+| **RPY0xx** | Отступы и синтаксис | Табуляция (`RPY001`), типографские кавычки (`RPY002`). |
+| **RPY1xx** | Состояние и переменные | Переменные в диалогах, `NameError` на `+=`, мутации `define`, устаревший API (`RPY107`), конфликты типов (`RPY108`), порядок загрузки init (`RPY109`). |
+| **RPY2xx** | Экраны и UI | Предиктивные мутации (`RPY201`), мёртвые кнопки (`RPY203`), циклы в экранах (`RPY205`), параметры экранов (`RPY207`). |
+| **RPY3xx** | Сюжет и диалоги | Незакрытые теги (`RPY301`), прыжки в никуда (`RPY302`), дубликаты меток (`RPY307`), сюжетные острова (`RPY309`), параметры вызовов (`RPY310`). |
+| **RPY4xx** | Развилки и логика | Асимметрия в `menu:` (`RPY401`), пустые выборы (`RPY402`), противоречия (`RPY403`), чтение `MAYBE_SET` (`RPY404`). |
+| **RPY5xx** | Ресурсы и медиа | Потерянные аудиофайлы (`RPY501`), ненайденные спрайты (`RPY502`), неиспользуемые ассеты (`RPY503`), незарегистрированные каналы (`RPY505`). |
+| **RPY6xx** | Локализация | Рассинхрон переменных (`RPY601`), рассинхрон тегов (`RPY602`), пустые строки (`RPY603`). |
+| **RPY7xx** | Мёртвый код | Неиспользуемые `define` (`RPY701`), неиспользуемые `transform` (`RPY702`), неиспользуемые `screen` (`RPY703`). |
 
-*Подробные пояснения и примеры кода см. в полной **[документации по правилам](RULES.md)***.
-
----
-
-## Примеры в действии
-
-### 1. Ошибка в ветвлении (`RPY401`)
-
-```renpy
-label dungeon:
-    menu:
-        "Взять факел":
-            $ has_torch = True
-            "Вы взяли факел."
-
-        "Идти в темноте":
-            "Вы решили рискнуть."
-
-    if has_torch:
-        "Свет укажет вам путь."
-```
-
-```text
-[WARNING] RPY401: Variable 'has_torch' is only defined in menu choice 'Take the torch',
-but missing in 'Walk in darkness'. When choosing 'Walk in darkness', this condition will crash with NameError.
-```
-
-### 2. Изменение состояния внутри экрана (`RPY201`)
-
-```renpy
-screen shop():
-    $ player_gold -= 10
-```
-
-```text
-[WARNING] RPY201: Direct state mutation 'player_gold' inside screen 'shop'.
-Screens are evaluated predictively and continuously! Use screen Actions (e.g. SetVariable) instead.
-```
-
-### 3. Автоисправление (`--fix` для `RPY301`)
-
-**До запуска `senpy --fix`:**
-
-```renpy
-"Attention: {b}danger zone!"
-```
-
-**После запуска `senpy --fix`:**
-
-```renpy
-"Attention: {b}danger zone!{/b}"
-```
+Подробные пояснения и примеры кода: **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**
 
 ---
 
 ## Настройка (`senpy.toml`)
 
-Разместите файл `senpy.toml` в каталоге игры или корне рабочего пространства:
-
 ```toml
 [tool.senpy]
-# Декомпилировать скомпилированные .rpyc во временную песочницу
 decompile = true
-
-# Максимальное количество диагностических сообщений в консоли
 max_errors = 50
 
-# Игнорировать правила, не подходящие вашему рабочему процессу
 ignore = [
     "RPY104",  # Игнорировать динамические присваивания
-    "RPY303",  # Игнорировать метки, которые анализатор считает недостижимыми
+    "RPY303",  # Игнорировать метки, недостижимые статически
 ]
+
+[tool.senpy.severity]
+RPY104 = "ERROR"   # Повысить до критической
+RPY308 = "INFO"    # Понизить до информационной
 ```
 
 ### Подавление отдельных предупреждений (`# noqa`)
 
-Диагностику можно отключить для конкретной строки с помощью `# noqa`:
-
 ```renpy
 "Warning: {b}unclosed style"  # noqa
 $ dynamic_var = 1              # noqa: RPY104
-$ temp_calc = 100              # senpy: ignore[RPY104]
 ```
 
 ---
 
 ## Интеграция с GitHub Actions
 
-Senpy полностью поддерживает стандартный формат вывода **SARIF**. Это позволяет автоматически сканировать вашу визуальную новеллу на наличие ошибок при каждом Pull Request. GitHub будет нативно подсвечивать баги и риски падения игры прямо в интерфейсе обзора кода (code review)!
-
-Чтобы включить интеграцию в один клик, запустите:
-
 ```bash
-senpy --init-ci
+senpy --init-ci  # генерирует .github/workflows/senpy.yml
 ```
 
 Или создайте файл `.github/workflows/senpy.yml` вручную:
 
 ```yaml
 name: Senpy Code Scanning
-
 on:
   pull_request:
     branches: [ "main", "master" ]
-
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -258,34 +267,27 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Python & Senpy
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: pip install senpy-linter
-
-      - name: Run Senpy Analysis
-        run: senpy game/ --format sarif --output-file senpy.sarif
+      - run: senpy game/ --output-format sarif --output-file senpy.sarif
         continue-on-error: true
-
-      - name: Upload SARIF report
-        uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: senpy.sarif
 ```
-
 
 ---
 
 ## Декомпиляция `.rpyc` без изменения каталога игры
 
-В готовых сборках и модификациях исходные `.rpy` могут отсутствовать. Senpy умеет находить `.rpyc` без соответствующих исходников и анализировать декомпилированные версии во временной среде:
+В готовых сборках и модификациях исходные `.rpy` могут отсутствовать, в это же время Senpy:
 
 1. Копирует `.rpyc` во временный каталог операционной системы.
-2. Если `unrpyc` не установлен, Senpy предлагает автоматически загрузить его из GitHub в `~/.senpy/tools/`.
+2. Предлагает загрузить `unrpyc` из GitHub, если он не установлен.
 3. Выполняет анализ скриптов во временной песочнице.
-4. По завершении удаляет песочницу. Каталог игры остаётся абсолютно нетронутым.
+4. По завершении удаляет песочницу. Каталог игры остаётся нетронутым.
 
 ---
 
@@ -294,10 +296,12 @@ jobs:
 Приветствуются вклад в проект, сообщения об ошибках и предложения новых правил.
 
 1. Сделайте форк репозитория.
-2. Создайте ветку для изменений: `git checkout -b feature/NewRule`.
-3. Зафиксируйте изменения: `git commit -m 'feat: add RPY701 check'`.
+2. Создайте ветку: `git checkout -b feature/NewRule`.
+3. Зафиксируйте изменения: `git commit -m 'feat: add RPY901 check'`.
 4. Убедитесь, что все тесты проходят (`pytest`).
 5. Откройте Pull Request.
+
+Хотите написать плагин вместо контрибуции в ядро? См. **[Гайд по разработке плагинов](https://github.com/Xilleet/senpy/blob/main/examples/my_senpy_plugin/MY_SENPY_PLUGIN_README.md)**.
 
 ---
 
