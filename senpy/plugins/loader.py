@@ -26,6 +26,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from senpy.core.logging import get_logger
+
+_logger = get_logger("plugins")
+
 if TYPE_CHECKING:
     from senpy.plugins.base import Rule
 
@@ -141,16 +145,16 @@ def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
     try:
         rule_cls = entry_point.load()
     except Exception as e:
-        print(f"[senpy.plugins] WARNING: Failed to load plugin '{plugin_name}': {e}",
-              file=sys.stderr)
+        _logger.warning("Failed to load plugin %r: %s", plugin_name, e)
         return None
 
     # Step 2: Verify it's a Rule subclass
     from senpy.plugins.base import Rule
     if not isinstance(rule_cls, type) or not issubclass(rule_cls, Rule):
-        print(f"[senpy.plugins] WARNING: Plugin '{plugin_name}' entry point does not "
-              f"point to a Rule subclass (got: {rule_cls!r}). Skipping.",
-              file=sys.stderr)
+        _logger.warning(
+            "Plugin %r entry point does not point to a Rule subclass (got: %r). Skipping.",
+            plugin_name, rule_cls,
+        )
         return None
 
     # Step 3: Check plugin's api_version (SEC-P1)
@@ -160,11 +164,11 @@ def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
         from senpy.plugins.security import check_api_version
         if not check_api_version(plugin_api_version):
             from senpy.plugins.security import PLUGIN_API_VERSION
-            print(f"[senpy.plugins] WARNING: Plugin '{plugin_name}' requires "
-                  f"api_version {plugin_api_version!r}, but Senpy provides "
-                  f"{PLUGIN_API_VERSION!r}. Skipping. "
-                  f"(Update plugin or use compatible Senpy version.)",
-                  file=sys.stderr)
+            _logger.warning(
+                "Plugin %r requires api_version %r, but Senpy provides %r. "
+                "Skipping. (Update plugin or use compatible Senpy version.)",
+                plugin_name, plugin_api_version, PLUGIN_API_VERSION,
+            )
             return None
 
     # Step 4: Trust check (SEC-P2)
@@ -248,7 +252,7 @@ def _default_trust_callback(plugin_name: str) -> bool:
 
     if answer in ("y", "yes"):
         trust_plugin(plugin_name)
-        print(f"[senpy] Plugin '{plugin_name}' trusted and added to trust store.")
+        _logger.info("Plugin %r trusted and added to trust store.", plugin_name)
         return True
 
     return False
@@ -274,8 +278,9 @@ def register_loaded_plugins(loaded: list[_LoadedEntryPoint]) -> None:
         rule_cls = entry.rule_cls
         # Get rule code from meta
         if rule_cls.meta is None:
-            print(f"[senpy.plugins] WARNING: Plugin '{entry.name}' has no meta. "
-                  f"Skipping registration.", file=sys.stderr)
+            _logger.warning(
+                "Plugin %r has no meta. Skipping registration.", entry.name
+            )
             continue
         code = rule_cls.meta.code
         # Register (same as @register_rule decorator does)
