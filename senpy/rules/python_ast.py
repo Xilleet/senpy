@@ -19,145 +19,191 @@ def infer_ast_type(
     known_vars: dict[str, Any] | None = None,
     depth: int = 0,
 ) -> str | None:
-    """
-    Определяет тип данных выражения по AST-узлу с поддержкой бинарных операций,
-    известных переменных, сравнений и вызовов встроенных функций/методов.
+    """Infer the Python type of an AST expression node.
+
+    Dispatches to specialized helpers based on node type:
+      1. _infer_constant — literals (int, float, str, bool, None)
+      2. _infer_name — variable references
+      3. _infer_collection — list/dict/set/tuple
+      4. _infer_joinedstr — f-strings
+      5. _infer_compare — comparison operations
+      6. _infer_unaryop — unary operations (not, -x)
+      7. _infer_binop — binary operations (+, -, *, /)
+      8. _infer_ifexp — ternary expressions
+      9. _infer_call — function/method calls
+
+    TODO(future): Replace with Type Lattice (TypeHint.join()) for
+    automatic union types after if/else. Currently returns str|None.
     """
     if val_node is None or depth > 8:
         return None
 
-    # 1. Литералы и константы
     if isinstance(val_node, ast.Constant):
-        if isinstance(val_node.value, bool):
-            return "bool"
-        if isinstance(val_node.value, int):
-            return "int"
-        if isinstance(val_node.value, float):
-            return "float"
-        if isinstance(val_node.value, str):
-            return "str"
-        if val_node.value is None:
-            return "None"
-
-    # 2. Имена переменных (подтягиваем тип из реестра символов)
+        return _infer_constant(val_node)
     elif isinstance(val_node, ast.Name):
-        if val_node.id in ("True", "False"):
-            return "bool"
-        if val_node.id == "None":
-            return "None"
-        if known_vars and val_node.id in known_vars:
-            var_sym = known_vars[val_node.id]
-            # Поддерживаем как объекты VariableSymbol, так и простые строки типов
-            return getattr(var_sym, "type_name", None) or (
-                var_sym if isinstance(var_sym, str) else None
-            )
-
-    # 3. Коллекции
-    elif isinstance(val_node, (ast.List, ast.ListComp)):
-        return "list"
-    elif isinstance(val_node, (ast.Dict, ast.DictComp)):
-        return "dict"
-    elif isinstance(val_node, (ast.Set, ast.SetComp)):
-        return "set"
-    elif isinstance(val_node, (ast.Tuple)):
-        return "tuple"
-
-    # 4. f-строки (f"value {x}")
+        return _infer_name(val_node, known_vars)
+    elif isinstance(val_node, (ast.List, ast.ListComp, ast.Dict, ast.DictComp,
+                                ast.Set, ast.SetComp, ast.Tuple)):
+        return _infer_collection(val_node)
     elif isinstance(val_node, ast.JoinedStr):
         return "str"
-
-    # 5. Операции сравнения: x > 5, x == y, a in b -> всегда bool
     elif isinstance(val_node, ast.Compare):
         return "bool"
-
-    # 6. Унарные операции: not x -> bool, -x -> int/float
     elif isinstance(val_node, ast.UnaryOp):
-        if isinstance(val_node.op, ast.Not):
-            return "bool"
-        if isinstance(val_node.op, (ast.USub, ast.UAdd)):
-            operand_t = infer_ast_type(val_node.operand, known_vars, depth + 1)
-            if operand_t in ("int", "float"):
-                return operand_t
-
-    # 7. Бинарные операции (+, -, *, /, //, %)
+        return _infer_unaryop(val_node, known_vars, depth)
     elif isinstance(val_node, ast.BinOp):
-        lt = infer_ast_type(val_node.left, known_vars, depth + 1)
-        rt = infer_ast_type(val_node.right, known_vars, depth + 1)
-
-        # Деление через '/' в Python 3 всегда возвращает float
-        if isinstance(val_node.op, ast.Div):
-            return "float"
-
-        # Сложение строк: str + str -> str
-        if isinstance(val_node.op, ast.Add):
-            if lt == "str" and rt == "str":
-                return "str"
-            if lt == "list" and rt == "list":
-                return "list"
-
-        # Умножение: str * int -> str, list * int -> list
-        if isinstance(val_node.op, ast.Mult):
-            if (lt == "str" and rt == "int") or (lt == "int" and rt == "str"):
-                return "str"
-            if (lt == "list" and rt == "int") or (lt == "int" and rt == "list"):
-                return "list"
-
-        # Арифметика чисел
-        if lt in ("int", "float") and rt in ("int", "float"):
-            if "float" in (lt, rt):
-                return "float"
-            return "int"
-
-    # 8. Тернарные операторы: val_a if condition else val_b
+        return _infer_binop(val_node, known_vars, depth)
     elif isinstance(val_node, ast.IfExp):
-        t_body = infer_ast_type(val_node.body, known_vars, depth + 1)
-        t_else = infer_ast_type(val_node.orelse, known_vars, depth + 1)
-        if t_body == t_else and t_body is not None:
-            return t_body
-
-    # 9. Вызовы функций и методов
+        return _infer_ifexp(val_node, known_vars, depth)
     elif isinstance(val_node, ast.Call):
-        if isinstance(val_node.func, ast.Name):
-            func_id = val_node.func.id
-            if func_id in ("int", "len", "round"):
-                return "int"
-            if func_id == "float":
-                return "float"
-            if func_id == "str":
-                return "str"
-            if func_id == "bool":
-                return "bool"
-            if func_id in ("list", "revertable_list"):
-                return "list"
-            if func_id in ("dict", "revertable_dict"):
-                return "dict"
-            if func_id in ("set", "revertable_set"):
-                return "set"
+        return _infer_call(val_node)
+    return None
 
-        elif isinstance(val_node.func, ast.Attribute):
-            method = val_node.func.attr
-            # Методы строк
-            if method in (
-                "upper",
-                "lower",
-                "strip",
-                "lstrip",
-                "rstrip",
-                "replace",
-                "format",
-                "capitalize",
-                "title",
-            ):
-                return "str"
-            if method in ("split", "splitlines"):
-                return "list"
-            if method in ("startswith", "endswith", "isdigit", "isalpha", "isalnum"):
-                return "bool"
-            if method in ("count", "index", "find", "rfind"):
-                return "int"
-            if method in ("keys", "values"):
-                return "list"
 
+def _infer_constant(node: ast.Constant) -> str | None:
+    """Infer type from a literal constant."""
+    if isinstance(node.value, bool):
+        return "bool"
+    if isinstance(node.value, int):
+        return "int"
+    if isinstance(node.value, float):
+        return "float"
+    if isinstance(node.value, str):
+        return "str"
+    if node.value is None:
+        return "None"
+    return None
+
+
+def _infer_name(node: ast.Name, known_vars: dict | None) -> str | None:
+    """Infer type from a variable name reference."""
+    if node.id in ("True", "False"):
+        return "bool"
+    if node.id == "None":
+        return "None"
+    if known_vars and node.id in known_vars:
+        var_sym = known_vars[node.id]
+        return getattr(var_sym, "type_name", None) or (
+            var_sym if isinstance(var_sym, str) else None
+        )
+    return None
+
+
+def _infer_collection(node: ast.AST) -> str | None:
+    """Infer type from collection literals (list, dict, set, tuple)."""
+    if isinstance(node, (ast.List, ast.ListComp)):
+        return "list"
+    if isinstance(node, (ast.Dict, ast.DictComp)):
+        return "dict"
+    if isinstance(node, (ast.Set, ast.SetComp)):
+        return "set"
+    if isinstance(node, ast.Tuple):
+        return "tuple"
+    return None
+
+
+def _infer_unaryop(
+    node: ast.UnaryOp, known_vars: dict | None, depth: int
+) -> str | None:
+    """Infer type from unary operations (not x → bool, -x → int/float)."""
+    if isinstance(node.op, ast.Not):
+        return "bool"
+    if isinstance(node.op, (ast.USub, ast.UAdd)):
+        operand_t = infer_ast_type(node.operand, known_vars, depth + 1)
+        if operand_t in ("int", "float"):
+            return operand_t
+    return None
+
+
+def _infer_binop(
+    node: ast.BinOp, known_vars: dict | None, depth: int
+) -> str | None:
+    """Infer type from binary operations (+, -, *, /, //, %)."""
+    lt = infer_ast_type(node.left, known_vars, depth + 1)
+    rt = infer_ast_type(node.right, known_vars, depth + 1)
+
+    # Division always returns float in Python 3
+    if isinstance(node.op, ast.Div):
+        return "float"
+
+    # String/list concatenation
+    if isinstance(node.op, ast.Add):
+        if lt == "str" and rt == "str":
+            return "str"
+        if lt == "list" and rt == "list":
+            return "list"
+
+    # Repetition: str * int → str, list * int → list
+    if isinstance(node.op, ast.Mult):
+        if (lt == "str" and rt == "int") or (lt == "int" and rt == "str"):
+            return "str"
+        if (lt == "list" and rt == "int") or (lt == "int" and rt == "list"):
+            return "list"
+
+    # Numeric arithmetic: int + int → int, int + float → float
+    if lt in ("int", "float") and rt in ("int", "float"):
+        if "float" in (lt, rt):
+            return "float"
+        return "int"
+
+    return None
+
+
+def _infer_ifexp(
+    node: ast.IfExp, known_vars: dict | None, depth: int
+) -> str | None:
+    """Infer type from ternary expression (a if cond else b)."""
+    t_body = infer_ast_type(node.body, known_vars, depth + 1)
+    t_else = infer_ast_type(node.orelse, known_vars, depth + 1)
+    if t_body == t_else and t_body is not None:
+        return t_body
+    return None
+
+
+def _infer_call(node: ast.Call) -> str | None:
+    """Infer type from function/method calls (int(), str(), .upper(), etc.)."""
+    if isinstance(node.func, ast.Name):
+        return _infer_builtin_function(node.func.id)
+    elif isinstance(node.func, ast.Attribute):
+        return _infer_method_call(node.func.attr)
+    return None
+
+
+def _infer_builtin_function(func_id: str) -> str | None:
+    """Infer return type from builtin function calls."""
+    if func_id in ("int", "len", "round"):
+        return "int"
+    if func_id == "float":
+        return "float"
+    if func_id == "str":
+        return "str"
+    if func_id == "bool":
+        return "bool"
+    if func_id in ("list", "revertable_list"):
+        return "list"
+    if func_id in ("dict", "revertable_dict"):
+        return "dict"
+    if func_id in ("set", "revertable_set"):
+        return "set"
+    return None
+
+
+def _infer_method_call(method: str) -> str | None:
+    """Infer return type from method calls on known types."""
+    # String methods
+    if method in (
+        "upper", "lower", "strip", "lstrip", "rstrip",
+        "replace", "format", "capitalize", "title",
+    ):
+        return "str"
+    if method in ("split", "splitlines"):
+        return "list"
+    if method in ("startswith", "endswith", "isdigit", "isalpha", "isalnum"):
+        return "bool"
+    if method in ("count", "index", "find", "rfind"):
+        return "int"
+    if method in ("keys", "values"):
+        return "list"
     return None
 
 
