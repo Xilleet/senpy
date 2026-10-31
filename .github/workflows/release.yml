@@ -152,11 +152,52 @@ jobs:
             --specpath "build" \
             "senpy/cli/main.py"
 
-      - name: Verify senpy.exe
+      - name: Smoke-test senpy.exe
         shell: bash
         run: |
+          set -e
+          echo "=== 1. Binary exists ==="
           ls -la "senpy-vscode/bin/senpy.exe"
+
+          echo "=== 2. --version works ==="
           "senpy-vscode/bin/senpy.exe" --version
+
+          echo "=== 3. Analyze bundled test_game ==="
+          # NB: senpy exits with code 1 when diagnostics are found (even with
+          # --exit-zero, because JSON output path calls sys.exit() before the
+          # exit_zero check). We don't care about exit code here — only that
+          # the binary runs end-to-end and produces valid JSON. A crash (segfault,
+          # ImportError, missing data file) would produce empty output or
+          # non-JSON garbage, caught by the validation below.
+          "senpy-vscode/bin/senpy.exe" test_game --no-cache --output-format json > /tmp/senpy_smoke.json 2>/tmp/senpy_smoke.err || true
+
+          if [ ! -s /tmp/senpy_smoke.json ]; then
+            echo "ERROR: senpy.exe produced empty output (likely crashed)"
+            echo "--- stderr ---"
+            cat /tmp/senpy_smoke.err
+            exit 1
+          fi
+
+          echo "=== 4. JSON output is valid ==="
+          python -c "
+          import json, sys
+          with open('/tmp/senpy_smoke.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          if isinstance(data, list):
+              print(f'OK: {len(data)} diagnostics')
+          elif isinstance(data, dict):
+              print(f'OK: object with keys {list(data.keys())[:5]}')
+          else:
+              print('ERROR: unexpected JSON type', type(data).__name__)
+              sys.exit(1)
+          " || {
+            echo "ERROR: output is not valid JSON"
+            echo "--- first 20 lines of output ---"
+            head -20 /tmp/senpy_smoke.json
+            exit 1
+          }
+
+          echo "=== Smoke test PASSED ==="
 
       # --- Шаг 2: Node.js — сборка TypeScript extension ---
       - name: Set up Node.js

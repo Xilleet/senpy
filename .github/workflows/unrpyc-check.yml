@@ -1,0 +1,136 @@
+# =============================================================================
+# Scheduled unrpyc update check
+# =============================================================================
+# Раз в неделю (понедельник 09:00 UTC) проверяет, не вышел ли новый коммит
+# unrpyc на GitHub. Если SHA256 отличается от pinned в senpy/cli/unrpyc.py —
+# открывает GitHub Issue с уведомлением.
+#
+# Что делает:
+#   1. Скачивает актуальный zip unrpyc с github.com/CensoredUsername/unrpyc
+#      (по умолчанию ветка master).
+#   2. Считает SHA256.
+#   3. Сравнивает с UNRPYC_PINNED_SHA256 в senpy/cli/unrpyc.py.
+#   4. Если отличается — открывает issue с меткой `unrpyc-update`.
+#   5. Если такой issue уже открыт — не дублирует.
+#
+# Зачем: unrpyc — vendored dependency, от которого зависит decompilation .rpyc.
+# Senpy пиннит конкретный коммит для воспроизводимости и security. Но upstream
+# чинит баги и добавляет поддержку новых версий Ren'Py. Регулярная проверка
+# гарантирует, что узнаём об обновлениях вовремя.
+#
+# Безопасность: workflow НЕ делает auto-PR и НЕ обновляет pin автоматически.
+# Только уведомление. Мейнтейнер проверяет changelog unrpyc, прогоняет тесты
+# локально, и обновляет pin вручную через `python scripts/update_unrpyc_pin.py --master`.
+# =============================================================================
+name: Unrpyc update check
+
+on:
+  schedule:
+    # Каждый понедельник 09:00 UTC (= 12:00 MSK)
+    - cron: '0 9 * * 1'
+  workflow_dispatch:  # ручной запуск из Actions tab
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: Check unrpyc pinned SHA256
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download latest unrpyc master zip + compute SHA256
+        id: download
+        run: |
+          set -euo pipefail
+          URL="https://github.com/CensoredUsername/unrpyc/archive/refs/heads/master.zip"
+          curl -sSL -o /tmp/unrpyc-master.zip "$URL"
+          NEW_SHA=$(sha256sum /tmp/unrpyc-master.zip | awk '{print $1}')
+          echo "new_sha=$NEW_SHA" >> "$GITHUB_OUTPUT"
+          echo "New unrpyc master SHA256: $NEW_SHA"
+
+      - name: Read pinned SHA256 from senpy/cli/unrpyc.py
+        id: pinned
+        run: |
+          set -euo pipefail
+          # Извлекаем UNRPYC_PINNED_SHA256 = "..." из senpy/cli/unrpyc.py
+          PINED=$(python -c "
+          import re
+          with open('senpy/cli/unrpyc.py', 'r', encoding='utf-8') as f:
+              content = f.read()
+          m = re.search(r'UNRPYC_PINNED_SHA256\s*=\s*[\"\\']([a-f0-9]{64})[\"\\']', content)
+          if not m:
+              print('NOT_FOUND', end='')
+          else:
+              print(m.group(1), end='')
+          ")
+          echo "pinned_sha=$PINED" >> "$GITHUB_OUTPUT"
+          echo "Pinned SHA256: $PINED"
+
+      - name: Compare SHAs and open issue if different
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          NEW="${{ steps.download.outputs.new_sha }}"
+          PINED="${{ steps.pinned.outputs.pinned_sha }}"
+
+          if [ "$NEW" = "$PINED" ]; then
+            echo "unrpyc master SHA matches pinned: $NEW"
+            exit 0
+          fi
+
+          if [ "$PINED" = "NOT_FOUND" ]; then
+            echo "WARNING: UNRPYC_PINNED_SHA256 not found in senpy/cli/unrpyc.py"
+            echo "Cannot compare. Exiting."
+            exit 1
+          fi
+
+          echo "unrpyc master SHA changed:"
+          echo "  Pinned: $PINED"
+          echo "  New:    $NEW"
+
+          # Проверяем, есть ли уже открытый issue с меткой unrpyc-update
+          EXISTING=$(gh issue list --label "unrpyc-update" --state open --json number --jq 'length')
+          if [ "$EXISTING" != "0" ]; then
+            echo "Open issue with label 'unrpyc-update' already exists. Skipping."
+            exit 0
+          fi
+
+          # Создаём issue
+          BODY="## unrpyc master SHA256 changed
+
+          | | SHA256 |
+          |---|---|
+          | **Pinned** (in \`senpy/cli/unrpyc.py\`) | \`${PINED}\` |
+          | **New** (master @ $(date -u +%Y-%m-%d)) | \`${NEW}\` |
+
+          ### What to do
+
+          1. Review upstream changes: https://github.com/CensoredUsername/unrpyc/commits/master
+          2. Run locally: \`python scripts/update_unrpyc_pin.py --master\`
+          3. Run tests: \`pytest tests/test_vendored_unrpyc.py tests/test_unrpyc_security.py\`
+          4. If green — commit, push, tag release.
+          5. Close this issue.
+
+          ### Why this matters
+          unrpyc is a vendored dependency that handles \`.rpyc\` decompilation.
+          New Ren'Py versions may need newer unrpyc. This check runs weekly
+          to notify maintainers about upstream changes.
+
+          ---
+          *Auto-generated by SEC-8 workflow (\`.github/workflows/unrpyc-check.yml\`)*"
+
+          gh issue create \
+            --title "unrpyc update available: master SHA changed" \
+            --body "$BODY" \
+            --label "unrpyc-update,dependencies"
+
+          echo "Issue created."
