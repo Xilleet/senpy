@@ -5,6 +5,62 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.5] — AST & Checkers God-functions Refactor
+
+### Architecture
+
+Internal refactor of rule engine internals — `rules/python_ast.py`,
+`rules/checkers/screen.py`, `rules/checkers/dialogue.py`,
+`rules/checkers/state.py`. All lint rules,
+diagnostics, and behavior identical. 7 god-functions split into 31
+testable helpers.
+
+* **`infer_ast_type` (145 lines, CC=62 → 44 lines, CC≈9 + 9 helpers):**
+  The most complex function in the project is now a simple dispatch table
+  delegating to `_infer_constant`, `_infer_name`, `_infer_collection`,
+  `_infer_unaryop`, `_infer_binop`, `_infer_ifexp`, `_infer_call`,
+  `_infer_builtin_function`, `_infer_method_call`. Each helper has CC ≤ 4.
+  Return type unchanged (`str | None`) — all callers work without modification.
+  TODO(future): Replace with Type Lattice (`TypeHint.join()`) in 0.8.0 (SSA).
+* **`_visit_augassign` (145 lines → 18 lines + 3 helpers):**
+  `_check_augassign_name` (RPY105/RPY102/RPY108 for Name target),
+  `_check_augassign_type_conflict` (RPY108 type compatibility),
+  `_check_augassign_subscript` (RPY105/RPY102 for Subscript target).
+* **`_visit_assign` (133 lines → 30 lines + 4 helpers):**
+  `_check_assign_set_usage` (RPY106), `_check_assign_name_target` (RPY104/RPY108),
+  `_check_assign_subscript_target` (RPY105/RPY102), `_check_assign_tuple_target` (RPY104).
+* **`_visit_mutating_methods` (128 lines → 22 lines + 2 helpers):**
+  `_check_mutating_method_call` (RPY105/RPY102 for .append/.update),
+  `_check_invalid_method_call` (RPY108 for list.add → .append).
+* **`screen.py:check_line` (219 lines → 37 lines + 4 helpers):**
+  `_check_screen_variable_actions` (RPY202/RPY208),
+  `_check_screen_action_targets` (RPY204),
+  `_check_screen_buttons` (RPY203/RPY206),
+  `_check_screen_call_targets` (RPY204/RPY207).
+* **`dialogue.py:check_line` (204 lines → 40 lines + 4 helpers):**
+  `_check_label_fallthrough` (RPY308),
+  `_check_jump_call_targets` (RPY302/RPY306/RPY310),
+  `_check_dynamic_jump_targets` (RPY302 via Jump/Call actions),
+  `_check_unescaped_quotes` (RPY305).
+* **`state.py:check_line` (184 lines → 50 lines + 5 helpers):**
+  `_manage_if_elif_else_stack` (if/elif/else control flow tracking),
+  `_check_menu_block` (menu: handling), `_check_python_inline` ($ code),
+  `_check_python_block` (python: block), `_check_condition` (if/elif/while).
+
+### Tests
+
+* 898 passed (unchanged from 0.6.4 — existing fixture tests for all
+  RPY1xx/2xx/3xx/4xx rules served as characterization safety net).
+* No new test files — fixture coverage was already sufficient.
+
+### Notes
+
+* **Type Lattice (`TypeHint.join()`) deferred to 0.8.0** — it requires SSA
+  (φ-functions at merge points) to be useful beyond `IfExp`. Current extract
+  method is preparation: each helper is isolated, making future replacement
+  straightforward. TODO comment added in `infer_ast_type`.
+* **7 god-functions → 31 helpers** — cyclomatic complexity
+
 ## [0.6.4] — CLI God-functions Refactor (internal, not tagged)
 
 ### Architecture
