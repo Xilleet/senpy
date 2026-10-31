@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import os
 import pickle
 import zlib
@@ -12,8 +11,11 @@ from senpy.core.constants import (
     IGNORED_DIRS,
     MEDIA_EXTENSIONS,
 )
+from senpy.core.logging import get_logger
 from senpy.core.models import Diagnostic
 from senpy.domain.rpa import safe_load_rpa_index
+
+_logger = get_logger("domain.assets")
 
 
 def find_orphaned_rpyc(project_path: str) -> list[str]:
@@ -92,21 +94,24 @@ class AssetManager:
         self._asset_cache[self.project_path] = (set(self.known_assets), set(self.valid_images))
 
     def _read_rpa_index(self, rpa_path: str) -> None:
-        with (
-            contextlib.suppress(OSError, zlib.error, pickle.UnpicklingError, ValueError),
-            open(rpa_path, "rb") as f,
-        ):
-            header = f.read(40)
-            if header.startswith((b"RPA-3.0 ", b"RPA-2.0 ")):
-                offset = int(header[8:24], 16)
-                f.seek(offset)
-                index = safe_load_rpa_index(f.read())
-                for filename in index:
-                    clean_fn = filename.replace("\\", "/").lower()
-                    self.known_assets.add(clean_fn)
-                    self.known_assets.add(os.path.basename(clean_fn))
-                    if clean_fn.startswith("game/"):
-                        self.known_assets.add(clean_fn[5:])
+        try:
+            with open(rpa_path, "rb") as f:
+                header = f.read(40)
+                if header.startswith((b"RPA-3.0 ", b"RPA-2.0 ")):
+                    offset = int(header[8:24], 16)
+                    f.seek(offset)
+                    index = safe_load_rpa_index(f.read())
+                    for filename in index:
+                        clean_fn = filename.replace("\\", "/").lower()
+                        self.known_assets.add(clean_fn)
+                        self.known_assets.add(os.path.basename(clean_fn))
+                        if clean_fn.startswith("game/"):
+                            self.known_assets.add(clean_fn[5:])
+        except (OSError, zlib.error, pickle.UnpicklingError, ValueError) as e:
+            # log debug instead of silent suppress. RPA index read
+            # failure is non-critical (assets from this archive just not
+            # registered); but tracking it helps spot corrupt .rpa files.
+            _logger.debug("failed to read RPA index %s: %s", rpa_path, e)
 
     def mark_used(self, asset_ref: str) -> None:
         """Регистрирует использование ассета в коде."""

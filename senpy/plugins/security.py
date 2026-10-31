@@ -22,6 +22,8 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+from senpy.core.exceptions import PluginError
+
 # =============================================================================
 # API version (unchanged from Заход 1)
 # =============================================================================
@@ -30,18 +32,24 @@ PLUGIN_API_VERSION = "1.0"
 _RE_API_VERSION = re.compile(r"^\d+\.\d+$")
 
 
-class ApiVersionMismatchError(Exception):
-    """Raised when plugin's api_version is incompatible with Senpy's."""
+class ApiVersionMismatchError(PluginError):
+    """Raised when plugin's api_version is incompatible with Senpy's.
+
+    This allows callers to catch it via `except PluginError:` or `except SenpyError:`.
+    """
 
     def __init__(self, plugin_version: str, senpy_version: str):
         self.plugin_version = plugin_version
         self.senpy_version = senpy_version
-        super().__init__(
+        message = (
             f"Plugin API version mismatch: plugin requires {plugin_version!r}, "
             f"but Senpy provides {senpy_version!r}. "
             f"Plugin may use APIs that don't exist or have changed. "
             f"Please update the plugin or use a compatible Senpy version."
         )
+        # PluginError.__init__ takes (message, cause=None); we don't have a
+        # cause here, just pass message.
+        super().__init__(message)
 
 
 def check_api_version(plugin_api_version: str, *, raise_on_mismatch: bool = False) -> bool:

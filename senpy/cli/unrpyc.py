@@ -6,7 +6,6 @@
 """
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import os
 import pickle
@@ -20,8 +19,11 @@ import zlib
 
 from rich.console import Console
 
+from senpy.core.logging import get_logger
 from senpy.domain.rpa import safe_load_rpa_index
 from senpy.domain.tsundere import IS_RU
+
+_logger = get_logger("cli.unrpyc")
 
 # Console для unrpyc-блока (не зависит от глобального console из cli.py)
 console = Console(legacy_windows=sys.stdout.isatty())
@@ -148,18 +150,36 @@ def download_unrpyc() -> list[str] | None:
         with urllib.request.urlopen(req) as resp, open(zip_path, "wb") as out:
             shutil.copyfileobj(resp, out)
 
-        # ECO-4: SHA256 verification
+        # SHA256 verification
         if not _verify_unrpyc_sha256(zip_path):
-            with contextlib.suppress(OSError):
+            # log critical instead of silent return. SHA mismatch is a
+            # potential supply-chain attack — user should see this loudly.
+            # We still return None (backward compat) but the failure is now
+            # observable in logs at ERROR level.
+            _logger.error(
+                "unrpyc SHA256 verification FAILED for %s — downloaded file "
+                "does not match UNRPYC_PINNED_SHA256. Possible supply-chain "
+                "attack or upstream changed without pin update. Removing "
+                "downloaded file and falling back to no-unrpyc mode.",
+                zip_path,
+            )
+            try:
                 os.remove(zip_path)
+            except OSError as e:
+                # log debug instead of silent suppress.
+                _logger.debug("failed to remove bad unrpyc zip %s: %s", zip_path, e)
             return None
 
-        # ECO-4: безопасная распаковка
+        # безопасная распаковка
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             _safe_zip_extract(zip_ref, SENPY_CACHE_DIR)
 
-        with contextlib.suppress(OSError):
+        try:
             os.remove(zip_path)
+        except OSError as e:
+            # log debug instead of silent suppress. Cleanup of zip after
+            # extraction; failure is non-critical (next run cleans cache_dir).
+            _logger.debug("failed to remove unrpyc zip %s: %s", zip_path, e)
 
         console.print(
             "[bold green]✔ Successfully downloaded and installed unrpyc to cache![/bold green]\n"
@@ -187,7 +207,7 @@ def find_unrpyc_executable(
     if which_unrpyc:
         return [which_unrpyc]
 
-    with contextlib.suppress(subprocess.SubprocessError, OSError, subprocess.TimeoutExpired):
+    try:
         res = subprocess.run(
             [sys.executable, "-m", "unrpyc", "--help"],
             capture_output=True,
@@ -196,6 +216,10 @@ def find_unrpyc_executable(
         )
         if res.returncode == 0:
             return [sys.executable, "-m", "unrpyc"]
+    except (subprocess.SubprocessError, OSError, subprocess.TimeoutExpired) as e:
+        # log debug instead of silent suppress. Probe failure means
+        # unrpyc module is not installed; we fall through to find_in_directory_tree.
+        _logger.debug("unrpyc --help probe failed: %s", e)
 
     search_dirs = [os.getcwd()]
     if project_path:
@@ -226,52 +250,57 @@ def extract_scripts_from_rpa(rpa_path: str, dest_dir: str) -> list[str]:
     rpa_mtime = os.path.getmtime(rpa_path) if os.path.exists(rpa_path) else 0.0
     dest_dir_abs = os.path.abspath(dest_dir)
 
-    with (
-        contextlib.suppress(OSError, ValueError, TypeError, zlib.error, pickle.PickleError),
-        open(rpa_path, "rb") as f,
-    ):
-        header = f.read(50)
-        parts = header.split()
-        if not parts or not parts[0].startswith((b"RPA-3.0", b"RPA-2.0")):
-            return []
+    try:
+        with open(rpa_path, "rb") as f:
+            header = f.read(50)
+            parts = header.split()
+            if not parts or not parts[0].startswith((b"RPA-3.0", b"RPA-2.0")):
+                return []
 
-        offset = int(parts[1], 16)
-        key = int(parts[2], 16) if len(parts) > 2 and parts[0].startswith(b"RPA-3.0") else 0
+            offset = int(parts[1], 16)
+            key = int(parts[2], 16) if len(parts) > 2 and parts[0].startswith(b"RPA-3.0") else 0
 
-        f.seek(offset)
-        index = safe_load_rpa_index(f.read())
+            f.seek(offset)
+            index = safe_load_rpa_index(f.read())
 
-        for filename, segments in index.items():
-            clean_name = filename.replace("\\", "/")
-            base_fn = os.path.basename(clean_name)
+            for filename, segments in index.items():
+                clean_name = filename.replace("\\", "/")
+                base_fn = os.path.basename(clean_name)
 
-            if base_fn.endswith((".rpyc", ".rpy")):
-                dest = os.path.abspath(os.path.join(dest_dir, clean_name))
+                if base_fn.endswith((".rpyc", ".rpy")):
+                    dest = os.path.abspath(os.path.join(dest_dir, clean_name))
 
-                # Защита от Path Traversal: блокируем попытки записи вне dest_dir (например, ../../malicious.rpy)
-                try:
-                    if os.path.commonpath([dest, dest_dir_abs]) != dest_dir_abs:
+                    # Защита от Path Traversal: блокируем попытки записи вне dest_dir (например, ../../malicious.rpy)
+                    try:
+                        if os.path.commonpath([dest, dest_dir_abs]) != dest_dir_abs:
+                            continue
+                    except ValueError:
                         continue
-                except ValueError:
-                    continue
 
-                # Кэш: если файл уже извлечён и свежее архива, пропускаем чтение байт
-                if os.path.exists(dest) and os.path.getmtime(dest) >= rpa_mtime:
+                    # Кэш: если файл уже извлечён и свежее архива, пропускаем чтение байт
+                    if os.path.exists(dest) and os.path.getmtime(dest) >= rpa_mtime:
+                        extracted.append(dest)
+                        continue
+
+                    file_bytes = b""
+                    for seg in segments:
+                        seg_offset = seg[0] ^ key
+                        seg_len = seg[1] ^ key
+                        prefix = seg[2] if len(seg) > 2 else b""
+                        f.seek(seg_offset)
+                        file_bytes += prefix + f.read(seg_len - len(prefix))
+
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    with open(dest, "wb") as out:
+                        out.write(file_bytes)
                     extracted.append(dest)
-                    continue
-
-                file_bytes = b""
-                for seg in segments:
-                    seg_offset = seg[0] ^ key
-                    seg_len = seg[1] ^ key
-                    prefix = seg[2] if len(seg) > 2 else b""
-                    f.seek(seg_offset)
-                    file_bytes += prefix + f.read(seg_len - len(prefix))
-
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, "wb") as out:
-                    out.write(file_bytes)
-                extracted.append(dest)
+    except (OSError, ValueError, TypeError, zlib.error, pickle.PickleError) as e:
+        # log debug instead of silent suppress. RPA extraction failure
+        # is recoverable (just no .rpy from this archive); but tracking it
+        # helps spot corrupt .rpa files.
+        _logger.debug(
+            "failed to extract scripts from RPA %s: %s", rpa_path, e
+        )
 
     return extracted
 

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-import contextlib
 import os
 import re
 from dataclasses import dataclass
+
+from senpy.core.logging import get_logger
+
+_logger = get_logger("traceback")
 
 
 @dataclass
@@ -62,7 +65,7 @@ def parse_traceback_file(file_path: str) -> CrashReport | None:
     if not os.path.isfile(file_path):
         return None
 
-    with contextlib.suppress(OSError, UnicodeDecodeError):
+    try:
         with open(file_path, encoding="utf-8", errors="replace") as f:
             content = f.read()
 
@@ -107,8 +110,12 @@ def parse_traceback_file(file_path: str) -> CrashReport | None:
             rule_code=rule_code,
             explanation=explanation,
         )
-
-    return None
+    except (OSError, UnicodeDecodeError) as e:
+        # log debug instead of silent suppress.
+        _logger.debug(
+            "failed to read traceback file %s: %s", file_path, e
+        )
+        return None
 
 
 def find_latest_traceback(project_path: str) -> str | None:

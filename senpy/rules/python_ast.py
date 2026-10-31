@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import ast
-import contextlib
 import difflib
 import textwrap
 from typing import Any
 
 from senpy.core.constants import BUILTIN_SYMBOLS, SCREEN_LOCAL_IGNORE
+from senpy.core.logging import get_logger
 from senpy.core.models import Diagnostic
 from senpy.core.sink import DiagnosticSink  # Фаза 1.4: Protocol вместо SenpyAnalyzer
 from senpy.domain.text_tags import get_utf16_range, suggest_similar_symbol
+
+_logger = get_logger("rules.python_ast")
 
 
 def infer_ast_type(
@@ -341,13 +343,16 @@ def _get_root_name(node: ast.AST | None) -> str | None:
 def extract_assigned_names(py_code: str) -> set[str]:
     """Извлекает имена переменных, которым присваивается значение в строке Python."""
     assigned = set()
-    with contextlib.suppress(SyntaxError):
+    try:
         tree = ast.parse(py_code)
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign):
                 for target in node.targets:
                     if isinstance(target, ast.Name):
                         assigned.add(target.id)
+    except SyntaxError as e:
+        # log debug instead of silent suppress.
+        _logger.debug("extract_assigned_names: ast.parse failed: %s", e)
     return assigned
 
 
@@ -362,7 +367,7 @@ class PythonAstChecker:
         names: dict[str, int] = {}
         refs: set[str] = set()
         code = textwrap.dedent("".join(code_lines))
-        with contextlib.suppress(SyntaxError):
+        try:
             tree = ast.parse(code)
             for node in ast.walk(tree):
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -377,6 +382,9 @@ class PythonAstChecker:
                     and node.value.isidentifier()
                 ):
                     refs.add(node.value)
+        except SyntaxError as e:
+            # log debug instead of silent suppress.
+            _logger.debug("collect_from_python_block: ast.parse failed: %s", e)
         return names, refs
 
     def check_init_dependency(
@@ -390,7 +398,7 @@ class PythonAstChecker:
         """RPY109: Проверяет вызовы функций в init python на алфавитный порядок файлов."""
         import os
 
-        with contextlib.suppress(SyntaxError):
+        try:
             tree = ast.parse(py_code)
 
             def walk_and_check(root_node: ast.AST):
@@ -461,6 +469,9 @@ class PythonAstChecker:
                 else:
                     # Остальные стейтменты (вызовы, присваивания) выполняются сразу
                     walk_and_check(stmt)
+        except SyntaxError as e:
+            # log debug instead of silent suppress.
+            _logger.debug("check_init_dependency: ast.parse failed: %s", e)
 
     def check_screen_mutation(
         self,
@@ -474,7 +485,7 @@ class PythonAstChecker:
         lines: list[str] | None = None,
     ) -> None:
         """RPY201, RPY205: Проверка императивных циклов и мутаций внутри screen."""
-        with contextlib.suppress(SyntaxError):
+        try:
             tree = ast.parse(py_code)
             for node in ast.walk(tree):
                 if isinstance(node, (ast.For, ast.While)):
@@ -573,6 +584,9 @@ class PythonAstChecker:
                     )
                     break
 
+        except SyntaxError as e:
+            # log debug instead of silent suppress.
+            _logger.debug("check_screen_mutation: ast.parse failed: %s", e)
     def check_python_ast(
         self,
         py_code: str,
@@ -582,7 +596,7 @@ class PythonAstChecker:
         lines: list[str] | None = None,
     ) -> None:
         """Парсит Python-код и запускает рекурсивный обход AST."""
-        with contextlib.suppress(SyntaxError):
+        try:
             tree = ast.parse(py_code)
             self._walk_python_nodes(
                 tree.body,
@@ -593,6 +607,9 @@ class PythonAstChecker:
                 local_scope=set(),
             )
 
+        except SyntaxError as e:
+            # log debug instead of silent suppress.
+            _logger.debug("check_python_ast: ast.parse failed: %s", e)
     def _visit_import(
         self,
         node: ast.Import,
@@ -1245,7 +1262,7 @@ class PythonAstChecker:
         noqa_map: dict,
     ) -> None:
         """RPY403, RPY202, RPY103: Проверяет условия if/elif через AST."""
-        with contextlib.suppress(SyntaxError):
+        try:
             cond_tree = ast.parse(expr, mode="eval")
             if isinstance(cond_tree.body, ast.Constant) and not bool(cond_tree.body.value):
                 self.analyzer._add_diagnostic(
@@ -1321,6 +1338,9 @@ class PythonAstChecker:
                                 noqa_map,
                             )
 
+        except SyntaxError as e:
+            # log debug instead of silent suppress.
+            _logger.debug("check_condition: ast.parse failed: %s", e)
     def check_cfg_condition(
         self,
         file_path: str,
@@ -1331,7 +1351,7 @@ class PythonAstChecker:
         noqa_map: dict,
     ) -> None:
         """RPY404: Проверяет условие if/elif на переменную в статусе MAYBE_SET."""
-        with contextlib.suppress(SyntaxError):
+        try:
             tree = ast.parse(expr, mode="eval")
             for node in ast.walk(tree):
                 if (
@@ -1364,9 +1384,12 @@ class PythonAstChecker:
                         noqa_map,
                     )
 
+        except SyntaxError as e:
+            # log debug instead of silent suppress.
+            _logger.debug("check_cfg_condition: ast.parse failed: %s", e)
     def clear_safe_cfg_vars(self, py_code: str, branch_uninitialized: dict) -> None:
         """Удаляет переменные из неинициализированных, если им присвоено значение."""
-        with contextlib.suppress(SyntaxError):
+        try:
             tree = ast.parse(py_code)
             for node in tree.body:
                 if isinstance(node, ast.Assign):
@@ -1375,4 +1398,7 @@ class PythonAstChecker:
                             branch_uninitialized.pop(target.id, None)
 
 
-# AstChecker alias удалён в Фазе 1.4 (dead code, P1'-11 из аудита)
+        except SyntaxError as e:
+            # log debug instead of silent suppress.
+            _logger.debug("clear_safe_cfg_vars: ast.parse failed: %s", e)
+

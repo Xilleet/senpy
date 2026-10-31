@@ -10,6 +10,7 @@ from lsprotocol import types as lsp
 
 from senpy.__version__ import VERSION_WITH_PREFIX as _SENPY_VERSION
 from senpy.core.analyzer import Diagnostic, SenpyAnalyzer
+from senpy.core.exceptions import SecurityError
 
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
@@ -46,11 +47,13 @@ def _uri_to_path(uri: str, workspace_root: str | None = None) -> str:
         Нормализованный filesystem path.
 
     Raises:
-        ValueError: если scheme не `file:` ИЛИ путь вне workspace_root.
+        SecurityError: если scheme не `file:` ИЛИ путь вне workspace_root.
+            SecurityError наследуется от ValueError для backward compat —
+            старые caller'ы с `except ValueError:` продолжают работать.
     """
     parsed = urlparse(uri)
     if parsed.scheme != "file":
-        raise ValueError(
+        raise SecurityError(
             f"_uri_to_path: unsupported URI scheme {parsed.scheme!r}; "
             f"only 'file:' is allowed (uri={uri!r})"
         )
@@ -68,12 +71,12 @@ def _uri_to_path(uri: str, workspace_root: str | None = None) -> str:
             common = os.path.commonpath([root_real, path_real])
         except ValueError:
             # ValueError: пути на разных дисках (Windows) или mix abs/rel.
-            raise ValueError(
+            raise SecurityError(
                 f"_uri_to_path: path {path_real!r} is outside workspace "
                 f"root {root_real!r} (cannot compute common path)"
             ) from None
         if common != root_real:
-            raise ValueError(
+            raise SecurityError(
                 f"_uri_to_path: path {path_real!r} is outside workspace "
                 f"root {root_real!r}"
             )

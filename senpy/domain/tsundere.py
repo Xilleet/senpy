@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-import contextlib
 import ctypes
 import os
+
+from senpy.core.logging import get_logger
+
+_logger = get_logger("domain.tsundere")
 
 
 def _is_russian_os() -> bool:
@@ -10,8 +13,13 @@ def _is_russian_os() -> bool:
     if "ru" in os.environ.get("LANG", "").lower():
         return True
     if os.name == "nt":
-        with contextlib.suppress(AttributeError, OSError):
+        try:
             return ctypes.windll.kernel32.GetUserDefaultUILanguage() == 1049
+        except (AttributeError, OSError) as e:
+            # log debug instead of silent suppress. ctypes.windll may
+            # not be available on non-Windows (AttributeError) or Windows may
+            # refuse the call (OSError). Either way, fall through to False.
+            _logger.debug("failed to detect Russian OS UI language: %s", e)
     return False
 
 

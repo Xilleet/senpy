@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import os
 import pickle
@@ -9,6 +8,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from senpy.core.constants import SENPY_VERSION
+from senpy.core.logging import get_logger
+
+_logger = get_logger("cache")
 
 # CachedFileEntry и CacheManifest определены ЗДЕСЬ (в cache.py), а не в
 # отдельном cache_manifest.py. Причина: Python 3.14 изменил dataclasses._is_type(),
@@ -132,24 +134,38 @@ class CacheManager:
         """Загружает манифест из кэша с проверкой версии."""
         if not self.enabled or not os.path.exists(self.manifest_path):
             return None
-        with contextlib.suppress(OSError, pickle.PickleError, EOFError, AttributeError, ValueError):
+        try:
             with open(self.manifest_path, "rb") as f:
                 data = SafeCacheUnpickler(f).load()
             if isinstance(data, CacheManifest) and data.version == SENPY_VERSION:
                 self.manifest = data
                 return data
+        except (OSError, pickle.PickleError, EOFError, AttributeError, ValueError) as e:
+            # log debug instead of silent suppress. Cache corruption
+            # is recoverable (just rebuild), but tracking it helps spot bugs.
+            _logger.debug(
+                "failed to load cache manifest from %s: %s",
+                self.manifest_path, e,
+            )
         return None
 
     def save_manifest(self, manifest: CacheManifest) -> None:
         """Атомарно сохраняет манифест в бинарный pickle."""
         if not self.enabled:
             return
-        with contextlib.suppress(OSError, pickle.PickleError):
+        try:
             self.ensure_cache_dir()
             tmp_path = self.manifest_path + ".tmp"
             with open(tmp_path, "wb") as f:
                 pickle.dump(manifest, f, protocol=pickle.HIGHEST_PROTOCOL)
             os.replace(tmp_path, self.manifest_path)
+        except (OSError, pickle.PickleError) as e:
+            # log debug instead of silent suppress. Save failure is
+            # recoverable (next run rebuilds), but indicates disk issues.
+            _logger.debug(
+                "failed to save cache manifest to %s: %s",
+                self.manifest_path, e,
+            )
 
     @staticmethod
     def compute_global_hash(analyzer: SenpyAnalyzer) -> str:
