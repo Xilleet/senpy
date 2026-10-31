@@ -19,9 +19,12 @@ Public API:
 """
 from __future__ import annotations
 
-import contextlib
 import os
 import tomllib
+
+from senpy.core.logging import get_logger
+
+_logger = get_logger("config")
 
 
 def load_config(project_path: str) -> dict:
@@ -35,11 +38,15 @@ def load_config(project_path: str) -> dict:
     Возвращает содержимое секции [tool.senpy] (или [senpy] для senpy.toml).
     Если ни один файл не найден или TOML невалиден — возвращает пустой dict.
 
+    Ошибки парсинга/чтения логируются как WARNING (раньше молча
+    проглатывались через contextlib.suppress). Без логирования пользователь
+    не понимает почему его конфиг игнорируется — несколько часов дебага.
+
     Args:
         project_path: Путь к Ren'Py-проекту или папке с конфигом.
 
     Returns:
-        Dict с конфигурацией. Пустой dict если конфиг не найден.
+        Dict с конфигурацией. Пустой dict если конфиг не найден или битый.
     """
     candidates = [
         os.path.join(project_path, "senpy.toml"),
@@ -50,11 +57,26 @@ def load_config(project_path: str) -> dict:
         os.path.join(os.getcwd(), "pyproject.toml"),
     ]
     for c in candidates:
-        if os.path.isfile(c):
-            with (
-                contextlib.suppress(tomllib.TOMLDecodeError, OSError),
-                open(c, "rb") as f,
-            ):
+        if not os.path.isfile(c):
+            continue
+        try:
+            with open(c, "rb") as f:
                 data = tomllib.load(f)
-                return data.get("tool", {}).get("senpy", data.get("senpy", {}))
+            return data.get("tool", {}).get("senpy", data.get("senpy", {}))
+        except tomllib.TOMLDecodeError as e:
+            # Логируем битый TOML — юзер должен знать почему конфиг
+            # игнорируется. Без этого — часы дебага "почему мои ignore-правила
+            # не работают?".
+            _logger.warning(
+                "TOMLDecodeError reading config %s: %s. Falling back to "
+                "default (empty) config.",
+                c, e,
+            )
+        except OSError as e:
+            # Permission denied, disk error, etc. — тоже логируем.
+            _logger.warning(
+                "OSError reading config %s: %s. Falling back to "
+                "default (empty) config.",
+                c, e,
+            )
     return {}
