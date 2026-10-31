@@ -1,0 +1,52 @@
+---
+name: Rule false positive
+about: Report a rule that fires on valid code
+title: "[FP] "
+labels: false-positive, needs-triage
+assignees: ''
+---
+
+## Rule that fires incorrectly
+
+<!-- e.g. RPY401, RPY105 -->
+
+**Rule code:**
+
+## Code that triggers the false positive
+
+```renpy
+# Paste the .rpy code that Senpy flags incorrectly.
+# Keep it minimal — remove anything not needed to reproduce.
+```
+
+## Why this is a false positive
+
+<!-- Explain why your code is correct and the rule shouldn't fire.
+     Reference Ren'Py docs if applicable. -->
+
+## Senpy output
+
+```
+Paste the diagnostic message Senpy gives you.
+```
+
+## Workaround
+
+<!-- What do you currently do to silence the false positive?
+     - `# noqa: RPYxxx` comment?
+     - Disable the rule in senpy.toml?
+     - Restructure the code (and if so, does the restructure hurt readability)?
+-->
+
+## Environment
+
+- Senpy version:
+- Ren'Py version:
+
+## Suggested fix (optional)
+
+<!-- How do you think the rule should be tightened?
+     - "Should not fire when X is True because ..."
+     - "Should check for Y before firing"
+     - "Should have an exception for Z pattern"
+-->

@@ -56,6 +56,141 @@ Full changelog: [CHANGELOG.md](https://github.com/Xilleet/senpy/blob/main/CHANGE
 
 ---
 
+## Why You Need This
+
+`renpy lint` catches syntax errors, but does not catch the bugs that actually
+ship to players. These are real bugs that Senpy would have caught before
+release:
+
+### Bug 1 — Save-breaking `define` mutation
+
+```renpy
+define player_gold = 100
+
+label spend_gold:
+    $ player_gold -= 50    # ← mutates a `define`
+    "You have [player_gold] gold."
+```
+
+**Symptom:** Game works in dev. Players report `Exception: define player_gold is not revertable`
+on rollback, or save files silently corrupt after loading an old save.
+
+**Senpy catches it:** `RPY105` (define mutation) fires at lint time.
+
+---
+
+### Bug 2 — `NameError` after loading a save
+
+```renpy
+label start:
+    jump intro
+
+label intro:
+    $ greeted = True
+    "Hello!"
+
+label continue_story:
+    if greeted:    # ← `greeted` not declared with `default`
+        "Hi again!"
+```
+
+**Symptom:** Game works on first playthrough. Players who load a save at
+`continue_story` (skipping `intro`) hit `NameError: name 'greeted' is not defined`.
+
+**Senpy catches it:** `RPY104` (dynamic assignment without `default`).
+
+---
+
+### Bug 3 — Branch asymmetry (uninitialized read)
+
+```renpy
+label branch_demo:
+    menu:
+        "Take the sword":
+            $ has_sword = True
+        "Leave it":
+            pass       # ← has_sword never set in this branch
+
+    if has_sword:       # ← MAYBE_SET read
+        "You swing!"
+```
+
+**Symptom:** Game works for players who take the sword. Players who leave it
+hit `NameError: name 'has_sword' is not defined` (or in rollback, the variable
+silently retains a previous playthrough's value).
+
+**Senpy catches it:** `RPY404` (reading MAYBE_SET variable) and `RPY401`
+(branch asymmetry).
+
+---
+
+### Bug 4 — Wrong collection method (`AttributeError` at runtime)
+
+```renpy
+label add_item:
+    $ inventory.add("sword")    # ← list has no .add() method
+```
+
+**Symptom:** `AttributeError: 'list' object has no attribute 'add'` the first
+time a player picks up an item. Tested paths miss it; untested paths crash.
+
+**Senpy catches it:** `RPY108` (incompatible collection method) with QuickFix
+suggesting `.append()`.
+
+---
+
+### Bug 5 — Unused image asset (dead weight in your build)
+
+```renpy
+# 200 image definitions, only 30 ever shown on screen
+image bg_old_castle = "old_castle.png"   # ← left over from cut content
+image bg_old_forest = "old_forest.png"   # ← unused
+```
+
+**Symptom:** Build size balloons. Players download 500MB instead of 200MB.
+Nobody notices until a Steam reviewer complains about download size.
+
+**Senpy catches it:** `RPY701` (unused define), `RPY702` (unused transform),
+`RPY703` (unused screen).
+
+---
+
+### Bug 6 — Translation interpolation breakage
+
+```renpy
+# game/script.rpy
+$ player_name = "Hero"
+"Welcome, [player_name]!"     # ← English source
+
+# game/tl/russian/script.rpy
+translate russian welcome_1:
+    "Добро пожаловать, [player]!"   # ← typo: player instead of player_name
+```
+
+**Symptom:** Russian players see `Добро пожаловать, [player]!` literally
+(interpolation variable doesn't exist). English build works fine.
+
+**Senpy catches it:** `RPY601` (broken interpolation variable in translation).
+
+---
+
+### The pattern
+
+Every bug above:
+
+1. Slips past `renpy lint` (which only checks syntax + label targets).
+2. Survives dev playtesting (devs always pick the "interesting" branch).
+3. Surfaces only after release — via Steam reviews, Discord screenshots,
+   or itch.io bug reports.
+4. Costs hours of "works on my machine" debugging because the player can't
+   reproduce it in front of you.
+
+Senpy catches them at lint time — before they ship. **That's why you need it.**
+
+For the full list of 45+ rules with examples, see **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**.
+
+---
+
 ## Why Senpy?
 
 The standard built-in `renpy lint` command only checks for basic syntax errors and broken label targets. It is blind to deep runtime Python execution issues, rollback desynchronizations, and save-file corruptions. Consequently, critical `NameError` and `KeyError` crashes often slip into production builds and are only discovered after dozens of hours of manual playtesting.

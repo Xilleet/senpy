@@ -1,0 +1,38 @@
+---
+name: Feature request
+about: Suggest a new rule, LSP feature, or CLI improvement
+title: "[FEAT] "
+labels: enhancement, needs-triage
+assignees: ''
+---
+
+## Summary
+
+<!-- One or two sentences: what feature do you want? -->
+
+## Motivation
+
+<!-- Why do you want this? What problem does it solve?
+     Concrete example: "I had a bug where ... Senpy could have caught it by ..." -->
+
+## Proposal
+
+<!-- Describe what you'd like Senpy to do. Be specific:
+     - New rule code (e.g. RPY705)?
+     - New CLI flag?
+     - New LSP feature?
+     - Improvement to an existing rule?
+-->
+
+## Alternatives considered
+
+<!-- What other approaches did you consider? Why did you reject them? -->
+
+## Backlog reference (optional)
+
+<!-- If this is in the consolidated backlog, name the ID (e.g. LSP-3, RULE-7).
+     See: https://github.com/Xilleet/senpy/blob/main/docs/BACKLOG.md -->
+
+## Additional context
+
+<!-- Anything else relevant? Screenshots, links to similar features in other tools? -->

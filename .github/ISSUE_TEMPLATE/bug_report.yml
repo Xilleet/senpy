@@ -1,0 +1,61 @@
+---
+name: Bug report
+about: Report a bug in Senpy
+title: "[BUG] "
+labels: bug, needs-triage
+assignees: ''
+---
+
+## Summary
+
+<!-- One or two sentences: what's wrong? -->
+
+## Reproduction steps
+
+1.
+2.
+3.
+
+## Expected behavior
+
+<!-- What you expected to happen. -->
+
+## Actual behavior
+
+<!-- What actually happened. -->
+
+## Senpy output
+
+```
+Paste the relevant output here.
+For CLI: run with `--output-format json` and paste the JSON.
+For LSP: paste the relevant log from the Senpy output channel in VS Code
+  (View → Output → Senpy).
+```
+
+## Environment
+
+- Senpy version: `senpy --version` →
+- Python version:
+- OS: Windows / Linux / macOS
+- VS Code version (if LSP issue):
+- Ren'Py version of your project:
+
+## Minimal reproduction project
+
+<!-- If possible, attach a minimal .rpy file that triggers the bug.
+     Drag-and-drop a .zip into the issue, or paste the .rpy content here. -->
+
+```renpy
+# Paste the smallest .rpy that reproduces the issue
+```
+
+## Rule code (if applicable)
+
+<!-- If this is about a specific rule (e.g. RPY401 false positive), name it. -->
+
+-
+
+## Additional context
+
+<!-- Anything else relevant? Existing workarounds? Related issues? -->
