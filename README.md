@@ -474,6 +474,33 @@ Want to write a plugin instead of contributing to core? See the **[Plugin Develo
 
 ---
 
+## About Senpy
+
+Senpy is a passion project — I needed a semantic linter for my own Ren'Py
+visual novel, and none existed. So I built one.
+
+**How it's made:** I read and review Python code fluently, but I don't enjoy
+typing boilerplate. So I let AI tools do the typing, while I do:
+
+- Architecture (what rules to add, how the LSP server should work)
+- Code review (every line — I catch bugs the AI misses)
+- Testing on real Ren'Py projects
+- Bug report triage and fixes
+- Release management
+
+The AI doesn't decide what to build, doesn't push code, doesn't choose
+features. I do. The AI is my fast typist.
+
+If you're curious about this workflow, I'm happy to discuss in
+[Discussions](https://github.com/Xilleet/senpy/discussions). If you find a
+bug, [report it](https://github.com/Xilleet/senpy/issues) — I read every
+issue and fix what matters to users.
+
+Also check out [ScreenTale](https://github.com/Xilleet/ScreenTale), another
+tool from me.
+
+---
+
 ## License
 
 Distributed under the MIT License. Free for commercial and non-commercial visual novel development.
