@@ -1302,14 +1302,15 @@ class PythonAstChecker:
             elif isinstance(node, ast.Assign):
                 self._visit_assign(node, file_path, start_line, noqa_map, lines, local_scope)
 
-            # 4. Мутирующие методы Python и валидация методов встроенных типов
-            # Запускается для ВСЕХ non-function узлов (отдельный if, не elif).
-            # Note: оригинальный код имел if-elif цепочку здесь, где if был
-            # всегда True (not isinstance FunctionDef), что делало elif
-            # (If/While/For/Try) dead code. Поведение сохранено для совместимости.
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                self._visit_mutating_methods(node, file_path, start_line, noqa_map, lines, local_scope)
-            elif isinstance(node, (ast.If, ast.While)):
+            # 4. Mutating methods — run for ALL non-function nodes.
+            # (FunctionDef/ClassDef already filtered by `continue` above.)
+            self._visit_mutating_methods(node, file_path, start_line, noqa_map, lines, local_scope)
+
+            # 5. Recurse into control flow bodies.
+            # Previously dead code: the original if/elif chain had
+            # `if not isinstance(FunctionDef)` which was always True,
+            # making the elif branches unreachable. Fixed: separate if.
+            if isinstance(node, (ast.If, ast.While)):
                 self._visit_if_while(node, file_path, start_line, noqa_map, lines, local_scope)
             elif isinstance(node, ast.For):
                 self._visit_for(node, file_path, start_line, noqa_map, lines, local_scope)
