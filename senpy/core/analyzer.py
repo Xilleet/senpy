@@ -3,17 +3,14 @@ from __future__ import annotations
 import os
 import re
 import warnings
-from collections import defaultdict
 
 from senpy.core.cache import CachedFileEntry, CacheManager, CacheManifest, compute_file_hash
 from senpy.core.config import load_config
 from senpy.core.constants import (
     BUILTIN_AUDIO_CHANNELS,
-    BUILTIN_SCREENS,
     BUILTIN_SYMBOLS,
     IGNORED_DIRS,
     MEDIA_EXTENSIONS,
-    NON_DIALOGUE_STATEMENTS,
     RE_DEFAULT,
     RE_DEFINE,
     RE_DEFINE_AUDIO,
@@ -297,108 +294,55 @@ class SenpyAnalyzer:
         self.diagnostics.extend(self.assets.check_unused())
 
     def _check_unused_declarations(self) -> None:
-        """RPY701-703: Поиск неиспользуемых define/transform/screen (мёртвый код).
+        """RPY701-703: Unused define/transform/screen (dead code).
 
-        Отключается, если в проекте есть динамические jump'ы.
-        Использует предварительно построенный индекс word → {(file, line_idx)}
-        за один проход по всем файлам — O(total_words + symbols) вместо
-        O(symbols × total_lines) у наивной реализации с re.search в цикле.
-
-        PERF-2: регрессия — изначальная реализация на DDLC (50 файлов,
-        77k строк, ~200 символов) зависала на минуты.
+        Delegates to senpy.rules.dead_code.check_unused_declarations.
+        Kept as a thin wrapper for backward compat.
         """
-        if self.has_dynamic_jumps:
-            return
-
-        # Шаг 1: За один проход по всем файлам строим индекс
-        # word → set of (norm_path, line_idx_0based).
-        # Это позволяет проверять любое количество символов за O(1) lookup каждый.
-        word_locations: dict[str, set[tuple[str, int]]] = defaultdict(set)
-        for norm_path in self.file_scopes:
-            lines = self._stage1_lines.get(norm_path)
-            if lines is None:
-                try:
-                    with open(norm_path, encoding="utf-8", errors="replace") as f:
-                        lines = f.readlines()
-                except OSError:
-                    continue
-                # Кэшируем, чтобы повторные прогоны не перечитывали файл.
-                self._stage1_lines[norm_path] = lines
-            for i, line in enumerate(lines):
-                # \w+ = [A-Za-z0-9_]+ — это и есть "слова" в Ren'Py идентификаторах.
-                # One findall per line is much faster than N regex searches per line.
-                for word in _WORD_RE.findall(line):
-                    word_locations[word].add((norm_path, i))
-
-        def _is_used(name: str, decl_file: str, decl_line: int) -> bool:
-            """O(1) lookup: имя использовано, если оно есть где-то вне строки объявления."""
-            decl_norm = os.path.normcase(os.path.abspath(decl_file))
-            decl_loc = (decl_norm, decl_line - 1)
-            locations = word_locations.get(name)
-            if not locations:
-                return False
-            # Если имя встречается более чем в одном месте — точно используется.
-            # Если только в одном — проверяем, что это не строка объявления.
-            if len(locations) > 1:
-                return True
-            return decl_loc not in locations
-
-        # RPY701: Неиспользуемые define-константы
-        for name, var_sym in self.variables.items():
-            if not var_sym.is_constant:
-                continue
-            if var_sym.is_character:
-                continue
-            if not _is_used(name, var_sym.file_path, var_sym.line_number):
-                self.diagnostics.append(
-                    Diagnostic(
-                        file_path=var_sym.file_path,
-                        line_number=var_sym.line_number,
-                        line_content=var_sym.code_line,
-                        code="RPY701",
-                        message=f"Constant '{name}' is declared with 'define' but never used. Consider removing this dead code.",
-                        severity="HINT",
-                    )
-                )
-
-        # RPY702: Неиспользуемые transform
-        for name, trn_sym in self.transforms.items():
-            if name in BUILTIN_SYMBOLS:
-                continue
-            if not _is_used(name, trn_sym.file_path, trn_sym.line_number):
-                self.diagnostics.append(
-                    Diagnostic(
-                        file_path=trn_sym.file_path,
-                        line_number=trn_sym.line_number,
-                        line_content=trn_sym.code_line,
-                        code="RPY702",
-                        message=f"Transform '{name}' is defined but never used in 'show/scene at'. Consider removing this dead code.",
-                        severity="HINT",
-                    )
-                )
-
-        # RPY703: Неиспользуемые screen
-        for name, scr_sym in self.screens.items():
-            if name in BUILTIN_SCREENS:
-                continue
-            if not _is_used(name, scr_sym.file_path, scr_sym.line_number):
-                self.diagnostics.append(
-                    Diagnostic(
-                        file_path=scr_sym.file_path,
-                        line_number=scr_sym.line_number,
-                        line_content=f"screen {name}():",
-                        code="RPY703",
-                        message=f"Screen '{name}' is defined but never called or shown. Consider removing this dead code.",
-                        severity="HINT",
-                    )
-                )
+        from senpy.rules.dead_code import check_unused_declarations
+        check_unused_declarations(self)
 
     def run(self, quiet: bool = False) -> AnalysisResult:
+        self._run_reset()
+
+        self._index_assets()
+        main_rpy, tl_rpy = self._get_rpy_files()
+        rpy_files = main_rpy + self.extra_files
+
+        old_manifest = self.cache_manager.load_manifest() if not self.fix else None
+        cached_files = old_manifest.files if old_manifest else {}
+
+        file_hashes, stage1_diags_map = self._collect_all_symbols(
+            rpy_files, cached_files, quiet
+        )
+
+        self._rebuild_aggregates()
+
+        current_global_hash = self.cache_manager.compute_global_hash(self)
+        is_global_unchanged = (
+            old_manifest is not None and old_manifest.global_symbol_hash == current_global_hash
+        )
+
+        new_cached_entries = self._analyze_all_files(
+            rpy_files, cached_files, file_hashes, stage1_diags_map,
+            is_global_unchanged, quiet
+        )
+
+        self._finalize_results(tl_rpy, new_cached_entries, current_global_hash)
+
+        return AnalysisResult(
+            diagnostics=self.diagnostics,
+            file_count=len(rpy_files) + len(tl_rpy),
+            total_lines=self.total_lines,
+            fixed_count=self.fixed_count,
+            fixable_count=self.fixable_count,
+        )
+
+    def _run_reset(self) -> None:
+        """Reset all analyzer state for a fresh run."""
         self.file_scopes.clear()
         self.missing_defaults.clear()
         self.diagnostics.clear()
-
-        # Сброс базовых множеств
         self.user_symbols.clear()
         self.declared_symbols = set(BUILTIN_SYMBOLS)
         self.defined_audio_map.clear()
@@ -407,42 +351,32 @@ class SenpyAnalyzer:
         self.used_screens.clear()
         self.screen_uses.clear()
         self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
-
-        # Очистка новых объектных реестров
         self.variables.clear()
         self.labels.clear()
         self.screens.clear()
         self.images.clear()
         self.transforms.clear()
         self.jump_sources.clear()
-        self.screen_action_jumps.clear()
-        self.used_screens.clear()
-        self.screen_uses.clear()
-
-        # Сброс флагов и счётчиков
         self.has_dynamic_jumps = False
         self.total_lines = 0
         self.fixed_count = 0
         self.fixable_count = 0
         self._stage1_lines.clear()
 
-        self._index_assets()
-        main_rpy, tl_rpy = self._get_rpy_files()
-        rpy_files = main_rpy + self.extra_files
-        total_files = len(rpy_files)
+    def _collect_all_symbols(
+        self, rpy_files: list[str], cached_files: dict, quiet: bool
+    ) -> tuple[dict[str, str], dict[str, list]]:
+        """[1/2] Collect symbols from all .rpy files (Tier 1 cache: restore unchanged FileScope).
 
-        # 0. Загрузка кэша
-        old_manifest = self.cache_manager.load_manifest() if not self.fix else None
-        cached_files = old_manifest.files if old_manifest else {}
-        new_cached_entries: dict[str, CachedFileEntry] = {}
+        Returns (file_hashes, stage1_diags_map).
+        """
+        total_files = len(rpy_files)
+        file_hashes: dict[str, str] = {}
         stage1_diags_map: dict[str, list] = {}
 
-        # [1/2] Сбор символов (Tier 1 Cache: восстановление неизмененных FileScope)
-        file_hashes: dict[str, str] = {}
         for i, file_path in enumerate(rpy_files, 1):
             fname = os.path.basename(file_path)
             norm_path = os.path.normcase(os.path.abspath(file_path))
-
             mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else 0.0
             size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
@@ -450,7 +384,6 @@ class SenpyAnalyzer:
                 msg = f"\r[1/2] Сбор символов: {i}/{total_files} ({fname[:25]})"
                 print(msg.ljust(75), end="", flush=True)
 
-            # Проверяем Tier 1 hit с контролем content_hash
             is_tier1_hit = False
             if (
                 norm_path in cached_files
@@ -464,8 +397,6 @@ class SenpyAnalyzer:
                 if cached_entry.content_hash and f_hash == cached_entry.content_hash:
                     self.file_scopes[norm_path] = cached_entry.scope
                     is_tier1_hit = True
-                    # восстанавливаем stage-1 диагностики (RPY307/RPY504/RPY105),
-                    # которые раньше исчезали на тёплом прогоне
                     self.diagnostics.extend(getattr(cached_entry, "collect_diagnostics", ()) or ())
 
             if not is_tier1_hit:
@@ -478,18 +409,22 @@ class SenpyAnalyzer:
         if not quiet:
             print()
 
-        self._rebuild_aggregates()
+        return file_hashes, stage1_diags_map
 
-        # [2/2] Анализ правил (Tier 2 Cache: если глобальные символы не изменились — мгновенно отдаем диагностики)
-        current_global_hash = self.cache_manager.compute_global_hash(self)
-        is_global_unchanged = (
-            old_manifest is not None and old_manifest.global_symbol_hash == current_global_hash
-        )
+    def _analyze_all_files(
+        self, rpy_files: list[str], cached_files: dict, file_hashes: dict[str, str],
+        stage1_diags_map: dict[str, list], is_global_unchanged: bool, quiet: bool
+    ) -> dict[str, CachedFileEntry]:
+        """[2/2] Analyze all .rpy files for lint rules (Tier 2 cache).
+
+        Returns new_cached_entries for manifest save.
+        """
+        total_files = len(rpy_files)
+        new_cached_entries: dict[str, CachedFileEntry] = {}
 
         for i, file_path in enumerate(rpy_files, 1):
             fname = os.path.basename(file_path)
             norm_path = os.path.normcase(os.path.abspath(file_path))
-
             mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else 0.0
             size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
@@ -497,7 +432,6 @@ class SenpyAnalyzer:
                 msg = f"\r[2/2] Анализ правил: {i}/{total_files} ({fname[:25]})"
                 print(msg.ljust(75), end="", flush=True)
 
-            # Проверяем Tier 2 hit с контролем content_hash
             is_tier2_hit = False
             if (
                 is_global_unchanged
@@ -543,21 +477,25 @@ class SenpyAnalyzer:
         if not quiet:
             print()
 
+        return new_cached_entries
+
+    def _finalize_results(
+        self, tl_rpy: list[str], new_cached_entries: dict[str, CachedFileEntry],
+        current_global_hash: str
+    ) -> None:
+        """Run post-analysis checks, TL validation, severity overrides, and save cache."""
         self._check_unreachable_labels()
         self._check_unused_assets()
         self._check_unused_declarations()
 
-        # [3/3] Валидация файлов перевода (TL-Checker)
         for tl_file in tl_rpy:
             self._analyze_tl_file(tl_file)
 
-        # Применяем переопределения строгости ко всем собранным диагностикам (включая граф и ассеты)
         if self.severity_overrides:
             for d in self.diagnostics:
                 if d.code in self.severity_overrides:
                     d.severity = self.severity_overrides[d.code]
 
-        # Сохранение обновленного манифеста
         if not self.fix and new_cached_entries:
             new_manifest = CacheManifest(
                 version=SENPY_VERSION,
@@ -565,14 +503,6 @@ class SenpyAnalyzer:
                 files=new_cached_entries,
             )
             self.cache_manager.save_manifest(new_manifest)
-
-        return AnalysisResult(
-            diagnostics=self.diagnostics,
-            file_count=len(rpy_files) + len(tl_rpy),
-            total_lines=self.total_lines,
-            fixed_count=self.fixed_count,
-            fixable_count=self.fixable_count,
-        )
 
     def _differential_purge_file(self, norm_path: str, file_path: str) -> None:
         """
@@ -1382,142 +1312,147 @@ class SenpyAnalyzer:
         return attrs
 
     def _analyze_file(self, file_path: str):
+        lines = self._read_file_lines(file_path)
+        if lines is None or file_path.endswith("_ren.py"):
+            return
+
+        self.total_lines += len(lines)
+        file_modified = False
+
+        scope_stack = ScopeStack(self.declared_symbols)
+        format_checker = FormattingChecker(self)
+        screen_checker = ScreenChecker(self)
+        asset_checker = AssetChecker(self)
+        dialogue_checker = DialogueChecker(self)
+        state_checker = StateChecker(self)
+
+        noqa_map: dict[int, set[str] | None] = {}
+        for line_no, raw_line in enumerate(lines, start=1):
+            has_noqa, codes = self._parse_noqa(raw_line)
+            if has_noqa:
+                noqa_map[line_no] = codes
+
+        idx = 0
+        while idx < len(lines):
+            next_idx, raw_line, clean = _get_logical_line(lines, idx)
+            stripped = clean.strip()
+
+            if not stripped:
+                idx = next_idx
+                continue
+
+            line_indent = len(raw_line) - len(raw_line.lstrip(" "))
+            scope_stack.pop_to_indent(line_indent)
+
+            # 1. FormattingChecker (RPY001, RPY002, RPY107)
+            raw_line, modified = format_checker.check_line(
+                file_path, idx, raw_line, clean, scope_stack, noqa_map, lines
+            )
+            if modified:
+                file_modified = True
+
+            m_init = RE_INIT_PYTHON_START.match(raw_line)
+            if m_init:
+                indent = len(m_init.group(1))
+                next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
+                if block_lines:
+                    self._scan_python_assets(block_lines)
+                    import textwrap
+
+                    code = textwrap.dedent("".join(block_lines))
+                    self.python_ast.check_init_dependency(
+                        code, file_path, idx + 2, noqa_map, lines
+                    )
+                    self.python_ast.check_python_ast(code, file_path, idx + 2, noqa_map, lines)
+                idx = next_idx
+                continue
+
+            # Scope: Labels
+            m_label = RE_LABEL.match(clean)
+            if m_label:
+                scope_stack.push(ScopeType.LABEL, m_label.group(1), line_indent)
+                state_checker.reset()
+                raw_params = m_label.group(2)
+                if raw_params:
+                    for p in raw_params.split(","):
+                        p_clean = p.split("=")[0].strip()
+                        if p_clean and p_clean.isidentifier():
+                            scope_stack.add_symbol(p_clean)
+
+            # Scope: Screens
+            m_screen = RE_SCREEN_START.match(raw_line)
+            if m_screen:
+                screen_name = m_screen.group(2)
+                scope_stack.push(ScopeType.SCREEN, screen_name, line_indent)
+                params_str = m_screen.group(3)
+                if params_str:
+                    for p in params_str.split(","):
+                        p_clean = p.split("=")[0].strip()
+                        if p_clean and p_clean.isidentifier():
+                            scope_stack.add_symbol(p_clean)
+                idx += 1
+                continue
+
+            # 2. ScreenChecker (RPY203, RPY204, RPY206)
+            _, _ = screen_checker.check_line(
+                file_path, idx, raw_line, clean, scope_stack, noqa_map, lines
+            )
+
+            # 3. AssetChecker (RPY501, RPY502)
+            _, _ = asset_checker.check_line(
+                file_path, idx, raw_line, clean, scope_stack, noqa_map, lines
+            )
+
+            # 4. DialogueChecker (RPY302, RPY305, RPY306, RPY308)
+            _, _ = dialogue_checker.check_line(
+                file_path, idx, raw_line, clean, scope_stack, noqa_map, lines,
+                state_checker.branch_uninitialized,
+            )
+
+            # 5. Quoted strings check (RPY101, RPY301, RPY304)
+            if not stripped.startswith(("$", "python")):
+                new_line, modified = self._check_and_fix_quoted_strings(
+                    file_path, idx + 1, raw_line, scope_stack.get_local_symbols(), noqa_map
+                )
+                if modified:
+                    lines[idx] = new_line
+                    file_modified = True
+
+            # 6. StateChecker (RPY102-106, RPY201, RPY205, RPY401-403)
+            next_idx, _ = state_checker.check_line(
+                file_path, idx, next_idx, raw_line, clean, scope_stack, noqa_map, lines
+            )
+
+            idx = next_idx
+
+        state_checker._pop_and_merge_all_if()
+
+        if file_modified and self.fix:
+            self._write_fixed_file(file_path, lines)
+
+    def _read_file_lines(self, file_path: str) -> list[str] | None:
+        """Read file lines for analysis: in-memory, stage1 cache, or from disk.
+
+        Returns None if file can't be read.
+        """
         try:
             norm_path = os.path.normcase(os.path.abspath(file_path))
             if norm_path in self.in_memory_files:
-                lines = self.in_memory_files[norm_path].splitlines(keepends=True)
+                return self.in_memory_files[norm_path].splitlines(keepends=True)
             elif norm_path in self._stage1_lines:
-                lines = self._stage1_lines.pop(norm_path)
+                return self._stage1_lines.pop(norm_path)
             else:
                 with open(file_path, encoding="utf-8", newline="") as f:
-                    lines = f.readlines()
-            if file_path.endswith("_ren.py"):
-                return
-
-            self.total_lines += len(lines)
-            file_modified = False
-
-            scope_stack = ScopeStack(self.declared_symbols)
-            format_checker = FormattingChecker(self)
-            screen_checker = ScreenChecker(self)
-            asset_checker = AssetChecker(self)
-            dialogue_checker = DialogueChecker(self)
-            state_checker = StateChecker(self)
-
-            noqa_map: dict[int, set[str] | None] = {}
-            for line_no, raw_line in enumerate(lines, start=1):
-                has_noqa, codes = self._parse_noqa(raw_line)
-                if has_noqa:
-                    noqa_map[line_no] = codes
-
-            idx = 0
-            while idx < len(lines):
-                next_idx, raw_line, clean = _get_logical_line(lines, idx)
-                stripped = clean.strip()
-
-                if not stripped:
-                    idx = next_idx
-                    continue
-
-                line_indent = len(raw_line) - len(raw_line.lstrip(" "))
-                scope_stack.pop_to_indent(line_indent)
-
-                # 1. FormattingChecker (RPY001, RPY002, RPY107)
-                raw_line, modified = format_checker.check_line(
-                    file_path, idx, raw_line, clean, scope_stack, noqa_map, lines
-                )
-                if modified:
-                    file_modified = True
-
-                m_init = RE_INIT_PYTHON_START.match(raw_line)
-                if m_init:
-                    indent = len(m_init.group(1))
-                    next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
-                    if block_lines:
-                        self._scan_python_assets(block_lines)
-                        import textwrap
-
-                        code = textwrap.dedent("".join(block_lines))
-                        self.python_ast.check_init_dependency(
-                            code, file_path, idx + 2, noqa_map, lines
-                        )
-                        # Также проверяем стандартные правила (устаревший API и т.д.)
-                        self.python_ast.check_python_ast(code, file_path, idx + 2, noqa_map, lines)
-                    idx = next_idx
-                    continue
-
-                # Scope: Labels
-                m_label = RE_LABEL.match(clean)
-                if m_label:
-                    scope_stack.push(ScopeType.LABEL, m_label.group(1), line_indent)
-                    state_checker.reset()
-                    raw_params = m_label.group(2)
-                    if raw_params:
-                        for p in raw_params.split(","):
-                            p_clean = p.split("=")[0].strip()
-                            if p_clean and p_clean.isidentifier():
-                                scope_stack.add_symbol(p_clean)
-
-                # Scope: Screens
-                m_screen = RE_SCREEN_START.match(raw_line)
-                if m_screen:
-                    screen_name = m_screen.group(2)
-                    scope_stack.push(ScopeType.SCREEN, screen_name, line_indent)
-                    params_str = m_screen.group(3)
-                    if params_str:
-                        for p in params_str.split(","):
-                            p_clean = p.split("=")[0].strip()
-                            if p_clean and p_clean.isidentifier():
-                                scope_stack.add_symbol(p_clean)
-                    idx += 1
-                    continue
-
-                # 2. ScreenChecker (RPY203, RPY204, RPY206)
-                _, _ = screen_checker.check_line(
-                    file_path, idx, raw_line, clean, scope_stack, noqa_map, lines
-                )
-
-                # 3. AssetChecker (RPY501, RPY502)
-                _, _ = asset_checker.check_line(
-                    file_path, idx, raw_line, clean, scope_stack, noqa_map, lines
-                )
-
-                # 4. DialogueChecker (RPY302, RPY305, RPY306, RPY308)
-                _, _ = dialogue_checker.check_line(
-                    file_path,
-                    idx,
-                    raw_line,
-                    clean,
-                    scope_stack,
-                    noqa_map,
-                    lines,
-                    state_checker.branch_uninitialized,
-                )
-
-                # 5. Проверка кавычек, интерполяций и тегов (RPY101, RPY301, RPY304)
-                # Выполняется только для диалогов и экранов, но не для строк чистого Python ($ / python:)
-                if not stripped.startswith(("$", "python")):
-                    new_line, modified = self._check_and_fix_quoted_strings(
-                        file_path, idx + 1, raw_line, scope_stack.get_local_symbols(), noqa_map
-                    )
-                    if modified:
-                        lines[idx] = new_line
-                        file_modified = True
-
-                # 6. StateChecker (RPY102-106, RPY201, RPY205, RPY401-403)
-                next_idx, _ = state_checker.check_line(
-                    file_path, idx, next_idx, raw_line, clean, scope_stack, noqa_map, lines
-                )
-
-                idx = next_idx
-
-            state_checker._pop_and_merge_all_if()
-
-            if file_modified and self.fix:
-                with open(file_path, "w", encoding="utf-8", newline="") as f:
-                    f.writelines(lines)
-
+                    return f.readlines()
         except (UnicodeDecodeError, OSError):
+            return None
+
+    def _write_fixed_file(self, file_path: str, lines: list[str]) -> None:
+        """Write modified lines back to file (for --fix mode)."""
+        try:
+            with open(file_path, "w", encoding="utf-8", newline="") as f:
+                f.writelines(lines)
+        except OSError:
             pass
 
     def _check_and_fix_quoted_strings(
@@ -1638,166 +1573,24 @@ class SenpyAnalyzer:
         )
 
     def _analyze_tl_file(self, file_path: str):
-        try:
-            norm_path = os.path.normcase(os.path.abspath(file_path))
-            if norm_path in self.in_memory_files:
-                lines = self.in_memory_files[norm_path].splitlines(keepends=True)
-            else:
-                with open(file_path, encoding="utf-8", newline="") as f:
-                    lines = f.readlines()
-        except UnicodeDecodeError as e:
-            self._emit_encoding_error(file_path, e)
-            return
-        except OSError:
-            return
+        """Analyze translation file for RPY601/602/603.
 
-        self.total_lines += len(lines)
-        pairs = self._parse_tl_pairs(lines)
-        self._validate_tl_pairs(pairs, file_path)
+        Delegates to senpy.rules.checkers.translation.analyze_tl_file.
+        Kept as a thin wrapper for backward compat.
+        """
+        from senpy.rules.checkers.translation import analyze_tl_file
+        analyze_tl_file(self, file_path)
 
     @staticmethod
     def _parse_tl_pairs(lines: list[str]) -> list[tuple[str, int, str, int]]:
-        """
-        Конечный автомат (State Machine). Собирает безопасные пары:
-        (исходный_текст, строка_old, текст_перевода, строка_new)
-        Устойчив к комментариям, пустым строкам, voice/with и пропущенным new.
-        """
-        re_old = re.compile(
-            r'^\s*old\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
-        )
-        re_new = re.compile(
-            r'^\s*new\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
-        )
-        re_dialogue_old = re.compile(
-            r'^\s*#\s*(?:(?:\w+|"[^"]*"|\'[^\']*\')(?:\s+\w+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
-        )
-        re_dialogue_new = re.compile(
-            r'^\s*(?:(?:\w+|"[^"]*"|\'[^\']*\')(?:\s+\w+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
-        )
-
-        pairs = []
-        pending_old = None
-        pending_old_line = 0
-
-        for line_no, raw_line in enumerate(lines, start=1):
-            clean = raw_line.strip()
-            if not clean:
-                continue
-
-            # 1. Поиск для translate strings: (old / new)
-            m_old = re_old.match(clean)
-            if m_old:
-                s = m_old.group(1)
-                pending_old = s[1:-1]
-                pending_old_line = line_no
-                continue
-
-            m_new = re_new.match(clean)
-            if m_new:
-                if pending_old is not None:
-                    s = m_new.group(1)
-                    pairs.append((pending_old, pending_old_line, s[1:-1], line_no))
-                    pending_old = None
-                    pending_old_line = 0
-                continue
-
-            # 2. Поиск для диалоговых блоков translate: (# "оригинал" / "перевод")
-            if clean.startswith("#"):
-                m_d_old = re_dialogue_old.match(clean)
-                if m_d_old:
-                    s = m_d_old.group(1)
-                    pending_old = s[1:-1]
-                    pending_old_line = line_no
-                continue
-            else:
-                first_word = clean.split()[0] if clean.split() else ""
-                # Пропускаем служебные команды внутри диалога (voice, with, $, play, scene и т.д.)
-                if first_word in NON_DIALOGUE_STATEMENTS or clean.startswith("translate "):
-                    if clean.startswith("translate "):
-                        pending_old = None
-                    continue
-
-                if pending_old is not None:
-                    m_d_new = re_dialogue_new.match(clean)
-                    if m_d_new:
-                        s = m_d_new.group(1)
-                        pairs.append((pending_old, pending_old_line, s[1:-1], line_no))
-                    pending_old = None
-                    pending_old_line = 0
-
-        return pairs
+        """Parse translation pairs. Delegates to translation module."""
+        from senpy.rules.checkers.translation import parse_tl_pairs
+        return parse_tl_pairs(lines)
 
     def _validate_tl_pairs(self, pairs: list[tuple[str, int, str, int]], file_path: str):
-        from collections import Counter
-
-        re_var = re.compile(r"\[([^\W\d]\w*)(?:![a-zA-Z]+)?\]")
-        re_tag = re.compile(r"\{(/?[a-zA-Z_]+)(?:=[^}]*)?\}")
-
-        for old_txt, old_line, new_txt, new_line in pairs:
-            # Маскируем экранированные скобки \[ и \{
-            old_masked = re.sub(r"\\.|(\{\{|\}\}|\[\[|\]\])", "  ", old_txt)
-            new_masked = re.sub(r"\\.|(\{\{|\}\}|\[\[|\]\])", "  ", new_txt)
-
-            # RPY603: Пустой перевод
-            if old_txt.strip() and not new_txt.strip():
-                start_c, end_c = self._get_utf16_range(f'new "{new_txt}"', new_txt)
-                self.diagnostics.append(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=new_line,
-                        line_content=f'new "{new_txt}"',
-                        code="RPY603",
-                        message="Translation string is empty ('new \"\"'). Players will see blank text.",
-                        severity="WARNING",
-                        col=start_c,
-                        end_col=end_c,
-                    )
-                )
-                continue
-
-            # RPY601: Сверка переменных [var]
-            old_vars = Counter(re_var.findall(old_masked))
-            new_vars = Counter(re_var.findall(new_masked))
-            missing = old_vars - new_vars
-            extra = new_vars - old_vars
-
-            if missing or extra:
-                diffs = []
-                if missing:
-                    diffs.append(f"lost: {', '.join(f'[{v}]' for v in missing)}")
-                if extra:
-                    diffs.append(f"typo/extra: {', '.join(f'[{v}]' for v in extra)}")
-
-                start_c, end_c = self._get_utf16_range(
-                    new_txt, next(iter(extra)) if extra else None
-                )
-                self.diagnostics.append(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=new_line,
-                        line_content=new_txt,
-                        code="RPY601",
-                        message=f"Variable mismatch in translation ({'; '.join(diffs)}). Will crash with KeyError at runtime!",
-                        severity="ERROR",
-                        col=start_c,
-                        end_col=end_c,
-                    )
-                )
-
-            # RPY602: Сверка тегов форматирования {b}, {color} и т.д.
-            old_tags = Counter(re_tag.findall(old_masked))
-            new_tags = Counter(re_tag.findall(new_masked))
-            if old_tags != new_tags:
-                self.diagnostics.append(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=new_line,
-                        line_content=new_txt,
-                        code="RPY602",
-                        message="Formatting tags count or names do not match the original string. Text styles may break.",
-                        severity="WARNING",
-                    )
-                )
+        """Validate translation pairs. Delegates to translation module."""
+        from senpy.rules.checkers.translation import validate_tl_pairs
+        validate_tl_pairs(self, pairs, file_path)
 
     def generate_defaults_file(self) -> tuple[str, int]:
         if not self.missing_defaults:

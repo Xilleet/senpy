@@ -96,22 +96,11 @@ def process_quoted_strings(
 
         masked_content = re.sub(r"\\.|(\{\{|\[\[)", lambda m: " " * len(m.group(0)), inner_content)
 
-        # RPY101: Переменные в интерполяции диалога [var]
-        for var in RE_INTERPOLATION.findall(masked_content):
-            if var not in declared_symbols and var not in extra_symbols:
-                hint = suggest_similar_symbol(var, user_symbols)
-                start_c, end_c = get_utf16_range(raw_line, f"[{var}]")
-                diagnostics.append(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=line_idx,
-                        line_content=raw_line.strip(),
-                        code="RPY101",
-                        message=f"Variable '[{var}]' is not declared via 'default' or 'define'{hint}.",
-                        col=start_c,
-                        end_col=end_c,
-                    )
-                )
+        # RPY101: Check undeclared variables in [var] interpolation
+        _check_interpolation_vars(
+            masked_content, raw_line, line_idx, file_path,
+            declared_symbols, extra_symbols, user_symbols, diagnostics
+        )
 
         in_place_replacements: list[tuple[int, int, str]] = []
 
@@ -121,36 +110,11 @@ def process_quoted_strings(
             tag_param = t_match.group(3)
             t_start, t_end = t_match.span()
 
-            # RPY304: Проверка валидности hex-цвета
-            if tag_name == "color" and not is_closing and tag_param:
-                color_val = tag_param.strip("\"'").lower()
-                if color_val.startswith("#"):
-                    hex_str = color_val[1:]
-                    if len(hex_str) not in (3, 4, 6, 8) or not all(
-                        c in "0123456789abcdef" for c in hex_str
-                    ):
-                        start_c, end_c = get_utf16_range(raw_line, tag_param)
-                        diagnostics.append(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=line_idx,
-                                line_content=raw_line.strip(),
-                                code="RPY304",
-                                message=f"Malformed hex color '{color_val}' in {{color}} tag.",
-                                col=start_c,
-                                end_col=end_c,
-                            )
-                        )
-                elif color_val not in NAMED_COLORS:
-                    diagnostics.append(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=line_idx,
-                            line_content=raw_line.strip(),
-                            code="RPY304",
-                            message=f"Unknown color name '{color_val}' in {{color}} tag.",
-                        )
-                    )
+            # RPY304: Validate hex color in {color} tag
+            _check_color_tag(
+                tag_name, is_closing, tag_param, raw_line, line_idx,
+                file_path, diagnostics
+            )
 
             if tag_name in SELF_CLOSING_TAGS:
                 continue
@@ -263,3 +227,74 @@ def process_quoted_strings(
             )
 
     return reconstructed_line, modified, diagnostics, fixed_count, fixable_count, used_assets
+
+
+def _check_interpolation_vars(
+    masked_content: str,
+    raw_line: str,
+    line_idx: int,
+    file_path: str,
+    declared_symbols: set[str],
+    extra_symbols: set[str],
+    user_symbols: set[str],
+    diagnostics: list[Diagnostic],
+) -> None:
+    """RPY101: Check for undeclared variables in [var] interpolation."""
+    for var in RE_INTERPOLATION.findall(masked_content):
+        if var not in declared_symbols and var not in extra_symbols:
+            hint = suggest_similar_symbol(var, user_symbols)
+            start_c, end_c = get_utf16_range(raw_line, f"[{var}]")
+            diagnostics.append(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=line_idx,
+                    line_content=raw_line.strip(),
+                    code="RPY101",
+                    message=f"Variable '[{var}]' is not declared via 'default' or 'define'{hint}.",
+                    col=start_c,
+                    end_col=end_c,
+                )
+            )
+
+
+def _check_color_tag(
+    tag_name: str,
+    is_closing: bool,
+    tag_param: str | None,
+    raw_line: str,
+    line_idx: int,
+    file_path: str,
+    diagnostics: list[Diagnostic],
+) -> None:
+    """RPY304: Validate hex color or named color in {color} tag."""
+    if tag_name != "color" or is_closing or not tag_param:
+        return
+
+    color_val = tag_param.strip("\"'").lower()
+    if color_val.startswith("#"):
+        hex_str = color_val[1:]
+        if len(hex_str) not in (3, 4, 6, 8) or not all(
+            c in "0123456789abcdef" for c in hex_str
+        ):
+            start_c, end_c = get_utf16_range(raw_line, tag_param)
+            diagnostics.append(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=line_idx,
+                    line_content=raw_line.strip(),
+                    code="RPY304",
+                    message=f"Malformed hex color '{color_val}' in {{color}} tag.",
+                    col=start_c,
+                    end_col=end_c,
+                )
+            )
+    elif color_val not in NAMED_COLORS:
+        diagnostics.append(
+            Diagnostic(
+                file_path=file_path,
+                line_number=line_idx,
+                line_content=raw_line.strip(),
+                code="RPY304",
+                message=f"Unknown color name '{color_val}' in {{color}} tag.",
+            )
+        )

@@ -75,7 +75,10 @@ def extract_character_names(analyzer: SenpyAnalyzer) -> dict[str, str]:
 
 
 def collect_story_stats(analyzer: SenpyAnalyzer) -> StoryStats:
-    """Собирает сценарную статистику реплик строго внутри меток сюжета (label)."""
+    """Collect story statistics: dialogue lines, word counts, character stats.
+
+    Only counts dialogue inside `label` blocks (not screens, styles, etc.).
+    """
     char_names = extract_character_names(analyzer)
     char_stats: dict[str, CharacterStats] = {}
 
@@ -110,8 +113,7 @@ def collect_story_stats(analyzer: SenpyAnalyzer) -> StoryStats:
                 idx = next_idx
                 continue
 
-            # Диалог в Ren'Py существует СТРОГО внутри меток сюжета (label).
-            # Всё, что на отступе 0 вне label (screens, styles, init, transforms), игнорируется!
+            # Track label context — dialogue only exists inside labels
             if line_indent == 0:
                 if stripped.startswith("label ") and stripped.endswith(":"):
                     in_label = True
@@ -124,26 +126,14 @@ def collect_story_stats(analyzer: SenpyAnalyzer) -> StoryStats:
                 idx = next_idx
                 continue
 
-            # Обработка специальной конструкции Ren'Py: extend "..."
+            # Handle extend "..." continuation
             if stripped.startswith(("extend ", "extend\t")):
-                m_ext = re.search(
-                    r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')', stripped
-                )
-                if m_ext:
-                    text_content = m_ext.group(2) or m_ext.group(3) or ""
-                    clean_text = (
-                        RE_TEXT_TAGS.sub("", text_content).replace('\\"', '"').replace("\\'", "'")
-                    )
-                    words = RE_WORDS.findall(clean_text)
-                    w_count = len(words)
-                    c_count = sum(len(w) for w in words)
-
-                    if w_count > 0 and last_speaker in char_stats:
-                        char_stats[last_speaker].words_count += w_count
-                        char_stats[last_speaker].chars_count += c_count
-                        total_words += w_count
-                        total_chars += c_count
-
+                w_count, c_count = _count_extend_words(stripped)
+                if w_count > 0 and last_speaker in char_stats:
+                    char_stats[last_speaker].words_count += w_count
+                    char_stats[last_speaker].chars_count += c_count
+                    total_words += w_count
+                    total_chars += c_count
                 idx = next_idx
                 continue
 
@@ -152,35 +142,13 @@ def collect_story_stats(analyzer: SenpyAnalyzer) -> StoryStats:
                 idx = next_idx
                 continue
 
+            # Match dialogue line
             m = RE_DIALOGUE_LINE.match(stripped)
             if m:
-                raw_speaker = m.group(1)
-                text_content = m.group(3) or m.group(4) or ""
-
-                # Очистка текста от тегов {b}, {color=...} и экранированных символов
-                clean_text = (
-                    RE_TEXT_TAGS.sub("", text_content).replace('\\"', '"').replace("\\'", "'")
+                speaker_tag, word_count, char_count = _parse_dialogue_line(
+                    m, char_names, char_stats
                 )
-                words = RE_WORDS.findall(clean_text)
-                word_count = len(words)
-                char_count = sum(len(w) for w in words)
-
                 if word_count > 0:
-                    speaker_tag = raw_speaker.strip("\"'") if raw_speaker else "narrator"
-                    disp_name = char_names.get(
-                        speaker_tag,
-                        "Narrator (Рассказчик)" if speaker_tag == "narrator" else speaker_tag,
-                    )
-
-                    if speaker_tag not in char_stats:
-                        char_stats[speaker_tag] = CharacterStats(
-                            tag=speaker_tag, display_name=disp_name
-                        )
-
-                    char_stats[speaker_tag].lines_count += 1
-                    char_stats[speaker_tag].words_count += word_count
-                    char_stats[speaker_tag].chars_count += char_count
-
                     last_speaker = speaker_tag
                     total_lines += 1
                     total_words += word_count
@@ -188,7 +156,68 @@ def collect_story_stats(analyzer: SenpyAnalyzer) -> StoryStats:
 
             idx = next_idx
 
-    # Расчёт долей диалогов
+    return _build_story_stats(char_stats, total_lines, total_words, total_chars)
+
+
+def _count_extend_words(stripped: str) -> tuple[int, int]:
+    """Count words in an extend "..." continuation line."""
+    m_ext = re.search(
+        r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')', stripped
+    )
+    if not m_ext:
+        return 0, 0
+    text_content = m_ext.group(2) or m_ext.group(3) or ""
+    clean_text = (
+        RE_TEXT_TAGS.sub("", text_content).replace('\\"', '"').replace("\\'", "'")
+    )
+    words = RE_WORDS.findall(clean_text)
+    return len(words), sum(len(w) for w in words)
+
+
+def _parse_dialogue_line(
+    m: re.Match,
+    char_names: dict[str, str],
+    char_stats: dict[str, CharacterStats],
+) -> tuple[str, int, int]:
+    """Parse a dialogue line match, update char_stats, return (speaker_tag, word_count, char_count)."""
+    raw_speaker = m.group(1)
+    text_content = m.group(3) or m.group(4) or ""
+
+    clean_text = (
+        RE_TEXT_TAGS.sub("", text_content).replace('\\"', '"').replace("\\'", "'")
+    )
+    words = RE_WORDS.findall(clean_text)
+    word_count = len(words)
+    char_count = sum(len(w) for w in words)
+
+    if word_count == 0:
+        return "narrator", 0, 0
+
+    speaker_tag = raw_speaker.strip("\"'") if raw_speaker else "narrator"
+    disp_name = char_names.get(
+        speaker_tag,
+        "Narrator (Рассказчик)" if speaker_tag == "narrator" else speaker_tag,
+    )
+
+    if speaker_tag not in char_stats:
+        char_stats[speaker_tag] = CharacterStats(
+            tag=speaker_tag, display_name=disp_name
+        )
+
+    char_stats[speaker_tag].lines_count += 1
+    char_stats[speaker_tag].words_count += word_count
+    char_stats[speaker_tag].chars_count += char_count
+
+    return speaker_tag, word_count, char_count
+
+
+def _build_story_stats(
+    char_stats: dict[str, CharacterStats],
+    total_lines: int,
+    total_words: int,
+    total_chars: int,
+) -> StoryStats:
+    """Calculate percentages and build final StoryStats result."""
     for stat in char_stats.values():
         if total_words > 0:
             stat.percentage_words = round((stat.words_count / total_words) * 100, 1)

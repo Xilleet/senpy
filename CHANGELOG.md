@@ -5,6 +5,48 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.6] — Core & Other God-functions Refactor (internal, not tagged)
+
+### Architecture
+
+Internal refactor of `core/analyzer.py`, `domain/text_tags.py`,
+`formats/stats.py` + 2 new modules. No user-visible changes — all lint rules,
+diagnostics, and behavior identical. 6 god-functions split into 14 helpers.
+
+* **`_check_unused_declarations` (97 lines → thin wrapper):** Moved to new
+  module `senpy/rules/dead_code.py` — RPY701/702/703 (unused define/transform/screen).
+* **`_analyze_tl_file` + `_parse_tl_pairs` + `_validate_tl_pairs` (~180 lines →
+  thin wrappers):** Moved to new module `senpy/rules/checkers/translation.py`
+  — RPY601/602/603 (translation validation).
+* **`run()` (181 lines → 35 lines + 4 helpers):** `_run_reset` (state reset),
+  `_collect_all_symbols` (Tier 1 cache symbol collection),
+  `_analyze_all_files` (Tier 2 cache rule analysis),
+  `_finalize_results` (post-checks + TL validation + severity + cache save).
+* **`_analyze_file` (139 lines → 118 lines + 2 helpers):**
+  `_read_file_lines` (in-memory/stage1/disk with error handling),
+  `_write_fixed_file` (write modified lines for --fix).
+* **`process_quoted_strings` (218 lines, CC=35 → 180 lines + 2 helpers):**
+  `_check_interpolation_vars` (RPY101 undeclared variable check),
+  `_check_color_tag` (RPY304 hex/named color validation).
+* **`collect_story_stats` (131 lines → 83 lines + 3 helpers):**
+  `_count_extend_words` (extend "..." word counting),
+  `_parse_dialogue_line` (dialogue matching + char_stats update),
+  `_build_story_stats` (percentage calculation + StoryStats result).
+
+### New Modules
+
+* `senpy/rules/dead_code.py` — dead code detection (RPY701/702/703)
+* `senpy/rules/checkers/translation.py` — translation file analysis (RPY601/602/603)
+
+### Notes
+
+* **Analyzer rewrite deferred to 0.8.0** — splitting analyzer into
+  `SenpyProject` + `AnalysisPipeline` + `SymbolRegistry` requires SSA (φ-functions)
+  to be useful. Current extract method is preparation.
+* **Monkey-patch `builtins.open` for `--diff` preserved** — removing it requires
+  (analyzer.run() with dry_run_callback). TODO in `_setup_diff_interception`.
+* **Not tagged** — internal refactor.
+
 ## [0.6.5] — AST & Checkers God-functions Refactor
 
 ### Architecture
