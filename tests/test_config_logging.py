@@ -107,7 +107,10 @@ def test_load_config_valid_toml_no_warning(tmp_path: Path, caplog, monkeypatch):
     with caplog.at_level(logging.WARNING, logger="senpy.config"):
         result = load_config(str(project))
 
-    assert result == {"strict": False, "ignore": ["RPY001"]}
+    # CLI-16: pydantic добавляет дефолты для всех полей, поэтому проверяем
+    # только ключевые поля, а не точное равенство.
+    assert result.get("strict") is False
+    assert result.get("ignore") == ["RPY001"]
     # Никаких warning'ов
     warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
     assert warnings == [], f"unexpected warnings: {warnings}"

@@ -5,6 +5,66 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3]
+
+### Exception hierarchy
+
+* **Domain exception hierarchy** (`senpy/core/exceptions.py`): New module with `SenpyError` base class and 8 domain exceptions (`ConfigError`, `AnalysisError`, `ParseError`, `SymbolResolutionError`, `CacheError`, `PluginError`, `SecurityError`, `DecompilationError`). `SecurityError` also inherits from `ValueError` for backward compat with LSP-19 callers. `ApiVersionMismatchError` now inherits from `PluginError`. 27 TDD tests.
+* **Migrate `contextlib.suppress()` to `try/except + logger.debug`** (8 files, 20 sites): All silent exception suppression now logs at DEBUG level. Files: `core/signature.py` (2), `core/cache.py` (2), `rules/python_ast.py` (9), `formats/traceback.py` (1), `formats/stubs.py` (1), `domain/assets.py` (1), `domain/tsundere.py` (1), `cli/unrpyc.py` (4). 6 TDD tests.
+* **Domain exceptions instead of silent return**: `_uri_to_path` now raises `SecurityError` (was `ValueError`). `download_unrpyc` SHA mismatch now logs ERROR (was silent `return None`). Backward compat preserved. 5 TDD tests.
+
+### LSP Killer-Features
+
+* **`textDocument/rename` for variables/transforms/screens** (`senpy/lsp/handlers/navigation.py`): Previously rename only worked for labels. Now also supports variables (default/define), transforms (transform X:), and screens (screen X():). Uses whole-word text search across all `.rpy` files in project. 4 TDD tests.
+* **`textDocument/references` for variables/transforms/screens**: Same extension as LSP-17. `include_declaration` flag respected. 5 TDD tests (including backward compat for label references).
+
+### CLI UX
+
+* **`--select` / `--extend-select` / `--extend-ignore` flags** (`senpy/cli/main.py`): Ruff/eslint-style rule filtering. `--select RPY101 RPY102` runs ONLY these rules. `--extend-select` adds to whitelist (only effective with `--select`). `--extend-ignore` adds to blacklist. Config keys `select`, `extend_select`, `extend_ignore` in `senpy.toml` also supported. 9 TDD tests.
+* **`.senpy-ignore` file** (`senpy/cli/main.py`): Project-level bulk rule exclusions. One rule code per line, comments with `#` (full-line and inline), case-insensitive (normalized to uppercase). File searched in project root. 13 TDD tests.
+* **Pydantic config validation** (`senpy/core/config.py`): `senpy.toml` `[tool.senpy]` section now validated via pydantic v2 (`SenpyConfig` model). Invalid types (e.g. `max_errors = "много"`) log WARNING and fall back to defaults. `strict=True` mode — no type coercion. Unknown fields ignored for forward-compat. Added `pydantic>=2.0` to dependencies. 11 TDD tests.
+
+### Tests
+* 801 passed.
+
+### Notes
+* This release combines 0.6.2 (skipped as separate tag) and 0.6.3 work. Git history between v0.6.1 and v0.6.3 contains all commits.
+* **Breaking change for advanced users**: `load_config()` now returns pydantic-validated dict with all default fields populated (was raw TOML dict). If your code does exact dict comparison on config, update to check specific keys.
+
+## [0.6.2]
+
+### Security
+
+* **Workspace containment check in `_uri_to_path`** (`senpy/lsp/server.py`): Added `file:` scheme validation (http/https/ftp/empty URIs now raise `ValueError`) + optional `workspace_root` parameter with path-traversal protection via `os.path.realpath()` + `os.path.commonpath()`. Backward-compatible. 11 TDD tests.
+* **Shell injection fix in VS Code extension** (`senpy-vscode/src/extension.ts`): Replaced 2× `cp.exec` with template-string interpolation by `cp.execFile` with array args. Added `windowsHide: true`.
+* **Symlink-loop protection in `os.walk`** (6 sites): Added explicit `followlinks=False` to all `os.walk()` calls in `cli/main.py:817,831`, `cli/unrpyc.py:182`, `core/analyzer.py:717`, `domain/assets.py:22,57`.
+* **Subprocess timeout for unrpyc probe** (`senpy/cli/unrpyc.py:190`): Added `timeout=30` to `subprocess.run([sys.executable, "-m", "unrpyc", "--help"], ...)`.
+
+### Logging
+
+* **`senpy/core/logging.py`** — centralized logging setup. `setup_logging(verbose, log_file, level)` + `get_logger(name)`. Library-style: `NullHandler` by default (critical for LSP mode where stderr is reserved for protocol). `propagate=True` for pytest caplog. 14 TDD tests.
+* **Migrate `print()` to `logger` in `plugins/loader.py`**: 5× `print("[senpy.plugins] WARNING: ...", file=sys.stderr)` → `_logger.warning(...)`. 4 TDD tests.
+
+### CI Safety
+
+* **Release smoke-test** (`.github/workflows/release.yml`): Expanded `Verify senpy.exe` step from 2 lines to full smoke-test — binary exists, `--version`, runs `test_game --no-cache --output-format json`, validates JSON output structure.
+* **Weekly unrpyc update check** (`.github/workflows/unrpyc-check.yml`): New scheduled workflow (Monday 09:00 UTC). Compares unrpyc master SHA256 vs pinned. If different — opens GitHub Issue with label `unrpyc-update,dependencies`. Does NOT auto-PR.
+
+### Documentation
+
+* **`CONTRIBUTING.md`** — quick start, project layout, how to add a lint rule (6 steps), formatter rule, TDD discipline, Conventional Commits, PR checklist, release process. Explicit "releases cut exclusively by maintainer" policy.
+* **`SECURITY.md`** — supported versions, private reporting via GitHub Security Advisories, response timeline (48h/7d/30d), scope, list of existing security features, hardening checklist for plugin authors, coordinated disclosure policy.
+* **`.github/ISSUE_TEMPLATE/`** — 3 templates: bug_report.yml, feature_request.yml, false_positive.yml.
+* **`.github/PULL_REQUEST_TEMPLATE.md`** — type-of-change checkboxes, backlog ref, TDD RED/GREEN/REFACTOR checklist, smoke-test section.
+* **README "Why You Need This" section** — 6 real-world bugs that `renpy lint` misses and Senpy catches: save-breaking define mutation (RPY105), NameError after save load (RPY104), branch asymmetry (RPY401/404), wrong collection method (RPY108), unused assets (RPY701/702/703), translation breakage (RPY601).
+
+### Misc
+
+* **Log `TOMLDecodeError` in `load_config`** (`senpy/core/config.py`): Replaced `contextlib.suppress(TOMLDecodeError, OSError)` with explicit try/except + `logger.warning`. 4 TDD tests.
+
+### Tests
+* 759 passed.
+
 ## [0.6.1]
 
 ### Fixed

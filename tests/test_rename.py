@@ -108,8 +108,8 @@ def test_rename_label_from_declaration(tmp_path: Path):
         assert edit.new_text == "renamed_forest"
 
 
-def test_rename_returns_none_for_variable(tmp_path: Path):
-    """Rename переменной (пока не поддерживается) — должен вернуть None."""
+def test_rename_returns_edit_for_variable(tmp_path: Path):
+    """Rename переменной теперь поддерживается (раньше возвращал None)."""
     setup_test_workspace(tmp_path)
 
     uri = "file:///test/script.rpy"
@@ -122,8 +122,16 @@ def test_rename_returns_none_for_variable(tmp_path: Path):
 
     result = server_mod.rename(mock_ls, params)
 
-    # Пока rename поддерживает только label'ы
-    assert result is None, f"Rename переменной должен вернуть None, получено {result}"
+    # Теперь rename поддерживает variables — должен вернуть WorkspaceEdit
+    assert result is not None, "Rename variable should return WorkspaceEdit (LSP-17)"
+    assert result.changes is not None
+    # Должно быть хотя бы 1 изменение (declaration)
+    all_edits = []
+    for file_uri, edits in result.changes.items():
+        all_edits.extend(edits)
+    assert len(all_edits) >= 1, "Expected at least declaration edit"
+    for edit in all_edits:
+        assert edit.new_text == "new_gold"
 
 
 def test_rename_returns_none_for_nonexistent_word(tmp_path: Path):

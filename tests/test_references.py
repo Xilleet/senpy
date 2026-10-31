@@ -129,8 +129,8 @@ def test_references_unreferenced_label(tmp_path: Path):
     assert without_decl == []
 
 
-def test_references_variables_not_supported_yet(tmp_path: Path):
-    """[LSP] Срез 1: references для переменных пока не поддержан — возвращается None"""
+def test_references_variables_now_supported(tmp_path: Path):
+    """[LSP-18] references для переменных теперь поддерживается (раньше возвращал None)."""
     script_file, _ = setup_test_workspace(tmp_path)
     uri = server_mod._path_to_uri(str(script_file))
 
@@ -138,4 +138,7 @@ def test_references_variables_not_supported_yet(tmp_path: Path):
     result = server_mod.references(
         _make_ls(uri), _make_params(uri, line=0, character=9, include_declaration=True)
     )
-    assert result is None
+    # Теперь references для variables поддержан
+    assert result is not None, "References for variable should return locations (LSP-18)"
+    # Минимум 1: объявление (default player_gold = 100)
+    assert len(result) >= 1
