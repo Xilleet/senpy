@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     )
 
 
-@dataclass
+@dataclass(slots=True)
 class Diagnostic:
     file_path: str
     line_number: int
@@ -29,7 +29,7 @@ class Diagnostic:
     fix_end_col: int | None = None
 
 
-@dataclass
+@dataclass(slots=True)
 class AnalysisResult:
     diagnostics: list[Diagnostic]
     file_count: int
@@ -38,7 +38,7 @@ class AnalysisResult:
     fixable_count: int = 0
 
 
-@dataclass
+@dataclass(slots=True)
 class FileScope:
     user_symbols: set[str] = field(default_factory=set)
     declared_symbols: set[str] = field(default_factory=set)

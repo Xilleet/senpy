@@ -43,7 +43,7 @@ def _mermaid_node_ref(name: str) -> str:
     return sid if sid == name else f'{sid}["{name}"]'
 
 
-@dataclass
+@dataclass(slots=True)
 class FlowBranch:
     """Представляет одну ветку развилки (choice в menu: или if/elif/else)."""
 

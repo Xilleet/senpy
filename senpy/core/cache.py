@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from senpy.core.models import Diagnostic, FileScope
 
 
-@dataclass
+@dataclass(slots=True)
 class CachedFileEntry:
     """Метаданные одного закэшированного файла (для Tier 1 cache)."""
     mtime: float
@@ -41,7 +41,7 @@ class CachedFileEntry:
     collect_diagnostics: list[Diagnostic] = field(default_factory=list)
 
 
-@dataclass
+@dataclass(slots=True)
 class CacheManifest:
     """Полный манифест кэша: версия Senpy + global symbol hash + все файлы."""
     version: str

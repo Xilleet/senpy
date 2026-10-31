@@ -9,7 +9,7 @@ from senpy.core.logging import get_logger
 _logger = get_logger("traceback")
 
 
-@dataclass
+@dataclass(slots=True)
 class CrashReport:
     file_path: str
     line_number: int

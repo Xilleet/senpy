@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from senpy.core.signature import SignatureInfo
 
 
-@dataclass
+@dataclass(slots=True)
 class VariableSymbol:
     """Представляет переменную (default) или константу (define) в проекте."""
 
@@ -20,7 +20,7 @@ class VariableSymbol:
     is_character: bool = False  # True если это Character(...) или DynamicCharacter(...)
 
 
-@dataclass
+@dataclass(slots=True)
 class LabelSymbol:
     """Представляет сюжетную метку (label)."""
 
@@ -34,7 +34,7 @@ class LabelSymbol:
     jump_sources: list[tuple[str, int]] = field(default_factory=list)
 
 
-@dataclass
+@dataclass(slots=True)
 class ScreenSymbol:
     """Представляет UI экран (screen)."""
 
@@ -44,7 +44,7 @@ class ScreenSymbol:
     signature: SignatureInfo | None = None
 
 
-@dataclass
+@dataclass(slots=True)
 class ImageSymbol:
     """Представляет объявление спрайта или фона (image / layeredimage)."""
 
@@ -56,7 +56,7 @@ class ImageSymbol:
     attributes: set[str] = field(default_factory=set)
 
 
-@dataclass
+@dataclass(slots=True)
 class TransformSymbol:
     """Представляет ATL-трансформацию (transform)."""
 

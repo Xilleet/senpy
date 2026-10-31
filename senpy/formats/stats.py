@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from senpy.core.analyzer import SenpyAnalyzer
 
 
-@dataclass
+@dataclass(slots=True)
 class CharacterStats:
     tag: str
     display_name: str
@@ -22,7 +22,7 @@ class CharacterStats:
     percentage_words: float = 0.0
 
 
-@dataclass
+@dataclass(slots=True)
 class StoryStats:
     total_dialogue_lines: int = 0
     total_words: int = 0
