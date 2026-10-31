@@ -179,7 +179,7 @@ def find_unrpyc_executable(
         return [custom_path]
 
     if os.path.exists(SENPY_CACHE_DIR):
-        for root, _, files in os.walk(SENPY_CACHE_DIR):
+        for root, _, files in os.walk(SENPY_CACHE_DIR, followlinks=False):
             if "unrpyc.py" in files:
                 return [sys.executable, os.path.join(root, "unrpyc.py")]
 
@@ -187,9 +187,12 @@ def find_unrpyc_executable(
     if which_unrpyc:
         return [which_unrpyc]
 
-    with contextlib.suppress(subprocess.SubprocessError, OSError):
+    with contextlib.suppress(subprocess.SubprocessError, OSError, subprocess.TimeoutExpired):
         res = subprocess.run(
-            [sys.executable, "-m", "unrpyc", "--help"], capture_output=True, check=False
+            [sys.executable, "-m", "unrpyc", "--help"],
+            capture_output=True,
+            check=False,
+            timeout=30,  # CLI-18: защита от зависшего unrpyc
         )
         if res.returncode == 0:
             return [sys.executable, "-m", "unrpyc"]

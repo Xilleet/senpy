@@ -811,10 +811,10 @@ def discover_files(args, config: dict, project_path: str) -> list[str]:
     orphaned_rpyc = []
     extra_rpy_files = []
 
-    # P0-4: ДВА множества для дедупликации
+    # ДВА множества для дедупликации
     existing_rpy_files = set()
     existing_rpy_basenames = set()
-    for root, dirs, files in os.walk(args.path):
+    for root, dirs, files in os.walk(args.path, followlinks=False):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for f in files:
             if f.endswith(".rpy"):
@@ -828,7 +828,7 @@ def discover_files(args, config: dict, project_path: str) -> list[str]:
 
     # 2. RPA
     rpa_files = []
-    for root, dirs, files in os.walk(args.path):
+    for root, dirs, files in os.walk(args.path, followlinks=False):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for f in files:
             if f.lower().endswith(".rpa"):

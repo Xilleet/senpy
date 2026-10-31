@@ -62,7 +62,11 @@ export function activate(context: vscode.ExtensionContext) {
             cancellable: false
         }, async () => {
             return new Promise<void>((resolve, reject) => {
-                cp.exec(`"${serverCmd}" "${workspaceRoot}" --graph`, { cwd: workspaceRoot, maxBuffer: 1024 * 1024 * 15, timeout: 60000 }, (error, stdout, stderr) => {
+                // cp.execFile with array args — no shell interpolation.
+                // Previously used cp.exec with template-string interpolation,
+                // which exposed a shell-injection risk if workspaceRoot or
+                // serverCmd contained shell metacharacters.
+                cp.execFile(serverCmd, [workspaceRoot, '--graph'], { cwd: workspaceRoot, maxBuffer: 1024 * 1024 * 15, timeout: 60000, windowsHide: true }, (error, stdout, stderr) => {
                     if (error) {
                         vscode.window.showErrorMessage(`Senpy Graph Error: ${stderr || error.message}`);
                         reject();
@@ -133,7 +137,8 @@ export function activate(context: vscode.ExtensionContext) {
             cancellable: false
         }, async () => {
             return new Promise<void>((resolve, reject) => {
-                cp.exec(`"${serverCmd}" "${workspaceRoot}" --stats --format json`, { cwd: workspaceRoot, maxBuffer: 1024 * 1024 * 10, timeout: 60000 }, (error, stdout, stderr) => {
+                // SEC-6: cp.execFile with array args — no shell interpolation.
+                cp.execFile(serverCmd, [workspaceRoot, '--stats', '--format', 'json'], { cwd: workspaceRoot, maxBuffer: 1024 * 1024 * 10, timeout: 60000, windowsHide: true }, (error, stdout, stderr) => {
                     if (error) {
                         vscode.window.showErrorMessage(`Senpy Stats Error: ${stderr || error.message}`);
                         reject();

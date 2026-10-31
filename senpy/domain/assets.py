@@ -19,7 +19,7 @@ from senpy.domain.rpa import safe_load_rpa_index
 def find_orphaned_rpyc(project_path: str) -> list[str]:
     """Находит скомпилированные .rpyc файлы, у которых нет исходных .rpy."""
     orphans = []
-    for root, dirs, filenames in os.walk(project_path):
+    for root, dirs, filenames in os.walk(project_path, followlinks=False):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for f in filenames:
             if f.endswith(".rpyc"):
@@ -54,7 +54,7 @@ class AssetManager:
             self.known_assets = set(cached_assets)
             self.valid_images = set(cached_images)
 
-        for root, dirs, filenames in os.walk(self.project_path):
+        for root, dirs, filenames in os.walk(self.project_path, followlinks=False):
             dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
             for f in filenames:
                 full_path = os.path.join(root, f)

@@ -714,7 +714,7 @@ class SenpyAnalyzer:
     def _get_rpy_files(self) -> tuple[list[str], list[str]]:
         main_files: list[str] = []
         tl_files: list[str] = []
-        for root, dirs, filenames in os.walk(self.project_path):
+        for root, dirs, filenames in os.walk(self.project_path, followlinks=False):
             dirs[:] = sorted([d for d in dirs if d not in IGNORED_DIRS])
             rel_parts = os.path.relpath(root, self.project_path).replace("\\", "/").split("/")
             is_tl_dir = "tl" in rel_parts

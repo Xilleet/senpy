@@ -20,12 +20,65 @@ except ImportError:
 
 server = LanguageServer("senpy-lsp", _SENPY_VERSION)
 
-def _uri_to_path(uri: str) -> str:
+def _uri_to_path(uri: str, workspace_root: str | None = None) -> str:
+    """Преобразует LSP file:// URI в filesystem path с security-проверками.
+
+    Workspace containment check.
+
+    Две защиты:
+      1. **Scheme validation** — принимается только `file:` scheme. Любой
+         другой (`http:`, `https:`, `ftp:`, `git+ssh:`, пустой) → `ValueError`.
+         Защита от malicious client, передающего URI на удалённый ресурс
+         (который `urlparse` пропарсит, но `open()` затем сделает сетевой
+         запрос или прочитает неожиданный путь).
+      2. **Workspace containment** (если передан `workspace_root`) — путь
+         после `realpath` обязан находиться внутри `workspace_root`. Защита
+         от path traversal (`../../../etc/passwd`) и от URI вне проекта.
+         Backward compat: если `workspace_root=None`, проверка пропускается
+         (контракт для handlers, у которых workspace ещё не инициализирован).
+
+    Args:
+        uri: LSP URI (обычно `file://...`).
+        workspace_root: Опциональный корень проекта. Если передан — путь
+            обязан находиться внутри него после нормализации.
+
+    Returns:
+        Нормализованный filesystem path.
+
+    Raises:
+        ValueError: если scheme не `file:` ИЛИ путь вне workspace_root.
+    """
     parsed = urlparse(uri)
+    if parsed.scheme != "file":
+        raise ValueError(
+            f"_uri_to_path: unsupported URI scheme {parsed.scheme!r}; "
+            f"only 'file:' is allowed (uri={uri!r})"
+        )
     path = unquote(parsed.path)
     if os.name == "nt" and path.startswith("/"):
         path = path[1:]
-    return os.path.normpath(path)
+    path = os.path.normpath(path)
+
+    if workspace_root is not None:
+        root_real = os.path.realpath(workspace_root)
+        path_real = os.path.realpath(path)
+        # os.path.commonpath возвращает общий префикс; если path_real не внутри
+        # root_real — commonpath будет короче root_real.
+        try:
+            common = os.path.commonpath([root_real, path_real])
+        except ValueError:
+            # ValueError: пути на разных дисках (Windows) или mix abs/rel.
+            raise ValueError(
+                f"_uri_to_path: path {path_real!r} is outside workspace "
+                f"root {root_real!r} (cannot compute common path)"
+            ) from None
+        if common != root_real:
+            raise ValueError(
+                f"_uri_to_path: path {path_real!r} is outside workspace "
+                f"root {root_real!r}"
+            )
+
+    return path
 
 
 def _path_to_uri(path: str) -> str:
