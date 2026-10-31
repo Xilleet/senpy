@@ -6,7 +6,6 @@ import os
 import sys
 import time
 from collections import Counter
-from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
@@ -23,7 +22,7 @@ from senpy.core.config import load_config
 from senpy.core.constants import IGNORED_DIRS
 from senpy.domain.tsundere import TSUNDERE_FLAVORS, TSUNDERE_UI
 from senpy.formats.traceback import find_latest_traceback, parse_traceback_file
-from senpy.formatter import FormatConfig, Formatter
+from senpy.formatter import FormatConfig, Formatter  # noqa: F401 — re-exported for backward compat
 
 # Пайпы (VS Code-расширение, >file, CI) всегда получают utf-8: дефолтная
 # кодировка пайпа Windows = locale (cp1251) -> UnicodeEncodeError на ✔/(//∇//)
@@ -132,152 +131,26 @@ def _null_redirect() -> _NullRedirect:
 
 
 def _dispatch_format(argv: list[str]) -> int:
-    """Обработчик подкоманды `senpy format`.
+    """Handle `senpy format` subcommand.
 
-    Использование:
-        senpy format [PATHS...] [OPTIONS]
-
-    Опции:
-        --check              Не записывать файлы, exit 1 если требуются изменения
-        --diff               Показать diff без записи
-        --stdin-filename NAME  Читать из stdin, считать что это NAME
-        --help, -h           Показать справку
+    Re-exported from cli/format_dispatch.py (extracted in 0.6.4, ARCH-4).
+    Kept here for backward compatibility — existing callers and tests use
+    `from senpy.cli.main import _dispatch_format`.
     """
+    from senpy.cli.format_dispatch import dispatch_format
+    return dispatch_format(argv)
 
-    fmt_parser = argparse.ArgumentParser(
-        prog="senpy format",
-        description="Format .rpy files (Black-style). Idempotent, low-risk, Ren'Py-specific.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    fmt_parser.add_argument(
-        "paths",
-        nargs="*",
-        default=["."],
-        help="Files or directories to format (default: current dir)",
-    )
-    fmt_parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Don't write files, exit 1 if any file would be modified (CI-friendly)",
-    )
-    fmt_parser.add_argument(
-        "--diff",
-        action="store_true",
-        help="Print diff of what would be changed, don't write files",
-    )
-    fmt_parser.add_argument(
-        "--stdin-filename",
-        metavar="NAME",
-        help="Read from stdin, format, print to stdout. NAME is used for scope detection.",
-    )
 
-    fmt_args = fmt_parser.parse_args(argv)
-    formatter = Formatter(FormatConfig())
-
-    # Режим stdin
-    if fmt_args.stdin_filename:
-        code = sys.stdin.read()
-        formatted = formatter.format_code(code, filename=fmt_args.stdin_filename)
-        sys.stdout.write(formatted)
-        return 0
-
-    # Сбор .rpy файлов
-    rpy_files: list[Path] = []
-    for p_str in fmt_args.paths:
-        p = Path(p_str)
-        if p.is_file() and p.suffix == ".rpy":
-            rpy_files.append(p)
-        elif p.is_dir():
-            rpy_files.extend(p.rglob("*.rpy"))
-        else:
-            print(f"[yellow]Skipping (not a .rpy file/dir): {p}[/yellow]")
-
-    if not rpy_files:
-        print("[yellow]No .rpy files found.[/yellow]")
-        return 0
-
-    changed_count = 0
-    would_change_count = 0
-
-    for f in rpy_files:
-        try:
-            original = f.read_text(encoding="utf-8")
-        except OSError as e:
-            print(f"[red]Error reading {f}: {e}[/red]")
-            continue
-
-        formatted = formatter.format_code(original, filename=str(f))
-
-        if original == formatted:
-            continue  # already formatted
-
-        if fmt_args.check:
-            would_change_count += 1
-            print(f"[yellow]Would reformat:[/yellow] {f}")
-        elif fmt_args.diff:
-            import difflib
-
-            diff = difflib.unified_diff(
-                original.splitlines(keepends=True),
-                formatted.splitlines(keepends=True),
-                fromfile=str(f),
-                tofile=str(f),
-            )
-            sys.stdout.writelines(diff)
-            would_change_count += 1
-        else:
-            try:
-                f.write_text(formatted, encoding="utf-8")
-                changed_count += 1
-                print(f"[green]Formatted:[/green] {f}")
-            except OSError as e:
-                print(f"[red]Error writing {f}: {e}[/red]")
-
-    # Итоговый вывод
-    if fmt_args.check or fmt_args.diff:
-        if would_change_count > 0:
-            print(
-                f"\n[bold yellow]{would_change_count} file(s) would be reformatted.[/bold yellow]"
-            )
-            return 1
-        print("\n[bold green]All files are already formatted![/bold green]")
-        return 0
-
-    if changed_count > 0:
-        print(f"\n[bold green]{changed_count} file(s) formatted.[/bold green]")
-    else:
-        print("\n[bold green]All files are already formatted![/bold green]")
-    return 0
-
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Создаёт argparse parser и парсит аргументы CLI.
-
-    Вынесено из main() в Phase 3 Step 1 (0.5.6) для:
-    - Тестируемости (можно вызывать с произвольным argv)
-    - Уменьшения main() с 719 до ~530 строк
-    - Подготовки к dispatch_subcommand() pattern
-
-    Args:
-        argv: Аргументы командной строки. None = использовать sys.argv.
-
-    Returns:
-        argparse.Namespace с распарсенными аргументами.
-    """
-    parser = argparse.ArgumentParser(
-        prog="senpy",
-        description="Notice me, Senpy! Fast semantic linter & LSP for Ren'Py.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-
-    # UX-15: --version — печатает версию и выходит (как у ruff/black).
-    # Использует senpy.__version__ (single source of truth после ECO-9).
+def _add_general_args(parser: argparse.ArgumentParser) -> None:
+    """Add --version flag and positional path argument."""
+    # --version: prints version and exits (like ruff/black).
+    # Uses senpy.__version__ (single source of truth).
     parser.add_argument(
         "--version",
         action="store_true",
         help="Show Senpy version and exit",
     )
-
-    # 1. Позиционный аргумент: путь к проекту
+    # Positional: path to project
     parser.add_argument(
         "path",
         nargs="?",
@@ -285,145 +158,151 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Path to the Ren'Py project or 'game' directory (default: current dir)",
     )
 
-    # 2. Справка и документация по правилам
-    g_rules = parser.add_argument_group("Rules & Documentation")
-    g_rules.add_argument(
+
+def _add_rules_args(parser: argparse.ArgumentParser) -> None:
+    """Add Rules & Documentation argument group (--rules, --rule)."""
+    g = parser.add_argument_group("Rules & Documentation")
+    g.add_argument(
         "--rules",
         action="store_true",
         help="List all 40 available Senpy rules and their descriptions",
     )
-    g_rules.add_argument(
+    g.add_argument(
         "--rule",
         metavar="CODE",
         help="Show detailed explanation and code examples for a specific rule (e.g. --rule RPY104)",
     )
 
-    # 3. Настройки анализа и автофикса
-    g_lint = parser.add_argument_group("Analysis & Autofix")
-    g_lint.add_argument(
+
+def _add_lint_args(parser: argparse.ArgumentParser) -> None:
+    """Add Analysis & Autofix argument group (16 flags)."""
+    g = parser.add_argument_group("Analysis & Autofix")
+    g.add_argument(
         "--fix",
         action="store_true",
         help="Automatically fix safe errors (unclosed tags RPY301, smart quotes RPY002, tabs RPY001)",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--coverage",
         action="store_true",
         help="Display translation coverage metrics and completion percentages for game/tl/",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--stats",
         action="store_true",
         help="Calculate story & character dialogue statistics, word count and reading time",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--defaults",
         action="store_true",
         help="Generate 'senpy_defaults.rpy' containing 'default' declarations for all RPY104 variables",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--errors-only",
         action="store_true",
         help="Show only critical ERRORs, hiding WARNINGs and INFO notices",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--info",
         action="store_true",
         help="Display informational notices (e.g. unreferenced labels RPY303)",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--ignore",
         nargs="+",
         metavar="CODE",
         default=None,
         help="Ignore specific error codes (e.g. --ignore RPY104 RPY101)",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--select",
         nargs="+",
         metavar="CODE",
         default=None,
         help="Run ONLY these rules (e.g. --select RPY101 RPY102). All other rules are disabled.",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--extend-select",
         nargs="+",
         metavar="CODE",
         default=None,
         help="Add these rules to --select (no effect without --select).",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--extend-ignore",
         nargs="+",
         metavar="CODE",
         default=None,
         help="Add these rules to --ignore (extends the blacklist).",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--max-errors",
         type=int,
         metavar="NUM",
         default=None,
         help="Maximum errors to display in terminal (default: 50)",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--no-cache", action="store_true", help="Disable disk caching (.senpy_cache)"
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--clear-cache",
         action="store_true",
         help="Clear project cache directory (.senpy_cache) and exit",
     )
-    # UX-15: dry-run и CI-friendly опции для --fix.
-    g_lint.add_argument(
+    # dry-run and CI-friendly options for --fix
+    g.add_argument(
         "--check",
         action="store_true",
         help="Dry-run for --fix: report what would be fixed, but don't write. "
         "Exit 1 if any fixable issues found (CI-friendly).",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--diff",
         action="store_true",
         help="Show unified diff of what --fix would change, but don't write files. "
         "Useful for reviewing auto-fixes before applying.",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--exit-zero",
         action="store_true",
         help="Always exit 0, even if errors found. Useful for non-blocking CI runs "
         "(e.g. nightly reports). Still prints diagnostics to stdout.",
     )
-    g_lint.add_argument(
+    g.add_argument(
         "--show-fixes",
         action="store_true",
         help="Show detailed list of fixes applied by --fix (file:line: rule — message). "
         "Without --fix, shows '0 fixes applied'. Useful for CI logs and audit.",
     )
 
-    # 4. Визуализация и форматы отчётов
-    g_export = parser.add_argument_group("Visualization & Reports")
-    g_export.add_argument(
+
+def _add_export_args(parser: argparse.ArgumentParser) -> None:
+    """Add Visualization & Reports argument group."""
+    g = parser.add_argument_group("Visualization & Reports")
+    g.add_argument(
         "--export-html",
         metavar="FILE",
         help="Generate a standalone HTML report with an interactive story map and diagnostics",
     )
-    g_export.add_argument(
+    g.add_argument(
         "--export-wiki",
         nargs="?",
         const="PROJECT_WIKI.md",
         metavar="FILE",
         help="Generate project documentation (characters, variables, endings) in Markdown (default: PROJECT_WIKI.md)",
     )
-    g_export.add_argument(
+    g.add_argument(
         "--graph",
         action="store_true",
         help="Generate a Mermaid.js diagram of the story flow and label transitions",
     )
-    g_export.add_argument(
+    g.add_argument(
         "--graph-file",
         metavar="FILE",
         help="Save the Mermaid.js story diagram directly to a file (e.g. story.md)",
     )
-    g_export.add_argument(
+    g.add_argument(
         "--output-format",
         "--format",
         dest="output_format",
@@ -432,51 +311,82 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Output format: 'text' (default), 'json' for VS Code, 'sarif' for "
              "GitHub Actions, 'junit' for CI (XML), 'github' for PR annotations",
     )
-    g_export.add_argument(
+    g.add_argument(
         "--output-file",
         metavar="FILE",
         help="Save report to a specific file (e.g. report.json or report.txt)",
     )
 
-    # 5. Декомпиляция и интеграции
-    g_tools = parser.add_argument_group("Tools & Integrations")
-    g_tools.add_argument(
+
+def _add_tools_args(parser: argparse.ArgumentParser) -> None:
+    """Add Tools & Integrations argument group."""
+    g = parser.add_argument_group("Tools & Integrations")
+    g.add_argument(
         "--lsp",
         action="store_true",
         help="Run Senpy as a Language Server (LSP) for editors like VS Code / Neovim",
     )
-    g_tools.add_argument(
+    g.add_argument(
         "--init-ci",
         action="store_true",
         help="Generate a GitHub Actions workflow (.github/workflows/senpy.yml) with automated SARIF scanning",
     )
-    g_tools.add_argument(
+    g.add_argument(
         "--traceback",
         nargs="?",
         const="traceback.txt",
         metavar="FILE",
         help="Inspect runtime crash log (traceback.txt or errors.txt) and explain the crash using Senpy rules",
     )
-    g_tools.add_argument(
+    g.add_argument(
         "--stubs",
         nargs="?",
         const="typings",
         metavar="DIR",
         help="Generate Python type stubs (.pyi) for Pylance / MyPy in VS Code (default: typings/)",
     )
-    g_tools.add_argument(
+    g.add_argument(
         "--decompile",
         action="store_true",
         help="Automatically decompile orphaned .rpyc files into a temporary sandbox",
     )
-    g_tools.add_argument(
+    g.add_argument(
         "--unrpyc", metavar="PATH", help="Custom path to unrpyc.py or unrpyc executable"
     )
-    g_tools.add_argument(
+    g.add_argument(
         "--tsundere",
         action="store_true",
         help="B-Baka! It's not like I want to check your visual novel!",
     )
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Create argparse parser and parse CLI arguments.
+
+    Orchestrates 5 helpers for argument groups:
+      1. _add_general_args — --version, path positional
+      2. _add_rules_args — --rules, --rule
+      3. _add_lint_args — 16 analysis/autofix flags
+      4. _add_export_args — visualization & reports
+      5. _add_tools_args — LSP, CI, traceback, stubs, decompile, etc.
+
+    Args:
+        argv: Command-line arguments. None = use sys.argv.
+
+    Returns:
+        argparse.Namespace with parsed arguments.
+    """
+    parser = argparse.ArgumentParser(
+        prog="senpy",
+        description="Notice me, Senpy! Fast semantic linter & LSP for Ren'Py.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    _add_general_args(parser)
+    _add_rules_args(parser)
+    _add_lint_args(parser)
+    _add_export_args(parser)
+    _add_tools_args(parser)
 
     return parser.parse_args(argv)
 
@@ -729,36 +639,16 @@ def _xml_escape(text: str) -> str:
     )
 
 
-def render_text(
+def _render_diagnostic_cards(
     active_diagnostics,
-    hidden_info_count: int,
-    result,
-    args,
-    console: Console,
-    is_tsundere: bool,
-    elapsed: float,
     max_errors: int,
-) -> int:
-    """Рендерит diagnostics в text-формате (карточки + таблица + summary).
+    is_tsundere: bool,
+    console: Console,
+) -> None:
+    """Render diagnostic cards (one Panel per diagnostic) up to max_errors.
 
-    Возвращает exit code (не вызывает sys.exit).
-    Вынесено из main() в Phase 3 Step 2c (0.5.6).
+    If there are more diagnostics than max_errors, prints an "omitted" notice.
     """
-    # 0 ПРОБЛЕМ
-    if not active_diagnostics:
-        if is_tsundere:
-            console.print(
-                f"[bold magenta](⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄) «{TSUNDERE_UI['clean_title']}»[/bold magenta]\n"
-                f"[dim]{TSUNDERE_UI['clean_sub'].format(lines=result.total_lines, elapsed=elapsed)}[/dim]"
-            )
-        else:
-            msg = f"[bold green]✔ All clean![/bold green] Scanned [bold]{result.total_lines:,}[/bold] lines across [bold]{result.file_count}[/bold] file(s) in [cyan]{elapsed:.3f}s[/cyan]."
-            if result.fixed_count > 0:
-                msg += f" [bold cyan]({result.fixed_count} fix(es) applied!)[/bold cyan]"
-            console.print(msg)
-        return 0
-
-    # ВЫВОД КАРТОЧЕК С УЧЕТОМ SEVERITY
     displayed = active_diagnostics[:max_errors]
     for err in displayed:
         text = Text()
@@ -782,7 +672,13 @@ def render_text(
             f"\n[dim]... and {hidden} more diagnostic(s) omitted (use --max-errors to show more).[/dim]\n"
         )
 
-    # СВОДНАЯ ТАБЛИЦА С УРОВНЯМИ СТРОГОСТИ
+
+def _render_summary_table(
+    active_diagnostics,
+    is_tsundere: bool,
+    console: Console,
+) -> None:
+    """Render summary table with Rule/Severity/Count columns."""
     counts = Counter((e.code, e.severity) for e in active_diagnostics)
     table = Table(
         title="Diagnostics Summary" if not is_tsundere else TSUNDERE_UI["summary"],
@@ -798,6 +694,23 @@ def render_text(
 
     console.print(table)
 
+
+def _render_fixable_report(
+    result,
+    args,
+    is_tsundere: bool,
+    hidden_info_count: int,
+    active_diagnostics,
+    console: Console,
+) -> None:
+    """Render fixable/fixed report + hidden info notice.
+
+    Handles 4 cases:
+    1. fixed_count > 0 — "Automatically fixed N error(s)" + optional --show-fixes detail
+    2. fixable_count > 0 without --fix — "fixable with --fix"
+    3. --show-fixes without --fix — "0 fixes applied"
+    4. hidden_info_count > 0 — "info notice(s) omitted"
+    """
     if result.fixed_count > 0:
         if is_tsundere:
             console.print(
@@ -807,7 +720,7 @@ def render_text(
             console.print(
                 f"\n[bold green]✔ Automatically fixed {result.fixed_count} error(s)![/bold green]"
             )
-        # --show-fixes — детальный отчёт "что было исправлено"
+        # --show-fixes — detailed "what was fixed" report
         if getattr(args, "show_fixes", False):
             console.print("\n[bold cyan]Applied fixes:[/bold cyan]")
             for diag in active_diagnostics:
@@ -827,7 +740,7 @@ def render_text(
                 f"\n[dim][*] {result.fixable_count} fixable with the --fix option[/dim]"
             )
     elif getattr(args, "show_fixes", False) and result.fixed_count == 0:
-        # CLI-3: --show-fixes без --fix — "0 fixes applied"
+        # --show-fixes without --fix — "0 fixes applied"
         console.print("\n[dim]0 fixes applied (use --fix to apply fixes).[/dim]")
 
     if hidden_info_count > 0:
@@ -840,7 +753,19 @@ def render_text(
                 f"\n[dim]ℹ {hidden_info_count} info notice(s) omitted (use --info to view them).[/dim]"
             )
 
-    # Подсчет по категориям
+
+def _render_summary_line(
+    active_diagnostics,
+    result,
+    elapsed: float,
+    is_tsundere: bool,
+    console: Console,
+) -> int:
+    """Render final summary line ("Found N errors, M warnings...") and return exit code.
+
+    Exit code: 0 if no ERRORs (or --exit-zero flag), 1 otherwise.
+    """
+    # Count by category
     error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
     warn_count = sum(1 for e in active_diagnostics if e.severity == "WARNING")
     hint_count = sum(1 for e in active_diagnostics if e.severity == "HINT")
@@ -877,49 +802,112 @@ def render_text(
             f"in [cyan]{elapsed:.3f}s[/cyan]."
         )
 
-    # UX-15: --exit-zero форсирует exit 0 даже при ошибках (для non-blocking CI).
+    return error_count
+
+
+def render_text(
+    active_diagnostics,
+    hidden_info_count: int,
+    result,
+    args,
+    console: Console,
+    is_tsundere: bool,
+    elapsed: float,
+    max_errors: int,
+) -> int:
+    """Render diagnostics in text format (cards + table + summary).
+
+    Orchestrates 4 helpers:
+      1. _render_diagnostic_cards — Panel per diagnostic
+      2. _render_summary_table — Rule/Severity/Count table
+      3. _render_fixable_report — fixed/fixable/info-omitted messages
+      4. _render_summary_line — final "Found N errors..." line + exit code
+
+    Returns exit code (does not call sys.exit).
+    """
+    # Empty case — "All clean!" message
+    if not active_diagnostics:
+        if is_tsundere:
+            console.print(
+                f"[bold magenta](⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄) «{TSUNDERE_UI['clean_title']}»[/bold magenta]\n"
+                f"[dim]{TSUNDERE_UI['clean_sub'].format(lines=result.total_lines, elapsed=elapsed)}[/dim]"
+            )
+        else:
+            msg = f"[bold green]✔ All clean![/bold green] Scanned [bold]{result.total_lines:,}[/bold] lines across [bold]{result.file_count}[/bold] file(s) in [cyan]{elapsed:.3f}s[/cyan]."
+            if result.fixed_count > 0:
+                msg += f" [bold cyan]({result.fixed_count} fix(es) applied!)[/bold cyan]"
+            console.print(msg)
+        return 0
+
+    # 1. Diagnostic cards
+    _render_diagnostic_cards(active_diagnostics, max_errors, is_tsundere, console)
+
+    # 2. Summary table
+    _render_summary_table(active_diagnostics, is_tsundere, console)
+
+    # 3. Fixable/fixed report
+    _render_fixable_report(
+        result, args, is_tsundere, hidden_info_count, active_diagnostics, console
+    )
+
+    # 4. Summary line + exit code
+    error_count = _render_summary_line(active_diagnostics, result, elapsed, is_tsundere, console)
+
+    # --exit-zero forces exit 0 even with errors (for non-blocking CI)
     return 0 if args.exit_zero else (1 if error_count > 0 else 0)
 
-def discover_files(args, config: dict, project_path: str) -> list[str]:
-    """Находит .rpy файлы, .rpyc orphans, извлекает RPA, декомпилирует .rpyc.
+def _find_rpy_files(project_path: str) -> tuple[set[str], set[str]]:
+    """Walk project_path and find all .rpy files.
 
-    Вынесено из main() в Phase 3 Step 3 (0.5.6).
-    Возвращает список extra_rpy_files — путей к .rpy файлам из RPA/декомпиляции.
+    Returns:
+        Tuple of (relative_paths, basenames) for deduplication.
+        - relative_paths: set of relative paths (e.g. "game/script.rpy")
+        - basenames: set of just filenames (e.g. "script.rpy")
     """
-    decomp_sandbox = os.path.join(os.path.abspath(args.path), ".senpy_cache", "decompiled")
-    rpa_sandbox = os.path.join(os.path.abspath(args.path), ".senpy_cache", "rpa_extracted")
-    os.makedirs(decomp_sandbox, exist_ok=True)
-    os.makedirs(rpa_sandbox, exist_ok=True)
-
-    raw_orphans = SenpyAnalyzer.find_orphaned_rpyc(args.path)
-    orphaned_rpyc = []
-    extra_rpy_files = []
-
-    # ДВА множества для дедупликации
-    existing_rpy_files = set()
-    existing_rpy_basenames = set()
-    for root, dirs, files in os.walk(args.path, followlinks=False):
+    relative_paths: set[str] = set()
+    basenames: set[str] = set()
+    for root, dirs, files in os.walk(project_path, followlinks=False):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for f in files:
             if f.endswith(".rpy"):
                 full_path = os.path.join(root, f)
                 try:
-                    rel = os.path.relpath(full_path, args.path)
+                    rel = os.path.relpath(full_path, project_path)
                 except ValueError:
                     rel = f
-                existing_rpy_files.add(rel)
-                existing_rpy_basenames.add(f)
+                relative_paths.add(rel)
+                basenames.add(f)
+    return relative_paths, basenames
 
-    # 2. RPA
-    rpa_files = []
+
+def _find_orphaned_rpyc(
+    args,
+    raw_orphans: list[str],
+    rpa_sandbox: str,
+    existing_rpy_basenames: set[str],
+) -> tuple[list[str], list[str]]:
+    """Find orphaned .rpyc files + extract scripts from .rpa archives.
+
+    Returns:
+        Tuple of (extra_rpy_files, updated_raw_orphans):
+        - extra_rpy_files: .rpy files extracted from RPA archives
+        - updated_raw_orphans: original raw_orphans + .rpyc from RPA archives
+    """
+    extra_rpy_files: list[str] = []
+    updated_orphans = list(raw_orphans)
+
+    # Find .rpa archives
+    rpa_files: list[str] = []
     for root, dirs, files in os.walk(args.path, followlinks=False):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for f in files:
             if f.lower().endswith(".rpa"):
                 rpa_files.append(os.path.join(root, f))
 
+    # Extract scripts from each .rpa
     for rpa in rpa_files:
         rpa_base = os.path.splitext(os.path.basename(rpa))[0].lower()
+        # Extract if archive looks like main game archive OR if no orphans yet
         if (
             any(term in rpa_base for term in ("script", "archive", "data", "game", "code"))
             or not raw_orphans
@@ -932,13 +920,87 @@ def discover_files(args, config: dict, project_path: str) -> list[str]:
                     if item.endswith(".rpy"):
                         extra_rpy_files.append(item)
                     elif item.endswith(".rpyc"):
-                        raw_orphans.append(item)
+                        updated_orphans.append(item)
 
-    # 3. Синхронизация
+    return extra_rpy_files, updated_orphans
+
+
+def _decompile_sandbox(
+    orphaned_rpyc: list[str],
+    args,
+    config: dict,
+    decomp_sandbox: str,
+) -> list[str]:
+    """Decompile orphaned .rpyc files into sandbox.
+
+    Prompts user (if interactive) or uses --decompile flag.
+    Returns list of decompiled .rpy file paths.
+    """
+    if not orphaned_rpyc:
+        return []
+
+    should_decompile = config.get("decompile", False) or args.decompile
+    is_interactive = hasattr(sys.stdin, "isatty") and sys.stdin.isatty()
+    if (
+        not should_decompile
+        and is_interactive
+        and not (args.graph or args.graph_file or args.stats)
+    ):
+        console.print(
+            f"[bold yellow]Found {len(orphaned_rpyc)} compiled .rpyc file(s) without source code.[/bold yellow]"
+        )
+        try:
+            answer = (
+                input("Decompile them into a sandbox for analysis? [y/N]: ").strip().lower()
+            )
+            should_decompile = answer in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            should_decompile = False
+
+    if not should_decompile:
+        return []
+
+    custom_unrpyc = args.unrpyc or config.get("unrpyc_path")
+    unrpyc_cmd = find_unrpyc_executable(
+        custom_unrpyc, args.path, auto_download=is_interactive
+    )
+    if not unrpyc_cmd:
+        return []
+
+    return decompile_to_sandbox(orphaned_rpyc, unrpyc_cmd, decomp_sandbox)
+
+
+def discover_files(args, config: dict, project_path: str) -> list[str]:
+    """Find .rpy files, .rpyc orphans, extract RPA, decompile .rpyc.
+
+    Orchestrates 3 helpers:
+      1. _find_rpy_files — existing .rpy files for dedup
+      2. _find_orphaned_rpyc — .rpyc orphans + RPA extraction
+      3. _decompile_sandbox — decompile orphans into sandbox
+
+    Returns list of extra_rpy_files (paths to .rpy from RPA/decompilation).
+    """
+    decomp_sandbox = os.path.join(os.path.abspath(args.path), ".senpy_cache", "decompiled")
+    rpa_sandbox = os.path.join(os.path.abspath(args.path), ".senpy_cache", "rpa_extracted")
+    os.makedirs(decomp_sandbox, exist_ok=True)
+    os.makedirs(rpa_sandbox, exist_ok=True)
+
+    raw_orphans = list(SenpyAnalyzer.find_orphaned_rpyc(args.path))
+
+    # 1. Find existing .rpy files for dedup
+    _, existing_rpy_basenames = _find_rpy_files(args.path)
+
+    # 2. Find .rpyc orphans + extract RPA scripts
+    extra_rpy_files, raw_orphans = _find_orphaned_rpyc(
+        args, raw_orphans, rpa_sandbox, existing_rpy_basenames
+    )
+
+    # 3. Sync: add extracted .rpy basenames to existing set
     for f in extra_rpy_files:
         existing_rpy_basenames.add(os.path.basename(f))
 
-    # 4. Кэш декомпиляции
+    # 4. Cache check: use cached .rpy if fresh, else queue for decompile
+    orphaned_rpyc: list[str] = []
     for rpyc in raw_orphans:
         rpy_name = os.path.basename(rpyc)[:-1]
         if rpy_name in existing_rpy_basenames:
@@ -951,73 +1013,53 @@ def discover_files(args, config: dict, project_path: str) -> list[str]:
             if rpyc not in orphaned_rpyc:
                 orphaned_rpyc.append(rpyc)
 
-    # 5. Декомпиляция
-    if orphaned_rpyc:
-        should_decompile = config.get("decompile", False) or args.decompile
-        is_interactive = hasattr(sys.stdin, "isatty") and sys.stdin.isatty()
-        if (
-            not should_decompile
-            and is_interactive
-            and not (args.graph or args.graph_file or args.stats)
-        ):
-            console.print(
-                f"[bold yellow]Found {len(orphaned_rpyc)} compiled .rpyc file(s) without source code.[/bold yellow]"
-            )
-            try:
-                answer = (
-                    input("Decompile them into a sandbox for analysis? [y/N]: ").strip().lower()
-                )
-                should_decompile = answer in ("y", "yes")
-            except (EOFError, KeyboardInterrupt):
-                should_decompile = False
-
-        if should_decompile:
-            custom_unrpyc = args.unrpyc or config.get("unrpyc_path")
-            unrpyc_cmd = find_unrpyc_executable(
-                custom_unrpyc, args.path, auto_download=is_interactive
-            )
-            if unrpyc_cmd:
-                new_decompiled = decompile_to_sandbox(orphaned_rpyc, unrpyc_cmd, decomp_sandbox)
-                for f_rpy in new_decompiled:
-                    if f_rpy not in extra_rpy_files:
-                        extra_rpy_files.append(f_rpy)
+    # 5. Decompile orphans
+    new_decompiled = _decompile_sandbox(orphaned_rpyc, args, config, decomp_sandbox)
+    for f_rpy in new_decompiled:
+        if f_rpy not in extra_rpy_files:
+            extra_rpy_files.append(f_rpy)
 
     return extra_rpy_files
 
-def main():
+def _dispatch_subcommand(argv: list[str]) -> int | None:
+    """Check for subcommand (e.g. `senpy format`) and dispatch.
 
-    # P1-1: Subcommand dispatch (senpy format ...)
-    if len(sys.argv) > 1 and sys.argv[1] == "format":
-        return _dispatch_format(sys.argv[2:])
+    Returns exit code if subcommand was dispatched, None otherwise.
+    """
+    # Subcommand registry — extensible for future subcommands (check, lsp, graph, ci, clean)
+    if len(argv) > 1 and argv[1] == "format":
+        return _dispatch_format(argv[2:])
+    return None
 
-    # Phase 3 Step 1: argparse вынесен в parse_args()
-    args = parse_args()
 
-    # UX-15: --version — печатает и выходит.
+def _handle_early_exits(args, console, is_tsundere: bool) -> int | None:
+    """Handle early-exit flags: --version, --lsp, --rules, --rule,
+    --traceback, --init-ci, --coverage, --clear-cache.
+
+    Returns exit code if early exit happened, None otherwise.
+    """
+    # --version: prints version and returns 0
     if args.version:
         from senpy.__version__ import __version__
-
         print(f"senpy {__version__}", flush=True)
         return 0
 
+    # --lsp: starts LSP server and exits
     if args.lsp:
         from senpy.lsp.server import start_lsp
-
         start_lsp()
         sys.exit(0)
 
+    # --rules / --rule: lists rules or shows one
     if args.rules or args.rule:
         from senpy.rules.rules_info import show_rule_detail, show_rules_table
-
         if args.rule:
             show_rule_detail(args.rule.upper())
         else:
             show_rules_table()
         sys.exit(0)
 
-    config = load_config(args.path)
-    is_tsundere = args.tsundere or config.get("tsundere", False)
-
+    # Handlers return exit code or None (continue)
     _ec = handle_traceback(args, console, is_tsundere)
     if _ec is not None:
         sys.exit(_ec)
@@ -1034,112 +1076,138 @@ def main():
     if _ec is not None:
         sys.exit(_ec)
 
+    return None
+
+
+def _setup_rule_filters(args, config: dict) -> tuple[set[str], int]:
+    """Set up rule filtering: ignored_codes (blacklist) + max_errors.
+
+    Combines sources of ignored rules:
+      - args.ignore (CLI --ignore) OR config.ignore (TOML)
+      - args.extend_ignore (CLI --extend-ignore)
+      - config.extend_ignore (TOML)
+      - .senpy-ignore file (CLI-15)
+
+    Also reads select/extend_select from config if not set on CLI.
+
+    Returns:
+        Tuple of (ignored_codes set, max_errors int).
+    """
     cfg_ignore = set(config.get("ignore", []))
     cli_ignore = set(args.ignore) if args.ignore is not None else set()
-    # --extend-ignore добавляет к blacklist (CLI имеет приоритет над config)
     cli_extend_ignore = set(args.extend_ignore) if args.extend_ignore is not None else set()
     cfg_extend_ignore = set(config.get("extend_ignore", []))
-    # .senpy-ignore файл в корне проекта
     senpy_ignore_codes = load_senpy_ignore(args.path)
-    # Объединяем: --ignore (CLI) ИЛИ config.ignore, плюс --extend-ignore (CLI) + config.extend_ignore
-    # плюс .senpy-ignore файл (CLI-15)
+
     base_ignore = cli_ignore if args.ignore is not None else cfg_ignore
     ignored_codes = {
         c.strip().upper()
         for c in (base_ignore | cli_extend_ignore | cfg_extend_ignore | senpy_ignore_codes)
     }
-    # --select / --extend-select из config если не заданы в CLI
+
+    # --select / --extend-select from config if not set on CLI
     if args.select is None and config.get("select"):
         args.select = list(config.get("select", []))
     if args.extend_select is None and config.get("extend_select"):
         args.extend_select = list(config.get("extend_select", []))
 
     max_errors = args.max_errors or config.get("max_errors", 50)
+    return ignored_codes, max_errors
 
-    # file discovery вынесено в discover_files()
-    extra_rpy_files = discover_files(args, config, args.path)
 
-    is_quiet_mode = bool(
-        args.graph or args.graph_file or args.stats or args.output_format in ("json", "sarif", "junit", "github")
-    )
+def _print_scan_banner(args, console, is_tsundere: bool) -> None:
+    """Print intro banner + recent crash log warning (if any)."""
+    if is_tsundere:
+        console.print(
+            f"[bold magenta](¬_¬ ) «{TSUNDERE_UI['intro'].format(path=args.path)}»[/bold magenta]\n"
+        )
+    else:
+        console.print(f"[bold cyan]Scanning directory:[/bold cyan] {args.path}...\n")
 
-    if not is_quiet_mode:
-        if is_tsundere:
-            console.print(
-                f"[bold magenta](¬_¬ ) «{TSUNDERE_UI['intro'].format(path=args.path)}»[/bold magenta]\n"
+    recent_tb = find_latest_traceback(args.path)
+    if recent_tb:
+        auto_crash = parse_traceback_file(recent_tb)
+        if auto_crash:
+            tb_name = os.path.basename(recent_tb)
+            tb_text = Text()
+            tb_text.append(f"Recent crash log detected ({tb_name})!\n", style="bold red")
+            tb_text.append(
+                f"Crashed at: {auto_crash.file_path}:{auto_crash.line_number} — {auto_crash.exception_type}\n",
+                style="yellow",
             )
-        else:
-            console.print(f"[bold cyan]Scanning directory:[/bold cyan] {args.path}...\n")
+            tb_text.append(
+                f"[{auto_crash.rule_code}] {auto_crash.explanation}", style="bright_white"
+            )
+            console.print(Panel(tb_text, border_style="red dim", expand=False))
+            console.print()
 
-        recent_tb = find_latest_traceback(args.path)
-        if recent_tb:
-            auto_crash = parse_traceback_file(recent_tb)
-            if auto_crash:
-                tb_name = os.path.basename(recent_tb)
-                tb_text = Text()
-                tb_text.append(f"Recent crash log detected ({tb_name})!\n", style="bold red")
-                tb_text.append(
-                    f"Crashed at: {auto_crash.file_path}:{auto_crash.line_number} — {auto_crash.exception_type}\n",
-                    style="yellow",
-                )
-                tb_text.append(
-                    f"[{auto_crash.rule_code}] {auto_crash.explanation}", style="bright_white"
-                )
-                console.print(Panel(tb_text, border_style="red dim", expand=False))
-                console.print()
 
-    # --check и --diff — dry-run режимы для --fix.
-    # --check: анализируем с fix=False (НЕ применяем фиксы), смотрим на fixable_count.
-    #          Exit 1 если fixable > 0. Это правильно: analyzer.run() с fix=False
-    #          уже считает fixable_count (количество потенциальных фиксов).
-    # --diff: анализируем с fix=True, но monkey-patch open() чтобы перехватить
-    #         запись и собрать diff, не трогая диск.
+def _setup_diff_interception(args) -> tuple[dict[str, str], object]:
+    """Set up builtins.open monkey-patch for --diff mode.
+
+    TODO(0.6.6): Move this into analyzer.run() via dry-run callback.
+    The monkey-patch is a hack — analyzer writes to disk via open(), and we
+    intercept to capture what would be written without actually writing.
+    After analyzer refactor (0.6.6, ARCH-13..15), analyzer should accept a
+    dry_run_callback parameter and call it instead of open().
+
+    Returns:
+        Tuple of (diff_collector dict, real_open function).
+    """
     diff_collector: dict[str, str] = {}
     _real_open = open
-    if args.diff:
-        import builtins
+    if not args.diff:
+        return diff_collector, _real_open
 
-        _real_open = builtins.open
+    import builtins
+    _real_open = builtins.open
 
-        def _intercept_open(file, mode="r", *a, **kw):
-            if "w" in mode and isinstance(file, str) and file.endswith(".rpy"):
+    def _intercept_open(file, mode="r", *a, **kw):
+        if "w" in mode and isinstance(file, str) and file.endswith(".rpy"):
 
-                class _DiffCapture:
-                    def __init__(self):
-                        self._buf = []
+            class _DiffCapture:
+                def __init__(self):
+                    self._buf = []
 
-                    def write(self, s):
-                        self._buf.append(s)
+                def write(self, s):
+                    self._buf.append(s)
 
-                    def writelines(self, lines):
-                        self._buf.extend(lines)
+                def writelines(self, lines):
+                    self._buf.extend(lines)
 
-                    def close(self):
-                        pass
+                def close(self):
+                    pass
 
-                    def flush(self):
-                        pass
+                def flush(self):
+                    pass
 
-                    def __enter__(self):
-                        return self
+                def __enter__(self):
+                    return self
 
-                    def __exit__(self, *a):
-                        diff_collector[file] = "".join(self._buf)
+                def __exit__(self, *a):
+                    diff_collector[file] = "".join(self._buf)
 
-                return _DiffCapture()
-            return _real_open(file, mode, *a, **kw)
+            return _DiffCapture()
+        return _real_open(file, mode, *a, **kw)
 
-        builtins.open = _intercept_open
+    builtins.open = _intercept_open
+    return diff_collector, _real_open
 
-    # --check: fix=False (ничего не меняем, только считаем fixable_count).
-    # --diff: fix=True (analyzer готовит изменения, но open() перехвачен).
-    # обычный --fix: fix=True.
-    # без опций: fix=False.
-    should_apply_fix = args.fix or args.diff  # --check НЕ применяет
 
-    # UX-15: --check и --diff форсируют --no-cache. Tier 2 cache хранит diagnostics,
-    # но НЕ fixable_count (он инкрементируется только в _analyze_file).
-    # Если использовать кэш, fixable_count=0 и --check ложно говорит "No fixable".
+def _run_analysis(args, extra_rpy_files, is_quiet_mode: bool):
+    """Run SenpyAnalyzer with appropriate fix/no_cache settings.
+
+    Returns:
+        Tuple of (result, elapsed_seconds).
+    """
+    # --check: fix=False (don't modify, just count fixable_count)
+    # --diff: fix=True (analyzer prepares changes, but open() intercepted)
+    # --fix: fix=True
+    # no flags: fix=False
+    should_apply_fix = args.fix or args.diff
+
+    # --check and --diff force --no-cache: tier 2 cache stores diagnostics
+    # but NOT fixable_count (only incremented in _analyze_file).
     no_cache = args.no_cache or args.check or args.diff
 
     start_time = time.perf_counter()
@@ -1148,10 +1216,15 @@ def main():
     )
     result = analyzer.run(quiet=is_quiet_mode)
     elapsed = time.perf_counter() - start_time
+    return result, analyzer, elapsed
 
-    # Восстанавливаем open()
-    if args.diff:
-        builtins.open = _real_open
+
+def _handle_post_analysis(args, analyzer, result, console, is_tsundere, ignored_codes):
+    """Handle post-analysis output flags: --stats, --export-wiki, --export-html,
+    --graph, --defaults, --stubs.
+
+    Returns exit code if any handler exited, None otherwise.
+    """
     _ec = handle_stats(args, analyzer, console, is_tsundere)
     if _ec is not None:
         sys.exit(_ec)
@@ -1170,88 +1243,146 @@ def main():
     _ec = handle_stubs(args, analyzer, console, is_tsundere)
     if _ec is not None:
         sys.exit(_ec)
-    # Phase 3 Step 2a: фильтрация вынесена в filter_diagnostics()
-    active_diagnostics, hidden_info_count = filter_diagnostics(result, args, ignored_codes)
+    return None
 
-    # --- ВЫВОД В ФОРМАТЕ SARIF ДЛЯ GITHUB ACTIONS ---
+
+def _handle_output_format(args, active_diagnostics, result, elapsed, console, ignored_codes):
+    """Dispatch output by format: sarif/json/junit/github exit directly,
+    text format returns control to caller for further processing."""
     if args.output_format == "sarif":
         sys.exit(render_sarif(active_diagnostics, args, console))
-
-    # --- ВЫВОД В ФОРМАТЕ JSON ДЛЯ VS CODE ---
     elif args.output_format == "json":
         sys.exit(render_json(active_diagnostics, result, elapsed, args, console))
-
-    # ---  ВЫВОД В ФОРМАТЕ JUNIT XML ДЛЯ CI ---
     elif args.output_format == "junit":
         sys.exit(render_junit(active_diagnostics, args, console))
-
-    # --- ВЫВОД В ФОРМАТЕ GITHUB ACTIONS ANNOTATIONS ---
     elif args.output_format == "github":
         sys.exit(render_github(active_diagnostics, args, console))
+    # text format — caller handles output_redirect + render_text
 
-    # P0-1: --output-file для text-формата.
-    # Раньше --output-file молча игнорировался: rich Console пишет в sys.stdout,
-    # а файловый перехват был только для JSON/SARIF веток. Решение — временно
-    # подменить глобальную `console` на файловую через context manager, чтобы
-    # весь text-вывод (карточки, таблицы, tsundere-баннеры, итоговая строка)
-    # пошёл в файл. Используем _exit_with_output_redirect вместо sys.exit,
-    # чтобы SystemExit корректно отработал через __exit__ и закрыл файл.
+
+def _handle_check_mode(args, result, console) -> int | None:
+    """Handle --check dry-run mode: print fixable count, exit 0 or 1."""
+    if not args.check:
+        return None
+    if result.fixable_count > 0:
+        console.print(
+            f"[bold yellow]Would fix {result.fixable_count} issue(s) in {result.file_count} file(s).[/bold yellow]"
+        )
+        console.print("[dim]Run with --fix to apply these changes.[/dim]")
+        sys.exit(1)
+    else:
+        console.print("[bold green]No fixable issues found.[/bold green]")
+        sys.exit(0)
+
+
+def _handle_diff_mode(args, diff_collector, result, console, _real_open) -> int | None:
+    """Handle --diff dry-run mode: print unified diff, exit 0 or 1."""
+    if not args.diff:
+        return None
+    import difflib
+
+    if not diff_collector:
+        console.print("[bold green]No changes would be applied by --fix.[/bold green]")
+        sys.exit(0)
+
+    console.print(f"[bold cyan]--fix would change {len(diff_collector)} file(s):[/bold cyan]\n")
+    has_changes = False
+    for file_path, new_content in diff_collector.items():
+        try:
+            with _real_open(file_path, "r", encoding="utf-8") as f:
+                original = f.read()
+        except OSError:
+            continue
+        if original == new_content:
+            continue
+        has_changes = True
+        diff = difflib.unified_diff(
+            original.splitlines(keepends=True),
+            new_content.splitlines(keepends=True),
+            fromfile=file_path,
+            tofile=file_path + " (after --fix)",
+        )
+        sys.stdout.writelines(diff)
+        sys.stdout.write("\n")
+
+    if has_changes:
+        console.print(
+            f"[bold yellow]\n{result.fixable_count} fixable issue(s) across {len(diff_collector)} file(s).[/bold yellow]"
+        )
+        console.print("[dim]Run with --fix to apply these changes.[/dim]")
+        sys.exit(1)
+    else:
+        console.print("[bold green]No changes would be applied by --fix.[/bold green]")
+        sys.exit(0)
+
+
+def main():
+    """CLI entry point. Orchestrates subcommand dispatch, early exits,
+    config loading, file discovery, analysis, and output rendering.
+    """
+    # Subcommand dispatch (e.g. `senpy format ...`)
+    sub_exit = _dispatch_subcommand(sys.argv)
+    if sub_exit is not None:
+        return sub_exit
+
+    # Parse CLI arguments
+    args = parse_args()
+
+    # Early exits: --version, --lsp, --rules, --rule, --traceback, --init-ci, --coverage, --clear-cache
+    config = load_config(args.path)
+    is_tsundere = args.tsundere or config.get("tsundere", False)
+    early_exit = _handle_early_exits(args, console, is_tsundere)
+    if early_exit is not None:
+        return early_exit
+
+    # Set up rule filtering (ignored_codes + max_errors)
+    ignored_codes, max_errors = _setup_rule_filters(args, config)
+
+    # File discovery (.rpy files, .rpyc orphans, .rpa extraction, decompile)
+    extra_rpy_files = discover_files(args, config, args.path)
+
+    is_quiet_mode = bool(
+        args.graph or args.graph_file or args.stats or args.output_format in ("json", "sarif", "junit", "github")
+    )
+
+    if not is_quiet_mode:
+        _print_scan_banner(args, console, is_tsundere)
+
+    # --diff: monkey-patch builtins.open to capture what --fix would write
+    # TODO(0.6.6): move into analyzer.run() via dry-run callback
+    diff_collector, _real_open = _setup_diff_interception(args)
+
+    # Run analysis
+    result, analyzer, elapsed = _run_analysis(args, extra_rpy_files, is_quiet_mode)
+
+    # Restore open() after --diff monkey-patch
+    if args.diff:
+        import builtins
+        builtins.open = _real_open
+
+    # Post-analysis output handlers (--stats, --export-wiki, --export-html, --graph, --defaults, --stubs)
+    _handle_post_analysis(args, analyzer, result, console, is_tsundere, ignored_codes)
+
+    # Filter diagnostics by --ignore/--select/--errors-only/--info
+    active_diagnostics, hidden_info_count = filter_diagnostics(result, args, ignored_codes)
+
+    # Output format dispatch (sarif/json/junit/github exit directly, text continues)
+    _handle_output_format(args, active_diagnostics, result, elapsed, console, ignored_codes)
+
+    # --output-file for text format: redirect console to file
     output_redirect = (
         _replace_console(_make_file_console(args))
         if (args.output_file and args.output_format == "text")
         else _null_redirect()
     )
 
-    # UX-15: --check и --diff обработка после analyzer.run.
-    # Выводим результат dry-run и выходим ДО обычного вывода diagnostics.
-    if args.check:
-        if result.fixable_count > 0:
-            console.print(
-                f"[bold yellow]Would fix {result.fixable_count} issue(s) in {result.file_count} file(s).[/bold yellow]"
-            )
-            console.print("[dim]Run with --fix to apply these changes.[/dim]")
-            sys.exit(1)
-        else:
-            console.print("[bold green]No fixable issues found.[/bold green]")
-            sys.exit(0)
+    # --check dry-run: print fixable count and exit
+    _handle_check_mode(args, result, console)
 
-    if args.diff:
-        import difflib
+    # --diff dry-run: print unified diff and exit
+    _handle_diff_mode(args, diff_collector, result, console, _real_open)
 
-        if not diff_collector:
-            console.print("[bold green]No changes would be applied by --fix.[/bold green]")
-            sys.exit(0)
-
-        console.print(f"[bold cyan]--fix would change {len(diff_collector)} file(s):[/bold cyan]\n")
-        has_changes = False
-        for file_path, new_content in diff_collector.items():
-            try:
-                with _real_open(file_path, "r", encoding="utf-8") as f:
-                    original = f.read()
-            except OSError:
-                continue
-            if original == new_content:
-                continue
-            has_changes = True
-            diff = difflib.unified_diff(
-                original.splitlines(keepends=True),
-                new_content.splitlines(keepends=True),
-                fromfile=file_path,
-                tofile=file_path + " (after --fix)",
-            )
-            sys.stdout.writelines(diff)
-            sys.stdout.write("\n")
-
-        if has_changes:
-            console.print(
-                f"[bold yellow]\n{result.fixable_count} fixable issue(s) across {len(diff_collector)} file(s).[/bold yellow]"
-            )
-            console.print("[dim]Run with --fix to apply these changes.[/dim]")
-            sys.exit(1)
-        else:
-            console.print("[bold green]No changes would be applied by --fix.[/bold green]")
-            sys.exit(0)
-
+    # Text output (default): render diagnostic cards + summary table + fixable report
     with output_redirect:
         _exit_with_output_redirect(
             args,

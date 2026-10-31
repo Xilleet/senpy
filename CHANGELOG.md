@@ -5,6 +5,54 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] — CLI God-functions Refactor (internal, not tagged)
+
+### Architecture
+
+Internal refactor of `cli/main.py` (+ new `format_dispatch.py`).
+No user-visible changes — all CLI flags, output formats, and behavior identical.
+All 5 god-functions split into testable helpers with characterization tests.
+
+* **`main()`:** Extracted `_dispatch_subcommand`
+  (subcommand registry, extensible for future `check`/`lsp`/`graph`/`ci`/`clean`),
+  `_handle_early_exits` (--version/--lsp/--rules/--rule/--traceback/--init-ci/
+  --coverage/--clear-cache), `_setup_rule_filters` (combines --ignore/--extend-ignore/
+  config/.senpy-ignore), `_print_scan_banner`, `_setup_diff_interception`,
+  `_run_analysis`, `_handle_post_analysis`, `_handle_output_format`,
+  `_handle_check_mode`, `_handle_diff_mode`.
+* **`parse_args()`:** Extracted `_add_general_args`,
+  `_add_rules_args`, `_add_lint_args` (16 flags), `_add_export_args`, `_add_tools_args`.
+* **`render_text()`:** Extracted
+  `_render_diagnostic_cards`, `_render_summary_table`, `_render_fixable_report`,
+  `_render_summary_line`.
+* **`_dispatch_format()`:** Extracted to new module
+  `senpy/cli/format_dispatch.py` with `dispatch_format()` function. `_dispatch_format`
+  in main.py is now a thin re-export wrapper for backward compatibility.
+* **`discover_files()`:** Extracted
+  `_find_rpy_files`, `_find_orphaned_rpyc`, `_decompile_sandbox`.
+
+### Tests
+
+* 96 characterization tests added (898 total):
+  - `test_format_dispatch_characterization.py` (14 tests)
+  - `test_discover_files_characterization.py` (8 tests)
+  - `test_render_text_characterization.py` (18 tests)
+  - `test_parse_args_characterization.py` (45 tests)
+  - `test_main_characterization.py` (11 tests, subprocess-based, cross-platform)
+
+### Notes
+
+* **Monkey-patch `builtins.open` for `--diff` preserved** (not removed). Removing
+  it requires `analyzer.run()` to accept a `dry_run_callback` parameter, which is
+  part of ARCH-13..15 (0.6.6 Core refactor). TODO comment added in
+  `_setup_diff_interception`.
+* **Subprocess tests use `python -m senpy.cli`** (via `sys.executable`) instead of
+  bare `senpy` command — works without `pip install -e .` and on Windows without
+  senpy.exe in PATH. Also forces UTF-8 encoding (avoids cp1251 crash on Russian
+  Windows) and sets PYTHONPATH to repo root (so `import senpy` works from any cwd).
+* **Not tagged** — internal refactor,. Next tagged release
+  (0.6.5) will include these commits.
+
 ## [0.6.3]
 
 ### Exception hierarchy
