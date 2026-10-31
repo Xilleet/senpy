@@ -219,13 +219,32 @@ def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | 
     if not word:
         return None
 
-    # Пока поддерживаем rename только для label'ов
-    # UX-EXT-5: используем snapshot, не server_mod._active_analyzer.labels —
-    # analyze_file_only чистит labels из других файлов.
-    if word not in server_mod._symbol_snapshot["labels"]:
-        return None
-
     new_name = params.new_name
+
+    # rename для labels, variables, transforms, screens.
+    # используем snapshot, не server_mod._active_analyzer.labels —
+    # analyze_file_only чистит labels из других файлов.
+    if word in server_mod._symbol_snapshot["labels"]:
+        # Существующая логика для labels (через jump_sources reverse index)
+        return _rename_label(server_mod, word, new_name)
+    elif word in server_mod._symbol_snapshot["variables"]:
+        return _rename_symbol_via_text_search(server_mod, word, new_name, "variables")
+    elif word in server_mod._symbol_snapshot["transforms"]:
+        return _rename_symbol_via_text_search(server_mod, word, new_name, "transforms")
+    elif word in server_mod._symbol_snapshot["screens"]:
+        return _rename_symbol_via_text_search(server_mod, word, new_name, "screens")
+
+    return None
+
+
+def _rename_label(
+    server_mod, word: str, new_name: str
+) -> lsp.WorkspaceEdit | None:
+    """Rename для label: обновляет объявление + все jump/call ссылки.
+
+    Использует jump_sources reverse index из analyzer'а — точнее, чем
+    text search (не ловит false positives в строках/комментариях).
+    """
     changes: dict[str, list[lsp.TextEdit]] = {}
 
     # 1. Объявление (label X:)
@@ -291,6 +310,101 @@ def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | 
     return lsp.WorkspaceEdit(changes=changes)
 
 
+# =============================================================================
+# helpers: rename для variables/transforms/screens via text search
+# =============================================================================
+
+# Regex template для поиска вхождений слова как whole-word (не частью другого имени).
+# Границы: не alphanumeric/underscore с обеих сторон.
+# Пример: для "player_gold" не должно матчить "player_gold_count" или "my_player_gold".
+_WORD_BOUNDARY_TEMPLATE = r"(?<![A-Za-z0-9_])({})(?![A-Za-z0-9_])"
+
+
+def _find_text_occurrences_in_project(
+    server_mod, word: str
+) -> list[tuple[str, int, int]]:
+    """Ищет все text-вхождения word как whole-word во всех .rpy файлах проекта.
+
+    Возвращает list of (file_path, line_idx_0based, col_utf16).
+
+    Используется для rename/references variables/transforms/screens, у которых
+    нет reverse index (в отличие от labels с jump_sources).
+
+    NB: Может ловить false positives в строковых литералах и комментариях
+    (например, "$ x = 'player_gold'"). Это компромисс — точный анализ потребовал
+    бы AST-обхода по всем .rpy файлам, что медленно. Для rename/references
+    текстовый поиск приемлем: пользователь видит все вхождения и может отменить.
+    """
+    if server_mod._active_analyzer is None:
+        return []
+
+    project_path = server_mod._active_analyzer.project_path
+    occurrences: list[tuple[str, int, int]] = []
+    pattern = re.compile(_WORD_BOUNDARY_TEMPLATE.format(re.escape(word)))
+
+    for root, _, files in os.walk(project_path, followlinks=False):
+        # Пропускаем служебные директории
+        dirs_skip = [d for d in _get_ignored_dirs() if d in root.split(os.sep)]
+        if dirs_skip:
+            continue
+        for fname in files:
+            if not fname.endswith(".rpy"):
+                continue
+            fpath = os.path.join(root, fname)
+            try:
+                with open(fpath, encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+            except OSError:
+                continue
+
+            for line_idx, line in enumerate(lines):
+                for m in re.finditer(pattern, line):
+                    col_utf16 = len(line[: m.start()].encode("utf-16-le")) // 2
+                    occurrences.append((fpath, line_idx, col_utf16))
+
+    return occurrences
+
+
+def _get_ignored_dirs() -> set[str]:
+    """Список директорий которые не надо обходить."""
+    from senpy.core.constants import IGNORED_DIRS
+    return set(IGNORED_DIRS) if IGNORED_DIRS else {".senpy_cache", "tl", "cache"}
+
+
+def _rename_symbol_via_text_search(
+    server_mod, word: str, new_name: str, symbol_kind: str
+) -> lsp.WorkspaceEdit | None:
+    """Rename variable/transform/screen через text search по всем .rpy файлам.
+
+    LSP-17: для variables/transforms/screens нет reverse index (как jump_sources
+    для labels). Используем text search — все whole-word вхождения слова в .rpy
+    файлах проекта заменяются на new_name.
+    """
+    occurrences = _find_text_occurrences_in_project(server_mod, word)
+    if not occurrences:
+        return None
+
+    changes: dict[str, list[lsp.TextEdit]] = {}
+    word_len_utf16 = len(word.encode("utf-16-le")) // 2
+
+    for fpath, line_idx, col_utf16 in occurrences:
+        uri = server_mod._path_to_uri(fpath)
+        changes.setdefault(uri, []).append(
+            lsp.TextEdit(
+                range=lsp.Range(
+                    start=lsp.Position(line=line_idx, character=col_utf16),
+                    end=lsp.Position(line=line_idx, character=col_utf16 + word_len_utf16),
+                ),
+                new_text=new_name,
+            )
+        )
+
+    if not changes:
+        return None
+
+    return lsp.WorkspaceEdit(changes=changes)
+
+
 def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Location] | None:
     server_mod = _get_server_mod()
     """Find References: все статические jump/call-ссылки на метку под курсором."""
@@ -348,9 +462,63 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
             )
         return locations
 
-    # экраны, переменные, спрайты, трансформы — следующая итерация:
-    # для них ещё нет обратного индекса с координатами.
+    # LSP-18: references для variables/transforms/screens через text search.
+    # Для них нет reverse index (как jump_sources для labels), поэтому используем
+    # _find_text_occurrences_in_project — grep whole-word по всем .rpy файлам.
+    if (
+        word in server_mod._symbol_snapshot["variables"]
+        or word in server_mod._symbol_snapshot["transforms"]
+        or word in server_mod._symbol_snapshot["screens"]
+    ):
+        return _references_via_text_search(
+            server_mod, word, params.context.include_declaration
+        )
+
     return None
+
+
+def _references_via_text_search(
+    server_mod, word: str, include_declaration: bool
+) -> list[lsp.Location]:
+    """LSP-18 helper: references для variables/transforms/screens.
+
+    Использует _find_text_occurrences_in_project. Если include_declaration=False,
+    исключает первую локацию (объявление) — она определяется через snapshot.
+    """
+    occurrences = _find_text_occurrences_in_project(server_mod, word)
+    if not occurrences:
+        return []
+
+    # Если не нужно включать объявление — найдём его через snapshot и исключим.
+    declaration_loc: tuple[str, int] | None = None  # (file_path, line_idx_0based)
+    for kind in ("variables", "transforms", "screens"):
+        sym = server_mod._symbol_snapshot[kind].get(word)
+        if sym is not None:
+            declaration_loc = (sym.file_path, max(0, sym.line_number - 1))
+            break
+
+    locations: list[lsp.Location] = []
+    word_len_utf16 = len(word.encode("utf-16-le")) // 2
+
+    for fpath, line_idx, col_utf16 in occurrences:
+        if (
+            not include_declaration
+            and declaration_loc is not None
+            and fpath == declaration_loc[0]
+            and line_idx == declaration_loc[1]
+        ):
+            continue
+        locations.append(
+            lsp.Location(
+                uri=server_mod._path_to_uri(fpath),
+                range=lsp.Range(
+                    start=lsp.Position(line=line_idx, character=col_utf16),
+                    end=lsp.Position(line=line_idx, character=col_utf16 + word_len_utf16),
+                ),
+            )
+        )
+
+    return locations
 
 
 def document_symbols(

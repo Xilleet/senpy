@@ -338,6 +338,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Ignore specific error codes (e.g. --ignore RPY104 RPY101)",
     )
     g_lint.add_argument(
+        "--select",
+        nargs="+",
+        metavar="CODE",
+        default=None,
+        help="Run ONLY these rules (e.g. --select RPY101 RPY102). All other rules are disabled.",
+    )
+    g_lint.add_argument(
+        "--extend-select",
+        nargs="+",
+        metavar="CODE",
+        default=None,
+        help="Add these rules to --select (no effect without --select).",
+    )
+    g_lint.add_argument(
+        "--extend-ignore",
+        nargs="+",
+        metavar="CODE",
+        default=None,
+        help="Add these rules to --ignore (extends the blacklist).",
+    )
+    g_lint.add_argument(
         "--max-errors",
         type=int,
         metavar="NUM",
@@ -459,39 +480,102 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     return parser.parse_args(argv)
 
+def load_senpy_ignore(project_path: str) -> set[str]:
+    """Читает .senpy-ignore файл из корня проекта.
+
+    Файл содержит один rule code per line. Поддерживаются:
+      - Полные комментарии (строка начинается с `#`).
+      - Inline комментарии (`RPY101 # typo in dialogue`).
+      - Пустые строки.
+      - Case-insensitive (нормализуется к uppercase).
+
+    Args:
+        project_path: Путь к корню проекта (где лежит .senpy-ignore).
+
+    Returns:
+        Set of rule codes (uppercase) для исключения. Пустое множество если
+        файл не существует или пустой.
+
+    Пример файла:
+        # .senpy-ignore
+        RPY101  # typo in dialogue variable
+        RPY104
+        # RPY105  # commented out — rule will fire
+        RPY301
+    """
+    ignore_file = os.path.join(project_path, ".senpy-ignore")
+    if not os.path.isfile(ignore_file):
+        return set()
+
+    codes: set[str] = set()
+    try:
+        with open(ignore_file, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                # Убираем inline comment (всё после #)
+                line = line.split("#", 1)[0]
+                code = line.strip().upper()
+                if code:
+                    codes.add(code)
+    except OSError:
+        # Не удалось прочитать — молча возвращаем пустое множество.
+        # Логирование на DEBUG уровне уже есть в load_config.
+        pass
+
+    return codes
+
+
 def filter_diagnostics(
     result,
     args,
     ignored_codes: set[str],
 ) -> tuple[list, int]:
-    """Фильтрует diagnostics по --ignore, --errors-only, --info.
+    """Фильтрует diagnostics по --ignore, --select, --errors-only, --info.
 
-    Вынесено из main() в Phase 3 Step 2a (0.5.6) для:
-    - Тестируемости (чистая функция, без side effects)
-    - Уменьшения main()
-    - Подготовки к render_output()
+    Логика фильтрации:
+      1. start with all rules enabled
+      2. if args.select is non-empty: disable all, enable only args.select + args.extend_select
+      3. else: extend_select игнорируется (select пустой — всё включено)
+      4. remove ignored_codes (включает --ignore + --extend-ignore, собранные в main())
+      5. apply --errors-only, --info (существующая логика)
 
     Args:
         result: AnalysisResult с .diagnostics list.
-        args: Namespace с .ignore, .errors_only, .info.
-        ignored_codes: Set кодов правил для игнорирования.
+        args: Namespace с .ignore, .select, .extend_select, .errors_only, .info.
+        ignored_codes: Set кодов правил для игнорирования (включает --ignore +
+            --extend-ignore, собранные в main()).
 
     Returns:
         Кортеж (active_diagnostics, hidden_info_count):
         - active_diagnostics: отфильтрованный список для вывода
         - hidden_info_count: сколько INFO скрыто (для сообщения "use --info")
     """
+    # Построение whitelist из --select + --extend-select.
+    # extend_select имеет эффект ТОЛЬКО если задан --select (как у ruff).
+    select_codes: set[str] = set()
+    if getattr(args, "select", None):
+        select_codes.update(c.strip().upper() for c in args.select)
+        if getattr(args, "extend_select", None):
+            select_codes.update(c.strip().upper() for c in args.extend_select)
+
+    # --extend-ignore добавляется к ignored_codes (внутри filter_diagnostics,
+    # чтобы функция была самодостаточной — не зависела от main() сборки).
+    full_ignored = set(ignored_codes)
+    if getattr(args, "extend_ignore", None):
+        full_ignored.update(c.strip().upper() for c in args.extend_ignore)
+
     hidden_info_count = sum(
         1
         for e in result.diagnostics
         if e.severity == "INFO"
-        and e.code not in ignored_codes
+        and e.code not in full_ignored
+        and (not select_codes or e.code in select_codes)
         and not args.info
     )
     active_diagnostics = [
         e
         for e in result.diagnostics
-        if e.code not in ignored_codes
+        if e.code not in full_ignored
+        and (not select_codes or e.code in select_codes)
         and (not args.errors_only or e.severity == "ERROR")
         and (args.info or e.severity != "INFO")
     ]
@@ -952,11 +1036,27 @@ def main():
 
     cfg_ignore = set(config.get("ignore", []))
     cli_ignore = set(args.ignore) if args.ignore is not None else set()
-    ignored_codes = {c.strip().upper() for c in (cli_ignore or cfg_ignore)}
+    # --extend-ignore добавляет к blacklist (CLI имеет приоритет над config)
+    cli_extend_ignore = set(args.extend_ignore) if args.extend_ignore is not None else set()
+    cfg_extend_ignore = set(config.get("extend_ignore", []))
+    # .senpy-ignore файл в корне проекта
+    senpy_ignore_codes = load_senpy_ignore(args.path)
+    # Объединяем: --ignore (CLI) ИЛИ config.ignore, плюс --extend-ignore (CLI) + config.extend_ignore
+    # плюс .senpy-ignore файл (CLI-15)
+    base_ignore = cli_ignore if args.ignore is not None else cfg_ignore
+    ignored_codes = {
+        c.strip().upper()
+        for c in (base_ignore | cli_extend_ignore | cfg_extend_ignore | senpy_ignore_codes)
+    }
+    # --select / --extend-select из config если не заданы в CLI
+    if args.select is None and config.get("select"):
+        args.select = list(config.get("select", []))
+    if args.extend_select is None and config.get("extend_select"):
+        args.extend_select = list(config.get("extend_select", []))
 
     max_errors = args.max_errors or config.get("max_errors", 50)
 
-    # Phase 3 Step 3: file discovery вынесено в discover_files()
+    # file discovery вынесено в discover_files()
     extra_rpy_files = discover_files(args, config, args.path)
 
     is_quiet_mode = bool(
@@ -988,7 +1088,7 @@ def main():
                 console.print(Panel(tb_text, border_style="red dim", expand=False))
                 console.print()
 
-    # UX-15: --check и --diff — dry-run режимы для --fix.
+    # --check и --diff — dry-run режимы для --fix.
     # --check: анализируем с fix=False (НЕ применяем фиксы), смотрим на fixable_count.
     #          Exit 1 если fixable > 0. Это правильно: analyzer.run() с fix=False
     #          уже считает fixable_count (количество потенциальных фиксов).
