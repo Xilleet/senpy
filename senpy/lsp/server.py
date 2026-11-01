@@ -11,6 +11,9 @@ from lsprotocol import types as lsp
 from senpy.__version__ import VERSION_WITH_PREFIX as _SENPY_VERSION
 from senpy.core.analyzer import Diagnostic, SenpyAnalyzer
 from senpy.core.exceptions import SecurityError
+from senpy.core.logging import get_logger
+
+_logger = get_logger("lsp.server")
 
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
@@ -342,8 +345,25 @@ def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
     _lsp_server.rw_lock.acquire_write()
     try:
         with _analysis_lock:
-            file_path = _uri_to_path(trigger_uri)
-            project_root = _get_workspace_root(ls, file_path)
+            # trigger_uri may be empty when called from the `initialized`
+            # handler (workspace-wide scan with no specific file). In that
+            # case fall back to the workspace root path; if that's also
+            # missing, log and return silently — there is nothing to scan.
+            if trigger_uri:
+                file_path = _uri_to_path(trigger_uri)
+                project_root = _get_workspace_root(ls, file_path)
+            else:
+                try:
+                    workspace_root = ls.workspace.root_path
+                except AttributeError:
+                    workspace_root = None
+                if not workspace_root:
+                    _logger.debug(
+                        "run_full_project_diagnostics: empty trigger_uri and "
+                        "no workspace root; skipping scan"
+                    )
+                    return
+                project_root = workspace_root
 
             if _active_analyzer is None or _current_workspace_root != project_root:
                 _current_workspace_root = project_root
