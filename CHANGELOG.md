@@ -5,6 +5,86 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — renpy-magic-inspired features
+
+This release (for a long time) with user-visible features sourced from competitive analysis
+of [renpy-magic](https://github.com/adiffx/renpy-magic) (MIT, Copyright (c)
+2026 Allure Diffusion). After this release, Senpy matches or exceeds
+renpy-magic on every dimension the analysis identified — and remains ahead
+on rules (45+ vs 5), dataflow, caching, plugins, and CLI.
+
+### VS Code extension
+
+* **TextMate grammar for `.rpy`/`.rpym`**: 270-line grammar with
+  scope `source.renpy`, copied verbatim from renpy-magic (MIT). Covers
+  comments, strings, Ren'Py-specific text-tag `{…}` and interpolation `[…]`
+  escapes, `python`/`init python` blocks with indent-backreference end
+  pattern, `$`-prefixed python lines, labels, screens, transforms, image
+  definitions, say statements, numbers, operators, and built-in
+  classes/actions. Wired into `senpy-vscode/package.json` via
+  `contributes.grammars`. MIT attribution in
+  `senpy-vscode/THIRD_PARTY_NOTICES.md` (ships in VSIX via `.vscodeignore`
+  exception).
+
+### LSP — hover preview
+
+* **Image hover**: hover over `show sayori happy` or
+  `scene bg forest` to see an inline preview of the referenced sprite or
+  CG, with size metadata. Image dimensions are read by a hand-rolled
+  PNG/JPEG/WEBP (VP8/VP8L/VP8X)/GIF/BMP header parser
+  (`senpy/domain/image_size.py`, 190 LOC) — no Pillow dependency. Hover
+  clamps to a 400×200 bounding box, preserving aspect ratio.
+* **Audio hover**: hover over
+  `play music bgm_calm` / `queue sound click` / `define audio.X = "..."`
+  to get a Play audio link that opens VS Code's built-in media viewer.
+  Aliases (`define audio.X = "f.ogg"`) are resolved at index time, not
+  per-hover (avoids renpy-magic's source-file re-read anti-pattern).
+* **Video hover**: when an image declaration
+  or auto-discovered file has a video extension (`.mp4`, `.webm`, `.ogv`,
+  `.avi`, `.mkv`), hover shows a "Play in default app" link via a new
+  `senpy.openExternal` VS Code command (VS Code's image viewer cannot
+  decode these formats).
+
+### LSP — API documentation
+
+* **Auto-generated Ren'Py API docs**: 754 entries auto-fetched
+  from Ren'Py 8.5.3 RST sources (`scripts/fetch_renpy_docs.py`, Python
+  port of renpy-magic's `fetch-renpy-docs.ts`). Covers `config.*` (304),
+  `gui.*` (107), `build.*` (19), `renpy.*` (13), style/transform
+  properties (163), classes (5), functions (7). Combined with the 221
+  curated entries, `RENPY_API_DOCS_ALL` has **975 symbols** — a 4.4×
+  increase. Curated entries win on key collision (they have examples +
+  verified URLs the generated data lacks). The merge happens at import
+  time, ~5ms one-time cost.
+
+### Architecture
+
+* `ImageSymbol.image_path: str | None` field — extracted at parse time
+  from `image name = "path"` or `Transform("path", ...)` declarations so
+  hover does not have to re-read source files.
+* `AssetManager.image_name_to_path` / `audio_name_to_path` maps plus
+  `resolve_image_path` / `resolve_audio_path` / `is_video_file` /
+  `register_audio_alias` methods — mirror Ren'Py's image auto-discovery
+  (`images/foo/bar.png` → keys `"foo bar"` and `"foo_bar"`).
+* `MEDIA_EXTENSIONS` extended with `.mp4`/`.avi`/`.mkv` — RPY503
+  (unused-asset check) now also flags orphaned video files.
+* New modules: `senpy/domain/image_size.py` (190 LOC),
+  `senpy/lsp/handlers/asset_hover.py` (252 LOC),
+  `senpy/domain/renpy_api_generated.py` (4890 LOC, 754 entries).
+
+### Tests
+
+* 1010 (!) tests pass, 0 regressions. Ruff clean on all touched files.
+* `test_lsp_asset_hover.py` (44 tests): image-size parser unit
+  tests, clamp-to-hover-box aspect tests, `_extract_string_literal` edge
+  cases, image/audio/video hover integration, regression tests for
+  existing variable/label/API hover.
+* `test_lsp_21_api_docs.py` (68 tests): RST directive regex
+  unit tests, `collect_description` edge cases, end-to-end RST parsing,
+  `.rpy` action-source parsing, serializer output, generated-module
+  sanity, merge logic (curated wins on collision), hover integration,
+  backward compat.
+
 ## [0.6.6] — Core & Other God-functions Refactor (internal, not tagged)
 
 ### Architecture

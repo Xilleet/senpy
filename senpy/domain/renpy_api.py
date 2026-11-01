@@ -1254,9 +1254,35 @@ RENPY_API_DOCS: dict[str, dict[str, str]] = {
 }
 
 
+# =============================================================================
+# Merge curated + auto-generated entries.
+# =============================================================================
+# Generated entries cover namespaces that the curated dict does NOT:
+# config.*, gui.*, build.*, style/transform properties, screen actions,
+# transitions. The curated dict (hand-written, with examples and verified
+# URLs) wins on key collision — that's the whole point of having a curated
+# layer on top of generated data.
+#
+# The merge happens at import time (one-time cost, ~5ms for ~900 entries)
+# so callers see a single dict via ``get_renpy_api_hover`` and don't need
+# to know which layer a given entry came from.
+from senpy.domain.renpy_api_generated import RENPY_API_DOCS_GENERATED  # noqa: E402
+
+# Curated wins: build the merged dict as {**generated, **curated}.
+RENPY_API_DOCS_ALL: dict[str, dict[str, str]] = {
+    **RENPY_API_DOCS_GENERATED,
+    **RENPY_API_DOCS,
+}
+
+
 def get_renpy_api_hover(symbol: str) -> str | None:
-    """Возвращает форматированный Markdown для подсказки Hover по символу Ren'Py API."""
-    entry = RENPY_API_DOCS.get(symbol)
+    """Возвращает форматированный Markdown для подсказки Hover по символу Ren'Py API.
+
+    Ищет символ в объединённой базе (curated RENPY_API_DOCS + сгенерированной
+    RENPY_API_DOCS_GENERATED). Curated-записи имеют приоритет — у них есть
+    примеры и проверенные URL, которых нет в auto-generated данных.
+    """
+    entry = RENPY_API_DOCS_ALL.get(symbol)
     if not entry:
         return None
 

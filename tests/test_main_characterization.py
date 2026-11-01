@@ -85,8 +85,15 @@ def test_main_version_flag_prints_version_exits_0():
     code, out, _ = _run_senpy(["--version"])
     assert code == 0
     assert "senpy" in out.lower()
-    # Should contain version number like 0.6.3
-    assert "0.6" in out
+    # Should contain a version number like 0.6.3, 0.7.0, 1.2.3, etc.
+    # Use a regex instead of hardcoding "0.6" so the characterization
+    # test does not break on every minor bump (we want it to characterize
+    # the *shape* of the output, not a specific version).
+    import re
+
+    assert re.search(r"\b\d+\.\d+\.\d+\b", out), (
+        f"Expected a X.Y.Z version number in --version output, got: {out!r}"
+    )
 
 
 # =============================================================================
