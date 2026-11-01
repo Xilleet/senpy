@@ -234,6 +234,10 @@ def scan_file(path: Path) -> list[tuple[int, str, str]]:
 
     changes: list[tuple[int, str, str]] = []
     for i, line in enumerate(text.splitlines(keepends=True), start=1):
+        # Skip pathological lines (minified JS / generated JSON can have
+        # single-line files of hundreds of KB — regex would be slow).
+        if len(line) > 10_000:
+            continue
         new_line, n = _scrub_line(line)
         if n > 0 and new_line != line:
             changes.append((i, line, new_line))
@@ -259,9 +263,39 @@ def walk_repo(repo_root: Path, restrict_paths: list[Path] | None = None):
         for path in root.rglob("*"):
             if not path.is_file():
                 continue
+            # Skip non-repo directories that rglob can leak into (especially
+            # on Windows where .vscode-test/ downloads a full VS Code instance
+            # and would hang the script for minutes). Use substring match on
+            # '/dir/' to catch nested occurrences (e.g. 'senpy-vscode/node_modules/'
+            # was leaking through rel.startswith('node_modules/') which only
+            # matches the root).
+            try:
+                rel = path.relative_to(repo_root).as_posix()
+            except ValueError:
+                continue
+            skip_subdirs = (
+                "/.git/", "/node_modules/", "/build/", "/dist/",
+                "/.senpy_cache/", "/__pycache__/", "/.vscode-test/",
+                "/.vscode-test-cache/", "/.cache/", "/htmlcov/",
+                "/.pytest_cache/", "/.ruff_cache/", "/.mypy_cache/",
+            )
+            if any(s in "/" + rel for s in skip_subdirs):
+                continue
+            if rel.startswith(("node_modules/", "build/", "dist/", "__pycache__/",
+                               ".git/", ".senpy_cache/", ".vscode-test/",
+                               ".vscode-test-cache/", ".cache/", "htmlcov/",
+                               ".pytest_cache/", ".ruff_cache/", ".mypy_cache/")):
+                continue
             if not _is_scannable(path):
                 continue
             if _is_whitelisted(path, repo_root):
+                continue
+            # Skip files larger than 1 MB — they are not source code and
+            # would slow the scan.
+            try:
+                if path.stat().st_size > 1_000_000:
+                    continue
+            except OSError:
                 continue
             yield path
 

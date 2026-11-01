@@ -105,9 +105,26 @@ def _walk_repo():
             continue
         # Skip obvious non-repo directories (defensive — rglob shouldn't
         # yield them, but on Windows symlinks can leak through).
+        # .vscode-test/ in particular downloads a full VS Code instance
+        # (hundreds of MB of JS) and would hang the test for minutes.
         rel = path.relative_to(_REPO_ROOT).as_posix()
-        if rel.startswith((".git/", "node_modules/", "build/", "dist/",
-                           ".senpy_cache/", "__pycache__/")):
+        # Use "/node_modules/" / "/__pycache__/" /etc. as substring match
+        # (with leading slash) so we catch nested occurrences too — e.g.
+        # 'senpy-vscode/node_modules/foo.js' was previously leaking through
+        # because rel.startswith('node_modules/') only matches the root.
+        skip_subdirs = (
+            "/.git/", "/node_modules/", "/build/", "/dist/",
+            "/.senpy_cache/", "/__pycache__/", "/.vscode-test/",
+            "/.vscode-test-cache/", "/.cache/", "/htmlcov/",
+            "/.pytest_cache/", "/.ruff_cache/", "/.mypy_cache/",
+        )
+        if any(s in "/" + rel for s in skip_subdirs):
+            continue
+        # Also catch root-level occurrences (rel == 'node_modules/...').
+        if rel.startswith(("node_modules/", "build/", "dist/", "__pycache__/",
+                           ".git/", ".senpy_cache/", ".vscode-test/",
+                           ".vscode-test-cache/", ".cache/", "htmlcov/",
+                           ".pytest_cache/", ".ruff_cache/", ".mypy_cache/")):
             continue
         # Skip test artifacts (in .gitignore but may exist locally).
         if rel.startswith(("test_report.", "tests/test_report.")):
@@ -115,6 +132,14 @@ def _walk_repo():
         if not _is_scannable(path):
             continue
         if _is_whitelisted(path):
+            continue
+        # Skip files larger than 1 MB — they are almost certainly not source
+        # code (e.g. minified JS, generated reports, lockfiles bigger than
+        # the limit) and would slow the scan to a crawl.
+        try:
+            if path.stat().st_size > 1_000_000:
+                continue
+        except OSError:
             continue
         yield path
 
@@ -127,7 +152,11 @@ def _scan_file(path: Path) -> list[tuple[int, str]]:
         return []
 
     matches: list[tuple[int, str]] = []
+    # Cap line length at 10 KB to avoid pathological slow regex on minified
+    # JS / generated JSON. Real source lines are rarely this long.
     for i, line in enumerate(text.splitlines(), start=1):
+        if len(line) > 10_000:
+            continue
         if any(s in line for s in _LINE_SKIP_SUBSTRINGS):
             continue
         for m in _ID_PATTERN.finditer(line):
