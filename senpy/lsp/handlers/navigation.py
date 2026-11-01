@@ -276,7 +276,7 @@ def _rename_label(
         pass
 
     # 2. Все jump/call ссылки (из jump_sources)
-    # UX-EXT-5: тоже из snapshot, чтобы получить ссылки из всех файлов.
+    # UX: тоже из snapshot, чтобы получить ссылки из всех файлов.
     for ref_path, ref_line in server_mod._symbol_snapshot["jump_sources"].get(word, []):
         ref_uri = server_mod._path_to_uri(ref_path)
         ref_line_0 = max(0, ref_line - 1)  # 0-based
@@ -376,7 +376,7 @@ def _rename_symbol_via_text_search(
 ) -> lsp.WorkspaceEdit | None:
     """Rename variable/transform/screen через text search по всем .rpy файлам.
 
-    LSP-17: для variables/transforms/screens нет reverse index (как jump_sources
+    для variables/transforms/screens нет reverse index (как jump_sources
     для labels). Используем text search — все whole-word вхождения слова в .rpy
     файлах проекта заменяются на new_name.
     """
@@ -462,7 +462,7 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
             )
         return locations
 
-    # LSP-18: references для variables/transforms/screens через text search.
+    # references для variables/transforms/screens через text search.
     # Для них нет reverse index (как jump_sources для labels), поэтому используем
     # _find_text_occurrences_in_project — grep whole-word по всем .rpy файлам.
     if (
@@ -480,7 +480,7 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
 def _references_via_text_search(
     server_mod, word: str, include_declaration: bool
 ) -> list[lsp.Location]:
-    """LSP-18 helper: references для variables/transforms/screens.
+    """ helper: references для variables/transforms/screens.
 
     Использует _find_text_occurrences_in_project. Если include_declaration=False,
     исключает первую локацию (объявление) — она определяется через snapshot.
@@ -656,7 +656,7 @@ def prepare_rename(
             word = m.group(0)
             # Поддерживаем rename только для label'ов.
             # Для переменных/transform/screen — пока нет (can't be renamed).
-            # UX-EXT-5: используем snapshot, не server_mod._active_analyzer.labels,
+            # UX: используем snapshot, не server_mod._active_analyzer.labels,
             # чтобы F2 работал даже после did_change (analyze_file_only).
             if word in server_mod._symbol_snapshot["labels"]:
                 # Возвращаем Range слова. pygls/lsprotocol принимает Range
@@ -694,7 +694,7 @@ def prepare_rename(
 def prepare_call_hierarchy(
     ls: LanguageServer, params: lsp.CallHierarchyPrepareParams
 ) -> list[lsp.CallHierarchyItem]:
-    """LSP-5: Return CallHierarchyItem for label under cursor.
+    """Return CallHierarchyItem for label under cursor.
 
     Returns empty list if cursor is not on a label declaration or reference.
     """
@@ -752,7 +752,7 @@ def prepare_call_hierarchy(
 def incoming_calls(
     ls: LanguageServer, params: lsp.CallHierarchyIncomingCallsParams
 ) -> list[lsp.CallHierarchyIncomingCall]:
-    """LSP-5: Find all labels that call/jump to the given label.
+    """Find all labels that call/jump to the given label.
 
     Uses jump_sources reverse index from analyzer snapshot.
     """
@@ -823,7 +823,7 @@ def incoming_calls(
 def outgoing_calls(
     ls: LanguageServer, params: lsp.CallHierarchyOutgoingCallsParams
 ) -> list[lsp.CallHierarchyOutgoingCall]:
-    """LSP-5: Find all labels that this label jumps/calls to.
+    """Find all labels that this label jumps/calls to.
 
     Uses LabelSymbol.outgoing_jumps from analyzer snapshot.
     """

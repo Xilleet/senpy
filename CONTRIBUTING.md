@@ -82,11 +82,11 @@ senpy/
 │   │   │   ├── flow.py          # RPY4xx (branch dataflow) + Mermaid builder
 │   │   │   ├── formatting.py    # RPY0xx (style)
 │   │   │   ├── asset.py         # RPY5xx (assets/transforms)
-│   │   │   └── translation.py   # RPY6xx (translations) — TODO (ARCH-22)
+│   │   │   └── translation.py   # RPY6xx (translations) — TODO 
 │   │   ├── deprecated.py        # RPY107, RPY108, RPY109 (deprecated APIs)
 │   │   ├── python_ast.py        # Python AST visitor for $-statements
 │   │   ├── rules_info.py        # RULES_DATABASE, dynamic rule count
-│   │   └── dead_code.py         # RPY701/702/703 — TODO (ARCH-23)
+│   │   └── dead_code.py         # RPY701/702/703 — TODO 
 │   ├── formatter/               # Code formatter (like Black for Ren'Py)
 │   │   ├── core.py              # register_rule decorator, Formatter class
 │   │   └── rules/               # FMT-INDENT, FMT-QUOTES, etc.
@@ -366,7 +366,7 @@ Fixtures cover the basic case and a label with a docstring-only body.
 ```
 
 ```
-security(lsp): validate file: scheme in _uri_to_path (LSP-19)
+security(lsp): validate file: scheme in _uri_to_path 
 
 Previously _uri_to_path accepted any URI scheme, including http: and
 https:. A malicious LSP client could trick Senpy into making network

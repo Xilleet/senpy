@@ -322,6 +322,6 @@ def test_render_text_tsundere_with_errors():
 # =============================================================================
 
 def test_render_text_importable_from_cli_main():
-    """render_text must remain importable from senpy.cli.main after ARCH-3."""
+    """render_text must remain importable from senpy.cli.main after."""
     from senpy.cli.main import render_text as f1
     assert callable(f1)

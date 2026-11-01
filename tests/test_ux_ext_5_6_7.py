@@ -1,13 +1,13 @@
-"""Тесты для UX-EXT-5..7: cross-file autocomplete, hover-ссылка, prepare_rename.
+"""Тесты для UX..7: cross-file autocomplete, hover-ссылка, prepare_rename.
 
-UX-EXT-5: Autocomplete должен предлагать labels из ВСЕХ файлов проекта,
+UX: Autocomplete должен предлагать labels из ВСЕХ файлов проекта,
 не только из текущего. Регрессия: после did_change single-file анализ
 очищал _active_analyzer.labels, оставляя только labels текущего файла.
 
-UX-EXT-6: Hover-карточка должна содержать кликабельную Markdown-ссылку
+UX: Hover-карточка должна содержать кликабельную Markdown-ссылку
 на объявление (file:// URI с #L42 anchor), не просто текст в backticks.
 
-UX-EXT-7: workspace/didChangeConfiguration не должен падать с ошибкой
+UX: workspace/didChangeConfiguration не должен падать с ошибкой
 "Ignoring notification for unknown method". Сервер должен либо
 регистрировать handler, либо extension не должен слать этот notification.
 """
@@ -43,7 +43,7 @@ def _make_hover_params(uri: str, line: int, char: int) -> lsp.HoverParams:
 
 
 # =============================================================================
-# UX-EXT-5: Cross-file autocomplete
+# UX: Cross-file autocomplete
 # =============================================================================
 
 class TestCrossFileAutocomplete:
@@ -80,7 +80,7 @@ class TestCrossFileAutocomplete:
         analyzer.run(quiet=True)
         server_mod._active_analyzer = analyzer
         server_mod._is_initialized = True
-        # UX-EXT-5: в реальном LSP server.py это вызывается в run_full_project_diagnostics.
+        # UX: в реальном LSP server.py это вызывается в run_full_project_diagnostics.
         # В тестах вызываем явно, т.к. тест идёт напрямую через analyzer.run().
         server_mod._refresh_symbol_snapshot()
 
@@ -141,7 +141,7 @@ class TestCrossFileAutocomplete:
         analyzer.run(quiet=True)
         server_mod._active_analyzer = analyzer
         server_mod._is_initialized = True
-        # UX-EXT-5: refresh snapshot (как делает run_full_project_diagnostics)
+        # UX: refresh snapshot (как делает run_full_project_diagnostics)
         server_mod._refresh_symbol_snapshot()
 
         # did_change на a.rpy
@@ -166,7 +166,7 @@ class TestCrossFileAutocomplete:
 
 
 # =============================================================================
-# UX-EXT-6: Hover-карточка с кликабельной ссылкой
+# UX: Hover-карточка с кликабельной ссылкой
 # =============================================================================
 
 class TestHoverClickableLink:
@@ -180,7 +180,7 @@ class TestHoverClickableLink:
     def test_hover_variable_has_clickable_link(self, tmp_path: Path):
         """Hover на переменной содержит Markdown-ссылку file://...#L<line>."""
         setup_test_workspace(tmp_path)
-        # UX-EXT-5: setup_test_workspace не вызывает _refresh_symbol_snapshot,
+        # UX: setup_test_workspace не вызывает _refresh_symbol_snapshot,
         # поэтому hover (который теперь использует snapshot) не найдёт переменную.
         server_mod._refresh_symbol_snapshot()
 
@@ -273,7 +273,7 @@ class TestHoverClickableLink:
 
 
 # =============================================================================
-# UX-EXT-7: workspace/didChangeConfiguration не должен падать
+# UX: workspace/didChangeConfiguration не должен падать
 # =============================================================================
 
 class TestDidChangeConfiguration:

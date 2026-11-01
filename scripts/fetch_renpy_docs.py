@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fetch Ren'Py documentation from GitHub and generate an API definition file.
 
-LSP-21: Python port of renpy-magic's ``scripts/fetch-renpy-docs.ts`` (MIT,
+Python port of renpy-magic's ``scripts/fetch-renpy-docs.ts`` (MIT,
 Copyright (c) 2026 Allure Diffusion). Algorithm adapted 1:1 from the
 TypeScript original; the RST source layout and directive grammar are
 dictated by the Ren'Py Sphinx docs, not by renpy-magic's code.
@@ -96,7 +96,7 @@ RPY_SOURCE_FILES = [
 # module so consumers can detect staleness.
 TARGET_RENPY_VERSION = "8.5.3"
 
-HEADERS = {"User-Agent": "Mozilla/5.0 Senpy-LSP-21-fetcher"}
+HEADERS = {"User-Agent": "Mozilla/5.0 Senpy-fetcher"}
 
 Category = Literal["variable", "function", "action", "class", "property", "transition"]
 
@@ -575,7 +575,7 @@ def main() -> int:
     args = parser.parse_args()
 
     print("=" * 65)
-    print("  SENPY — Ren'Py RST docs fetcher (LSP-21)")
+    print(" SENPY — Ren'Py RST docs fetcher ")
     print("=" * 65)
 
     all_entries: list[dict] = []

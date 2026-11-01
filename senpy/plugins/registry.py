@@ -16,7 +16,7 @@ Usage:
 Rules are stored in module-level registry. They can be retrieved via
 get_registered_lint_rules() for instantiation by SenpyAnalyzer.
 
-In 0.6.0 Заход 2 (EXT-1), this registry will be populated from:
+In 0.6.0 Заход 2 , this registry will be populated from:
 1. Built-in rules (declared with @register_rule in senpy source)
 2. External plugins (discovered via [project.entry-points."senpy.plugins"])
 

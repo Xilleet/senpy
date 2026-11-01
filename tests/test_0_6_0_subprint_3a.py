@@ -1,10 +1,10 @@
 """Tests for 0.6.0 Под-спринт 3 (Заход 1): LSP killer-features.
 
-LSP-1: textDocument/documentColor + textDocument/colorPresentation
+textDocument/documentColor + textDocument/colorPresentation
        Hex colors (#ffffff, #ff0000ff) in .rpy as color swatches in VS Code.
        Killer feature for VN — lots of colors in {color=#...} tags and Solid("#...").
 
-LSP-2: textDocument/formatting + textDocument/rangeFormatting
+textDocument/formatting + textDocument/rangeFormatting
        Integrate formatter (from Под-спринт 1) into VS Code via LSP.
        Now Shift+Alt+F in VS Code formats .rpy files through Senpy.
 
@@ -54,12 +54,12 @@ class MockWorkspace:
 
 
 # =============================================================================
-# LSP-1: textDocument/documentColor
+# textDocument/documentColor
 # =============================================================================
 
 
 class TestDocumentColorHandler:
-    """LSP-1: documentColor handler returns ColorInformation[] for hex colors.
+    """documentColor handler returns ColorInformation[] for hex colors.
 
     VS Code displays color swatches next to color literals. Clicking opens
     a color picker that updates the literal.
@@ -285,7 +285,7 @@ class TestDocumentColorHandler:
 
 
 class TestColorPresentationHandler:
-    """LSP-1 part 2: colorPresentation returns ColorPresentation[] for edits.
+    """ part 2: colorPresentation returns ColorPresentation[] for edits.
 
     When user picks a new color in VS Code's color picker, VS Code calls
     colorPresentation to get the text representation of the new color.
@@ -329,12 +329,12 @@ class TestColorPresentationHandler:
 
 
 # =============================================================================
-# LSP-2: textDocument/formatting + rangeFormatting
+# textDocument/formatting + rangeFormatting
 # =============================================================================
 
 
 class TestFormattingHandler:
-    """LSP-2: textDocument/formatting integrates Senpy formatter into VS Code.
+    """textDocument/formatting integrates Senpy formatter into VS Code.
 
     VS Code calls this on Shift+Alt+F ("Format Document").
     Returns TextEdit[] that replaces the entire document with formatted version.
@@ -483,7 +483,7 @@ class TestFormattingHandler:
 
 
 class TestRangeFormattingHandler:
-    """LSP-2 part 2: textDocument/rangeFormatting formats selected range only.
+    """ part 2: textDocument/rangeFormatting formats selected range only.
 
     VS Code calls this on Ctrl+K Ctrl+F ("Format Selection").
     Currently we accept the handler exists; full range formatting is a

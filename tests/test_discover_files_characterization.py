@@ -197,8 +197,8 @@ def test_discover_files_ignored_dirs_skipped(tmp_path: Path):
 # =============================================================================
 
 def test_discover_files_importable_from_cli_main():
-    """discover_files must remain importable from senpy.cli.main after ARCH-5."""
+    """discover_files must remain importable from senpy.cli.main after."""
     from senpy.cli.main import discover_files as f1
     assert callable(f1)
-    # After ARCH-5: helpers _find_rpy_files, _find_orphaned_rpyc, _decompile_sandbox
+    # After : helpers _find_rpy_files, _find_orphaned_rpyc, _decompile_sandbox
     # may or may not be exposed — only discover_files is part of public API.

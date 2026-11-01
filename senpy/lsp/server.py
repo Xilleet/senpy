@@ -226,7 +226,7 @@ _active_analyzer: SenpyAnalyzer | None = None
 _current_workspace_root: str | None = None
 _is_initialized: bool = False
 
-# UX-EXT-5: snapshot labels/screens/transforms/images для autocomplete/rename/hover.
+# UX: snapshot labels/screens/transforms/images для autocomplete/rename/hover.
 # После run() делаем shallow copy этих dict'ов, чтобы analyze_file_only (вызывается
 # при did_change) не выкидывал labels из других файлов из _active_analyzer.labels.
 # Без snapshot'а autocomplete показывает только labels текущего файла —
@@ -351,7 +351,7 @@ def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
 
             result = _active_analyzer.run(quiet=True)
             _is_initialized = True
-            # UX-EXT-5: snapshot символов для autocomplete/rename/hover.
+            # UX: snapshot символов для autocomplete/rename/hover.
             # Должен быть ПОСЛЕ run(), но ДО проверки diagnostics.
             _refresh_symbol_snapshot()
 
@@ -576,7 +576,7 @@ def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[ls
 
 
 # =============================================================================
-# UX-EXT-3: textDocument/prepareRename — preview перед F2 rename
+# UX: textDocument/prepareRename — preview перед F2 rename
 # =============================================================================
 # VS Code вызывает prepareRename перед самим rename, чтобы:
 # 1. Проверить, что под курсором валидный символ для переименования
@@ -609,7 +609,7 @@ def prepare_rename(
 # Использует jump_sources обратный индекс из analyzer.
 # Возвращает WorkspaceEdit с изменениями для всех файлов проекта.
 #
-# UX-EXT-3: prepare_provider=True — VS Code вызывает prepareRename перед F2,
+# UX: prepare_provider=True — VS Code вызывает prepareRename перед F2,
 # чтобы показать preview и разрешить отмену до применения.
 @server.feature(
     lsp.TEXT_DOCUMENT_RENAME,
@@ -669,7 +669,7 @@ def document_highlight(
 
 
 # =============================================================================
-# LSP-1: textDocument/documentColor + colorPresentation — hex color swatches
+# textDocument/documentColor + colorPresentation — hex color swatches
 # =============================================================================
 # VS Code displays color swatches next to #ffffff literals. Clicking opens
 # a color picker that updates the literal.
@@ -697,7 +697,7 @@ def color_presentation(
 
 
 # =============================================================================
-# LSP-2: textDocument/formatting + rangeFormatting — Shift+Alt+F / Ctrl+K Ctrl+F
+# textDocument/formatting + rangeFormatting — Shift+Alt+F / Ctrl+K Ctrl+F
 # =============================================================================
 # Integrates senpy.formatter (from Под-спринт 1) into VS Code.
 # Shift+Alt+F → formatting() — formats whole document
@@ -721,7 +721,7 @@ def range_formatting(
 
 
 # =============================================================================
-# LSP-6: textDocument/signatureHelp — parameter hints for call/use
+# textDocument/signatureHelp — parameter hints for call/use
 # =============================================================================
 # When user types `call my_label(` and cursor is inside parens, VS Code shows
 # the parameter list from the label's signature.
@@ -736,7 +736,7 @@ def signature_help(
 
 
 # =============================================================================
-# LSP-5: textDocument/prepareCallHierarchy + incomingCalls + outgoingCalls
+# textDocument/prepareCallHierarchy + incomingCalls + outgoingCalls
 # =============================================================================
 # Right-click on label → "Find Callers" (incoming) / "Find References" (outgoing).
 # Killer for VN — navigation through call graph.

@@ -1,6 +1,6 @@
 """Tests for 0.6.0 Под-спринт 2b (Заход 2): Plugin loading + trust-on-first-use.
 
-EXT-1: Plugin loading via [project.entry-points."senpy.plugins"].
+Plugin loading via [project.entry-points."senpy.plugins"].
        Uses importlib.metadata.entry_points to discover installed plugins.
        Each plugin is a Rule subclass in a separate pip package.
 
@@ -10,11 +10,11 @@ SEC-P2: Trust-on-first-use security model.
         - Subsequent loads: trust store check (no prompt)
         - Non-interactive (CI, no TTY): only pre-trusted plugins load
 
-EXT-11: examples/my_senpy_plugin/ — working example plugin (separate test).
+examples/my_senpy_plugin/ — working example plugin (separate test).
 
 Architecture:
     senpy/plugins/
-    ├── loader.py        # EXT-1: discover_plugins, load_plugin, load_all_plugins
+    ├── loader.py        # : discover_plugins, load_plugin, load_all_plugins
     └── security.py      # EXTENDED: + trust store (trust_plugin, is_plugin_trusted)
 
 Trust store: ~/.senpy/trusted_plugins.json
@@ -36,12 +36,12 @@ import pytest
 
 
 # =============================================================================
-# EXT-1: Plugin discovery via entry_points
+# Plugin discovery via entry_points
 # =============================================================================
 
 
 class TestPluginDiscovery:
-    """EXT-1: discover_plugins() returns list of installed senpy plugins.
+    """discover_plugins returns list of installed senpy plugins.
 
     Plugins are discovered via Python's importlib.metadata entry_points
     mechanism. Each plugin package declares:
@@ -74,7 +74,7 @@ class TestPluginDiscovery:
 
 
 class TestPluginLoading:
-    """EXT-1: load_plugin() loads a single plugin with isolation + api_version check.
+    """load_plugin loads a single plugin with isolation + api_version check.
 
     Contract:
         1. Load entry_point value (the Rule subclass)
@@ -216,7 +216,7 @@ class TestPluginLoading:
 
 
 class TestLoadAllPlugins:
-    """EXT-1: load_all_plugins() discovers + loads all plugins with trust check."""
+    """load_all_plugins discovers + loads all plugins with trust check."""
 
     def test_load_all_plugins_function_exists(self):
         """load_all_plugins() must be importable from senpy.plugins.loader."""
@@ -462,7 +462,7 @@ class TestLoadAllPluginsWithTrust:
 
 
 # =============================================================================
-# EXT-1: register_loaded_plugins() — integration with rule registry
+# register_loaded_plugins — integration with rule registry
 # =============================================================================
 
 
@@ -519,13 +519,13 @@ class TestRegisterLoadedPlugins:
 
 
 # =============================================================================
-# EXT-11: Example plugin (examples/my_senpy_plugin/) works correctly
+# Example plugin (examples/my_senpy_plugin/) works correctly
 # =============================================================================
 
 
 
 # =============================================================================
-# EXT-11: Example plugin (examples/my_senpy_plugin/) works correctly
+# Example plugin (examples/my_senpy_plugin/) works correctly
 # =============================================================================
 
 
@@ -558,7 +558,7 @@ _skip_if_no_examples = pytest.mark.skipif(
 
 @_skip_if_no_examples
 class TestExamplePlugin:
-    """EXT-11: examples/my_senpy_plugin/ — working example plugin.
+    """examples/my_senpy_plugin/ — working example plugin.
 
     Verifies that the example plugin:
     - Can be imported

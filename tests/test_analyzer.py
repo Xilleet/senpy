@@ -159,7 +159,7 @@ def test_mega_broken_script_catches_all_rules(tmp_path: Path):
 
     # Правила, которые MEGA_TEST_SCRIPT заведомо не покрывает.
     # Каждое — с указанием причины и номером соответствующего fixture-теста
-    # (если он есть) или TODO (если fixture ещё нужно создать — см. RULE-1).
+    # (если он есть) или TODO (если fixture ещё нужно создать — см.).
     MEGA_UNCOVERED_RULES = {
         # RPY100 — нужен файл с невалидным UTF-8 (тестируется отдельно через
         # test_encoding_errors.py + RPY100 fixture TODO).

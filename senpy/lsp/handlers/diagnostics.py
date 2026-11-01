@@ -4,10 +4,10 @@
 
 Handler'ы:
   - code_action        ← TEXT_DOCUMENT_CODE_ACTION
-  - document_color     ← TEXT_DOCUMENT_DOCUMENT_COLOR (LSP-1, 0.6.0 Под-спринт 3)
-  - color_presentation ← TEXT_DOCUMENT_COLOR_PRESENTATION (LSP-1)
-  - formatting         ← TEXT_DOCUMENT_FORMATTING (LSP-2)
-  - range_formatting   ← TEXT_DOCUMENT_RANGE_FORMATTING (LSP-2)
+  - document_color     ← TEXT_DOCUMENT_DOCUMENT_COLOR (, 0.6.0 Под-спринт 3)
+  - color_presentation ← TEXT_DOCUMENT_COLOR_PRESENTATION 
+  - formatting         ← TEXT_DOCUMENT_FORMATTING 
+  - range_formatting   ← TEXT_DOCUMENT_RANGE_FORMATTING 
 
 Все функции принимают (ls, params) и обращаются к shared state через
 server_mod._X (lazy import разрывает цикл импортов).
@@ -197,7 +197,7 @@ def _color_to_hex(color: lsp.Color, with_alpha: bool = False) -> str:
 def document_color(
     ls: LanguageServer, params: lsp.DocumentColorParams
 ) -> list[lsp.ColorInformation]:
-    """LSP-1: Find all hex color literals in the document.
+    """Find all hex color literals in the document.
 
     Returns ColorInformation[] with range pointing to the #rrggbb literal
     and color as LSP Color object (0.0-1.0 floats).
@@ -237,7 +237,7 @@ def document_color(
 def color_presentation(
     ls: LanguageServer, params: lsp.ColorPresentationParams
 ) -> list[lsp.ColorPresentation]:
-    """LSP-1 part 2: Convert a Color back to text representation.
+    """ part 2: Convert a Color back to text representation.
 
     When user picks a new color in VS Code's color picker, VS Code calls
     this to get the text to insert. We return the hex format matching
@@ -272,7 +272,7 @@ def color_presentation(
 def formatting(
     ls: LanguageServer, params: lsp.DocumentFormattingParams
 ) -> list[lsp.TextEdit]:
-    """LSP-2: Format the entire document using Senpy formatter.
+    """Format the entire document using Senpy formatter.
 
     Returns list[TextEdit]. If no changes needed, returns empty list.
     Otherwise returns single TextEdit replacing whole document with
@@ -309,7 +309,7 @@ def formatting(
 def range_formatting(
     ls: LanguageServer, params: lsp.DocumentRangeFormattingParams
 ) -> list[lsp.TextEdit]:
-    """LSP-2 part 2: Format selected range only.
+    """ part 2: Format selected range only.
 
     For MVP, we format the whole document and return a single TextEdit
     replacing the entire file. This is acceptable — VS Code applies the

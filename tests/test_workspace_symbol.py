@@ -60,7 +60,7 @@ def test_workspace_symbol_returns_screens(tmp_path: Path):
     analyzer.run(quiet=True)
     server_mod._active_analyzer = analyzer
     server_mod._is_initialized = True
-    # UX-EXT-5: snapshot для workspace_symbol
+    # UX: snapshot для workspace_symbol
     server_mod._refresh_symbol_snapshot()
 
     params = _make_symbol_params(query="")
@@ -87,7 +87,7 @@ def test_workspace_symbol_returns_transforms(tmp_path: Path):
     analyzer.run(quiet=True)
     server_mod._active_analyzer = analyzer
     server_mod._is_initialized = True
-    # UX-EXT-5: snapshot для workspace_symbol
+    # UX: snapshot для workspace_symbol
     server_mod._refresh_symbol_snapshot()
 
     params = _make_symbol_params(query="")
@@ -140,7 +140,7 @@ def test_workspace_symbol_symbol_kinds(tmp_path: Path):
     analyzer.run(quiet=True)
     server_mod._active_analyzer = analyzer
     server_mod._is_initialized = True
-    # UX-EXT-5: snapshot для workspace_symbol
+    # UX: snapshot для workspace_symbol
     server_mod._refresh_symbol_snapshot()
 
     params = _make_symbol_params(query="")

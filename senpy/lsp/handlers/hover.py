@@ -135,7 +135,7 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
         var = server_mod._symbol_snapshot["variables"][target_var]
         fname = os.path.basename(var.file_path)
         kind = "Constant (`define`)" if var.is_constant else "Variable (`default`)"
-        # UX-EXT-6: кликабельная Markdown-ссылка на file:// URI с #L<line> anchor.
+        # UX: кликабельная Markdown-ссылка на file:// URI с #L<line> anchor.
         # VS Code откроет файл на нужной строке при клике в hover-карточке.
         decl_uri = server_mod._path_to_uri(var.file_path)
         content = (
@@ -148,7 +148,7 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
     if word in server_mod._symbol_snapshot["labels"]:
         lbl = server_mod._symbol_snapshot["labels"][word]
         fname = os.path.basename(lbl.file_path)
-        # UX-EXT-6: кликабельная ссылка на объявление
+        # UX: кликабельная ссылка на объявление
         decl_uri = server_mod._path_to_uri(lbl.file_path)
         info_lines = [
             f"**Ren'Py Label** — `{word}`\n\n"
@@ -182,7 +182,7 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
     if word in server_mod._symbol_snapshot["screens"]:
         scr = server_mod._symbol_snapshot["screens"][word]
         fname = os.path.basename(scr.file_path)
-        # UX-EXT-6: кликабельная ссылка на объявление
+        # UX: кликабельная ссылка на объявление
         decl_uri = server_mod._path_to_uri(scr.file_path)
         content = (
             f"**Ren'Py Screen** — `{word}`\n\n"

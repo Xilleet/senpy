@@ -1,4 +1,4 @@
-"""Тесты для VS Code extension integration (UX-EXT-1..4).
+"""Тесты для VS Code extension integration (UX..4).
 
 Проверяет, что:
 - language-configuration.json существует и валиден
@@ -30,7 +30,7 @@ _EXTENSION_TS = _VSCODE_DIR / "src" / "extension.ts"
 
 
 # =============================================================================
-# UX-EXT-1: language-configuration.json — Ren'Py language settings
+# UX: language-configuration.json — Ren'Py language settings
 # =============================================================================
 
 class TestLanguageConfiguration:
@@ -145,7 +145,7 @@ class TestLanguageConfiguration:
 
 
 # =============================================================================
-# UX-EXT-2: package.json ссылается на language-configuration.json
+# UX: package.json ссылается на language-configuration.json
 # =============================================================================
 
 class TestPackageJsonReferences:
@@ -193,7 +193,7 @@ class TestPackageJsonReferences:
 
 
 # =============================================================================
-# UX-EXT-3: prepare_rename handler (textDocument/prepareRename)
+# UX: prepare_rename handler (textDocument/prepareRename)
 # =============================================================================
 
 class TestPrepareRename:
@@ -319,7 +319,7 @@ class TestPrepareRename:
 
 
 # =============================================================================
-# UX-EXT-4: extension.ts — synchronize для подхвата .senpy.toml
+# UX: extension.ts — synchronize для подхвата.senpy.toml
 # =============================================================================
 
 class TestExtensionSynchronize:

@@ -4,14 +4,14 @@ Rule base class with RuleMeta (docs, severity, fixable, tags, deprecated).
 @register_rule("RPYxxx") decorator for lint rules (similar to formatter's).
 Plugin API version check — plugins must declare api_version, Senpy verifies compatibility.
 
-This is the FOUNDATION for plugin system. entry_points loading (EXT-1) and
+This is the FOUNDATION for plugin system. entry_points loading and
 trust-on-first-use (SEC-P2) come in Заход 2.
 
 Architecture:
     senpy/plugins/                 # NEW subpackage
     ├── __init__.py
-    ├── base.py                    # EXT-3: Rule, RuleMeta, RuleContext
-    ├── registry.py                # EXT-2: @register_rule, get_registered_lint_rules
+    ├── base.py                    # : Rule, RuleMeta, RuleContext
+    ├── registry.py                # : @register_rule, get_registered_lint_rules
     └── security.py                # SEC-P1: PLUGIN_API_VERSION, check_api_version
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ import pytest
 
 
 class TestRuleBaseClass:
-    """EXT-3: Rule base class for lint rules.
+    """Rule base class for lint rules.
 
     Plugin developers subclass Rule to define new lint rules:
 
@@ -131,7 +131,7 @@ class TestRuleBaseClass:
 
 
 class TestRegisterRuleDecorator:
-    """EXT-2: @register_rule decorator for lint rules.
+    """@register_rule decorator for lint rules.
 
     Similar to formatter's @register_rule, but for lint rules.
 

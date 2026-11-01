@@ -1,4 +1,4 @@
-"""Тесты для ECO-5: vendored unrpyc — встроенный декомпилятор.
+"""Тесты для : vendored unrpyc — встроенный декомпилятор.
 
 Проверяет, что:
 1. Импорт decompile_rpyc работает
@@ -58,7 +58,7 @@ def test_decompile_to_sandbox_uses_vendored(tmp_path: Path):
     # Вызываем decompile_to_sandbox
     result = decompile_to_sandbox(
         orphans=[str(rpyc_file)],
-        unrpyc_cmd=None,  # ECO-5: параметр игнорируется
+        unrpyc_cmd=None, # : параметр игнорируется
         temp_dir=str(tmp_path),
     )
 
@@ -77,7 +77,7 @@ def test_decompile_to_sandbox_uses_vendored(tmp_path: Path):
 
 
 def test_decompile_to_sandbox_no_subprocess(tmp_path: Path):
-    """decompile_to_sandbox НЕ использует subprocess (ECO-5)."""
+    """decompile_to_sandbox НЕ использует subprocess."""
     import pickle
     from unittest.mock import patch
 
@@ -95,4 +95,4 @@ def test_decompile_to_sandbox_no_subprocess(tmp_path: Path):
             unrpyc_cmd=None,
             temp_dir=str(tmp_path),
         )
-        assert not mock_popen.called, "subprocess.Popen не должен вызываться (ECO-5 vendored)"
+        assert not mock_popen.called, "subprocess.Popen не должен вызываться (vendored)"

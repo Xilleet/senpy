@@ -1,6 +1,6 @@
-"""LSP-20: image / audio / video hover preview tests.
+"""image / audio / video hover preview tests.
 
-Covers the three asset-hover code paths added in LSP-20:
+Covers the three asset-hover code paths added in :
   1. Image hover — `show eileen happy` returns Markdown with an inline
      `![eileen happy](file://...|width=W)` preview.
   2. Audio hover — `play music bgm_calm` returns Markdown with a
@@ -11,7 +11,7 @@ Covers the three asset-hover code paths added in LSP-20:
   4. Define-audio hover — `define audio.calm = "calm.ogg"` followed by
      `play music calm` resolves via the alias map.
   5. Suppression — `hide sayori` still suppresses variable hover (the
-     pre-LSP-20 behavior) without trying to preview an asset.
+     pre behavior) without trying to preview an asset.
 
 The unit-test for the lightweight image-size parser (PNG/JPEG/WEBP/GIF/BMP
 header walkers) is also here, since it is exercised by the image hover.
@@ -566,7 +566,7 @@ class TestVideoHover:
 
 
 class TestExistingHoverRegression:
-    """LSP-20 changes must not break existing hover paths."""
+    """ changes must not break existing hover paths."""
 
     def test_variable_hover_still_works(self, tmp_path):
         script_file, _ = setup_test_workspace(tmp_path)
@@ -612,7 +612,7 @@ class TestVSCodeOpenExternalCommand:
         content = ext_ts.read_text(encoding="utf-8")
         assert "senpy.openExternal" in content, (
             "extension.ts must register 'senpy.openExternal' command — "
-            "LSP-20 video hover emits command:senpy.openExternal?... links."
+            " video hover emits command:senpy.openExternal?... links."
         )
         assert "vscode.env.openExternal" in content, (
             "extension.ts must call vscode.env.openExternal to actually "

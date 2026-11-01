@@ -56,7 +56,7 @@ def setup_test_workspace(tmp_path: Path):
 
     server_mod._active_analyzer = analyzer
     server_mod._is_initialized = True
-    # UX-EXT-5: snapshot для references (handler'ы теперь используют snapshot)
+    # UX: snapshot для references (handler'ы теперь используют snapshot)
     server_mod._refresh_symbol_snapshot()
 
     return script_file, analyzer
@@ -130,7 +130,7 @@ def test_references_unreferenced_label(tmp_path: Path):
 
 
 def test_references_variables_now_supported(tmp_path: Path):
-    """[LSP-18] references для переменных теперь поддерживается (раньше возвращал None)."""
+    """[] references для переменных теперь поддерживается (раньше возвращал None)."""
     script_file, _ = setup_test_workspace(tmp_path)
     uri = server_mod._path_to_uri(str(script_file))
 
@@ -139,6 +139,6 @@ def test_references_variables_now_supported(tmp_path: Path):
         _make_ls(uri), _make_params(uri, line=0, character=9, include_declaration=True)
     )
     # Теперь references для variables поддержан
-    assert result is not None, "References for variable should return locations (LSP-18)"
+    assert result is not None, "References for variable should return locations "
     # Минимум 1: объявление (default player_gold = 100)
     assert len(result) >= 1

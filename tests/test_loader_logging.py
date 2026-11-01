@@ -1,4 +1,4 @@
-"""QUA-10: plugin loader должен использовать logging, а не print().
+"""plugin loader должен использовать logging, а не print.
 
 Контракт:
   - Все warning-сообщения из loader.py идут через logger.warning().

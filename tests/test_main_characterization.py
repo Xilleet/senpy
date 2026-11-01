@@ -1,7 +1,7 @@
-"""Characterization tests for main() (ARCH-1 safety net).
+"""Characterization tests for main (safety net).
 
 main() is the CLI entry point with ~277 lines, high cyclomatic complexity.
-After ARCH-1 it will:
+After it will:
   - Use Subcommand registry for dispatch (instead of `if sys.argv[1] == "format"`)
   - Extract early-exit handlers to _handle_early_exits()
   - Extract config+filter setup to _setup_rule_filters()
@@ -276,6 +276,6 @@ def test_main_diff_mode_dry_run(tmp_path: Path):
 # =============================================================================
 
 def test_main_importable_from_cli_main():
-    """main must remain importable from senpy.cli.main after ARCH-1."""
+    """main must remain importable from senpy.cli.main after."""
     from senpy.cli.main import main as f1
     assert callable(f1)

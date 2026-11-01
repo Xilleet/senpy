@@ -52,7 +52,7 @@ def workspace_symbol(
         return query in name.lower()
 
     # 1. Labels (SymbolKind.Function = 12)
-    # UX-EXT-5: используем snapshot, не server_mod._active_analyzer.labels —
+    # UX: используем snapshot, не server_mod._active_analyzer.labels —
     # analyze_file_only чистит labels из других файлов.
     for name, lbl in server_mod._symbol_snapshot["labels"].items():
         if not _matches(name):

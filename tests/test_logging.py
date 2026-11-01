@@ -1,4 +1,4 @@
-"""QUA-9: senpy/core/logging.py — centralized logging setup.
+"""senpy/core/logging.py — centralized logging setup.
 
 TDD-контракт для `setup_logging()`:
 

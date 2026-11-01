@@ -1,4 +1,4 @@
-"""LSP-21: auto-generated API docs merge + lookup tests.
+"""auto-generated API docs merge + lookup tests.
 
 Covers three layers:
 
@@ -17,7 +17,7 @@ Covers three layers:
    ``get_renpy_api_hover`` looks up via the merged dict.
 
 The integration test (hover on ``config.name`` resolves to a generated
-entry with the right signature) is the end-to-end proof that LSP-21
+entry with the right signature) is the end-to-end proof that 
 closes the coverage gap.
 """
 from __future__ import annotations
@@ -677,7 +677,7 @@ class TestHoverIntegration:
         assert "**Ren'Py Engine API**" in hover
 
     def test_generated_entry_hover_config(self):
-        # config.name is generated-only — this is the LSP-21 win.
+        # config.name is generated-only — this is the win.
         hover = get_renpy_api_hover("config.name")
         assert hover is not None, (
             "config.name should resolve via the generated dict — if this fails, "
@@ -726,7 +726,7 @@ class TestHoverIntegration:
 
 
 class TestBackwardCompat:
-    """LSP-21 must not break callers of the existing API."""
+    """ must not break callers of the existing API."""
 
     def test_renpy_api_docs_dict_still_importable(self):
         # Existing code imports RENPY_API_DOCS directly.
@@ -742,6 +742,6 @@ class TestBackwardCompat:
 
     def test_imports_test_still_passes(self):
         # The test_imports.py test asserts RENPY_API_DOCS has > 100 entries.
-        # After LSP-21, RENPY_API_DOCS itself is unchanged (curated only);
+        # After , RENPY_API_DOCS itself is unchanged (curated only);
         # the merge is in RENPY_API_DOCS_ALL. So this test should still pass.
         assert len(RENPY_API_DOCS) > 100

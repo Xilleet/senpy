@@ -1,4 +1,4 @@
-"""QUA-13: Доменные исключения вместо silent return.
+"""Доменные исключения вместо silent return.
 
 Контракт:
   - `_uri_to_path` теперь кидает `SecurityError` (не `ValueError`) при
@@ -8,7 +8,7 @@
   - Дополнительно: `ApiVersionMismatchError` теперь `PluginError`-наследник
     (проверено в test_exceptions.py).
 
-TDD для QUA-13:
+TDD для :
   1. test_uri_to_path_raises_security_error — scheme violation.
   2. test_security_error_is_value_error_subclass — backward compat.
   3. test_download_unrpyc_sha_mismatch_logs_error — critical log.
@@ -61,8 +61,8 @@ def test_uri_to_path_raises_security_error_for_path_traversal(tmp_path: Path):
 def test_uri_to_path_security_error_is_catchable_as_value_error():
     """SecurityError должен ловиться как ValueError (backward compat).
 
-    Старый код (до QUA-13) мог делать `except ValueError:` для _uri_to_path.
-    После QUA-13 этот код должен продолжать работать.
+    Старый код (до) мог делать `except ValueError:` для _uri_to_path.
+    После этот код должен продолжать работать.
     """
     import senpy.lsp.server as server_mod
 
@@ -96,8 +96,8 @@ def test_uri_to_path_security_error_is_catchable_as_senpy_error():
 def test_download_unrpyc_sha_mismatch_logs_error(caplog, tmp_path: Path, monkeypatch):
     """При SHA mismatch download_unrpyc должен логировать ERROR.
 
-    Раньше (до QUA-13): silent return None.
-    После QUA-13: log.error(...) + return None (backward compat).
+    Раньше (до): silent return None.
+    После : log.error(...) + return None (backward compat).
     """
     from senpy.cli import unrpyc as unrpyc_mod
 
@@ -137,7 +137,7 @@ def test_download_unrpyc_sha_mismatch_logs_error(caplog, tmp_path: Path, monkeyp
     # Backward compat: return None on SHA mismatch
     assert result is None
 
-    # QUA-13: ERROR должен быть в логах
+    # ERROR должен быть в логах
     error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
     assert any(
         "sha256" in r.message.lower() or "sha" in r.message.lower()

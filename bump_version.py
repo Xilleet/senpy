@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """bump_version.py — апдейт версии Senpy.
 
-ECO-9: версия хранится в единственном месте — senpy/__version__.py.
+версия хранится в единственном месте — senpy/__version__.py.
 Все остальные файлы (constants.py, server.py, pyproject.toml) импортируют
 или читают её динамически. Только package.json (для VS Code marketplace)
 по-прежнему требует явную версию — её мы обновляем здесь.

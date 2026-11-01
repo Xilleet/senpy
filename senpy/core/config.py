@@ -16,7 +16,7 @@ _unrpyc_bootstrap). Это создавало цикл:
 
 Public API:
     load_config(project_path: str) -> dict
-    validate_config(raw: dict) -> dict    (CLI-16: pydantic валидация)
+    validate_config(raw: dict) -> dict    (: pydantic валидация)
 """
 from __future__ import annotations
 
@@ -60,9 +60,9 @@ class SenpyConfig(BaseModel):
     tsundere: bool = False
     unrpyc_path: str | None = None
     allow_image_overrides: bool | None = None
-    strict: bool = False  # RULE-16: все правила = ERROR
+    strict: bool = False # : все правила = ERROR
 
-    # Rule filtering (CLI-1)
+    # Rule filtering 
     ignore: list[str] = Field(default_factory=list)
     select: list[str] = Field(default_factory=list)
     extend_select: list[str] = Field(default_factory=list)
@@ -73,7 +73,7 @@ class SenpyConfig(BaseModel):
 
 
 def validate_config(raw: dict) -> dict:
-    """CLI-16: валидирует raw config dict через pydantic.
+    """валидирует raw config dict через pydantic.
 
     Если конфиг валиден — возвращает dict с применёнными дефолтами.
     Если невалиден — логирует WARNING и возвращает пустой dict (fallback).
@@ -112,7 +112,7 @@ def load_config(project_path: str) -> dict:
         3. В текущей рабочей директории
 
     Возвращает содержимое секции [tool.senpy] (или [senpy] для senpy.toml),
-    провалидированное через pydantic (CLI-16).
+    провалидированное через pydantic.
     Если ни один файл не найден или TOML невалиден — возвращает пустой dict.
 
     Ошибки парсинга/чтения логируются как WARNING (раньше молча

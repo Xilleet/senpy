@@ -143,7 +143,7 @@ class SecurityError(SenpyError, ValueError):
         - SafeUnpickler rejected dangerous module.
 
     Note: inherits from ValueError for backward compat — old callers that
-    catch ValueError (e.g. from LSP-19 before QUA-13) continue to work.
+    catch ValueError (e.g. from before) continue to work.
     New callers should catch SecurityError explicitly.
     """
 

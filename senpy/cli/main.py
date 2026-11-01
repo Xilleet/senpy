@@ -133,7 +133,7 @@ def _null_redirect() -> _NullRedirect:
 def _dispatch_format(argv: list[str]) -> int:
     """Handle `senpy format` subcommand.
 
-    Re-exported from cli/format_dispatch.py (extracted in 0.6.4, ARCH-4).
+    Re-exported from cli/format_dispatch.py (extracted in 0.6.4,).
     Kept here for backward compatibility — existing callers and tests use
     `from senpy.cli.main import _dispatch_format`.
     """
@@ -1086,7 +1086,7 @@ def _setup_rule_filters(args, config: dict) -> tuple[set[str], int]:
       - args.ignore (CLI --ignore) OR config.ignore (TOML)
       - args.extend_ignore (CLI --extend-ignore)
       - config.extend_ignore (TOML)
-      - .senpy-ignore file (CLI-15)
+      -.senpy-ignore file 
 
     Also reads select/extend_select from config if not set on CLI.
 
@@ -1148,7 +1148,7 @@ def _setup_diff_interception(args) -> tuple[dict[str, str], object]:
     TODO(0.6.6): Move this into analyzer.run() via dry-run callback.
     The monkey-patch is a hack — analyzer writes to disk via open(), and we
     intercept to capture what would be written without actually writing.
-    After analyzer refactor (0.6.6, ARCH-13..15), analyzer should accept a
+    After analyzer refactor (0.6.6,..15), analyzer should accept a
     dry_run_callback parameter and call it instead of open().
 
     Returns:

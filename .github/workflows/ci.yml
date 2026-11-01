@@ -105,7 +105,7 @@ jobs:
         # Coverage gate. --cov-fail-under=75 — мягкий порог:
         # текущий coverage ~77% без vendor (см. pyproject.toml omit).
         # Если упадёт ниже 75% — это сигнал, что что-то сломалось.
-        # Поднимем до 80% после закрытия QUA-7 (типизация до 95%+).
+        # Поднимем до 80% после закрытия (типизация до 95%+).
         run: pytest tests/ --cov=senpy --cov-fail-under=75 --tb=short
 
       - name: Upload coverage (Ubuntu + Python 3.12 only)

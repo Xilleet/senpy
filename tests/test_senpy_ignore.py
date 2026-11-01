@@ -1,4 +1,4 @@
-"""CLI-15: .senpy-ignore файл — bulk rule exclusions.
+""".senpy-ignore файл — bulk rule exclusions.
 
 Контракт:
   - При запуске Senpy ищет `.senpy-ignore` в корне проекта (args.path).

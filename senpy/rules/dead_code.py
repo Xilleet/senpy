@@ -27,7 +27,7 @@ def check_unused_declarations(analyzer: SenpyAnalyzer) -> None:
     Uses a pre-built word → {(file, line_idx)} index in a single pass
     over all files — O(total_words + symbols) instead of O(symbols × total_lines).
 
-    PERF-2: the initial implementation on DDLC (50 files, 77k lines, ~200 symbols)
+    the initial implementation on DDLC (50 files, 77k lines, ~200 symbols)
     was hanging for minutes.
     """
     if analyzer.has_dynamic_jumps:

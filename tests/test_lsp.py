@@ -60,7 +60,7 @@ label deep_cave:
     # Инициализируем синглтон анализатора в server.py
     server_mod._active_analyzer = analyzer
     server_mod._is_initialized = True
-    # UX-EXT-5: refresh symbol snapshot, чтобы autocomplete/hover/rename/
+    # UX: refresh symbol snapshot, чтобы autocomplete/hover/rename/
     # workspace_symbol видели labels/screens/transforms (handler'ы теперь
     # используют snapshot, не _active_analyzer.labels напрямую).
     server_mod._refresh_symbol_snapshot()
@@ -329,7 +329,7 @@ def test_lsp_code_action_quick_fixes(tmp_path: Path):
 
     server_mod._active_analyzer = analyzer
     server_mod._is_initialized = True
-    # UX-EXT-5: snapshot для handler'ов (autocomplete/hover/rename)
+    # UX: snapshot для handler'ов (autocomplete/hover/rename)
     server_mod._refresh_symbol_snapshot()
 
     # Регистрируем диагностики файла в кэше LSP сервера
@@ -420,7 +420,7 @@ def test_lsp_transform_navigation_and_symbols(tmp_path: Path):
 
     server_mod._active_analyzer = analyzer
     server_mod._is_initialized = True
-    # UX-EXT-5: snapshot для handler'ов (autocomplete/hover/rename)
+    # UX: snapshot для handler'ов (autocomplete/hover/rename)
     server_mod._refresh_symbol_snapshot()
 
     mock_ls = MagicMock()

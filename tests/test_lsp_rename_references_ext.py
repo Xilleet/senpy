@@ -1,7 +1,7 @@
-"""LSP-17 + LSP-18: rename и references для variables/transform/screen.
+""" + : rename и references для variables/transform/screen.
 
 До этого спринта rename/references работали только для labels.
-После LSP-17/18 — поддерживаются variables, transforms, screens.
+После /18 — поддерживаются variables, transforms, screens.
 
 Контракт:
   - rename на variable → обновляет объявление (default/define) + все
@@ -45,7 +45,7 @@ class MockWorkspace:
 # =============================================================================
 
 def test_rename_variable_updates_declaration_and_usage(tmp_path: Path):
-    """LSP-17: rename variable — обновляет default + все использования."""
+    """rename variable — обновляет default + все использования."""
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True)
     script = game_dir / "script.rpy"
@@ -99,7 +99,7 @@ def test_rename_variable_updates_declaration_and_usage(tmp_path: Path):
 
 
 def test_rename_transform_updates_declaration_and_show_at(tmp_path: Path):
-    """LSP-17: rename transform — обновляет transform X: + show ... at X."""
+    """rename transform — обновляет transform X: + show... at X."""
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True)
     script = game_dir / "script.rpy"
@@ -150,7 +150,7 @@ def test_rename_transform_updates_declaration_and_show_at(tmp_path: Path):
 
 
 def test_rename_screen_updates_declaration_and_use(tmp_path: Path):
-    """LSP-17: rename screen — обновляет screen X(): + use X()."""
+    """rename screen — обновляет screen X: + use X."""
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True)
     script = game_dir / "script.rpy"
@@ -206,7 +206,7 @@ def test_rename_screen_updates_declaration_and_use(tmp_path: Path):
 # =============================================================================
 
 def test_references_variable_finds_all_usages(tmp_path: Path):
-    """LSP-18: references на variable — все вхождения по проекту."""
+    """references на variable — все вхождения по проекту."""
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True)
     script = game_dir / "script.rpy"
@@ -248,7 +248,7 @@ def test_references_variable_finds_all_usages(tmp_path: Path):
 
 
 def test_references_variable_without_declaration(tmp_path: Path):
-    """LSP-18: references на variable с include_declaration=False."""
+    """references на variable с include_declaration=False."""
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True)
     script = game_dir / "script.rpy"
@@ -287,7 +287,7 @@ def test_references_variable_without_declaration(tmp_path: Path):
 
 
 def test_references_transform_finds_show_at_usages(tmp_path: Path):
-    """LSP-18: references на transform — все show ... at X."""
+    """references на transform — все show... at X."""
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True)
     script = game_dir / "script.rpy"
@@ -328,7 +328,7 @@ def test_references_transform_finds_show_at_usages(tmp_path: Path):
 
 
 def test_references_screen_finds_use_and_call_screen(tmp_path: Path):
-    """LSP-18: references на screen — все use X() и call screen X()."""
+    """references на screen — все use X и call screen X."""
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True)
     script = game_dir / "script.rpy"
@@ -373,7 +373,7 @@ def test_references_screen_finds_use_and_call_screen(tmp_path: Path):
 # =============================================================================
 
 def test_rename_label_still_works(tmp_path: Path):
-    """LSP-17: label rename не сломан после добавления variable/transform/screen."""
+    """label rename не сломан после добавления variable/transform/screen."""
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True)
     script = game_dir / "script.rpy"
@@ -419,7 +419,7 @@ def test_rename_label_still_works(tmp_path: Path):
 
 
 def test_references_label_still_works(tmp_path: Path):
-    """LSP-18: label references не сломан."""
+    """label references не сломан."""
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True)
     script = game_dir / "script.rpy"

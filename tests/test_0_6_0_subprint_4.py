@@ -1,8 +1,8 @@
 """Tests for 0.6.0 Под-спринт 4: CLI UX polish.
 
-CLI-3: --show-fixes — отчёт, что было исправлено (не только fixed_count в summary).
-CLI-10: --output-format junit + --output-format github для CI.
-CLI-19: Quick-fix "Add default" для RPY104 — предложить default x = 0 для $ x = 1.
+--show-fixes — отчёт, что было исправлено (не только fixed_count в summary).
+--output-format junit + --output-format github для CI.
+Quick-fix "Add default" для RPY104 — предложить default x = 0 для $ x = 1.
 """
 from __future__ import annotations
 
@@ -41,12 +41,12 @@ def _run_cli(args: list[str], tmp_path: Path) -> subprocess.CompletedProcess:
 
 
 # =============================================================================
-# CLI-3: --show-fixes
+# --show-fixes
 # =============================================================================
 
 
 class TestShowFixes:
-    """CLI-3: --show-fixes — отчёт, что было исправлено.
+    """--show-fixes — отчёт, что было исправлено.
 
     Without --show-fixes: summary shows "Fixed: N issues" (count only).
     With --show-fixes: summary shows list of what was fixed (file:line: rule — message).
@@ -115,12 +115,12 @@ class TestShowFixes:
 
 
 # =============================================================================
-# CLI-10: --output-format junit + github
+# --output-format junit + github
 # =============================================================================
 
 
 class TestOutputFormats:
-    """CLI-10: --output-format junit + --output-format github for CI.
+    """--output-format junit + --output-format github for CI.
 
     junit: XML format compatible with JUnit/pytest CI systems.
     github: GitHub Actions ::error:: format for PR annotations.
@@ -191,12 +191,12 @@ class TestOutputFormats:
 
 
 # =============================================================================
-# CLI-19: Quick-fix "Add default" for RPY104
+# Quick-fix "Add default" for RPY104
 # =============================================================================
 
 
 class TestQuickFixAddDefault:
-    """CLI-19: Quick-fix "Add default" for RPY104.
+    """Quick-fix "Add default" for RPY104.
 
     RPY104 fires when a variable is created via `$ x = 1` without a top-level
     `default x = 0` declaration. This breaks save files after patches.

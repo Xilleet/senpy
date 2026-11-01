@@ -1,4 +1,4 @@
-"""CLI-17: load_config должен логировать TOMLDecodeError, не молча глотать.
+"""load_config должен логировать TOMLDecodeError, не молча глотать.
 
 Контракт:
   - Если конфиг-файл содержит битый TOML — load_config возвращает {} (как и

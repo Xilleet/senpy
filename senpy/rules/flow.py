@@ -206,7 +206,7 @@ class StoryFlowAnalyzer:
                     reachable.add(target)
                     queue.append(target)
 
-        # PERF-1: ранее тут было `any(label_name in l.outgoing_jumps for l in labels.values())`
+        # ранее тут было `any(label_name in l.outgoing_jumps for l in labels.values)`
         # внутри цикла по labels — это O(N²). На проекте с 1000 labels = 1M проверок.
         # Pre-compute incoming dict за O(N+E) (один проход по всем labels и их outgoing_jumps),
         # затем O(1) lookup в цикле ниже.

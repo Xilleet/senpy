@@ -14,7 +14,7 @@ dependencies = [
     "senpy-linter>=0.6.0",
 ]
 
-# EXT-1: This is how Senpy discovers the plugin.
+# This is how Senpy discovers the plugin.
 # Key = logical name (used in trust store, e.g. "my-senpy-plugin" = package name)
 # Value = "module.path:ClassName" — Rule subclass to load
 [project.entry-points."senpy.plugins"]

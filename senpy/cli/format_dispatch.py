@@ -1,6 +1,6 @@
 """Handler for `senpy format` subcommand.
 
-Extracted from cli/main.py in 0.6.4 (ARCH-4) to reduce god-function `_dispatch_format`
+Extracted from cli/main.py in 0.6.4 to reduce god-function `_dispatch_format`
 (117 lines) into a dedicated module. The function is re-exported from cli/main.py
 as `_dispatch_format` for backward compatibility.
 

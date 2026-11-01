@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """update_unrpyc_pin.py — обновление pinned unrpyc commit + SHA256 в senpy/cli.py.
 
-ECO-4: Senpy пиннит unrpyc к конкретному git-коммиту/тегу (не master-ветке
+Senpy пиннит unrpyc к конкретному git-коммиту/тегу (не master-ветке
 в общем случае) и проверяет SHA256 скачанного zip. Этот скрипт обновляет
 обе константы в senpy/cli.py одной командой.
 
@@ -62,7 +62,7 @@ unrpyc имеет две ветки:
 
 Затем закоммитьте изменения:
     git add senpy/cli.py
-    git commit -m "ECO-4: pin unrpyc to <version> (Ren'Py 6.99/7.x/8.x supported)"
+    git commit -m "pin unrpyc to <version> (Ren'Py 6.99/7.x/8.x supported)"
 """
 
 from __future__ import annotations
@@ -434,7 +434,7 @@ def run_update(profile: UnrpycProfile) -> int:
     print(f"    Поддерживаемые версии Ren'Py: {profile.renpy_versions}")
     print()
     print(
-        f"    Закоммитьте: git add senpy/cli.py && git commit -m 'ECO-4: pin unrpyc to {profile.ref}'"
+        f"    Закоммитьте: git add senpy/cli.py && git commit -m 'pin unrpyc to {profile.ref}'"
     )
     return 0
 

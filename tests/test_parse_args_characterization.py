@@ -11,7 +11,7 @@ parse_args creates argparse parser with 5 groups of arguments:
   5. Tools & Integrations (--lsp, --init-ci, --traceback, --stubs, --decompile,
      --unrpyc, --tsundere)
 
-After ARCH-2: parse_args will call 5 helpers (_add_general_args, _add_rules_args,
+After : parse_args will call 5 helpers (_add_general_args, _add_rules_args,
 _add_lint_args, _add_export_args, _add_tools_args). Behavior must be identical.
 """
 from __future__ import annotations
@@ -284,6 +284,6 @@ def test_parse_args_invalid_output_format_exits_nonzero(capsys):
 # =============================================================================
 
 def test_parse_args_importable_from_cli_main():
-    """parse_args must remain importable from senpy.cli.main after ARCH-2."""
+    """parse_args must remain importable from senpy.cli.main after."""
     from senpy.cli.main import parse_args as f1
     assert callable(f1)

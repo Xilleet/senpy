@@ -81,7 +81,7 @@ reporting:
   `Content-Security-Policy: default-src 'none'` + Mermaid `securityLevel:
   'strict'` — prevents XSS in generated reports.
 - **LSP URI scheme validation + workspace containment** (`senpy/lsp/server.py`,
-  LSP-19, 0.6.2): `_uri_to_path()` rejects non-`file:` URIs and (optionally)
+  0.6.2): `_uri_to_path` rejects non-`file:` URIs and (optionally)
   paths outside workspace root.
 - **`execFile` instead of `exec`** (`senpy-vscode/src/extension.ts`,
   0.6.2): VS Code extension uses array-args `child_process.execFile`,

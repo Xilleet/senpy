@@ -55,7 +55,7 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
     line = doc.lines[params.position.line]
     prefix = line[: params.position.character].lstrip()
 
-    # UX-EXT-5 DEBUG: log what we receive + snapshot state
+    # UX DEBUG: log what we receive + snapshot state
     ls.show_message_log(
         f"[completions] prefix={prefix!r}, "
         f"snapshot_labels={len(server_mod._symbol_snapshot['labels'])}, "
@@ -67,7 +67,7 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
 
     # 1. Автокомплит меток для jump / call
     if prefix.startswith(("jump ", "call ")):
-        # UX-EXT-5: используем snapshot, не server_mod._active_analyzer.labels,
+        # UX: используем snapshot, не server_mod._active_analyzer.labels,
         # потому что analyze_file_only очищает labels из других файлов.
         for label_name, lbl in sorted(server_mod._symbol_snapshot["labels"].items()):
             if label_name.startswith("_"):
@@ -137,7 +137,7 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
                     )
             elif len(tokens) >= 2:
                 base_tag = tokens[1]
-                # UX-EXT-5: используем snapshot для images, но valid_images
+                # UX: используем snapshot для images, но valid_images
                 # берём из server_mod._active_analyzer (он не чистится analyze_file_only).
                 all_valid = server_mod._active_analyzer.valid_images.union(server_mod._symbol_snapshot["images"])
                 attrs = server_mod._active_analyzer._get_tag_known_attributes(base_tag, all_valid)
@@ -150,7 +150,7 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
                         )
                     )
 
-    # UX-EXT-5 DEBUG: log result
+    # UX DEBUG: log result
     ls.show_message_log(
         f"[completions] RETURN {len(items)} items "
         f"(prefix={prefix!r}, snapshot_labels={len(server_mod._symbol_snapshot['labels'])})"
@@ -202,7 +202,7 @@ def _count_active_parameter(line: str, cursor_pos: int, paren_start: int) -> int
 def signature_help(
     ls: LanguageServer, params: lsp.SignatureHelpParams
 ) -> lsp.SignatureHelp | None:
-    """LSP-6: Provide parameter hints for call label(...) / use screen(...).
+    """Provide parameter hints for call label(...) / use screen(...).
 
     Returns None if:
         - Analyzer not initialized

@@ -1,9 +1,9 @@
 """Tests for 0.6.0 Под-спринт 3b (Заход 2): LSP killer-features part 2.
 
-LSP-6: textDocument/signatureHelp — подсказки параметров для call label(...) и use screen(...).
+textDocument/signatureHelp — подсказки параметров для call label(...) и use screen(...).
        Когда пишешь `call my_label(` — VS Code показывает (name, age=18) из сигнатуры label'а.
 
-LSP-5: textDocument/prepareCallHierarchy — «кто вызывает этот label?» + «куда ведёт?».
+textDocument/prepareCallHierarchy — «кто вызывает этот label?» + «куда ведёт?».
        Правый клик на label → «Find Callers» → видишь все jump/call к этому label'у.
        Killer для VN — навигация по графу вызовов.
 """
@@ -18,12 +18,12 @@ from test_0_6_0_subprint_3a import MockDocument, MockWorkspace  # noqa: E402
 
 
 # =============================================================================
-# LSP-6: textDocument/signatureHelp
+# textDocument/signatureHelp
 # =============================================================================
 
 
 class TestSignatureHelpHandler:
-    """LSP-6: signatureHelp shows parameter hints for call label(...) / use screen(...).
+    """signatureHelp shows parameter hints for call label(...) / use screen(...).
 
     When user types `call my_label(` and the cursor is inside the parens,
     VS Code calls signatureHelp to display the parameter list.
@@ -362,12 +362,12 @@ class TestSignatureHelpHandler:
 
 
 # =============================================================================
-# LSP-5: textDocument/prepareCallHierarchy
+# textDocument/prepareCallHierarchy
 # =============================================================================
 
 
 class TestPrepareCallHierarchyHandler:
-    """LSP-5: prepareCallHierarchy returns CallHierarchyItem for label under cursor.
+    """prepareCallHierarchy returns CallHierarchyItem for label under cursor.
 
     Right-click on label → "Find Callers" / "Find References".
     First, VS Code calls prepareCallHierarchy to get a CallHierarchyItem.
@@ -489,7 +489,7 @@ class TestPrepareCallHierarchyHandler:
 
 
 class TestIncomingCallsHandler:
-    """LSP-5 part 2: callHierarchy/incomingCalls — who calls this label?
+    """ part 2: callHierarchy/incomingCalls — who calls this label?
 
     Returns list[CallHierarchyIncomingCall], each containing:
         from: CallHierarchyItem (the caller label)
@@ -544,7 +544,7 @@ class TestIncomingCallsHandler:
 
 
 class TestOutgoingCallsHandler:
-    """LSP-5 part 3: callHierarchy/outgoingCalls — where does this label jump/call to?
+    """ part 3: callHierarchy/outgoingCalls — where does this label jump/call to?
 
     Returns list[CallHierarchyOutgoingCall], each containing:
         to: CallHierarchyItem (the callee label)

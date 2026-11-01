@@ -1,4 +1,4 @@
-"""Security-тест для AUD-001: harden __import__ usage в vendored unrpyc.
+"""Security-тест для : harden __import__ usage в vendored unrpyc.
 
 Текущее состояние (после сверки с кодом):
 - `decompile_rpyc` и `decompile_rpyc_bytes` используют `SafeUnpickler` через
@@ -21,7 +21,7 @@
 - `FakeModule.__init__` / `FakePackage.__getattr__` — то же
 - `fake_package()` — то же
 
-Источник: AUD-001 (аудит v0.5.7), сверено с кодом 2026-10-30.
+Источник: (аудит v0.5.7), сверено с кодом 2026-10-30.
 """
 from __future__ import annotations
 

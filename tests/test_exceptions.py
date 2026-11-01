@@ -1,4 +1,4 @@
-"""QUA-11: senpy/core/exceptions.py — domain exception hierarchy.
+"""senpy/core/exceptions.py — domain exception hierarchy.
 
 TDD-контракт для иерархии SenpyError:
 
@@ -119,7 +119,7 @@ def test_analysis_subcategories_inherit_from_analysis_error(exc_class):
 def test_api_version_mismatch_is_plugin_error():
     """ApiVersionMismatchError должен быть наследником PluginError.
 
-    Backward compat: раньше наследовался от Exception. После QUA-11 должен
+    Backward compat: раньше наследовался от Exception. После должен
     наследоваться от PluginError (который наследуется от SenpyError).
     Это позволяет ловить его через `except PluginError:` или `except SenpyError:`.
     """

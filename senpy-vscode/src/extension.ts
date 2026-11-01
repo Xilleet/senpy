@@ -18,10 +18,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     const clientOptions: LanguageClientOptions = {
         documentSelector: [{ scheme: "file", language: "renpy" }],
-        // UX-EXT-4: synchronize - watch .senpy.toml so the LSP server
+        // UX: synchronize - watch.senpy.toml so the LSP server
         // picks up config changes without VS Code window reload.
         synchronize: {
-            // configurationSection removed (UX-EXT-7): was causing
+            // configurationSection removed (UX): was causing
             // "Ignoring notification for unknown method workspace/didChangeConfiguration"
             // in server logs. pygls does not auto-register this handler.
             // fileEvents below is sufficient - it triggers
@@ -137,7 +137,7 @@ export function activate(context: vscode.ExtensionContext) {
             cancellable: false
         }, async () => {
             return new Promise<void>((resolve, reject) => {
-                // SEC-6: cp.execFile with array args — no shell interpolation.
+                // cp.execFile with array args — no shell interpolation.
                 cp.execFile(serverCmd, [workspaceRoot, '--stats', '--format', 'json'], { cwd: workspaceRoot, maxBuffer: 1024 * 1024 * 10, timeout: 60000, windowsHide: true }, (error, stdout, stderr) => {
                     if (error) {
                         vscode.window.showErrorMessage(`Senpy Stats Error: ${stderr || error.message}`);

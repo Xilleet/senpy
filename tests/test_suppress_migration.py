@@ -1,4 +1,4 @@
-"""QUA-12: contextlib.suppress → try/except + logger.debug.
+"""contextlib.suppress → try/except + logger.debug.
 
 Контракт:
   - После миграции suppress(...), когда подавленное исключение срабатывает,
@@ -126,7 +126,7 @@ def test_traceback_read_oserror_logs_debug(tmp_path: Path, caplog, monkeypatch):
     # open() поднимет IsADirectoryError (subclass of OSError).
     # Лучше: передаём путь который isfile() = True но read упадёт.
     # Альтернатива: передаём несуществующий файл, получаем early return None.
-    # Для теста QUA-12 нужен случай когда open() падает — используем mock.
+    # Для теста нужен случай когда open падает — используем mock.
     fake_path = tmp_path / "fake_traceback.txt"
 
     # Делаем вид что файл существует (isfile=True), но open() падает

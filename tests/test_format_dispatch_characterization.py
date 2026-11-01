@@ -212,7 +212,7 @@ def test_format_multiple_files(tmp_path, capsys):
 # =============================================================================
 
 def test_dispatch_format_importable_from_cli_main():
-    """_dispatch_format must remain importable from senpy.cli.main after ARCH-4.
+    """_dispatch_format must remain importable from senpy.cli.main after.
 
     The extraction to cli/format_dispatch.py should re-export it for
     backward compatibility — existing callers and tests use this path.
@@ -220,6 +220,6 @@ def test_dispatch_format_importable_from_cli_main():
     import senpy.cli.format_dispatch as fd_mod
     from senpy.cli.main import _dispatch_format as f1
     assert hasattr(fd_mod, "dispatch_format")
-    # After ARCH-4: _dispatch_format in main.py should be re-export from format_dispatch
+    # After : _dispatch_format in main.py should be re-export from format_dispatch
     # (we'll verify exact equality after extraction)
     assert callable(f1)

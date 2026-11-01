@@ -29,7 +29,7 @@ _logger = get_logger("cli.unrpyc")
 console = Console(legacy_windows=sys.stdout.isatty())
 
 SENPY_CACHE_DIR = os.path.expanduser("~/.senpy/tools/unrpyc")
-# ECO-4: ранее UNRPYC_GITHUB_ZIP указывал на master-ветку, что означало
+# ранее UNRPYC_GITHUB_ZIP указывал на master-ветку, что означало
 # "всегда качать свежий код". Это риск: master может измениться в любой момент,
 # возможны breaking changes или (hypothetically) инъекции вредоносного кода,
 # если аккаунт CensoredUsername скомпрометируют.
@@ -78,7 +78,7 @@ def find_in_directory_tree(start_dirs: list[str]) -> str | None:
 
 
 def _verify_unrpyc_sha256(zip_path: str) -> bool:
-    """ECO-4: проверяет SHA256 скачанного zip против pinned значения.
+    """проверяет SHA256 скачанного zip против pinned значения.
 
     Возвращает True, если совпадает (или если UNRPYC_PINNED_SHA256 is None —
     для backward compat при обновлении с placeholder).
@@ -113,7 +113,7 @@ def _verify_unrpyc_sha256(zip_path: str) -> bool:
 
 
 def _safe_zip_extract(zip_ref: zipfile.ZipFile, dest_dir: str) -> list[str]:
-    """ECO-4: безопасная распаковка zip с защитой от Zip Slip.
+    """безопасная распаковка zip с защитой от Zip Slip.
 
     Python 3.6+ уже санитайзит пути в extractall, но defence-in-depth:
     явно проверяем, что все пути внутри dest_dir. Возвращает список распакованных файлов.
@@ -132,7 +132,7 @@ def _safe_zip_extract(zip_ref: zipfile.ZipFile, dest_dir: str) -> list[str]:
 
 
 def download_unrpyc() -> list[str] | None:
-    """ECO-4: скачивает pinned версию unrpyc с SHA256 verification.
+    """скачивает pinned версию unrpyc с SHA256 verification.
 
     Изменения vs старой версии:
     - Качает конкретный commit (UNRPYC_PINNED_COMMIT), не master.
@@ -212,7 +212,7 @@ def find_unrpyc_executable(
             [sys.executable, "-m", "unrpyc", "--help"],
             capture_output=True,
             check=False,
-            timeout=30,  # CLI-18: защита от зависшего unrpyc
+            timeout=30, # : защита от зависшего unrpyc
         )
         if res.returncode == 0:
             return [sys.executable, "-m", "unrpyc"]
@@ -308,7 +308,7 @@ def extract_scripts_from_rpa(rpa_path: str, dest_dir: str) -> list[str]:
 def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str] | None = None, temp_dir: str = "") -> list[str]:
     """Декомпилирует .rpyc файлы в .rpy в изолированной песочнице.
 
-    ECO-5: Теперь использует встроенный (vendored) unrpyc вместо subprocess.
+    Теперь использует встроенный (vendored) unrpyc вместо subprocess.
     Параметр unrpyc_cmd сохранён для обратной совместимости, но игнорируется.
     """
     from senpy.vendor.unrpyc import decompile_rpyc
@@ -354,7 +354,7 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str] | None = None
             decompiled_rpy.append(rpy_path)
         except Exception as e:
             err_msg = "Ошибка декомпиляции" if IS_RU else "Decompilation error"
-            # ECO-5: RPYCDecompilationError даёт понятное сообщение,
+            # RPYCDecompilationError даёт понятное сообщение,
             # любые другие исключения — выводим тип ошибки
             err_type = type(e).__name__
             console.print(

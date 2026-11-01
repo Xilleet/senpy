@@ -393,7 +393,7 @@ class TestRuleCountConsistency:
     def test_rules_info_py_uses_dynamic_count(self):
         """rules_info.py НЕ должен хардкодить число правил.
 
-        DOC-8a: фикс должен использовать f-string с len(RULES_DATABASE),
+        фикс должен использовать f-string с len(RULES_DATABASE),
         чтобы число правил автоматически подтягивалось из dict'а.
         """
         if not _RULES_INFO_PY.exists():
@@ -451,7 +451,7 @@ class TestSanity:
             config = tomllib.load(f)
         assert "version" not in config["project"], (
             "pyproject.toml НЕ должен содержать static 'version' field. "
-            "Используйте dynamic = ['version'] (см. ECO-9)."
+            "Используйте dynamic = ['version'] (см.)."
         )
         assert "version" in config.get("project", {}).get("dynamic", []), (
             "pyproject.toml должен содержать dynamic = ['version'] в [project] секции"

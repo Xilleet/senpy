@@ -153,7 +153,7 @@ BUILTIN_ACTIONS = {
     "FilePage",
 }
 
-# ECO-9: единый источник правды о версии — senpy/__version__.py.
+# единый источник правды о версии — senpy/__version__.py.
 # Раньше версия была захардкожена в 4 местах (pyproject.toml, constants.py,
 # server.py, package.json). Теперь все импортируют отсюда, а сюда пишет
 # bump_version.py. Это снимает P1-13 и P2-16.

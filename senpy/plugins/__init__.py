@@ -11,8 +11,8 @@ For high-level public API, use senpy.api instead:
 
 Architecture:
     senpy/plugins/
-    ├── base.py        — Rule, RuleMeta, RuleContext (EXT-3)
-    ├── registry.py    — @register_rule decorator (EXT-2)
+    ├── base.py        — Rule, RuleMeta, RuleContext 
+    ├── registry.py    — @register_rule decorator 
     └── security.py    — PLUGIN_API_VERSION, check_api_version (SEC-P1)
 
 Plugin contract (STABLE — see senpy.api for the full public contract):
@@ -65,11 +65,11 @@ from senpy.plugins.security import (
 )
 
 __all__ = [
-    # EXT-3: Base class + data
+    # Base class + data
     "Rule",
     "RuleMeta",
     "RuleContext",
-    # EXT-2: Registration
+    # Registration
     "register_rule",
     "get_registered_lint_rules",
     # SEC-P1: API version

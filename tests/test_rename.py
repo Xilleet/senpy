@@ -123,7 +123,7 @@ def test_rename_returns_edit_for_variable(tmp_path: Path):
     result = server_mod.rename(mock_ls, params)
 
     # Теперь rename поддерживает variables — должен вернуть WorkspaceEdit
-    assert result is not None, "Rename variable should return WorkspaceEdit (LSP-17)"
+    assert result is not None, "Rename variable should return WorkspaceEdit "
     assert result.changes is not None
     # Должно быть хотя бы 1 изменение (declaration)
     all_edits = []
@@ -165,7 +165,7 @@ def test_rename_label_preserves_jump_syntax(tmp_path: Path):
     analyzer.run(quiet=True)
     server_mod._active_analyzer = analyzer
     server_mod._is_initialized = True
-    # UX-EXT-5: snapshot для autocomplete/rename (handler'ы теперь используют snapshot)
+    # UX: snapshot для autocomplete/rename (handler'ы теперь используют snapshot)
     server_mod._refresh_symbol_snapshot()
 
     # 0-based lines:
