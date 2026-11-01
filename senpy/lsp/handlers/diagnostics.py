@@ -5,9 +5,9 @@
 Handler'ы:
   - code_action        ← TEXT_DOCUMENT_CODE_ACTION
   - document_color     ← TEXT_DOCUMENT_DOCUMENT_COLOR (, 0.6.0 Под-спринт 3)
-  - color_presentation ← TEXT_DOCUMENT_COLOR_PRESENTATION 
-  - formatting         ← TEXT_DOCUMENT_FORMATTING 
-  - range_formatting   ← TEXT_DOCUMENT_RANGE_FORMATTING 
+  - color_presentation ← TEXT_DOCUMENT_COLOR_PRESENTATION
+  - formatting         ← TEXT_DOCUMENT_FORMATTING
+  - range_formatting   ← TEXT_DOCUMENT_RANGE_FORMATTING
 
 Все функции принимают (ls, params) и обращаются к shared state через
 server_mod._X (lazy import разрывает цикл импортов).

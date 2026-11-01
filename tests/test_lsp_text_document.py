@@ -13,11 +13,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from lsprotocol import types as lsp
-
 from test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
 import senpy.lsp.server as server_mod
-
 
 # =============================================================================
 # did_open — UX-1

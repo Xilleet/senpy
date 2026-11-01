@@ -36,17 +36,16 @@ from __future__ import annotations
 import pytest
 
 from senpy.core.exceptions import (
-    SenpyError,
-    ConfigError,
     AnalysisError,
-    ParseError,
-    SymbolResolutionError,
     CacheError,
+    ConfigError,
+    DecompilationError,
+    ParseError,
     PluginError,
     SecurityError,
-    DecompilationError,
+    SenpyError,
+    SymbolResolutionError,
 )
-
 
 # =============================================================================
 # 1. SenpyError base

@@ -1,0 +1,64 @@
+# Pre-commit hooks for Senpy
+# =============================================================================
+# Install once per clone:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Then hooks run automatically on `git commit`. To run manually:
+#   pre-commit run --all-files
+#
+# To bypass hooks (e.g. for WIP commits):
+#   git commit --no-verify
+#
+# Hooks:
+#   - ruff (lint + format) — Python style and import sorting
+#   - standard hooks (trailing-whitespace, end-of-file-fixer, check-yaml,
+#     check-toml, check-merge-conflict, check-added-large-files)
+#   - check that internal task IDs (DOC-1, CLI-17, etc.) don't leak into
+#     code via the dedicated CLEAN-1 script
+#
+# Config lives in pyproject.toml [tool.ruff]. Pre-commit just calls ruff
+# with the project config — no separate config file to keep in sync.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4  # ruff version, keep in sync with CI install
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        # Tests legitimately contain trailing whitespace inside .rpy string
+        # literals (test fixtures). Exclude tests from this hook — the
+        # ruff hook above already enforces no-trailing-whitespace in real
+        # code via W291 (with per-file-ignores for tests in pyproject.toml).
+        exclude: ^tests/
+      - id: end-of-file-fixer
+        exclude: ^tests/
+      - id: check-yaml
+        # .github/workflows/*.yml — GitHub Actions YAML
+        # senpy-vscode/package.json is JSON, not YAML, but pre-commit's
+        # check-yaml is permissive enough to handle it.
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+        # Allow the test_game .rpyc binaries (they are checked in and small).
+        exclude: ^test_game/.*\.rpyc$
+
+  # Custom local hook: scrub internal task IDs. Same script as in CI-1/CLEAN-1.
+  # Runs on every commit to catch ID leaks before they reach the repo.
+  - repo: local
+    hooks:
+      - id: clean-internal-ids
+        name: Scrub internal task IDs (CLEAN-1)
+        entry: python scripts/clean_internal_ids.py --dry-run
+        # --dry-run exits 0 if no changes needed, non-zero if there are IDs
+        # to scrub. We don't auto-apply here — the developer runs
+        # `python scripts/clean_internal_ids.py --apply` manually.
+        language: system
+        pass_filenames: false
+        always_run: true

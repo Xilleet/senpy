@@ -62,7 +62,7 @@ class SenpyConfig(BaseModel):
     allow_image_overrides: bool | None = None
     strict: bool = False # : все правила = ERROR
 
-    # Rule filtering 
+    # Rule filtering
     ignore: list[str] = Field(default_factory=list)
     select: list[str] = Field(default_factory=list)
     extend_select: list[str] = Field(default_factory=list)

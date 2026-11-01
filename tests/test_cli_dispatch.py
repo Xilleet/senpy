@@ -28,6 +28,7 @@ class TestParseArgs:
     def test_parse_args_returns_namespace(self):
         """parse_args() возвращает argparse.Namespace."""
         import argparse
+
         from senpy.cli.main import parse_args
         args = parse_args([])
         assert isinstance(args, argparse.Namespace)

@@ -11,8 +11,8 @@ For high-level public API, use senpy.api instead:
 
 Architecture:
     senpy/plugins/
-    ├── base.py        — Rule, RuleMeta, RuleContext 
-    ├── registry.py    — @register_rule decorator 
+    ├── base.py        — Rule, RuleMeta, RuleContext
+    ├── registry.py    — @register_rule decorator
     └── security.py    — PLUGIN_API_VERSION, check_api_version (SEC-P1)
 
 Plugin contract (STABLE — see senpy.api for the full public contract):

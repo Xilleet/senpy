@@ -245,7 +245,7 @@ def split_checkers_py(senpy_root: Path, dry_run: bool = False) -> None:
             # Нормализуем ключ: "rules/base.py" или "rules/checkers/formatting.py"
             if "/" in target_file_key:
                 # "rules/checkers/formatting.py" → key
-                key = target_file_file = target_file_key
+                key = target_file_key
             else:
                 key = target_file_key
             start = node.lineno - 1

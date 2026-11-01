@@ -151,8 +151,9 @@ def test_traceback_read_oserror_logs_debug(tmp_path: Path, caplog, monkeypatch):
 
 def test_no_contextlib_suppress_in_core_cache():
     """После миграции в core/cache.py не должно остаться contextlib.suppress."""
-    import senpy.core.cache as cache_mod
     import inspect
+
+    import senpy.core.cache as cache_mod
     source = inspect.getsource(cache_mod)
     # Допускаем suppress только в комментариях/docstring, не в коде.
     # Простая проверка: считаем строки с `with contextlib.suppress(` (код, не текст).
@@ -166,8 +167,9 @@ def test_no_contextlib_suppress_in_core_cache():
 
 def test_no_contextlib_suppress_in_core_signature():
     """После миграции в core/signature.py не должно остаться contextlib.suppress."""
-    import senpy.core.signature as sig_mod
     import inspect
+
+    import senpy.core.signature as sig_mod
     source = inspect.getsource(sig_mod)
     code_lines = [
         line for line in source.splitlines()

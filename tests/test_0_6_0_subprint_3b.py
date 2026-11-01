@@ -16,7 +16,6 @@ import pytest
 # Reuse mocks from 3a test file
 from test_0_6_0_subprint_3a import MockDocument, MockWorkspace  # noqa: E402
 
-
 # =============================================================================
 # textDocument/signatureHelp
 # =============================================================================
@@ -47,9 +46,10 @@ class TestSignatureHelpHandler:
 
     def test_signature_help_returns_none_when_no_analyzer(self):
         """Without analyzer, signature_help returns None."""
-        from senpy.lsp.handlers.completion import signature_help
         from lsprotocol import types as lsp
+
         from senpy.lsp import server as server_mod
+        from senpy.lsp.handlers.completion import signature_help
 
         # Save and clear state
         original_analyzer = server_mod._active_analyzer
@@ -78,9 +78,10 @@ class TestSignatureHelpHandler:
 
     def test_signature_help_returns_none_for_non_call_line(self):
         """signature_help returns None if line doesn't contain call/use."""
-        from senpy.lsp.handlers.completion import signature_help
         from lsprotocol import types as lsp
+
         from senpy.lsp import server as server_mod
+        from senpy.lsp.handlers.completion import signature_help
 
         # Set up minimal analyzer mock
         mock_analyzer = MagicMock()
@@ -112,11 +113,12 @@ class TestSignatureHelpHandler:
 
     def test_signature_help_for_call_label(self):
         """`call my_label(name, age)` → SignatureHelp with label's signature."""
-        from senpy.lsp.handlers.completion import signature_help
         from lsprotocol import types as lsp
-        from senpy.lsp import server as server_mod
-        from senpy.core.symbols import LabelSymbol
+
         from senpy.core.signature import SignatureInfo
+        from senpy.core.symbols import LabelSymbol
+        from senpy.lsp import server as server_mod
+        from senpy.lsp.handlers.completion import signature_help
 
         # Mock analyzer with a label that has a signature
         mock_analyzer = MagicMock()
@@ -169,11 +171,12 @@ class TestSignatureHelpHandler:
 
     def test_signature_help_for_use_screen(self):
         """`use my_screen(arg1, arg2)` → SignatureHelp with screen's signature."""
-        from senpy.lsp.handlers.completion import signature_help
         from lsprotocol import types as lsp
-        from senpy.lsp import server as server_mod
-        from senpy.core.symbols import ScreenSymbol
+
         from senpy.core.signature import SignatureInfo
+        from senpy.core.symbols import ScreenSymbol
+        from senpy.lsp import server as server_mod
+        from senpy.lsp.handlers.completion import signature_help
 
         mock_analyzer = MagicMock()
         mock_screen = ScreenSymbol(
@@ -222,11 +225,12 @@ class TestSignatureHelpHandler:
 
     def test_signature_help_for_label_without_params(self):
         """`call simple_label()` where label has no params → still returns help (empty params)."""
-        from senpy.lsp.handlers.completion import signature_help
         from lsprotocol import types as lsp
-        from senpy.lsp import server as server_mod
-        from senpy.core.symbols import LabelSymbol
+
         from senpy.core.signature import SignatureInfo
+        from senpy.core.symbols import LabelSymbol
+        from senpy.lsp import server as server_mod
+        from senpy.lsp.handlers.completion import signature_help
 
         mock_analyzer = MagicMock()
         mock_label = LabelSymbol(
@@ -269,9 +273,10 @@ class TestSignatureHelpHandler:
 
     def test_signature_help_for_unknown_label(self):
         """`call nonexistent_label()` → returns None (label not found)."""
-        from senpy.lsp.handlers.completion import signature_help
         from lsprotocol import types as lsp
+
         from senpy.lsp import server as server_mod
+        from senpy.lsp.handlers.completion import signature_help
 
         mock_analyzer = MagicMock()
         mock_analyzer.labels = {}  # no labels
@@ -302,11 +307,12 @@ class TestSignatureHelpHandler:
 
     def test_signature_help_active_parameter_tracking(self):
         """`call my_label(arg1, |arg2)` — cursor on 2nd param → activeParameter=1."""
-        from senpy.lsp.handlers.completion import signature_help
         from lsprotocol import types as lsp
-        from senpy.lsp import server as server_mod
-        from senpy.core.symbols import LabelSymbol
+
         from senpy.core.signature import SignatureInfo
+        from senpy.core.symbols import LabelSymbol
+        from senpy.lsp import server as server_mod
+        from senpy.lsp.handlers.completion import signature_help
 
         mock_analyzer = MagicMock()
         mock_label = LabelSymbol(
@@ -382,9 +388,10 @@ class TestPrepareCallHierarchyHandler:
 
     def test_prepare_call_hierarchy_returns_list(self):
         """prepare_call_hierarchy() returns list[CallHierarchyItem] (possibly empty)."""
-        from senpy.lsp.handlers.navigation import prepare_call_hierarchy
         from lsprotocol import types as lsp
+
         from senpy.lsp import server as server_mod
+        from senpy.lsp.handlers.navigation import prepare_call_hierarchy
 
         mock_analyzer = MagicMock()
         mock_analyzer.labels = {}
@@ -414,10 +421,11 @@ class TestPrepareCallHierarchyHandler:
 
     def test_prepare_call_hierarchy_finds_label(self):
         """Cursor on `label start:` → returns CallHierarchyItem for 'start'."""
-        from senpy.lsp.handlers.navigation import prepare_call_hierarchy
         from lsprotocol import types as lsp
-        from senpy.lsp import server as server_mod
+
         from senpy.core.symbols import LabelSymbol
+        from senpy.lsp import server as server_mod
+        from senpy.lsp.handlers.navigation import prepare_call_hierarchy
 
         mock_analyzer = MagicMock()
         mock_label = LabelSymbol(
@@ -457,9 +465,10 @@ class TestPrepareCallHierarchyHandler:
 
     def test_prepare_call_hierarchy_returns_empty_for_non_label(self):
         """Cursor on a non-label word → returns empty list."""
-        from senpy.lsp.handlers.navigation import prepare_call_hierarchy
         from lsprotocol import types as lsp
+
         from senpy.lsp import server as server_mod
+        from senpy.lsp.handlers.navigation import prepare_call_hierarchy
 
         mock_analyzer = MagicMock()
         mock_analyzer.labels = {}
@@ -503,10 +512,11 @@ class TestIncomingCallsHandler:
 
     def test_incoming_calls_returns_list(self):
         """incoming_calls() returns list[CallHierarchyIncomingCall]."""
-        from senpy.lsp.handlers.navigation import incoming_calls
         from lsprotocol import types as lsp
-        from senpy.lsp import server as server_mod
+
         from senpy.core.symbols import LabelSymbol
+        from senpy.lsp import server as server_mod
+        from senpy.lsp.handlers.navigation import incoming_calls
 
         mock_analyzer = MagicMock()
         # 'target' is called by 'caller1' at line 5
@@ -558,10 +568,11 @@ class TestOutgoingCallsHandler:
 
     def test_outgoing_calls_returns_list(self):
         """outgoing_calls() returns list[CallHierarchyOutgoingCall]."""
-        from senpy.lsp.handlers.navigation import outgoing_calls
         from lsprotocol import types as lsp
-        from senpy.lsp import server as server_mod
+
         from senpy.core.symbols import LabelSymbol
+        from senpy.lsp import server as server_mod
+        from senpy.lsp.handlers.navigation import outgoing_calls
 
         mock_analyzer = MagicMock()
         # 'source' calls 'dest1' and 'dest2'

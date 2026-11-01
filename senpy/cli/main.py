@@ -451,7 +451,7 @@ def filter_diagnostics(
     Args:
         result: AnalysisResult с .diagnostics list.
         args: Namespace с .ignore, .select, .extend_select, .errors_only, .info.
-        ignored_codes: Set кодов правил для игнорирования (включает --ignore +
+        ignored_codes: Set кодов правил для игнорирования (включает --ignore
             --extend-ignore, собранные в main()).
 
     Returns:
@@ -1086,7 +1086,7 @@ def _setup_rule_filters(args, config: dict) -> tuple[set[str], int]:
       - args.ignore (CLI --ignore) OR config.ignore (TOML)
       - args.extend_ignore (CLI --extend-ignore)
       - config.extend_ignore (TOML)
-      -.senpy-ignore file 
+      -.senpy-ignore file
 
     Also reads select/extend_select from config if not set on CLI.
 

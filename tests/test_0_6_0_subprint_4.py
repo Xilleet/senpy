@@ -262,7 +262,7 @@ class TestQuickFixAddDefault:
             encoding="utf-8",
         )
 
-        result = _run_cli(["--defaults", "--no-cache"], tmp_path)
+        _run_cli(["--defaults", "--no-cache"], tmp_path)
 
         defaults_file = game_dir / "senpy_defaults.rpy"
         assert defaults_file.exists()

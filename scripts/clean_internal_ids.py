@@ -68,6 +68,9 @@ _WHITELIST_PATHS = [
     "senpy.sarif",  # auto-generated SARIF report
     "scripts/clean_internal_ids.py",   # this script — describes IDs as objects
     "tests/test_clean_internal_ids.py",  # this test — describes IDs as objects
+    "tests/test_ruff_clean.py",  # CI-1 test — describes IDs in comments
+    ".pre-commit-config.yaml",  # CI-8 config — references CLEAN-1 hook
+    ".github/workflows/ci.yml",  # CI workflow — references CI-1, QUA-7, etc. in comments
     ".github/PULL_REQUEST_TEMPLATE.md",  # meta-doc about ID format itself
     ".github/ISSUE_TEMPLATE/**",  # templates reference ID format
     ".git/**",

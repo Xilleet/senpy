@@ -133,7 +133,7 @@ def test_uri_to_path_preserves_backward_compat(tmp_path: Path):
     uri = f.as_uri()
     result = server_mod._uri_to_path(uri)
     # Должен вернуть путь, который можно открыть
-    with open(result, "r", encoding="utf-8") as fh:
+    with open(result, encoding="utf-8") as fh:
         content = fh.read()
     assert "label start" in content
 

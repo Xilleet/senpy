@@ -14,7 +14,6 @@ import time
 import senpy.lsp.server as server_mod
 from senpy.lsp.server import _RWLock
 
-
 # =============================================================================
 # _RWLock unit tests
 # =============================================================================
@@ -222,8 +221,6 @@ def test_with_analysis_lock_uses_rw_lock_read():
     Проверяем: пока handler (под _with_analysis_lock) работает, writer
     (run_full_project_diagnostics) не может пройти — но другой reader может.
     """
-    setup_test_workspace_done = False
-
     # Прямой тест: _with_analysis_lock использует rw_lock.acquire_read
     lock_state = {"reader_in": False, "another_reader_can_pass": False}
 

@@ -34,7 +34,6 @@ from unittest.mock import patch
 
 import pytest
 
-
 # =============================================================================
 # Plugin discovery via entry_points
 # =============================================================================
@@ -94,8 +93,8 @@ class TestPluginLoading:
 
     def test_load_plugin_loads_valid_rule(self):
         """load_plugin() returns the Rule subclass for a valid entry point."""
-        from senpy.plugins.loader import load_plugin, _LoadedEntryPoint
         from senpy.plugins.base import Rule, RuleMeta
+        from senpy.plugins.loader import _LoadedEntryPoint, load_plugin
 
         # Create a mock entry point that loads a valid Rule subclass
         class _MockEntryPoint:
@@ -235,7 +234,7 @@ class TestLoadAllPlugins:
 
     def test_load_all_plugins_skips_failed_isolated(self):
         """If one plugin fails to load, others still load (isolation)."""
-        from senpy.plugins.loader import load_all_plugins, _LoadedEntryPoint
+        from senpy.plugins.loader import _LoadedEntryPoint, load_all_plugins
 
         class _GoodEntryPoint:
             name = "good-plugin"
@@ -311,7 +310,7 @@ class TestTrustStore:
     def test_trust_plugin_adds_to_store(self, monkeypatch, tmp_path):
         """trust_plugin(name) adds plugin to trust store."""
         monkeypatch.setenv("SENPY_HOME", str(tmp_path))
-        from senpy.plugins.security import trust_plugin, is_plugin_trusted
+        from senpy.plugins.security import is_plugin_trusted, trust_plugin
         # Initially not trusted
         assert is_plugin_trusted("my-plugin") is False
         # Trust it
@@ -322,7 +321,7 @@ class TestTrustStore:
     def test_trust_plugin_persists_to_disk(self, monkeypatch, tmp_path):
         """trust_plugin() writes to disk (survives restart)."""
         monkeypatch.setenv("SENPY_HOME", str(tmp_path))
-        from senpy.plugins.security import trust_plugin, is_plugin_trusted, get_trust_store_path
+        from senpy.plugins.security import get_trust_store_path, is_plugin_trusted, trust_plugin
 
         trust_plugin("persistent-plugin")
 
@@ -340,7 +339,7 @@ class TestTrustStore:
     def test_untrust_plugin_removes_from_store(self, monkeypatch, tmp_path):
         """untrust_plugin(name) removes plugin from trust store."""
         monkeypatch.setenv("SENPY_HOME", str(tmp_path))
-        from senpy.plugins.security import trust_plugin, untrust_plugin, is_plugin_trusted
+        from senpy.plugins.security import is_plugin_trusted, trust_plugin, untrust_plugin
 
         trust_plugin("temp-plugin")
         assert is_plugin_trusted("temp-plugin") is True
@@ -351,7 +350,7 @@ class TestTrustStore:
     def test_trust_store_handles_corrupt_json(self, monkeypatch, tmp_path):
         """If trust store JSON is corrupt, treat as empty (not crash)."""
         monkeypatch.setenv("SENPY_HOME", str(tmp_path))
-        from senpy.plugins.security import is_plugin_trusted, get_trust_store_path
+        from senpy.plugins.security import get_trust_store_path, is_plugin_trusted
 
         # Write corrupt JSON
         store_path = get_trust_store_path()
@@ -481,8 +480,8 @@ class TestRegisterLoadedPlugins:
         """After register_loaded_plugins(), plugin rules appear in
         get_registered_lint_rules()."""
         monkeypatch.setenv("SENPY_HOME", str(tmp_path))
-        from senpy.plugins.loader import register_loaded_plugins, load_all_plugins
-        from senpy.plugins.registry import get_registered_lint_rules, clear_registered_lint_rules
+        from senpy.plugins.loader import load_all_plugins, register_loaded_plugins
+        from senpy.plugins.registry import clear_registered_lint_rules, get_registered_lint_rules
         from senpy.plugins.security import trust_plugin
 
         # Clear registry first (test isolation)
@@ -588,6 +587,7 @@ class TestExamplePlugin:
         sys.path.insert(0, examples_path)
         try:
             from my_senpy_plugin.rules import PLUGIN_API_VERSION
+
             from senpy.plugins.security import check_api_version
             assert check_api_version(PLUGIN_API_VERSION) is True
         finally:
@@ -600,8 +600,9 @@ class TestExamplePlugin:
         sys.path.insert(0, examples_path)
         try:
             from my_senpy_plugin.rules import HardcodedDialogueRule
-            from senpy.plugins.base import RuleContext
+
             from senpy.api import Diagnostic
+            from senpy.plugins.base import RuleContext
 
             rule = HardcodedDialogueRule()
             ctx = RuleContext(

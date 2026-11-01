@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 
-
 # =============================================================================
 # Helpers: mock Diagnostic и AnalysisResult (как в test_filter_diagnostics)
 # =============================================================================
@@ -70,19 +69,20 @@ class TestRenderSarif:
 
     def test_returns_int_exit_code(self):
         """render_sarif() возвращает int (exit code), не вызывает sys.exit."""
-        from senpy.cli.main import render_sarif
         from rich.console import Console
+
+        from senpy.cli.main import render_sarif
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
         args = _make_args(output_format="sarif")
-        result = MockResult(diagnostics=diags)
         exit_code = render_sarif(diags, args, console)
         assert isinstance(exit_code, int)
 
     def test_exit_1_when_errors_present(self):
         """Если есть ERROR diagnostics → exit code 1."""
-        from senpy.cli.main import render_sarif
         from rich.console import Console
+
+        from senpy.cli.main import render_sarif
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
         args = _make_args(output_format="sarif")
@@ -91,8 +91,9 @@ class TestRenderSarif:
 
     def test_exit_0_when_no_errors(self):
         """Если ERROR нет (только WARNING) → exit code 0."""
-        from senpy.cli.main import render_sarif
         from rich.console import Console
+
+        from senpy.cli.main import render_sarif
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY104", severity="WARNING")]
         args = _make_args(output_format="sarif")
@@ -101,8 +102,9 @@ class TestRenderSarif:
 
     def test_exit_0_when_empty(self):
         """Пустой список diagnostics → exit code 0."""
-        from senpy.cli.main import render_sarif
         from rich.console import Console
+
+        from senpy.cli.main import render_sarif
         console = Console(force_terminal=False, legacy_windows=False)
         args = _make_args(output_format="sarif")
         exit_code = render_sarif([], args, console)
@@ -110,8 +112,9 @@ class TestRenderSarif:
 
     def test_stdout_contains_sarif_json(self, capsys):
         """Без --output-file: SARIF JSON пишется в stdout."""
-        from senpy.cli.main import render_sarif
         from rich.console import Console
+
+        from senpy.cli.main import render_sarif
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
         args = _make_args(output_format="sarif")
@@ -124,8 +127,9 @@ class TestRenderSarif:
 
     def test_output_file_written(self, tmp_path, capsys):
         """С --output-file: SARIF пишется в файл, не в stdout."""
-        from senpy.cli.main import render_sarif
         from rich.console import Console
+
+        from senpy.cli.main import render_sarif
         console = Console(force_terminal=False, legacy_windows=False)
         out_file = tmp_path / "report.sarif"
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
@@ -150,8 +154,9 @@ class TestRenderJson:
 
     def test_returns_int_exit_code(self):
         """render_json() возвращает int (exit code), не вызывает sys.exit."""
-        from senpy.cli.main import render_json
         from rich.console import Console
+
+        from senpy.cli.main import render_json
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
         result = MockResult(diagnostics=diags, total_lines=100, fixed_count=0)
@@ -161,8 +166,9 @@ class TestRenderJson:
 
     def test_exit_1_when_errors_present(self):
         """Если есть ERROR diagnostics → exit code 1."""
-        from senpy.cli.main import render_json
         from rich.console import Console
+
+        from senpy.cli.main import render_json
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
         result = MockResult(diagnostics=diags)
@@ -172,8 +178,9 @@ class TestRenderJson:
 
     def test_exit_0_when_no_errors(self):
         """Если ERROR нет → exit code 0."""
-        from senpy.cli.main import render_json
         from rich.console import Console
+
+        from senpy.cli.main import render_json
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY104", severity="WARNING")]
         result = MockResult(diagnostics=diags)
@@ -183,8 +190,9 @@ class TestRenderJson:
 
     def test_stdout_contains_json(self, capsys):
         """Без --output-file: JSON пишется в stdout."""
-        from senpy.cli.main import render_json
         from rich.console import Console
+
+        from senpy.cli.main import render_json
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [
             MockDiagnostic(code="RPY101", severity="ERROR", file_path="game/script.rpy", line_number=10),
@@ -205,8 +213,9 @@ class TestRenderJson:
 
     def test_output_file_written(self, tmp_path, capsys):
         """С --output-file: JSON пишется в файл, не в stdout."""
-        from senpy.cli.main import render_json
         from rich.console import Console
+
+        from senpy.cli.main import render_json
         console = Console(force_terminal=False, legacy_windows=False)
         out_file = tmp_path / "report.json"
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
@@ -219,8 +228,9 @@ class TestRenderJson:
 
     def test_empty_diagnostics_json(self, capsys):
         """Пустой список → JSON с пустым diagnostics array."""
-        from senpy.cli.main import render_json
         from rich.console import Console
+
+        from senpy.cli.main import render_json
         console = Console(force_terminal=False, legacy_windows=False)
         result = MockResult(diagnostics=[], total_lines=0, fixed_count=0)
         args = _make_args(output_format="json")

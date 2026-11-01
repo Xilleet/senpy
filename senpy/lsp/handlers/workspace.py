@@ -114,7 +114,6 @@ def workspace_symbol(
 
 
 def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[lsp.FoldingRange]:
-    server_mod = _get_server_mod()
     """Возвращает folding ranges для .rpy файла.
 
     VS Code использует это для сворачивания блоков (Ctrl+Shift+[).
@@ -230,7 +229,6 @@ def document_highlight(
 
     # Ищем все вхождения слова в текущем файле
     highlights: list[lsp.DocumentHighlight] = []
-    file_path = server_mod._uri_to_path(params.text_document.uri)
 
     for i, file_line in enumerate(doc.lines):
         # Простое find для каждого вхождения слова в строке

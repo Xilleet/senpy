@@ -25,15 +25,14 @@
 """
 from __future__ import annotations
 
+import builtins
 import os
 import struct
 import sys
-import builtins
 import tempfile
 import zlib
-from pathlib import Path
 from io import BytesIO
-
+from pathlib import Path
 
 # Список dangerous модулей, которые Senpy НЕ должен импортировать при
 # декомпиляции недоверенного .rpyc (даже если они случайно оказались в safe_modules).
@@ -199,10 +198,10 @@ def test_legitimate_rpyc_still_decompiles():
     Ren'Py .rpyc с pickle, который ссылается на renpy.store и collections —
     это стандартный use case. Hardening НЕ должен сломать его.
     """
-    from senpy.vendor.unrpyc import decompile_rpyc_bytes
-
     # Минимальный валидный .rpyc: пустой AST tuple ({}, [])
     import pickle
+
+    from senpy.vendor.unrpyc import decompile_rpyc_bytes
     payload = pickle.dumps(({}, []), protocol=2)
     slot1_data = zlib.compress(payload)
     slot1_pos = 34
@@ -225,11 +224,13 @@ def test_safe_modules_collections_still_imports():
     """Regression: collections (легитимный safe_module) должен импортироваться
     как раньше — hardening не должен блокировать легитимные safe_modules.
     """
-    from senpy.vendor.unrpyc.decompiler import magic
-
     # Pickle, ссылающийся на collections.OrderedDict
     import pickle
-    payload = pickle.dumps(("collections", "OrderedDict"), protocol=2)
+
+    from senpy.vendor.unrpyc.decompiler import magic
+    # Verify pickle protocol 2 can serialize the OrderedDict reference
+    # (the actual test below uses a hand-crafted malicious_pickle instead).
+    pickle.dumps(("collections", "OrderedDict"), protocol=2)
     malicious_pickle = b"\x80\x02ccollections\nOrderedDict\n."
 
     CLASS_FACTORY = magic.FakeClassFactory({}, magic.FakeStrict)
@@ -253,7 +254,7 @@ def test_safe_modules_collections_still_imports():
 
     builtins.__import__ = _track
     try:
-        result = unpickler.load()
+        unpickler.load()
     finally:
         builtins.__import__ = real_import
 

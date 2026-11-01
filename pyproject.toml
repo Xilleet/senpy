@@ -105,6 +105,7 @@ extend-exclude = [
     "build",
     "dist",
     ".senpy_cache",
+    "senpy/vendor",       # vendored unrpyc — чужой код, ruff --fix ломает lazy imports
 ]
 
 [tool.ruff.lint]
@@ -139,13 +140,19 @@ ignore = [
 # Тесты могут иметь неиспользуемые импорты (для side effects) и длинные строки.
 # W291/W293 (trailing/blank whitespace) — легитимны внутри .rpy-строк в тестах
 # (test_performance.py, test_mermaid_screens.py и др. содержат .rpy код как данные).
-"tests/**/*.py" = ["F401", "E501", "W291", "W293", "W605"]
+# SIM105/SIM117 — тесты иногда намеренно используют try/except/pass или
+# вложенные with для проверки внутреннего состояния (assertions между ними).
+# E402 — test_imports.py использует sys.path.insert перед импортами.
+"tests/**/*.py" = ["F401", "E501", "W291", "W293", "W605", "SIM105", "SIM117", "E402"]
 # __init__. — часто re-export
 "senpy/__init__.py" = ["F401"]
 # conftest.py — магия pytest, не трогаем
-"tests/conftest.py" = ["E402"]
+"tests/conftest.py" = ["E402", "SIM105"]
 # Скрипты с sys.path.insert перед import — легитимный E402
 "scripts/**/*.py" = ["E402"]
+# Vendored unrpyc полностью исключён через extend-exclude выше (ruff --fix
+# ломал lazy imports). Bare-except cleanup в vendored lib — separate task
+# для ручного patch'а при обновлении unrpyc.
 # html_report.py — содержит HTML/CSS как f-string, whitespace легитимен внутри шаблона
 "senpy/html_report.py" = ["W291", "W293"]
 # analyzer.py, server.py — warnings.filterwarnings() ДО импортов (подавление pygls warnings)

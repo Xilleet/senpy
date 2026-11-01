@@ -60,7 +60,7 @@ class DiagnosticSink(Protocol):
     fixed_count: int
     fix: bool
 
-    def _add_diagnostic(self, diag: "Diagnostic", noqa_map: dict[int, set[str] | None]) -> None:
+    def _add_diagnostic(self, diag: Diagnostic, noqa_map: dict[int, set[str] | None]) -> None:
         """Добавить diagnostic в список найденных ошибок.
 
         Args:

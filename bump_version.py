@@ -50,8 +50,8 @@ def select_target_version(major: int, minor: int, patch: int) -> str | None:
     print(f"  [1] Patch: {patch_ver}  (предназначается для багфиксов, хотфиксов и мелких правок регулярок без изменения архитектуры и без добавления крупных фич)")
     print(f"  [2] Minor: {minor_ver}  (выпускается, когда проект получает новые крупные возможности, расширение семантики или переход на новый уровень качества)")
     print(f"  [3] Major: {major_ver}  (статус первого стабильного релизного билда (Production Ready), когда API стабилизирован и протестирован на десятках реальных новелл)")
-    print(f"  [c] Ввести свою версию вручную")
-    print(f"  [q] Отмена")
+    print("  [c] Ввести свою версию вручную")
+    print("  [q] Отмена")
     print("=" * 50)
 
     choice = input("[?] Выберите вариант [1/2/3/c/q] (по умолчанию 2): ").strip().lower()
@@ -80,7 +80,7 @@ def read_current_version() -> tuple[int, int, int]:
         print(f"[ERROR] {VERSION_PY_PATH} не найден!")
         sys.exit(1)
 
-    with open(VERSION_PY_PATH, "r", encoding="utf-8") as f:
+    with open(VERSION_PY_PATH, encoding="utf-8") as f:
         content = f.read()
 
     # Ищем __version__ = "X.Y.Z"
@@ -130,7 +130,7 @@ def write_version_to_package_json(next_ver: str) -> None:
         print(f"[!] Warning: {PACKAGE_JSON_PATH} не найден, пропуск.")
         return
     try:
-        with open(PACKAGE_JSON_PATH, "r", encoding="utf-8") as f:
+        with open(PACKAGE_JSON_PATH, encoding="utf-8") as f:
             pkg_data = json.load(f)
         old_ver = pkg_data.get("version", "?")
         pkg_data["version"] = next_ver
@@ -162,7 +162,7 @@ def bump_version():
     # 3. Готово. constants.py, server.py, pyproject.toml подхватят версию
     # автоматически через import / dynamic = ["version"].
     print(f"\n[★] Успешно! Проект обновлён до версии {next_ver}.")
-    print(f"    constants.py / server.py / pyproject.toml подхватят автоматически.\n")
+    print("    constants.py / server.py / pyproject.toml подхватят автоматически.\n")
 
 
 if __name__ == "__main__":

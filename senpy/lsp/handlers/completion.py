@@ -264,10 +264,8 @@ def signature_help(
         screens = server_mod._active_analyzer.screens
 
     symbol = None
-    is_label = False
     if target_name in labels:
         symbol = labels[target_name]
-        is_label = True
     elif target_name in screens:
         symbol = screens[target_name]
     else:

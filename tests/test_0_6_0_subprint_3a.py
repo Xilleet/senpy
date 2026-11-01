@@ -18,7 +18,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 # =============================================================================
 # Mock helpers (reuse from test_lsp.py — minimal versions for this test file)
 # =============================================================================
@@ -82,8 +81,9 @@ class TestDocumentColorHandler:
 
     def test_document_color_returns_list(self):
         """document_color() returns a list (possibly empty)."""
-        from senpy.lsp.handlers.diagnostics import document_color
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import document_color
 
         mock_doc = MockDocument(
             "file:///test.rpy",
@@ -101,8 +101,9 @@ class TestDocumentColorHandler:
 
     def test_document_color_finds_hex_color_in_dialogue_tag(self):
         """{color=#ff0000} in dialogue → ColorInformation with red=1.0."""
-        from senpy.lsp.handlers.diagnostics import document_color
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import document_color
 
         mock_doc = MockDocument(
             "file:///test.rpy",
@@ -131,8 +132,9 @@ class TestDocumentColorHandler:
 
     def test_document_color_finds_solid_color_call(self):
         """Solid("#00ff00") in screen → ColorInformation with green=1.0."""
-        from senpy.lsp.handlers.diagnostics import document_color
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import document_color
 
         mock_doc = MockDocument(
             "file:///test.rpy",
@@ -156,8 +158,9 @@ class TestDocumentColorHandler:
 
     def test_document_color_handles_alpha_channel(self):
         """#ff0000ff (8 hex digits, last = alpha) → alpha=1.0."""
-        from senpy.lsp.handlers.diagnostics import document_color
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import document_color
 
         mock_doc = MockDocument(
             "file:///test.rpy",
@@ -178,8 +181,9 @@ class TestDocumentColorHandler:
 
     def test_document_color_handles_half_alpha(self):
         """#ff000080 (alpha=80=128) → alpha=128/255≈0.502."""
-        from senpy.lsp.handlers.diagnostics import document_color
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import document_color
 
         mock_doc = MockDocument(
             "file:///test.rpy",
@@ -200,8 +204,9 @@ class TestDocumentColorHandler:
 
     def test_document_color_skips_comments(self):
         """#ffffff in a # comment should NOT be detected as color."""
-        from senpy.lsp.handlers.diagnostics import document_color
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import document_color
 
         mock_doc = MockDocument(
             "file:///test.rpy",
@@ -222,8 +227,9 @@ class TestDocumentColorHandler:
     def test_document_color_range_points_to_color_literal(self):
         """ColorInformation.range should point to the #ffffff literal itself,
         not the surrounding tag or string."""
-        from senpy.lsp.handlers.diagnostics import document_color
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import document_color
 
         mock_doc = MockDocument(
             "file:///test.rpy",
@@ -254,8 +260,9 @@ class TestDocumentColorHandler:
 
     def test_document_color_handles_multiple_colors_in_file(self):
         """Multiple colors in file → multiple ColorInformation entries."""
-        from senpy.lsp.handlers.diagnostics import document_color
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import document_color
 
         mock_doc = MockDocument(
             "file:///test.rpy",
@@ -300,8 +307,9 @@ class TestColorPresentationHandler:
 
     def test_color_presentation_returns_list(self):
         """color_presentation() returns list[ColorPresentation]."""
-        from senpy.lsp.handlers.diagnostics import color_presentation
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import color_presentation
 
         mock_doc = MockDocument(
             "file:///test.rpy",
@@ -349,8 +357,9 @@ class TestFormattingHandler:
 
     def test_formatting_returns_list_of_text_edits(self):
         """formatting() returns list[TextEdit] (possibly empty if no changes)."""
-        from senpy.lsp.handlers.diagnostics import formatting
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import formatting
 
         # Already-formatted code → no changes needed → empty list
         mock_doc = MockDocument(
@@ -370,8 +379,9 @@ class TestFormattingHandler:
 
     def test_formatting_fixes_indentation(self):
         """Tab-indented code → TextEdit replacing with 4-space indented code."""
-        from senpy.lsp.handlers.diagnostics import formatting
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import formatting
 
         # Code with tabs (should be 4 spaces)
         mock_doc = MockDocument(
@@ -398,8 +408,9 @@ class TestFormattingHandler:
 
     def test_formatting_fixes_smart_quotes_in_code(self):
         """Smart quotes in code → TextEdit with straight quotes."""
-        from senpy.lsp.handlers.diagnostics import formatting
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import formatting
 
         mock_doc = MockDocument(
             "file:///test.rpy",
@@ -424,8 +435,9 @@ class TestFormattingHandler:
 
     def test_formatting_preserves_dialogue_smart_quotes(self):
         """Smart quotes in dialogue (line starts with ") should be PRESERVED."""
-        from senpy.lsp.handlers.diagnostics import formatting
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import formatting
 
         mock_doc = MockDocument(
             "file:///test.rpy",
@@ -452,9 +464,10 @@ class TestFormattingHandler:
 
     def test_formatting_idempotent(self):
         """Already-formatted code → no TextEdits (or empty list)."""
-        from senpy.lsp.handlers.diagnostics import formatting
         from lsprotocol import types as lsp
-        from senpy.formatter import Formatter, FormatConfig
+
+        from senpy.formatter import FormatConfig, Formatter
+        from senpy.lsp.handlers.diagnostics import formatting
 
         # Format once to get clean version
         fmt = Formatter(FormatConfig())
@@ -497,8 +510,9 @@ class TestRangeFormattingHandler:
 
     def test_range_formatting_returns_list(self):
         """range_formatting() returns list[TextEdit] (possibly empty)."""
-        from senpy.lsp.handlers.diagnostics import range_formatting
         from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import range_formatting
 
         mock_doc = MockDocument(
             "file:///test.rpy",
