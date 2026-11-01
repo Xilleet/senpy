@@ -8,11 +8,14 @@ Handler'ы:
 Все функции принимают (ls, params) и обращаются к shared state через
 server_mod._X (lazy import разрывает цикл импортов).
 """
+
 from __future__ import annotations
 
 import os
 import re
 from typing import TYPE_CHECKING
+
+from senpy.core.logging import get_logger
 
 if TYPE_CHECKING:
     try:
@@ -22,33 +25,38 @@ if TYPE_CHECKING:
 
 from lsprotocol import types as lsp
 
+_logger = get_logger("lsp.completion")
+
 
 def _get_server_mod():
     """Ленивый доступ к senpy.lsp.server, разрывает цикл импортов."""
     from senpy.lsp import server
+
     return server
 
 
 def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.CompletionList:
-    server_mod = _get_server_mod()
     """Контекстный автокомплит для меток, спрайтов и экранов."""
+    server_mod = _get_server_mod()
     items: list[lsp.CompletionItem] = []
     if server_mod._active_analyzer is None or not server_mod._is_initialized:
-        ls.show_message_log(
-            f"[completions] NOT INITIALIZED: analyzer={server_mod._active_analyzer is not None}, "
-            f"init={server_mod._is_initialized}"
+        _logger.debug(
+            "[completions] NOT INITIALIZED: analyzer=%s, init=%s",
+            server_mod._active_analyzer is not None,
+            server_mod._is_initialized,
         )
         return lsp.CompletionList(is_incomplete=False, items=items)
 
     doc = ls.workspace.get_text_document(params.text_document.uri)
     if not doc:
-        ls.show_message_log("[completions] no doc")
+        _logger.debug("[completions] no doc")
         return lsp.CompletionList(is_incomplete=False, items=items)
 
     if params.position.line >= len(doc.lines):
-        ls.show_message_log(
-            f"[completions] line {params.position.line} out of range "
-            f"(doc has {len(doc.lines)} lines)"
+        _logger.debug(
+            "[completions] line %s out of range (doc has %s lines)",
+            params.position.line,
+            len(doc.lines),
         )
         return lsp.CompletionList(is_incomplete=False, items=items)
 
@@ -56,13 +64,15 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
     prefix = line[: params.position.character].lstrip()
 
     # UX DEBUG: log what we receive + snapshot state
-    ls.show_message_log(
-        f"[completions] prefix={prefix!r}, "
-        f"snapshot_labels={len(server_mod._symbol_snapshot['labels'])}, "
-        f"live_labels={len(server_mod._active_analyzer.labels)}, "
-        f"snapshot_images={len(server_mod._symbol_snapshot['images'])}, "
-        f"snapshot_screens={len(server_mod._symbol_snapshot['screens'])}, "
-        f"snapshot_transforms={len(server_mod._symbol_snapshot['transforms'])}"
+    _logger.debug(
+        "[completions] prefix=%r, snapshot_labels=%d, live_labels=%d, "
+        "snapshot_images=%d, snapshot_screens=%d, snapshot_transforms=%d",
+        prefix,
+        len(server_mod._symbol_snapshot["labels"]),
+        len(server_mod._active_analyzer.labels),
+        len(server_mod._symbol_snapshot["images"]),
+        len(server_mod._symbol_snapshot["screens"]),
+        len(server_mod._symbol_snapshot["transforms"]),
     )
 
     # 1. Автокомплит меток для jump / call
@@ -139,7 +149,9 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
                 base_tag = tokens[1]
                 # UX: используем snapshot для images, но valid_images
                 # берём из server_mod._active_analyzer (он не чистится analyze_file_only).
-                all_valid = server_mod._active_analyzer.valid_images.union(server_mod._symbol_snapshot["images"])
+                all_valid = server_mod._active_analyzer.valid_images.union(
+                    server_mod._symbol_snapshot["images"]
+                )
                 attrs = server_mod._active_analyzer._get_tag_known_attributes(base_tag, all_valid)
                 for attr in sorted(attrs):
                     items.append(
@@ -151,9 +163,11 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
                     )
 
     # UX DEBUG: log result
-    ls.show_message_log(
-        f"[completions] RETURN {len(items)} items "
-        f"(prefix={prefix!r}, snapshot_labels={len(server_mod._symbol_snapshot['labels'])})"
+    _logger.debug(
+        "[completions] RETURN %d items (prefix=%r, snapshot_labels=%d)",
+        len(items),
+        prefix,
+        len(server_mod._symbol_snapshot["labels"]),
     )
 
     return lsp.CompletionList(is_incomplete=False, items=items)
@@ -185,7 +199,7 @@ def _count_active_parameter(line: str, cursor_pos: int, paren_start: int) -> int
     """
     if cursor_pos <= paren_start:
         return 0
-    segment = line[paren_start + 1:cursor_pos]
+    segment = line[paren_start + 1 : cursor_pos]
     # Count commas NOT inside nested parens/brackets
     depth = 0
     comma_count = 0
@@ -199,9 +213,7 @@ def _count_active_parameter(line: str, cursor_pos: int, paren_start: int) -> int
     return comma_count
 
 
-def signature_help(
-    ls: LanguageServer, params: lsp.SignatureHelpParams
-) -> lsp.SignatureHelp | None:
+def signature_help(ls: LanguageServer, params: lsp.SignatureHelpParams) -> lsp.SignatureHelp | None:
     """Provide parameter hints for call label(...) / use screen(...).
 
     Returns None if:

@@ -12,10 +12,13 @@ Handler'ы:
 Все функции принимают (ls, params) и обращаются к shared state через
 server_mod._X (lazy import разрывает цикл импортов).
 """
+
 from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING
+
+from senpy.core.logging import get_logger
 
 if TYPE_CHECKING:
     try:
@@ -25,10 +28,13 @@ if TYPE_CHECKING:
 
 from lsprotocol import types as lsp
 
+_logger = get_logger("lsp.diagnostics")
+
 
 def _get_server_mod():
     """Ленивый доступ к senpy.lsp.server, разрывает цикл импортов."""
     from senpy.lsp import server
+
     return server
 
 
@@ -109,7 +115,7 @@ def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.Co
             actions.append(action)
 
     except (KeyError, IndexError, ValueError, AttributeError) as e:
-        ls.show_message_log(f"Error in code_action: {e}")
+        _logger.warning("Error in code_action: %s", e, exc_info=True)
 
     return actions
 
@@ -223,13 +229,15 @@ def document_color(
             start_char = match.start()  # position of #
             end_char = match.end()  # position after last hex digit
 
-            result.append(lsp.ColorInformation(
-                range=lsp.Range(
-                    start=lsp.Position(line=line_idx, character=start_char),
-                    end=lsp.Position(line=line_idx, character=end_char),
-                ),
-                color=color,
-            ))
+            result.append(
+                lsp.ColorInformation(
+                    range=lsp.Range(
+                        start=lsp.Position(line=line_idx, character=start_char),
+                        end=lsp.Position(line=line_idx, character=end_char),
+                    ),
+                    color=color,
+                )
+            )
 
     return result
 
@@ -237,7 +245,7 @@ def document_color(
 def color_presentation(
     ls: LanguageServer, params: lsp.ColorPresentationParams
 ) -> list[lsp.ColorPresentation]:
-    """ part 2: Convert a Color back to text representation.
+    """part 2: Convert a Color back to text representation.
 
     When user picks a new color in VS Code's color picker, VS Code calls
     this to get the text to insert. We return the hex format matching
@@ -269,9 +277,8 @@ def color_presentation(
 # Shift+Alt+F in VS Code calls formatting() to format the whole document.
 # Ctrl+K Ctrl+F calls range_formatting() for selected range only.
 
-def formatting(
-    ls: LanguageServer, params: lsp.DocumentFormattingParams
-) -> list[lsp.TextEdit]:
+
+def formatting(ls: LanguageServer, params: lsp.DocumentFormattingParams) -> list[lsp.TextEdit]:
     """Format the entire document using Senpy formatter.
 
     Returns list[TextEdit]. If no changes needed, returns empty list.
@@ -309,7 +316,7 @@ def formatting(
 def range_formatting(
     ls: LanguageServer, params: lsp.DocumentRangeFormattingParams
 ) -> list[lsp.TextEdit]:
-    """ part 2: Format selected range only.
+    """part 2: Format selected range only.
 
     For MVP, we format the whole document and return a single TextEdit
     replacing the entire file. This is acceptable — VS Code applies the
