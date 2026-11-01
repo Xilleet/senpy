@@ -92,7 +92,7 @@ def validate_config(raw: dict) -> dict:
         config = SenpyConfig(**raw)
         return config.model_dump()
     except ValidationError as e:
-        # CLI-16: логируем понятное сообщение об ошибке валидации.
+        # логируем понятное сообщение об ошибке валидации.
         # Раньше (без pydantic) невалидные поля молча игнорировались, что
         # приводило к часам дебага "почему мой max_errors не работает?".
         _logger.warning(

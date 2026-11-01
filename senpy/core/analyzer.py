@@ -68,6 +68,27 @@ _WORD_RE = re.compile(r"\w+")
 # циклической зависимости checkers/flow → analyzer. Реэкспортируем для backward compat.
 from senpy.text_utils import _strip_comment  # noqa: E402, F401
 
+# Extract the first quoted string literal from a Python expression
+# body. Used for `image name = "path"` and `image name = Transform("path", …)`
+# so ImageSymbol.image_path can be populated at parse time (renpy-magic's
+# extractAssetPath does the same in TS; we cover the common cases here).
+_RE_STRING_LITERAL = re.compile(r"""(["'])(?P<value>(?:\\.|(?!\1).)*)\1""")
+
+
+def _extract_string_literal(expr: str) -> str | None:
+    """Return the first single- or double-quoted string literal in *expr*.
+
+    Returns the literal contents (with backslash escapes preserved as-is;
+    callers can os.path.normpath later if they want). None if no string
+    literal is found (e.g. body is a Python expression without a literal).
+    """
+    if not expr:
+        return None
+    m = _RE_STRING_LITERAL.search(expr)
+    if m is None:
+        return None
+    return m.group("value")
+
 
 def _count_bracket_delta(s: str) -> int:
     """Считает баланс скобок (, [, { вне строковых литералов."""
@@ -797,6 +818,12 @@ class SenpyAnalyzer:
         self.defined_audio_map[alias] = target_file
         self.declared_symbols.add(alias)
         self.declared_symbols.add(f"audio.{alias}")
+        # Register alias → disk path for audio hover. The alias
+        # resolves to the *file* named in target_file (relative to game/);
+        # we look it up via media_disk_files. Done at parse time so hover
+        # never re-reads source files (renpy-magic re-reads per hover —
+        # we avoid that anti-pattern).
+        self.assets.register_audio_alias(alias, target_file)
 
     def _collect_screen_transform(
         self,
@@ -1028,6 +1055,7 @@ class SenpyAnalyzer:
                 line_number=idx + 1,
                 body=img_body,
                 is_layered=False,
+                image_path=_extract_string_literal(img_body),
             )
             scope.images[img_name] = img_sym
             self.images[img_name] = img_sym

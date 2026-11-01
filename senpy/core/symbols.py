@@ -54,6 +54,12 @@ class ImageSymbol:
     body: str
     is_layered: bool = False
     attributes: set[str] = field(default_factory=set)
+    # Optional on-disk path extracted from `image name = "path"` or
+    # `image name = Transform("path", ...)` declarations. Filled by the
+    # analyzer at parse time so hover does not have to re-read the source
+    # file per request. None for layeredimage or image built from a Python
+    # expression without a string literal.
+    image_path: str | None = None
 
 
 @dataclass(slots=True)

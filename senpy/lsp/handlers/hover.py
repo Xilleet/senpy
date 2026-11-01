@@ -87,16 +87,42 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
 
             # Если курсор находится в пределах image tag/attributes
             if tag_start != -1 and tag_start <= col <= tag_end:
-                # Проверяем, есть ли такое изображение
-                for candidate in (full_tag, base_tag):
-                    if candidate in server_mod._symbol_snapshot.get("images", set()):
-                        # TODO: можно добавить image hover в будущем
-                        # Пока просто возвращаем None, чтобы не показывать
-                        # ложный hover для переменной
-                        return None
-                # Image не найден в declarations — тоже не показываем
-                # ложный hover для переменной
+                # Image hover preview. Only show/scene get a real
+                # preview; hide still suppresses variable hover (no point
+                # previewing an asset being dismissed).
+                if stripped_line.startswith(("show ", "scene ")):
+                    from senpy.lsp.handlers.asset_hover import build_image_hover
+
+                    image_hover = build_image_hover(line, col)
+                    if image_hover is not None:
+                        return image_hover
+                # Either: cursor on a hide token, or image not on disk.
+                # Either way, suppress the variable hover to avoid showing
+                # `define happy = Character(...)` when the user hovers over
+                # `show sayori happy`.
                 return None
+
+    # 0b. Audio hover — `play music NAME`, `queue sound NAME`,
+    # `define audio.NAME = "..."`. Resolve to a file:// link that VS Code's
+    # built-in media viewer can play.
+    stripped_lower = stripped_line.lower()
+    if (
+        stripped_lower.startswith(("play ", "queue "))
+        and any(
+            stripped_lower.startswith(f"{kw} {ch} ")
+            for kw in ("play", "queue")
+            for ch in ("music", "sound", "voice", "audio")
+        )
+        or stripped_lower.startswith("define audio.")
+    ):
+        from senpy.lsp.handlers.asset_hover import build_audio_hover
+
+        audio_hover = build_audio_hover(line, col)
+        if audio_hover is not None:
+            return audio_hover
+        # Fall through: audio name didn't resolve to a file. Don't suppress
+        # the variable hover — the user might be hovering over a real
+        # variable named the same way as an audio channel.
 
     api_content = get_renpy_api_hover(word)
     if api_content:

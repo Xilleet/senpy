@@ -1,0 +1,270 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Ren'Py",
+  "scopeName": "source.renpy",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#python-block" },
+    { "include": "#python-line" },
+    { "include": "#labels" },
+    { "include": "#keywords" },
+    { "include": "#statements" },
+    { "include": "#say-statement" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#builtins" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.renpy",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.triple.renpy",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "patterns": [
+            { "include": "#string-interpolation" },
+            { "include": "#string-tags" }
+          ]
+        },
+        {
+          "name": "string.quoted.double.renpy",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            { "include": "#string-interpolation" },
+            { "include": "#string-tags" },
+            {
+              "name": "constant.character.escape.renpy",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.renpy",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            { "include": "#string-interpolation" },
+            { "include": "#string-tags" },
+            {
+              "name": "constant.character.escape.renpy",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "string-interpolation": {
+      "patterns": [
+        {
+          "comment": "Escaped [ in Ren'Py strings (e.g. [[Copy] displays literal [Copy])",
+          "name": "constant.character.escape.renpy",
+          "match": "\\[\\["
+        },
+        {
+          "name": "variable.other.interpolation.renpy",
+          "begin": "\\[",
+          "end": "\\]",
+          "patterns": [
+            { "include": "#string-interpolation" },
+            {
+              "name": "constant.numeric.integer.renpy",
+              "match": "\\b[0-9]+\\b"
+            }
+          ]
+        }
+      ]
+    },
+    "string-tags": {
+      "patterns": [
+        {
+          "comment": "Escaped { in Ren'Py strings (e.g. {{ displays literal {)",
+          "name": "constant.character.escape.renpy",
+          "match": "\\{\\{"
+        },
+        {
+          "name": "entity.name.tag.renpy",
+          "match": "\\{[^}]*\\}"
+        }
+      ]
+    },
+    "python-block": {
+      "patterns": [
+        {
+          "name": "meta.embedded.block.python.renpy",
+          "begin": "^(\\s*)(init\\s+python|python)\\s*(early|hide)?\\s*:",
+          "beginCaptures": {
+            "2": { "name": "keyword.control.renpy" },
+            "3": { "name": "keyword.other.renpy" }
+          },
+          "end": "^(?!\\1\\s+|\\s*$)",
+          "patterns": [
+            { "include": "#python-code" }
+          ]
+        }
+      ]
+    },
+    "python-line": {
+      "patterns": [
+        {
+          "name": "meta.embedded.line.python.renpy",
+          "begin": "^\\s*\\$\\s*",
+          "end": "$",
+          "patterns": [
+            { "include": "#python-code" }
+          ]
+        }
+      ]
+    },
+    "python-code": {
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        {
+          "name": "keyword.control.python",
+          "match": "\\b(if|elif|else|for|while|try|except|finally|with|return|yield|break|continue|pass|raise|import|from|as|class|def|lambda|and|or|not|in|is|True|False|None)\\b"
+        },
+        {
+          "name": "support.function.builtin.python",
+          "match": "\\b(print|len|range|str|int|float|list|dict|set|tuple|bool|open|type|isinstance|hasattr|getattr|setattr)\\b"
+        },
+        {
+          "name": "variable.other.python",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        },
+        { "include": "#numbers" },
+        { "include": "#operators" }
+      ]
+    },
+    "labels": {
+      "patterns": [
+        {
+          "name": "meta.label.renpy",
+          "match": "^\\s*(label)\\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s*\\(([^)]*)\\))?\\s*:",
+          "captures": {
+            "1": { "name": "keyword.control.label.renpy" },
+            "2": { "name": "entity.name.function.label.renpy" },
+            "3": { "name": "variable.parameter.renpy" }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.renpy",
+          "match": "\\b(label|menu|if|elif|else|while|for|jump|call|return|pass|screen|transform|image|define|default|init|python|style|layeredimage|show|hide|scene|with|play|stop|queue|pause|nvl|window|frame|text|textbutton|imagebutton|button|vbox|hbox|grid|fixed|side|viewport|use|transclude|on|action|has|at|as|behind|onlayer|zorder|expression|centered|extend)\\b"
+        },
+        {
+          "name": "keyword.other.renpy",
+          "match": "\\b(early|hide|clear|take|in|nointeract|from|set|contains|parallel|block|choice|time|repeat|function|event|animation|pause|linear|ease|easein|easeout|knot|circles|clockwise|counterclockwise|warp)\\b"
+        }
+      ]
+    },
+    "statements": {
+      "patterns": [
+        {
+          "name": "meta.define.renpy",
+          "match": "^\\s*(define|default)\\s+([a-zA-Z_][a-zA-Z0-9_.]*)\\s*=",
+          "captures": {
+            "1": { "name": "keyword.control.renpy" },
+            "2": { "name": "entity.name.variable.renpy" }
+          }
+        },
+        {
+          "name": "meta.screen.renpy",
+          "match": "^\\s*(screen)\\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s*\\(([^)]*)\\))?\\s*:",
+          "captures": {
+            "1": { "name": "keyword.control.screen.renpy" },
+            "2": { "name": "entity.name.function.screen.renpy" },
+            "3": { "name": "variable.parameter.renpy" }
+          }
+        },
+        {
+          "name": "meta.transform.renpy",
+          "match": "^\\s*(transform)\\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s*\\(([^)]*)\\))?\\s*:",
+          "captures": {
+            "1": { "name": "keyword.control.transform.renpy" },
+            "2": { "name": "entity.name.function.transform.renpy" },
+            "3": { "name": "variable.parameter.renpy" }
+          }
+        },
+        {
+          "name": "meta.image.renpy",
+          "match": "^\\s*(image)\\s+([a-zA-Z_][a-zA-Z0-9_ ]*)\\s*=",
+          "captures": {
+            "1": { "name": "keyword.control.image.renpy" },
+            "2": { "name": "entity.name.tag.image.renpy" }
+          }
+        }
+      ]
+    },
+    "say-statement": {
+      "patterns": [
+        {
+          "comment": "Say statement: character \"dialogue\"",
+          "name": "meta.say.renpy",
+          "begin": "^(\\s*)([a-zA-Z_][a-zA-Z0-9_]*)\\s+(\")",
+          "beginCaptures": {
+            "2": { "name": "entity.name.character.renpy" },
+            "3": { "name": "string.quoted.double.renpy" }
+          },
+          "end": "(\")",
+          "endCaptures": {
+            "1": { "name": "string.quoted.double.renpy" }
+          },
+          "contentName": "string.quoted.double.renpy",
+          "patterns": [
+            { "include": "#string-interpolation" },
+            { "include": "#string-tags" },
+            {
+              "name": "constant.character.escape.renpy",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.renpy",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.renpy",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.renpy",
+          "match": "(==|!=|<=|>=|<|>|=|\\+|-|\\*|/|%|\\band\\b|\\bor\\b|\\bnot\\b|\\bin\\b|\\bis\\b)"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.class.renpy",
+          "match": "\\b(Character|DynamicCharacter|ADVCharacter|NVLCharacter|Dissolve|Fade|ImageDissolve|AlphaDissolve|CropMove|PushMove|MoveTransition|Pixellate|Transform|ATLTransform|Animation|Movie|Solid|Frame|Null|Text|Image|Composite|Crop|LiveComposite|LiveCrop|ConditionSwitch|ShowingSwitch|DynamicDisplayable|ConditionGroup|HBox|VBox|Grid|Fixed|Side|Position|AlphaMask|At|Flatten|Viewport|Drag|DragGroup|Particles|SnowBlossom|Color|im|ui|config|persistent|preferences|renpy|store|achievement|build|director|iap|layeredimage)\\b"
+        },
+        {
+          "name": "support.function.renpy",
+          "match": "\\b(Return|Jump|Call|Show|Hide|Play|Stop|Queue|SetVariable|SetField|SetDict|ToggleVariable|ToggleField|ToggleDict|AddToSet|RemoveFromSet|If|Notify|ShowMenu|MainMenu|Quit|Confirm|NullAction|Function|OpenURL|ShowTransient|Screenshot|FileSave|FileLoad|FileAction|FileDelete|FilePage|FilePageNext|FilePagePrevious|FileTakeScreenshot|QuickSave|QuickLoad|Rollback|RollForward|SetMute|SetMixer|SetVoiceMute|PauseAudio|Play|Stop|Queue|SelectedIf|SensitiveIf)\\b"
+        }
+      ]
+    }
+  }
+}

@@ -181,7 +181,40 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showInformationMessage("Senpy Language Server restarted.");
     });
     context.subscriptions.push(restartCmd);
-    
+
+    // 6. Команда: senpy.openExternal — opens a file:// URI in the OS default
+    // application. Used by video hover: VS Code's built-in image
+    // viewer cannot decode WebM/MP4, so the hover markdown emits a
+    // `command:senpy.openExternal?<json-encoded-uri>` link that lands here.
+    // The argument is a JSON-encoded string passed by the markdown link
+    // resolver; we accept either a raw URI string or a JSON-wrapped one.
+    let openExternalCmd = vscode.commands.registerCommand(
+        'senpy.openExternal',
+        async (arg: unknown) => {
+            let uriStr: string | undefined;
+            if (typeof arg === 'string') {
+                uriStr = arg;
+                // Tolerate a JSON-encoded string (the hover markdown emits
+                // command:senpy.openExternal?"file:///..." — VS Code passes
+                // the decoded JSON value, but other clients might wrap it).
+                if (uriStr.startsWith('"') && uriStr.endsWith('"')) {
+                    try { uriStr = JSON.parse(uriStr); } catch { /* use raw */ }
+                }
+            }
+            if (!uriStr) {
+                vscode.window.showWarningMessage("Senpy: no file path provided for openExternal.");
+                return;
+            }
+            try {
+                const uri = vscode.Uri.parse(uriStr);
+                await vscode.env.openExternal(uri);
+            } catch (e) {
+                vscode.window.showWarningMessage(`Senpy: could not open "${uriStr}": ${e}`);
+            }
+        }
+    );
+    context.subscriptions.push(openExternalCmd);
+
 // Пробрасываем папку bin/ расширения в PATH встроенного терминала VS Code
     const binDir = path.join(context.extensionPath, 'bin');
     if (fs.existsSync(binDir)) {

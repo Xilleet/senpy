@@ -1,4 +1,4 @@
-"""QUA-11: Domain exception hierarchy for Senpy.
+"""Domain exception hierarchy for Senpy.
 
 Все доменные исключения наследуются от `SenpyError` (НЕ от ValueError/TypeError).
 Это позволяет caller'у написать `except SenpyError:` и поймать только Senpy-
@@ -70,7 +70,7 @@ class SenpyError(Exception):
             into a domain exception — preserves traceback for debugging.
     """
 
-    def __init__(self, message: str, *, cause: Optional[BaseException] = None) -> None:
+    def __init__(self, message: str, *, cause: Optional[BaseException] = None) -> None:  # noqa: UP045
         super().__init__(message)
         if cause is not None:
             self.__cause__ = cause

@@ -7,7 +7,7 @@
   "name": "senpy-vscode",
   "displayName": "senpy-vscode",
   "description": "Notice me, Senpy! Fast semantic Ren'Py linter with LSP support",
-  "version": "0.6.6",
+  "version": "0.7.0",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -36,6 +36,12 @@
         "command": "senpy.restartLanguageServer",
         "title": "Senpy: Restart Language Server",
         "category": "Senpy"
+      },
+      {
+        "command": "senpy.openExternal",
+        "title": "Senpy: Open File in Default App",
+        "category": "Senpy",
+        "enablement": "false"
       }
     ],
     "menus": {
@@ -75,6 +81,13 @@
           ".rpym"
         ],
         "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "renpy",
+        "scopeName": "source.renpy",
+        "path": "./syntaxes/renpy.tmLanguage.json"
       }
     ],
     "configuration": {

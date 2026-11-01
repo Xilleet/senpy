@@ -425,7 +425,7 @@ Therefore the maintainer personally:
 - pushes the tag,
 - verifies the published artifacts before announcing.
 
-### What CI does automatically (no human intervention)
+### What CI does automatically
 
 - On every push to `main` or PR: runs `pytest` (ci.yml). Blocks merge if
   tests fail.

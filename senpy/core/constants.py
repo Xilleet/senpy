@@ -284,8 +284,23 @@ MEDIA_EXTENSIONS = {
     ".flac",
     ".webm",
     ".ogv",
+    ".mp4",
+    ".avi",
+    ".mkv",
 }
 AUDIO_EXTENSIONS = {".mp3", ".ogg", ".wav", ".opus", ".flac"}
+
+# Image extensions supported by Ren'Py at runtime. Subset of MEDIA_EXTENSIONS
+# restricted to formats VS Code's markdown image renderer can decode in hover.
+# AVIF/BMP/GIF are part of MEDIA_EXTENSIONS (used by RPY503 unused-asset check)
+# but excluded from image-hover because VS Code's markdown renderer may not
+# decode them; for hover we want formats we can also get pixel dimensions for
+# via the lightweight header parser in senpy/domain/image_size.py.
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+
+# Video extensions: hover shows a "Play in default app" link instead of an
+# inline preview (VS Code's image viewer cannot decode these formats).
+VIDEO_EXTENSIONS = {".mp4", ".webm", ".ogv", ".avi", ".mkv"}
 
 SMART_QUOTES = {"“": '"', "”": '"', "«": '"', "»": '"', "‘": "'", "’": "'"}
 

@@ -21,7 +21,12 @@ test/**
 tests/**
 
 # --- Документация и конфиги ---
+# *.md исключает все markdown-файлы из VSIX (они увеличивают размер и не
+# нужны runtime). Но THIRD_PARTY_NOTICES.md ДОЛЖЕН попасть в VSIX — это
+# MIT-атрибуция для syntaxes/renpy.tmLanguage.json (скопирован verbatim
+# из renpy-magic). Переопределяем исключением ниже.
 *.md
+!THIRD_PARTY_NOTICES.md
 .gitignore
 .gitattributes
 .vscode/**

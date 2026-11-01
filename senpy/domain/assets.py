@@ -9,7 +9,9 @@ from senpy.core.constants import (
     AUDIO_EXTENSIONS,
     BUILTIN_COLORS,
     IGNORED_DIRS,
+    IMAGE_EXTENSIONS,
     MEDIA_EXTENSIONS,
+    VIDEO_EXTENSIONS,
 )
 from senpy.core.logging import get_logger
 from senpy.core.models import Diagnostic
@@ -41,6 +43,17 @@ class AssetManager:
         self.valid_images: set[str] = set(BUILTIN_COLORS)
         self.media_disk_files: dict[str, str] = {}  # rel_path -> full_path
         self.audio_dir_files: dict[str, str] = {}  # stem -> full rel path
+        # Name -> disk path maps for hover preview.
+        #   image_name_to_path: Ren'Py image-name token (e.g. "eileen happy")
+        #                       -> absolute disk path of the underlying file.
+        #                       Built from images/* auto-discovery (mirrors
+        #                       Ren'Py runtime namespacing) plus lowercased
+        #                       basename for files outside images/.
+        #   audio_name_to_path: stem (e.g. "bgm_calm") -> absolute disk path.
+        #                       Covers both audio/* files and define audio.X
+        #                       targets that resolve to a file on disk.
+        self.image_name_to_path: dict[str, str] = {}
+        self.audio_name_to_path: dict[str, str] = {}
         self.used_asset_keys: set[str] = set()
 
     def index(self) -> None:
@@ -49,6 +62,8 @@ class AssetManager:
         self.valid_images = set(BUILTIN_COLORS)
         self.media_disk_files.clear()
         self.audio_dir_files.clear()
+        self.image_name_to_path.clear()
+        self.audio_name_to_path.clear()
         self.used_asset_keys.clear()
 
         if self.project_path in self._asset_cache:
@@ -74,6 +89,21 @@ class AssetManager:
                     if clean_rel.startswith(("audio/", "bgm/", "sfx/")) and ext in AUDIO_EXTENSIONS:
                         stem = os.path.splitext(os.path.basename(clean_rel))[0]
                         self.audio_dir_files[stem] = rel_path
+                        # Audio hover resolves by stem (e.g. "play music
+                        # bgm_calm" → key "bgm_calm"). Last writer wins is fine:
+                        # ambiguity in Ren'Py projects is rare and the hover
+                        # just needs to display *some* file.
+                        self.audio_name_to_path.setdefault(stem, full_path)
+
+                    # Index image (and video) files for hover. We
+                    # register keys for both the tokenized "namespaced" name
+                    # (images/foo/bar.png → "foo bar") and the bare basename,
+                    # mirroring Ren'Py runtime auto-discovery. Outside images/
+                    # we register only the basename. Video files are included
+                    # because Ren'Py treats `image intro = Movie("intro.mp4")`
+                    # + `show intro` the same way as static images.
+                    if ext in IMAGE_EXTENSIONS or ext in VIDEO_EXTENSIONS:
+                        self._register_image_for_hover(clean_rel, full_path)
 
                 if f.lower().endswith(".rpa"):
                     self._read_rpa_index(full_path)
@@ -92,6 +122,87 @@ class AssetManager:
                     self.valid_images.add(os.path.basename(clean_name))
 
         self._asset_cache[self.project_path] = (set(self.known_assets), set(self.valid_images))
+
+    def _register_image_for_hover(self, clean_rel: str, full_path: str) -> None:
+        """Register *full_path* under one or more Ren'Py image-name keys.
+
+        Mirrors Ren'Py's image auto-discovery: files inside ``images/`` are
+        also reachable by their tokenized path (``images/eileen/happy.png``
+        → key ``"eileen happy"``); files elsewhere are only reachable by
+        their bare basename. We register both the spaced and underscored
+        variants of each key, since Ren'Py script may use either form.
+        """
+        # Strip extension, lowercase for case-insensitive lookup.
+        stem_rel = os.path.splitext(clean_rel)[0]
+        basename = os.path.basename(stem_rel)
+
+        if stem_rel.startswith("images/"):
+            tail = stem_rel.removeprefix("images/")
+            spaced = tail.replace("/", " ").replace("_", " ").strip()
+            if spaced:
+                self.image_name_to_path.setdefault(spaced, full_path)
+                self.image_name_to_path.setdefault(spaced.replace(" ", "_"), full_path)
+        # Always register the bare basename too (covers files outside
+        # images/ and the common Ren'Py pattern `image bg = "bg.png"`
+        # where the script references the basename directly).
+        if basename:
+            self.image_name_to_path.setdefault(basename, full_path)
+            self.image_name_to_path.setdefault(basename.replace("_", " "), full_path)
+
+    def resolve_image_path(self, name: str) -> str | None:
+        """Resolve a Ren'Py image reference (e.g. ``"eileen happy"``) to an
+        absolute filesystem path, or None if no matching file is on disk.
+
+        Tries in order: exact key, lowercased key, underscore↔space variants.
+        """
+        if not name:
+            return None
+        candidates = [name, name.lower(), name.replace(" ", "_"), name.replace("_", " ")]
+        for c in candidates:
+            hit = self.image_name_to_path.get(c)
+            if hit and os.path.exists(hit):
+                return hit
+        return None
+
+    def resolve_audio_path(self, name: str) -> str | None:
+        """Resolve an audio stem (e.g. ``"bgm_calm"``) to an absolute
+        filesystem path, or None if not on disk."""
+        if not name:
+            return None
+        hit = self.audio_name_to_path.get(name) or self.audio_name_to_path.get(name.lower())
+        if hit and os.path.exists(hit):
+            return hit
+        return None
+
+    def is_video_file(self, path: str) -> bool:
+        """Return True if *path* has a video extension. Used by hover to
+        switch from inline image preview to a "Play in default app" link
+        (VS Code's image viewer cannot decode WebM/MP4/etc.)."""
+        return os.path.splitext(path)[1].lower() in VIDEO_EXTENSIONS
+
+    def register_audio_alias(self, alias: str, target_file: str) -> None:
+        """Register a `define audio.ALIAS = "target_file"` alias.
+
+        Resolves *target_file* (relative to game/) to an absolute disk path
+        via media_disk_files and stores it under the alias key so audio hover
+        can look it up by alias name. Called by the analyzer at parse time.
+        """
+        if not alias or not target_file:
+            return
+        # Try a few candidate keys matching how media_disk_files is keyed
+        # (rel_path with forward slashes, lowercased, optionally game/-prefixed).
+        for candidate in (
+            target_file,
+            target_file.removeprefix("game/"),
+            f"game/{target_file.removeprefix('game/')}",
+            os.path.basename(target_file),
+        ):
+            hit = self.media_disk_files.get(candidate)
+            if hit and os.path.exists(hit):
+                self.audio_name_to_path[alias] = hit
+                return
+        # File not on disk yet (e.g. exists only inside an .rpa, or doesn't
+        # exist at all). Skip silently — hover just won't resolve.
 
     def _read_rpa_index(self, rpa_path: str) -> None:
         try:
