@@ -69,8 +69,9 @@ reporting:
   `.rpyc` files are pickle-based; Senpy's unpickler rejects dangerous modules
   (`os`, `sys`, `subprocess`, `socket`, `shutil`, `pathlib`, `builtins`,
   `ctypes`, `multiprocessing`, `pickle`, `marshal`) even if added to the
-  safe-list by accident. See `tests/test_aud_001_security.py`,
-  `tests/test_unrpyc_security.py`.
+  safe-list by accident. See `tests/test_cache_security.py`,
+  `tests/test_lsp_uri_security.py`, `tests/test_unrpyc_security.py`,
+  `tests/test_vendored_unrpyc.py`.
 - **`UNRPYC_PINNED_SHA256`** (`senpy/cli/unrpyc.py`): downloaded unrpyc zip
   is verified against a pinned SHA256 hash. Prevents supply-chain attacks
   on the unrpyc download endpoint.

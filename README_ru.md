@@ -14,7 +14,9 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue" alt="Платформы: Windows | Linux | macOS">
   <img src="https://img.shields.io/badge/LSP-20%2B%20handlers-purple" alt="LSP: 20+ обработчиков">
   <img src="https://img.shields.io/badge/Plugins-API%20v1.0-teal" alt="Plugin API v1.0">
-  <img src="https://img.shields.io/badge/tests-689%20passed-success" alt="689 тестов пройдено">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/tests.json" alt="Тесты (авто-обновляется CI)">
+  <img src="https://img.shields.io/github/actions/workflow/status/Xilleet/senpy/ci.yml?branch=main&label=CI" alt="Статус CI">
+  <img src="https://img.shields.io/codecov/c/github/Xilleet/senpy?branch=main" alt="Покрытие">
 </p>
 
 <p align="center">
@@ -38,7 +40,20 @@ pip install senpy-linter
 
 ---
 
-## Что нового в 0.6.0
+## Что нового
+
+### 0.7.0 — Image/Audio/Video hover + автосгенерированные API docs
+
+| Функция | Описание |
+|---|---|
+| **Превью картинок в hover** | Наведите курсор на `show sayori happy` или `scene bg forest` — увидите inline-превью спрайта/CG с метаданными размера. Парсер заголовков PNG/JPEG/WEBP/GIF/BMP написан вручную — без зависимости от Pillow. |
+| **Audio hover** | Наведите на `play music bgm_calm` / `queue sound click` / `define audio.X = "…"` — увидите ссылку Play, которая открывает встроенный медиа-viewer VS Code. Алиасы раскрываются при индексации, не на каждый hover. |
+| **Video hover** | Если у изображения или auto-discovered файла видео-расширение (`.mp4`, `.webm`, `.ogv`, `.avi`, `.mkv`), hover показывает ссылку «Open in default app» через новую VS Code-команду `senpy.openExternal`. |
+| **Автосгенерированные API docs Ren'Py** | 754 записи автоматически собраны из RST-источников Ren'Py 8.5.3. Вместе с 221 курируемыми записями `RENPY_API_DOCS_ALL` содержит **975 символов** — рост в 4,4×. |
+| **TextMate-грамматика для `.rpy`/`.rpym`** | 270-строчная грамматика со scope `source.renpy`, скопированная дословно из [renpy-magic](https://github.com/adiffx/renpy-magic) (MIT). Покрывает комментарии, строки, Ren'Py text-tag `{…}` и interpolation `[…]`, `python`/`init python` блоки, `$`-prefixed python-строки, labels, screens, transforms, image definitions, say statements, numbers, operators. |
+| **Детектор потерянных видео** | `MEDIA_EXTENSIONS` расширена `.mp4`/`.avi`/`.mkv` — RPY503 (проверка неиспользуемых ассетов) теперь также флагует потерянные видеофайлы. |
+
+### 0.6.0 — Система плагинов + LSP killer-features
 
 | Функция | Описание |
 |---|---|
@@ -264,31 +279,39 @@ senpy /path/to/game
 
 ### Напишите своё правило за 30 строк
 
+Это правило (из `examples/my_senpy_plugin/`) флагует строки диалогов,
+не обёрнутые в `_()` для перевода:
+
 ```python
 from senpy.api import Diagnostic
 from senpy.plugins import Rule, RuleContext, RuleMeta, register_rule
 
 PLUGIN_API_VERSION = "1.0"
 
-@register_rule("RPY902")
-class TodoCommentRule(Rule):
+@register_rule("RPY901")
+class HardcodedDialogueRule(Rule):
     meta = RuleMeta(
-        code="RPY902",
-        docs="Обнаруживает TODO-комментарии в коде",
-        severity="HINT",
-        tags=["productivity"],
+        code="RPY901",
+        docs="Обнаруживает строки диалогов без _() для перевода",
+        severity="WARNING",
+        tags=["translations", "accessibility"],
     )
 
     def check(self, ctx: RuleContext) -> list[Diagnostic]:
         diags = []
-        for i, line in enumerate(ctx.lines, start=1):
-            if "TODO" in line.upper():
-                diags.append(Diagnostic(
-                    file_path=ctx.file_path, line_number=i,
-                    line_content=line, code="RPY902",
-                    message=f"TODO комментарий: {line.strip()}",
-                    severity="HINT",
-                ))
+        for line_no, raw in enumerate(ctx.lines, start=1):
+            stripped = raw.lstrip(" \t")
+            if not stripped or stripped[0] not in ('"', "'"):
+                continue
+            if stripped.startswith('_("') or stripped.startswith("_('"):
+                continue  # уже переведено
+            diags.append(Diagnostic(
+                file_path=ctx.file_path, line_number=line_no,
+                line_content=raw.rstrip(),
+                code="RPY901",
+                message=f"Жёстко заданный диалог без _() для перевода",
+                severity="WARNING",
+            ))
         return diags
 ```
 

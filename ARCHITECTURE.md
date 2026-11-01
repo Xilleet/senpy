@@ -142,7 +142,7 @@ Dependencies flow **inward** — outer packages depend on inner, never the rever
 
 ## Analysis Pipeline
 
-`SenpyAnalyzer.run()` is the main entry point. 
+`SenpyAnalyzer.run()` is the main entry point.
 It executes in 3 stages:
 
 ### Stage 1: Symbol Collection (`_collect_all_symbols`)
@@ -469,7 +469,7 @@ observable at DEBUG level.
 
 ## Testing
 
-- **898 tests** across 65 test files (~15,700 lines).
+- **1035 tests** across 69 test files (~17,800 lines).
 - **Fixture-based**: `tests/fixtures/rules/RPYxxx/` with `bad_*.rpy` +
   `bad_*.json` (expected diagnostics) + `good_*.rpy` (should pass).
 - **Characterization tests**: Subprocess-based CLI tests that verify

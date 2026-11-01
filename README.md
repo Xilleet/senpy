@@ -14,7 +14,9 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue" alt="Platform: Windows | Linux | macOS">
   <img src="https://img.shields.io/badge/LSP-20%2B%20handlers-purple" alt="LSP: 20+ handlers">
   <img src="https://img.shields.io/badge/Plugins-API%20v1.0-teal" alt="Plugin API v1.0">
-  <img src="https://img.shields.io/badge/tests-689%20passed-success" alt="689 tests passed">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/tests.json" alt="Tests (auto-updated by CI)">
+  <img src="https://img.shields.io/github/actions/workflow/status/Xilleet/senpy/ci.yml?branch=main&label=CI" alt="CI status">
+  <img src="https://img.shields.io/codecov/c/github/Xilleet/senpy?branch=main" alt="Coverage">
 </p>
 
 <p align="center">
@@ -37,8 +39,20 @@ pip install senpy-linter
 Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github.com/Xilleet/senpy/releases) page → Install from VSIX in VS Code.
 
 ---
+## What's New
 
-## What's New in 0.6.0
+### 0.7.0 — Image/Audio/Video Hover + Auto-generated API Docs
+
+| Feature | Description |
+|---|---|
+| **Image Preview on Hover** | Hover over `show sayori happy` or `scene bg forest` to see an inline preview of the sprite/CG with size metadata. The PNG/JPEG/WEBP/GIF/BMP header parser is custom-written, requiring no dependency on Pillow. |
+| **Audio Hover** | Hover over `play music bgm_calm` / `queue sound click` / `define audio.X = "…"` statements to see a "Play" link that opens VS Code's built-in media viewer. Aliases are resolved during indexing, not on every hover. |
+| **Video Hover** | If an image or an auto-discovered file has a video extension (`.mp4`, `.webm`, `.ogv`, `.avi`, `.mkv`), the hover will display an "Open in default app" link via the new `senpy.openExternal` VS Code command. |
+| **Auto-generated Ren'Py API Docs** | 754 entries have been automatically collected from Ren'Py 8.5.3 RST sources. Together with 221 curated entries, `RENPY_API_DOCS_ALL` now contains **975 symbols** — a 4.4× increase. |
+| **TextMate Grammar for `.rpy`/`.rpym`** | A 270-line grammar with `source.renpy` scope, copied verbatim from [renpy-magic](https://github.com) (MIT). It covers comments, strings, Ren'Py text tags `{…}` and interpolation `[…]`, `python`/`init python` blocks, `$`-prefixed python lines, labels, screens, transforms, image definitions, say statements, numbers, and operators. |
+| **Orphaned Video Detector** | `MEDIA_EXTENSIONS` has been expanded to include `.mp4`/`.avi`/`.mkv` — RPY503 (unused asset check) now flags orphaned video files as well. |
+
+### 0.6.0 — Plugin System + LSP Killer Features
 
 | Feature | Description |
 |---|---|
@@ -256,7 +270,9 @@ senpy /path/to/game
 # First run: "Plugin 'my-senpy-plugin' wants to load. Trust and enable? [y/N]"
 ```
 
-### Write your own rule in 30 lines
+### Write Your Own Rule in 30 Lines
+
+This rule (from `examples/my_senpy_plugin/`) flags dialogue lines that are not wrapped in `_()` for translation:
 
 ```python
 from senpy.api import Diagnostic
@@ -264,25 +280,30 @@ from senpy.plugins import Rule, RuleContext, RuleMeta, register_rule
 
 PLUGIN_API_VERSION = "1.0"
 
-@register_rule("RPY902")
-class TodoCommentRule(Rule):
+@register_rule("RPY901")
+class HardcodedDialogueRule(Rule):
     meta = RuleMeta(
-        code="RPY902",
-        docs="Detects TODO comments left in code",
-        severity="HINT",
-        tags=["productivity"],
+        code="RPY901",
+        docs="Detects dialogue lines without _() for translation",
+        severity="WARNING",
+        tags=["translations", "accessibility"],
     )
 
     def check(self, ctx: RuleContext) -> list[Diagnostic]:
         diags = []
-        for i, line in enumerate(ctx.lines, start=1):
-            if "TODO" in line.upper():
-                diags.append(Diagnostic(
-                    file_path=ctx.file_path, line_number=i,
-                    line_content=line, code="RPY902",
-                    message=f"TODO comment: {line.strip()}",
-                    severity="HINT",
-                ))
+        for line_no, raw in enumerate(ctx.lines, start=1):
+            stripped = raw.lstrip(" \t")
+            if not stripped or stripped[0] not in ('"', "'"):
+                continue
+            if stripped.startswith('_("') or stripped.startswith("_('"):
+                continue  # already translated
+            diags.append(Diagnostic(
+                file_path=ctx.file_path, line_number=line_no,
+                line_content=raw.rstrip(),
+                code="RPY901",
+                message=f"Hardcoded dialogue without _() for translation",
+                severity="WARNING",
+            ))
         return diags
 ```
 
