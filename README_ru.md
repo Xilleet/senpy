@@ -5,18 +5,18 @@
 # Senpy (`senpy-linter`)
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/Ren'Py-6.99%20%7C%207%20%7C%208-ff69b4?logo=renpy&logoColor=white" alt="Ren'Py 6.99 / 7 / 8">
-  <img src="https://img.shields.io/badge/Rules-45-orange" alt="45 Правил">
-  <img src="https://img.shields.io/badge/Speed-77k%20строк%20за%200.04с%20(кэш)-brightgreen" alt="77k строк за 0.04с">
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white" alt="Python 3.11+"></a>
+  <a href="https://www.renpy.org/"><img src="https://img.shields.io/badge/Ren'Py-6.99%20%7C%207%20%7C%208-ff69b4?logo=renpy&logoColor=white" alt="Ren'Py 6.99 / 7 / 8"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="Лицензия: MIT"></a>
   <br>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue" alt="Платформы: Windows | Linux | macOS">
-  <img src="https://img.shields.io/badge/LSP-20%2B%20handlers-purple" alt="LSP: 20+ обработчиков">
-  <img src="https://img.shields.io/badge/Plugins-API%20v1.0-teal" alt="Plugin API v1.0">
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/tests.json" alt="Тесты (авто-обновляется CI)">
-  <img src="https://img.shields.io/github/actions/workflow/status/Xilleet/senpy/ci.yml?branch=main&label=CI" alt="Статус CI">
-  <img src="https://img.shields.io/codecov/c/github/Xilleet/senpy?branch=main" alt="Покрытие">
+  <img src="https://img.shields.io/badge/Plugins-API%20v1.0-teal" alt="API плагинов v1.0">
+  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/tests.json" alt="Тесты (автообновление через CI)"></a>
+  <a href="RULES.md"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/rules.json" alt="Правила (автообновление через CI)"></a>
+  <a href="ARCHITECTURE.md"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/lsp.json" alt="LSP-обработчики (автообновление через CI)"></a>
+  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/coverage.json" alt="Покрытие кода (автообновление через CI)"></a>
+  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/speed.json" alt="Скорость (автообновление через CI)"></a>
+  <a href="https://github.com/Xilleet/senpy/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Xilleet/senpy/ci.yml?branch=main&label=CI" alt="Статус CI"></a>
 </p>
 
 <p align="center">

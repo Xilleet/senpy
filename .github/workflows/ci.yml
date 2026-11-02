@@ -212,20 +212,18 @@ jobs:
   # Permissions: contents: write на уровне job (глобальный permission
   # вверху файла = contents: read — мы повышаем только для этого job'а).
   update-badges:
-    name: Update tests badge
+    name: Update dynamic badges
     runs-on: ubuntu-latest
     needs: [test, build-check]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
-      contents: write  # нужно для git push обратно в main
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
         with:
-          # token с правом push в main (GITHUB_TOKEN достаточно для push в ту же
-          # ветку, откуда запущен workflow)
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 1  # мелкий клон — нам не нужна история
+          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -239,21 +237,14 @@ jobs:
           pip install -e .
           pip install pytest pytest-cov
 
-      - name: Run tests + update badge
-        # --run: фактически запускает pytest, чтобы получить pass/fail counts.
-        # Если тесты упали — обновляем бейдж (red) и выходим с ошибкой,
-        # но needs: [test] уже гарантирует, что мы сюда попадаем только
-        # после зелёных matrix-тестов, так что pass==collected всегда.
+      - name: Update all badges (tests + rules + LSP + coverage + speed)
         run: python scripts/update_badges.py --run
 
-      - name: Commit badge update
-        # stefanzweifel/git-auto-commit-action — стандартный способ
-        # коммитить файлы из CI обратно в репо. Использует GITHUB_TOKEN.
+      - name: Commit badge updates
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore(badge): update tests count [skip ci]"
-          file_pattern: ".github/badges/tests.json"
+          commit_message: "chore(badge): update dynamic badges [skip ci]"
+          file_pattern: ".github/badges/*.json"
           commit_options: "--no-verify"
-          # skip CI на этом коммите — иначе будет цикл (push → CI → badge → push)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
