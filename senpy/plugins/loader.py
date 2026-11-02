@@ -225,10 +225,12 @@ def _default_trust_callback(plugin_name: str) -> bool:
 
     Behavior:
         1. If plugin is in trust store (pre-trusted): accept without prompt
-        2. If in TTY (interactive): prompt user "Trust plugin X? [y/N]"
+        2. If in LSP mode (--lsp in argv): decline all untrusted (fail-safe,
+           no prompt — input() would hang the LSP process)
+        3. If in TTY (interactive CLI): prompt user "Trust plugin X? [y/N]"
            - On 'y' or 'yes': trust_plugin(name), return True
            - On anything else (including empty): return False
-        3. If non-TTY (CI, piped): decline all untrusted (fail-safe)
+        4. If non-TTY (CI, piped): decline all untrusted (fail-safe)
 
     Args:
         plugin_name: Name of the plugin to trust-check.
@@ -240,15 +242,27 @@ def _default_trust_callback(plugin_name: str) -> bool:
     from senpy.plugins.security import is_plugin_trusted, trust_plugin
 
     # Step 1: Check trust store
-    if is_plugin_trusted(plugin_name):
+    if is_plugin_trusted(plugin_name): 
         return True
 
-    # Step 2: Check if we're in interactive mode
+    # Step 2: If running as LSP server, never prompt — input() would
+    # hang the process (LSP communicates via stdio, not interactive TTY).
+    if "--lsp" in sys.argv:
+        _logger.warning(
+            "Plugin %r is not trusted. In LSP mode, untrusted plugins are "
+            "skipped (no interactive prompt). Use 'senpy --trust-plugin %r' "
+            "from CLI to trust it first.",
+            plugin_name,
+            plugin_name,
+        )
+        return False
+
+    # Step 3: Check if we're in interactive mode
     if not sys.stdin.isatty():
         # Non-interactive (CI, piped stdin) — fail-safe, decline
         return False
 
-    # Step 3: Prompt user
+    # Step 4: Prompt user
     try:
         answer = (
             input(f"\n[senpy] Plugin '{plugin_name}' wants to load. Trust and enable? [y/N]: ")
