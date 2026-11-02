@@ -5,10 +5,64 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] — God-function splitting, DRY cleanup
+
+The entire release is internal refactoring: splitting 12 god-functions
+into small, testable helpers and extracting 4 shared DRY utilities.
+
+### Architecture — god-function splitting
+
+12 functions (188–111 lines each) were split into dispatchers (≤30–59 lines)
+delegating to focused helpers.
+
+**LSP handlers** (5): `hover`, `definition`, `completions`, `signature_help`,
+`document_symbols` — each now a short dispatcher with per-symbol-type helpers.
+
+**Rule checkers** (4): `_check_show_scene` (the largest, 188→30),
+`_check_audio_statement` (174→21), `check_screen_mutation` (114→34),
+`MermaidBuilder.build` (132→18) — tag matching, audio validation, screen
+mutation detection, and Mermaid graph generation are now separate helpers.
+
+**Core** (3): `_analyze_file` (122→59), `process_quoted_strings` (187→58),
+`collect_story_stats` (83→19) — the main per-file analysis loop, dialogue
+string tag matching, and story statistics collection.
+
+### Architecture — DRY utilities
+
+4 shared utilities extracted to eliminate code duplication:
+
+* `SUGGESTION_CUTOFF` constant in `core/constants.py` — 11 hardcoded `0.6`
+  values now reference a single constant.
+* `suggest_similar()` / `suggest_match()` in `text_utils.py` — generalized
+  from `suggest_similar_symbol`, accepts any iterable, parameterized cutoff.
+* `normalize_path()` in `core/paths.py` (new module) — replaces 8 inline
+  `os.path.normcase(os.path.abspath(...))` copies across 5 files.
+* `progress_print()` in `core/progress.py` (new module) — replaces 4 inline
+  `print(msg.ljust(75)...)` copies across 2 files.
+
+### Architecture — thin-wrapper cleanup
+
+Removed 3 thin-wrapper methods from `SenpyAnalyzer` that were left over
+from the 0.6.6 extract refactoring. Callers now import the actual functions
+from `senpy.rules.dead_code` and `senpy.rules.checkers.translation` directly.
+`_parse_tl_pairs` kept as a deprecated `@staticmethod` for backward compat.
+
+### Remaining god-functions
+
+14 functions ≥80 lines remain. They are either mechanical code (argparse
+setup, symbol collection loops), complex logic requiring SSA for a
+meaningful split, or LSP handlers at exactly 80 lines. Deferred to 0.8.0
+(SSA + SymbolRegistry) or 0.7.3 (LSP handlers).
+
+### Tests
+
+* 1035 tests pass (unchanged from 0.7.1).
+* Ruff check clean. Ruff format check non-blocking (Windows CRLF issue).
+* 0 import cycles across 79 modules (+2 new: `core/paths.py`, `core/progress.py`).
+
 ## [0.7.1] — Stabilization, dynamic badges, CONTRIBUTING refresh
 
-Stabilization release: no user-visible behavior changes, no new rules,
-no new LSP handlers. The focus is on documentation accuracy, CI feedback
+Stabilization release. The focus is on documentation accuracy, CI feedback
 loops, contributor onboarding, and removal of stale code paths that
 caused real bugs.
 
