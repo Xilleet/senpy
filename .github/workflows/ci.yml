@@ -30,6 +30,8 @@ on:
       - develop
       - 'refactor/**'
       - 'feature/**'
+    paths-ignore:
+      - '.github/badges/*.json'
   pull_request:
     branches:
       - main
