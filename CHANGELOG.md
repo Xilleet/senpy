@@ -5,6 +5,22 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+---
+
+### Navigation
+
+- **Current (0.7.x)**: [Unreleased/0.7.4](#unreleased074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
+
+- **0.6.x**: [0.6.6](#066) | [0.6.5](#065) | [0.6.4](#064) | [0.6.3](#063) | [0.6.2](#062) | [0.6.1](#061) | [0.6.0](#060)
+
+- **0.5.x**: [0.5.8](#058) | [0.5.7](#057) | [0.5.6](#056) | [0.5.5](#055) | [0.5.4 ⚠️](#054) | [0.5.3](#053) | [0.5.2](#052) | [0.5.1](#051) | [0.5.0](#050)
+
+- **0.4.x**: [0.4.8](#048) | [0.4.7](#047)
+
+---
+
+<a id="unreleased074"></a>
+
 ## [Unreleased/0.7.4] — Introspection tool (`senpy inspect`)
 
 ### New subcommand — `senpy inspect`
@@ -105,6 +121,8 @@ installed, so the bug was hidden before).
   (+2 new: `senpy/cli/discover.py`, `senpy/cli/inspect_dispatch.py`;
   +1 new: `senpy/formats/inspect.py`).
 * Coverage stable.
+
+<a id="073"></a>
 
 ## [0.7.3] — Plugin trust UX, English-only codebase, expanded badges
 
@@ -226,6 +244,8 @@ two codebase-hygiene invariants going forward: no internal task
 IDs in user-facing files, no Russian text in comments or
 docstrings. Both are now machine-checked.
 
+<a id="072"></a>
+
 ## [0.7.2] — God-function splitting, DRY cleanup
 
 No new rules, no new LSP handlers, no user-visible behavior changes.
@@ -282,6 +302,8 @@ meaningful split, or LSP handlers at exactly 80 lines. Deferred to 0.8.0
 * 1035 tests pass (unchanged from 0.7.1).
 * Ruff check clean. Ruff format check non-blocking (Windows CRLF issue).
 * 0 import cycles across 79 modules (+2 new: `core/paths.py`, `core/progress.py`).
+
+<a id="071"></a>
 
 ## [0.7.1] — Stabilization, dynamic badges, CONTRIBUTING refresh
 
@@ -437,6 +459,8 @@ caused real bugs.
   `.gitattributes` file with `* text=auto eol=lf` first. Tracked as a
   follow-up; not blocking for 0.7.1.
 
+<a id="070"></a>
+
 ## [0.7.0] — renpy-magic-inspired features
 
 This release (for a long time) with user-visible features sourced from competitive analysis
@@ -517,6 +541,8 @@ on rules (45+ vs 5), dataflow, caching, plugins, and CLI.
   sanity, merge logic (curated wins on collision), hover integration,
   backward compat.
 
+<a id="066"></a>
+
 ## [0.6.6] — Core & Other God-functions Refactor (internal, not tagged)
 
 ### Architecture
@@ -558,6 +584,8 @@ diagnostics, and behavior identical. 6 god-functions split into 14 helpers.
 * **Monkey-patch `builtins.open` for `--diff` preserved** — removing it requires
   (analyzer.run() with dry_run_callback). TODO in `_setup_diff_interception`.
 * **Not tagged** — internal refactor.
+
+<a id="065"></a>
 
 ## [0.6.5] — AST & Checkers God-functions Refactor
 
@@ -615,6 +643,8 @@ testable helpers.
   straightforward. TODO comment added in `infer_ast_type`.
 * **7 god-functions → 31 helpers** — cyclomatic complexity
 
+<a id="064"></a>
+
 ## [0.6.4] — CLI God-functions Refactor (internal, not tagged)
 
 ### Architecture
@@ -663,6 +693,8 @@ All 5 god-functions split into testable helpers with characterization tests.
 * **Not tagged** — internal refactor,. Next tagged release
   (0.6.5) will include these commits.
 
+<a id="063"></a>
+
 ## [0.6.3]
 
 ### Exception hierarchy
@@ -688,6 +720,8 @@ All 5 god-functions split into testable helpers with characterization tests.
 ### Notes
 * This release combines 0.6.2 (skipped as separate tag) and 0.6.3 work. Git history between v0.6.1 and v0.6.3 contains all commits.
 * **Breaking change for advanced users**: `load_config()` now returns pydantic-validated dict with all default fields populated (was raw TOML dict). If your code does exact dict comparison on config, update to check specific keys.
+
+<a id="062"></a>
 
 ## [0.6.2]
 
@@ -723,6 +757,8 @@ All 5 god-functions split into testable helpers with characterization tests.
 ### Tests
 * 759 passed.
 
+<a id="061"></a>
+
 ## [0.6.1]
 
 ### Fixed
@@ -742,6 +778,8 @@ All 5 god-functions split into testable helpers with characterization tests.
 ### Changed
 * **Build scripts consolidation**: Replaced `build_exe.bat` and `build_vsix_dev.bat` with a single `reinstall.bat` that handles the full build cycle (PyInstaller → TypeScript compile → VSIX package → install).
 * **`senpy.spec`**: Added `collect_all('senpy')` to ensure all submodules (including dynamically imported `senpy.plugins.*` and `senpy.formatter.rules.*`) are bundled into `senpy.exe`.
+
+<a id="060"></a>
 
 ## [0.6.0]
 
@@ -784,6 +822,8 @@ All 5 god-functions split into testable helpers with characterization tests.
 * Plugin system is foundation for community contributions: anyone can now write a lint rule as a pip package and Senpy picks it up automatically (with trust prompt).
 * LSP features bring Senpy closer to parity with rust-analyzer / pyright for Ren'Py development.
 
+<a id="058"></a>
+
 ## [0.5.8]
 
 ### Security
@@ -816,6 +856,8 @@ All 5 god-functions split into testable helpers with characterization tests.
 ### Notes
 * Это stability & cleanup релиз: закрыты все P0 из аудита v0.5.7 (AUD-001..004), CI gates налажены, документация актуализирована. Никаких breaking changes, никаких новых фич — подготовка фундамента под 0.6.0 (LSP killer-features + plugin system).
 
+<a id="057"></a>
+
 ## [0.5.7]
 
 ### Changed
@@ -826,6 +868,8 @@ All 5 god-functions split into testable helpers with characterization tests.
 
 ### Notes
 * Это минорный рефакторинг-релиз: поведение неизменно, 497 тестов зелёные.
+
+<a id="056"></a>
 
 ## [0.5.6]
 
@@ -838,6 +882,8 @@ All 5 god-functions split into testable helpers with characterization tests.
 ### Fixed
 * `_collect_screen_transform`: early return делал transform-обработку dead code (исправлено)
 * `current_screen` context не сбрасывался для non-screen top-level строк (исправлено)
+
+<a id="055"></a>
 
 ## [0.5.5]
 
@@ -867,6 +913,7 @@ All 5 god-functions split into testable helpers with characterization tests.
 test_imports.py обновлён с новыми путями модулей.
 test_packaging.py обновлён с новыми путями файлов.
 
+<a id="054"></a>
 
 ## [0.5.4] ⚠️ YANKED
 
@@ -879,6 +926,7 @@ test_packaging.py обновлён с новыми путями файлов.
 
 Поскольку PyPI иммутабелен (неизменяем), опубликованный релиз 0.5.4 нельзя перезаписать или удалить — его можно было только пометить как **yanked**.
 
+<a id="053"></a>
 
 ## [0.5.3]
 
@@ -919,11 +967,11 @@ test_packaging.py обновлён с новыми путями файлов.
 
 ### Architecture
 - **Разорваны все 5 циклических зависимостей** из аудита v0.5.1 (через `analyzer.py`):
-  - ✅ `analyzer ↔ cli` (Фаза 1.2 — `load_config` → `senpy/config.py`)
-  - ✅ `analyzer ↔ checkers` (Фаза 1.3 — `DiagnosticSink` Protocol + `_strip_comment` → `text_utils.py`)
-  - ✅ `analyzer ↔ python_ast` (Фаза 1.4 — `DiagnosticSink` Protocol)
-  - ✅ `analyzer ↔ flow` (Фаза 1.5 — `DiagnosticSink` Protocol)
-  - ✅ `analyzer ↔ cache` (Фаза 1.6 — `cache_manifest.py` extraction)
+  - `analyzer ↔ cli` (Фаза 1.2 — `load_config` → `senpy/config.py`)
+  - `analyzer ↔ checkers` (Фаза 1.3 — `DiagnosticSink` Protocol + `_strip_comment` → `text_utils.py`)
+  - `analyzer ↔ python_ast` (Фаза 1.4 — `DiagnosticSink` Protocol)
+  - `analyzer ↔ flow` (Фаза 1.5 — `DiagnosticSink` Protocol)
+  - `analyzer ↔ cache` (Фаза 1.6 — `cache_manifest.py` extraction)
 - `analyzer.py` больше не входит ни в один цикл. Граф импортов теперь **ациклический**.
 - **Note**: разрыв **импортных** циклов. Runtime coupling частично остаётся (чекеры дёргают `self.analyzer.screens`, `compute_global_hash` обращается к `analyzer.labels` и т.д.) — полная развязка запланирована на 0.5.5 (`SymbolProvider` Protocol, вместе с разбиением `_collect_symbols`).
 
@@ -947,6 +995,8 @@ test_packaging.py обновлён с новыми путями файлов.
 - **При реэкспорте `from X import Y` ставьте импорт на место бывшей функции** (в середине файла), не вверху со всеми импортами — иначе Python может попасть в циклическую инициализацию модулей.
 - **`if TYPE_CHECKING:` блоки не создают runtime циклов** — это только type hints. `check_cycles.py` корректно их игнорирует.
 - **Локальный pytest ≠ CI pytest** — на чистом CI могут всплыть import-баги, замаскированные локально rootdir detection. Всегда прогонять `pytest tests/` перед коммитом.
+
+<a id="052"></a>
 
 ## [0.5.2]
 
@@ -996,6 +1046,8 @@ test_packaging.py обновлён с новыми путями файлов.
 
 ### Security
 - `UNRPYC_PINNED_SHA256` теперь реально проверяется (раньше был None placeholder). Defence-in-depth от MITM/compromised GitHub теперь работает.
+
+<a id="051"></a>
 
 ## [0.5.1]
 
@@ -1061,6 +1113,8 @@ test_packaging.py обновлён с новыми путями файлов.
 - 12 новых тест-файлов, 88 новых тест-функций (+76 %). Всего теперь 33 файла, 204 тест-функции.
 - pytest pass rate: 99.6 % (284/285). 1 failed (`test_vscode_extension.py::test_file_exists` — TDD RED для language-configuration.json), 7 skipped (RED phase related tests).
 
+<a id="050"></a>
+
 ## [0.5.0]
 
 ### Added
@@ -1073,6 +1127,8 @@ test_packaging.py обновлён с новыми путями файлов.
 - Начало частичного рефакторинга P1-1: `cli.py` теперь пересылает `sys.argv[1] == "format"` в `_dispatch_format()` до основного argparse.
 - `_cli_commands.py` (340 строк) выделен из `cli.py` — 10 handler'ов для traceback/init_ci/coverage/clear_cache/stats/export_wiki/export_html/graph/defaults/stubs.
 - `_unrpyc_bootstrap.py` (356 строк) выделен из `cli.py` — unrpyc download/search/verify/extract + .rpa extraction.
+
+<a id="048"></a>
 
 ## [0.4.8]
 
@@ -1131,6 +1187,8 @@ test_packaging.py обновлён с новыми путями файлов.
 - Added `tests/test_p0_cli.py` with 9 regression tests for P0-1, P0-2, P0-3
 - `test_mega_broken_script_catches_all_rules` now dynamically checks all 42 rules (was 29)
 
+<a id="047"></a>
+
 ## [0.4.7]
 
 ### Added
@@ -1152,8 +1210,3 @@ test_packaging.py обновлён с новыми путями файлов.
 - Major refactor: 13 old dictionaries → 5 object registries (`variables`, `labels`, `screens`, `images`, `transforms`)
 - `_differential_purge_file` for incremental cache invalidation
 - Cross-file symbol resolution in LSP `definition()` handler
-
-[0.5.1]: https://github.com/Xilleet/senpy/compare/v0.5.0...v0.5.1
-[0.5.0]: https://github.com/Xilleet/senpy/compare/v0.4.8...v0.5.0
-[0.4.8]: https://github.com/Xilleet/senpy/compare/v0.4.7...v0.4.8
-[0.4.7]: https://github.com/Xilleet/senpy/releases/tag/v0.4.7
