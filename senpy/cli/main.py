@@ -355,6 +355,17 @@ def _add_tools_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="B-Baka! It's not like I want to check your visual novel!",
     )
+    g.add_argument(
+        "--trust-plugin",
+        metavar="NAME",
+        help="Trust a plugin by name (adds to ~/.senpy/trusted_plugins.json). "
+        "Use once from CLI to enable a plugin for LSP/IDE without interactive prompt.",
+    )
+    g.add_argument(
+        "--untrust-plugin",
+        metavar="NAME",
+        help="Remove a plugin from the trust store. The plugin will be skipped on next load.",
+    )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -1094,6 +1105,31 @@ def _handle_early_exits(args, console, is_tsundere: bool) -> int | None:
     _ec = handle_clear_cache(args, console)
     if _ec is not None:
         sys.exit(_ec)
+
+    # --trust-plugin / --untrust-plugin: manage plugin trust store
+    if getattr(args, "trust_plugin", None):
+        from senpy.plugins.security import trust_plugin as _trust
+
+        _trust(args.trust_plugin)
+        console.print(f"[green]Plugin '{args.trust_plugin}' added to trust store.[/green]")
+        console.print(
+            "[dim]The plugin will be loaded automatically on next Senpy run" "(CLI or LSP).[/dim]"
+        )
+        sys.exit(0)
+
+    if getattr(args, "untrust_plugin", None):
+        from senpy.plugins.security import untrust_plugin as _untrust
+
+        removed = _untrust(args.untrust_plugin)
+        if removed:
+            console.print(
+                f"[green]Plugin '{args.untrust_plugin}' removed from trust store.[/green]"
+            )
+        else:
+            console.print(
+                f"[yellow]Plugin '{args.untrust_plugin}' was not in the trust store.[/yellow]"
+            )
+        sys.exit(0)
 
     return None
 
