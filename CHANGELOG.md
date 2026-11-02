@@ -5,6 +5,160 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] — Stabilization, dynamic badges, CONTRIBUTING refresh
+
+Stabilization release: no user-visible behavior changes, no new rules,
+no new LSP handlers. The focus is on documentation accuracy, CI feedback
+loops, contributor onboarding, and removal of stale code paths that
+caused real bugs.
+
+### Bug fixes (LSP)
+
+* **Fix: `textDocument/completion` and `textDocument/codeAction` crashed
+  with `AttributeError: 'LanguageServer' object has no attribute
+  'show_message_log'`**. The `pygls~=2.1` migration in 0.6.x removed
+  `LanguageServer.show_message_log` (replaced by `window_log_message`),
+  but 6 call sites in `senpy/lsp/handlers/completion.py` (5 sites) and
+  `senpy/lsp/handlers/diagnostics.py` (1 site) were still calling the
+  removed API. Every `textDocument/completion` request and every
+  `codeAction` request would crash the handler and emit a traceback to
+  the VS Code "Senpy Language Server" output panel. Replaced all 6
+  call sites with `_logger.debug(...)` / `_logger.warning(...)` (lazy
+  formatting) via `senpy.core.logging`. This was the root cause of the
+  "VSIX works in release but crashes when built via dev scripts" reports
+  — the bundled `senpy.exe` had the same bug, but VS Code was hiding the
+  crash for some API versions while showing it for others.
+* **Fix: `build_exe.bat` produced a binary that silently exited with
+  code 0 and no output**. `build_exe.bat` used `senpy\cli\__init__.py`
+  as the PyInstaller entry point, but that file only does
+  `from senpy.cli.main import main` — it never calls `main()`. The
+  resulting `senpy.exe` would start, import senpy, exit immediately,
+  and VS Code would restart the language server in a tight loop. The
+  correct entry point is `senpy\cli\__main__.py` (which has
+  `if __name__ == "__main__": sys.exit(main())`). Removed the stale
+  `build_exe.bat` and `build_vsix_dev.bat` scripts; `senpy-vscode/reinstall.bat`
+  is now the only local-build path and uses the correct entry point plus
+  `--collect-all senpy` to bundle every submodule (including the
+  dynamically-imported `senpy.lsp.handlers.*` and 0.7.0 additions like
+  `senpy.domain.image_size` and `senpy.domain.renpy_api_generated`).
+
+### Architecture
+
+* **Removed global `warnings.filterwarnings("ignore", category=SyntaxWarning)`
+  from module level** in `senpy/core/analyzer.py` and `senpy/lsp/server.py`.
+  This call was added in commit 63ad210 (2026-10-22, "decompose monolithic
+  analyzer into checker pipeline") and was a global side-effect on import:
+  any host process that did `import senpy` or `import senpy.api` would
+  silently lose all `SyntaxWarning`s for the entire process. This is bad
+  for a library published on PyPI — it pollutes the host's warning
+  configuration. Investigation (running all 1035 tests with
+  `-W error::SyntaxWarning`) confirmed Senpy does not trigger
+  `SyntaxWarning` anywhere in normal operation. The filter was unnecessary
+  defense against a problem that no longer exists; removed entirely along
+  with the corresponding `E402` per-file-ignores in `pyproject.toml`.
+
+### CI / DX
+
+* **Dynamic test-count badge**: README badges for tests, CI status, and
+  coverage are now live. The static `tests-689 passed` badge is replaced
+  by a shields.io `endpoint?url=...` badge that reads
+  `.github/badges/tests.json` from the `main` branch. A new `update-badges`
+  CI job (in `ci.yml`) runs after `test` + `build-check` on every push to
+  `main`, executes `scripts/update_badges.py --run` to count tests, and
+  auto-commits the updated JSON back to `main` with `[skip ci]` to avoid
+  a loop. README badges (`README.md` and `README_ru.md`) for CI status
+  (`github/actions/workflow/status`) and coverage (`codecov/c/github/...`)
+  added as well. Coverage upload via `codecov-action@v4` now uses
+  `disable_search: true` for a faster, deterministic upload.
+* **`scripts/update_badges.py`**: idempotent JSON badge generator.
+  Two modes: collect-only (default, fast — ~1–2s, used as pre-commit
+  hook if desired) and `--run` (full pytest, ~30s, used in CI). Color
+  logic: brightgreen when all collected tests passed, yellow when
+  some skipped or pass < collected, red when 0 passed or pytest failed
+  to collect. `--check` mode exits 1 if the badge file would change
+  (for CI guard mode, future use).
+* **Pre-commit hooks tightened**: `.pre-commit-config.yaml` updated
+  to use `ruff` (lint, with `--fix`) and `ruff-format` for Python
+  formatting. The `trailing-whitespace` and `end-of-file-fixer` hooks
+  now exclude `*.md` files (editors like VS Code routinely add trailing
+  whitespace to markdown tables, fixing on every commit was noise).
+  Custom `clean-internal-ids` hook (CLEAN-1) continues to catch
+  leaks of internal task IDs (DOC-1, CLI-17, etc.) before they reach
+  the repo.
+
+### Documentation
+
+* **README.md / README_ru.md "What's New" section rewritten**: the
+  old single-subsection `## What's New in 0.6.0` is now
+  `## What's New` with two subsections — `### 0.7.0` (Image/Audio/Video
+  hover, auto-generated Ren'Py API docs, TextMate grammar, orphaned
+  video detection) and `### 0.6.0` (Plugin system, LSP killer-features
+  from 0.6.0). The previous README was misleading users into thinking
+  the latest version was 0.6.0.
+* **Plugin example unified**: the README "Write your own rule in 30
+  lines" example used a fictional `RPY902` `TodoCommentRule` that did
+  not exist anywhere in the repo. The actual example in
+  `examples/my_senpy_plugin/` is `RPY901` `HardcodedDialogueRule`.
+  README now uses the real example, so users can copy-paste a working
+  rule. Both `README.md` and `README_ru.md` updated.
+* **ARCHITECTURE.md test count updated**: was "898 tests across 65 test
+  files (~15,700 lines)", now "1035 tests across 69 test files
+  (~17,800 lines)".
+* **SECURITY.md test references fixed**: was pointing to a non-existent
+  `tests/test_aud_001_security.py` (a leftover from an internal audit
+  task that was renamed). Replaced with the real test files:
+  `tests/test_cache_security.py`, `tests/test_lsp_uri_security.py`,
+  `tests/test_unrpyc_security.py`, `tests/test_vendored_unrpyc.py`.
+* **CONTRIBUTING.md expanded** with two new sections:
+  - **"Good first issues"**: a concrete table of 10 lint rules that lack
+    fixture tests (RPY201, 202, 203, 205, 301, 401, 403, 404, 502, 505),
+    plus doc fixes and example .rpy files as low-risk contributions.
+  - **"Solo-maintainer expectations"**: explicit review-time SLAs (1 week
+    for bug reports, 1–2 weeks for small PRs, 2–4 weeks for large PRs),
+    what gets merged fast vs. what gets rejected, and explicit
+    encouragement to write domain-specific checks as plugins rather
+    than core rules (the plugin system is the delegation path for a
+    one-maintainer project).
+  The "How to add a new lint rule" section now opens with a callout
+  block recommending the plugin route for project-specific rules.
+  Code of Conduct expanded with "Be patient with review", "Don't aim
+  for perfect — aim for shipped", and "Don't be precious about your
+  code" guidance.
+
+### Tests
+
+* **1035 tests pass** (up from 1010 in 0.7.0). All green on Python
+  3.11 / 3.12 / 3.13 across Ubuntu, Windows, and macOS (3.12 only).
+* Verified with `-W error::SyntaxWarning` (treating warnings as errors)
+  — no `SyntaxWarning` is raised anywhere in the test suite, confirming
+  the `warnings.filterwarnings` removal was safe.
+* Coverage remains at ~81% (without `senpy/vendor/`).
+
+### Internal cleanup
+
+* `build_exe.bat` and `build_vsix_dev.bat` deleted from the repo root.
+  These were the source of the "silent binary exit" bug above. The
+  working replacement is `senpy-vscode/reinstall.bat` (which uses the
+  correct PyInstaller entry point and `--collect-all senpy`).
+* `pyproject.toml`: added `N802` (function name should be lowercase)
+  and `UP038` (isinstance tuple → `X | Y`) to the `ignore` list. `N802`
+  would fire on `ast.NodeVisitor.visit_*` methods (e.g. `visit_If`,
+  `visit_ImportFrom`) which are part of the Python AST visitor API and
+  cannot be renamed. `UP038` is a deprecated ruff rule (already removed
+  in ruff 0.16+) but kept in `ignore` for compatibility with contributors
+  running older ruff versions.
+
+### Known issues / not closed in this release
+
+* **`ruff format --check` in CI is non-blocking** (`continue-on-error:
+  true`). The blocking step caused an infinite loop on Windows due to
+  CRLF ↔ LF conflicts (`pyproject.toml` says `line-ending = "lf"`, but
+  git on Windows with default `core.autocrlf` converts to CRLF in the
+  working tree, and the `ruff-format` pre-commit hook reformatting every
+  commit triggered the cycle). To make this blocking safely, add a
+  `.gitattributes` file with `* text=auto eol=lf` first. Tracked as a
+  follow-up; not blocking for 0.7.1.
+
 ## [0.7.0] — renpy-magic-inspired features
 
 This release (for a long time) with user-visible features sourced from competitive analysis
@@ -441,7 +595,7 @@ test_packaging.py обновлён с новыми путями файлов.
 > **Важно:** Этот релиз был опубликован на PyPI и сразу же отозван (*yanked*). Версия содержит критическую ошибку сборки. **Не используйте её в проектах.**
 
 ### Причина отзыва
-Шаг `publish-pypi` в CI/CD выполнился успешно, но последующий шаг `build-vsix` завершился ошибкой. 
+Шаг `publish-pypi` в CI/CD выполнился успешно, но последующий шаг `build-vsix` завершился ошибкой.
 
 В рамках реструктуризации в версии 0.5.4 файл `senpy/cli.py` был перенесен в `senpy/cli/main.py`. Однако конфигурационный файл `senpy.spec` для PyInstaller не был обновлен и продолжал ссылаться на старый путь, из-за чего сборка артефакта упала.
 
