@@ -543,11 +543,10 @@ def _references_via_text_search(
 def document_symbols(
     ls: LanguageServer, params: lsp.DocumentSymbolParams
 ) -> list[lsp.DocumentSymbol]:
-    server_mod = _get_server_mod()
     """Генерирует нативное дерево символов для Outline (Структура), Breadcrumbs и Ctrl+Shift+O."""
-    symbols: list[lsp.DocumentSymbol] = []
+    server_mod = _get_server_mod()
     if server_mod._active_analyzer is None:
-        return symbols
+        return []
 
     uri = params.text_document.uri
     file_path = server_mod._uri_to_path(uri)
@@ -557,63 +556,117 @@ def document_symbols(
     if not scope:
         server_mod._active_analyzer._collect_symbols(file_path)
         scope = server_mod._active_analyzer.file_scopes.get(norm_path)
-
     if not scope:
-        return symbols
+        return []
 
     doc = ls.workspace.get_text_document(uri)
     lines = doc.lines if doc and doc.lines else []
     total_lines = len(lines) if lines else 1000
 
-    raw_entries: list[tuple[int, str, lsp.SymbolKind, str, bool]] = []
+    raw_entries = _collect_symbol_entries(scope)
+    raw_entries.sort(key=lambda x: x[0])
+    return _build_document_symbols(raw_entries=raw_entries, lines=lines, total_lines=total_lines)
 
-    for lbl_name, lbl_sym in scope.labels.items():
-        if not lbl_name.startswith("_"):
-            raw_entries.append(
-                (max(0, lbl_sym.line_number - 1), lbl_name, lsp.SymbolKind.Function, "Label", True)
-            )
 
-    for scr_name, scr_sym in scope.screens.items():
-        raw_entries.append(
-            (max(0, scr_sym.line_number - 1), scr_name, lsp.SymbolKind.Interface, "Screen", True)
+# A "raw entry" before it becomes a DocumentSymbol:
+#   (start_line, name, kind, detail, is_block)
+# `is_block` = True means the symbol's range should extend to the start of
+# the next block entry (or end-of-file) — used for labels, screens, etc.
+# that own a body. False means the range is a single line (variables, plain images).
+RawSymbolEntry = tuple[int, str, "lsp.SymbolKind", str, bool]
+
+
+def _collect_symbol_entries(scope) -> list[RawSymbolEntry]:
+    """Collect every declared symbol in `scope` into a flat list of raw entries.
+
+    Order: labels → screens → images → transforms → variables. The caller
+    sorts by `start_line` before building the final DocumentSymbols.
+    """
+    entries: list[RawSymbolEntry] = []
+    entries.extend(_collect_label_symbols(scope))
+    entries.extend(_collect_screen_symbols(scope))
+    entries.extend(_collect_image_symbols(scope))
+    entries.extend(_collect_transform_symbols(scope))
+    entries.extend(_collect_variable_symbols(scope))
+    return entries
+
+
+def _collect_label_symbols(scope) -> list[RawSymbolEntry]:
+    """Labels (skip names starting with `_`). Treated as blocks (own a body)."""
+    entries: list[RawSymbolEntry] = []
+    for name, sym in scope.labels.items():
+        if name.startswith("_"):
+            continue
+        entries.append((max(0, sym.line_number - 1), name, lsp.SymbolKind.Function, "Label", True))
+    return entries
+
+
+def _collect_screen_symbols(scope) -> list[RawSymbolEntry]:
+    """Screens. Treated as blocks."""
+    entries: list[RawSymbolEntry] = []
+    for name, sym in scope.screens.items():
+        entries.append(
+            (max(0, sym.line_number - 1), name, lsp.SymbolKind.Interface, "Screen", True)
         )
+    return entries
 
-    for img_name, img_sym in scope.images.items():
-        if img_sym.is_layered:
-            raw_entries.append(
-                (
-                    max(0, img_sym.line_number - 1),
-                    img_name,
-                    lsp.SymbolKind.Class,
-                    "Layered Image",
-                    True,
-                )
+
+def _collect_image_symbols(scope) -> list[RawSymbolEntry]:
+    """Images. Layered images are blocks (own an ATL body), plain images are not."""
+    entries: list[RawSymbolEntry] = []
+    for name, sym in scope.images.items():
+        if sym.is_layered:
+            entries.append(
+                (max(0, sym.line_number - 1), name, lsp.SymbolKind.Class, "Layered Image", True)
             )
         else:
-            raw_entries.append(
-                (max(0, img_sym.line_number - 1), img_name, lsp.SymbolKind.Field, "Image", False)
+            entries.append(
+                (max(0, sym.line_number - 1), name, lsp.SymbolKind.Field, "Image", False)
             )
+    return entries
 
-    for trans_name, trans_sym in scope.transforms.items():
-        raw_entries.append(
-            (
-                max(0, trans_sym.line_number - 1),
-                trans_name,
-                lsp.SymbolKind.Function,
-                "Transform",
-                True,
-            )
+
+def _collect_transform_symbols(scope) -> list[RawSymbolEntry]:
+    """ATL transforms. Treated as blocks (own an ATL body)."""
+    entries: list[RawSymbolEntry] = []
+    for name, sym in scope.transforms.items():
+        entries.append(
+            (max(0, sym.line_number - 1), name, lsp.SymbolKind.Function, "Transform", True)
         )
+    return entries
 
-    for var_name, var_sym in scope.variables.items():
-        if var_name.startswith("_") or var_sym.is_character:
+
+def _collect_variable_symbols(scope) -> list[RawSymbolEntry]:
+    """Variables (`default`) and constants (`define`). Skip `_`-prefixed and Character definitions.
+
+    Treated as single-line entries (no body to span).
+    """
+    entries: list[RawSymbolEntry] = []
+    for name, sym in scope.variables.items():
+        if name.startswith("_") or sym.is_character:
             continue
-        kind = lsp.SymbolKind.Constant if var_sym.is_constant else lsp.SymbolKind.Variable
-        detail = "Constant (define)" if var_sym.is_constant else "Variable (default)"
-        raw_entries.append((max(0, var_sym.line_number - 1), var_name, kind, detail, False))
+        kind = lsp.SymbolKind.Constant if sym.is_constant else lsp.SymbolKind.Variable
+        detail = "Constant (define)" if sym.is_constant else "Variable (default)"
+        entries.append((max(0, sym.line_number - 1), name, kind, detail, False))
+    return entries
 
-    raw_entries.sort(key=lambda x: x[0])
 
+def _build_document_symbols(
+    *,
+    raw_entries: list[RawSymbolEntry],
+    lines: list[str],
+    total_lines: int,
+) -> list[lsp.DocumentSymbol]:
+    """Convert sorted `raw_entries` into LSP DocumentSymbols.
+
+    For block entries (label/screen/transform/layered-image), the range
+    extends to the start of the next block entry (or end-of-file). For
+    non-block entries (variable/plain image), the range is a single line.
+
+    The selection range (the highlighted region VS Code uses for "Go to
+    Symbol") is just the identifier at the start of the line.
+    """
+    symbols: list[lsp.DocumentSymbol] = []
     for i, (start_line, name, kind, detail, is_block) in enumerate(raw_entries):
         line_text = lines[start_line] if start_line < len(lines) else ""
         col_idx = line_text.find(name)
@@ -646,7 +699,6 @@ def document_symbols(
                 detail=detail,
             )
         )
-
     return symbols
 
 
