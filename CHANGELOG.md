@@ -5,15 +5,137 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] — Plugin trust UX, English-only codebase, expanded badges
+
+Patch release: three independent threads. Plugin trust management
+becomes scriptable (no more `input()` hang in LSP mode), the `senpy/`
+source tree is now English-only comments, and the dynamic badge set
+grows from 1 to 5. No new rules, no new LSP handlers, no public API
+changes. All 1036 tests pass, ruff check clean, 0 import cycles.
+
+### Plugins — non-interactive trust management
+
+The 0.6.0 trust-on-first-use model called `input()` on first load.
+This breaks in two scenarios: LSP mode (`senpy --lsp` — stdio is the
+JSON-RPC transport, not a TTY; `input()` would hang the server
+silently) and CI/piped stdin (the existing non-TTY fail-safe declines
+without any trace of why the plugin was skipped).
+
+Both fixed by two complementary changes:
+
+* **`_default_trust_callback` in `senpy/plugins/loader.py`** detects
+  LSP mode by checking `"--lsp" in sys.argv` and declines untrusted
+  plugins without prompting — a `_logger.warning` points the user at
+  `senpy --trust-plugin NAME`. Non-TTY (CI, piped stdin) keeps the
+  existing fail-safe decline. The trust-store lookup at the top of
+  the callback still short-circuits to `True` for pre-trusted
+  plugins, so a one-time trust is enough for both CLI and LSP.
+
+* **`--trust-plugin NAME` / `--untrust-plugin NAME` CLI flags** in
+  `senpy/cli/main.py` write to `~/.senpy/trusted_plugins.json` and
+  `sys.exit(0)` without running the analyzer. Trust management is
+  now fully scriptable. `--untrust-plugin` exits 0 even if the
+  plugin was not in the store, so it is safe to call from scripts
+  that don't track trust state.
+
+### Codebase hygiene — English-only comments (CLEAN-2)
+
+All Russian comments and docstrings in `senpy/` translated to
+English in a single mechanical pass: **52 files, ~1057 lines
+changed** (additions = removals, no logic changes — only `# …`
+comments and `"""…"""` docstring contents; no code, no string
+literals, no semantics). `senpy/domain/tsundere.py` (easter-egg
+mode, intentionally Russian) and `senpy/vendor/` (vendored unrpyc)
+are whitelisted and skipped. Reviewers can verify no executable
+line changed by filtering the patch on `^-[^-]` / `^\+[^+]`.
+
+### Tests — guards against regression
+
+* **`tests/test_no_russian_comments.py`** (new): scans every `.py`
+  file in `senpy/` (excluding `vendor/` and `tsundere.py`) for
+  Cyrillic characters (`[а-яА-ЯёЁ]`) inside `#` comments or `"""`
+  docstrings. A simple state machine tracks triple-quote nesting;
+  string literals in code are intentionally not flagged. On
+  violation the test fails with a list of `file:line: content`
+  (truncated to 120 chars per line) so the regression can be
+  translated in one pass. Modeled after the CLEAN-1 guard from 0.7.1.
+
+* **`tests/test_clean_internal_ids.py`** (new, 13 cases across 3
+  classes): unit and integration tests for
+  `scripts/clean_internal_ids.py` (added in 0.7.1 as a pre-commit
+  hook, but with no test coverage at the time). Covers the four
+  cleanup strategies (comment prefix, mid-sentence mention,
+  string-literal ID, commit-message prefix), the three CLI modes
+  (`--dry-run`, `--apply`, `--paths`), and the whitelist
+  (`CHANGELOG.md`, worklog, `senpy/vendor/**`). The script's
+  contract is now locked in.
+
+### CI / DX — dynamic badge expansion
+
+The 0.7.1 release shipped one dynamic badge (tests). This release
+grows the set to **five**, all auto-updated by the existing
+`update-badges` CI job on every push to `main`:
+
+| Badge | Source | Color |
+|---|---|---|
+| `tests` | pytest collect/run | brightgreen (all pass), yellow (skipped), red (failed) |
+| `rules` | `len(RULES_DATABASE)` | orange |
+| `LSP` | public functions in `senpy/lsp/handlers/*.py` (via `ast`) | purple |
+| `coverage` | `pytest --cov` TOTAL % | brightgreen ≥80 %, yellow ≥60 %, red otherwise |
+| `speed` | synthetic ~20K-line .rpy benchmark, cold + warm | brightgreen <0.1 s warm, green <1 s, yellow otherwise |
+
+`scripts/update_badges.py` gained three new builders
+(`_build_rules_badge`, `_build_lsp_badge`, `_build_speed_badge`).
+The speed builder generates a deterministic
+(`random.seed(42)`) synthetic VN project — 6 characters, 200
+labels of ~100 lines each, 6 menus, with `show/scene/jump/menu/audio`
+commands mirroring real VN projects (not thousands of
+`define`/`transform` in one file) — and runs `SenpyAnalyzer` cold
++ warm, reporting both times in the badge message. The LSP builder
+parses each handler file with `ast` and counts public `FunctionDef`
+nodes (27 as of this release), robustly skipping malformed files.
+The `update-badges` CI job auto-commits all five JSON files back to
+`main` with `[skip ci]` to avoid a loop; README badges are
+shields.io `endpoint?url=…` pointing at raw JSON on `main`.
+
+### READMEs
+
+Both `README.md` and `README_ru.md` now display all five dynamic
+badges plus the existing static ones (Python, Ren'Py, License,
+Platform, Plugin API, CI status). Previous README had only tests +
+CI + external Codecov. The new block gives a one-glance view of
+project health: rule count, LSP handler count, coverage, cold/warm
+analysis speed on a 20K-line project.
+
+### Tests
+
+* **1036 tests pass** (up from 1035 in 0.7.2). The +1 is the
+  CLEAN-2 guard; the 13 CLEAN-1 cases also land in this release.
+* Ruff check clean. Ruff format check non-blocking (Windows CRLF,
+  unchanged from 0.7.1).
+* 0 import cycles across 79 modules (no new modules this release).
+* Coverage **80.9 %** (up from 80.76 % in 0.7.1), without
+  `senpy/vendor/`. Bump comes from the new tests.
+
+### Internal
+
+No public APIs changed, no plugin API changes. The CLEAN-1
+pre-commit hook and the new CLEAN-2 guard test together enforce the
+two codebase-hygiene invariants going forward: no internal task
+IDs in user-facing files, no Russian text in comments or
+docstrings. Both are now machine-checked.
+
 ## [0.7.2] — God-function splitting, DRY cleanup
 
+No new rules, no new LSP handlers, no user-visible behavior changes.
 The entire release is internal refactoring: splitting 12 god-functions
 into small, testable helpers and extracting 4 shared DRY utilities.
 
 ### Architecture — god-function splitting
 
 12 functions (188–111 lines each) were split into dispatchers (≤30–59 lines)
-delegating to focused helpers.
+delegating to focused helpers. All 1035 tests pass, ruff clean, 0 import
+cycles. Public APIs unchanged — plugins and external code are not affected.
 
 **LSP handlers** (5): `hover`, `definition`, `completions`, `signature_help`,
 `document_symbols` — each now a short dispatcher with per-symbol-type helpers.
@@ -62,7 +184,8 @@ meaningful split, or LSP handlers at exactly 80 lines. Deferred to 0.8.0
 
 ## [0.7.1] — Stabilization, dynamic badges, CONTRIBUTING refresh
 
-Stabilization release. The focus is on documentation accuracy, CI feedback
+Stabilization release: no user-visible behavior changes, no new rules,
+no new LSP handlers. The focus is on documentation accuracy, CI feedback
 loops, contributor onboarding, and removal of stale code paths that
 caused real bugs.
 
