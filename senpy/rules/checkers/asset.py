@@ -51,6 +51,30 @@ def _parse_audio_targets(rest: str) -> list[str]:
     return targets
 
 
+def _split_at_clause(at_clause: str) -> list[str]:
+    """Split an `at` clause into individual transform parts by comma.
+
+    Handles parenthesized expressions (e.g. `at center, ease(1.0, 2.0)`)
+    by tracking paren depth — commas inside parens don't split.
+    """
+    parts: list[str] = []
+    curr: list[str] = []
+    paren_depth = 0
+    for ch in at_clause:
+        if ch == "(":
+            paren_depth += 1
+        elif ch == ")":
+            paren_depth -= 1
+        elif ch == "," and paren_depth == 0:
+            parts.append("".join(curr).strip())
+            curr = []
+            continue
+        curr.append(ch)
+    if curr:
+        parts.append("".join(curr).strip())
+    return parts
+
+
 class AssetChecker(BaseChecker):
     def _validate_transition_expr(
         self,
@@ -103,185 +127,267 @@ class AssetChecker(BaseChecker):
         scope_stack: ScopeStack,
         noqa_map: dict,
     ) -> None:
-        """RPY502: Проверка show / scene — спрайты, ATL-трансформации, переходы.
-
-        Вынесено из check_line в Phase 4 Step 1 (0.5.7).
-        """
+        """RPY502: Проверка show / scene — спрайты, ATL-трансформации, переходы."""
         is_in_screen = scope_stack.current_screen_name() is not None
-
         m_show = (
             RE_SHOW_SCENE.match(stripped)
             if (not is_in_screen and stripped.startswith(("show ", "scene ")))
             else None
         )
         if m_show:
-            raw_tokens = m_show.group(2).split()
-            img_tokens = []
-            for t in raw_tokens:
-                clean_t = t.rstrip(":")
-                if clean_t in CLAUSE_KEYWORDS:
-                    break
-                img_tokens.append(clean_t)
-                if t.endswith(":"):
-                    break
-
-            # "show layer <имя>" — очистка слоя, а НЕ показ изображения
-            if img_tokens and img_tokens[0] == "layer" and m_show.group(1) == "show":
-                img_tokens = []
-
-            if img_tokens:
-                full_img_tag = " ".join(img_tokens)
-                self.analyzer._mark_asset_used(full_img_tag)
-                base_tag = img_tokens[0]
-                all_valid = self.analyzer.valid_images.union(self.analyzer.images.keys())
-
-                has_base = (
-                    base_tag in self.analyzer.images and self.analyzer.images[base_tag].is_layered
-                ) or any(img.startswith(base_tag + " ") or img == base_tag for img in all_valid)
-                is_single_tag = len(img_tokens) == 1 and m_show.group(1) == "show"
-
-                if (
-                    full_img_tag in all_valid
-                    or full_img_tag in BUILTIN_COLORS
-                    or (is_single_tag and has_base)
-                ):
-                    pass
-                elif has_base:
-                    valid_attrs = self.analyzer._get_tag_known_attributes(base_tag, all_valid)
-                    provided_attrs = img_tokens[1:]
-                    invalid_attrs = []
-
-                    for attr in provided_attrs:
-                        clean_attr = attr.removeprefix("-")
-                        if clean_attr not in valid_attrs:
-                            invalid_attrs.append(clean_attr)
-
-                    if not (valid_attrs and not invalid_attrs):
-                        err_attr = invalid_attrs[0] if invalid_attrs else full_img_tag
-                        matches = difflib.get_close_matches(
-                            err_attr, list(valid_attrs), n=1, cutoff=0.6
-                        )
-                        hint = f" (did you mean attribute '{matches[0]}' ?)" if matches else ""
-                        start_c, end_c = self.analyzer._get_utf16_range(raw_line, err_attr)
-                        self.analyzer._add_diagnostic(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=idx + 1,
-                                line_content=stripped,
-                                code="RPY502",
-                                message=f"Attribute '{err_attr}' is not defined for character '{base_tag}'{hint}.",
-                                col=start_c,
-                                end_col=end_c,
-                                fix_title=f"Change to '{matches[0]}'" if matches else None,
-                                fix_replacement=matches[0] if matches else None,
-                            ),
-                            noqa_map,
-                        )
-                else:
-                    all_tags = {img.split()[0] for img in all_valid}.union(
-                        k for k, v in self.analyzer.images.items() if v.is_layered
-                    )
-                    matched_tags = difflib.get_close_matches(
-                        base_tag, list(all_tags), n=1, cutoff=0.7
-                    )
-                    hint = f" (did you mean base tag '{matched_tags[0]}' ?)" if matched_tags else ""
-                    start_c, end_c = self.analyzer._get_utf16_range(raw_line, base_tag)
-                    self.analyzer._add_diagnostic(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=idx + 1,
-                            line_content=stripped,
-                            code="RPY502",
-                            message=f"Sprite or background '{base_tag}' not found in assets or 'image' definitions{hint}.",
-                            col=start_c,
-                            end_col=end_c,
-                            fix_title=f"Change to '{matched_tags[0]}'" if matched_tags else None,
-                            fix_replacement=matched_tags[0] if matched_tags else None,
-                        ),
-                        noqa_map,
-                    )
-
-        # RPY502: Проверка валидности ATL-трансформаций в конструкции 'show ... at ...'
-        if m_show:
-            m_at = re.search(
-                r"\bat\s+([^:]+?)(?:\s+(?:with|as|zorder|behind|onlayer)\b|:|$)", stripped
+            self._validate_show_scene_image(
+                m_show=m_show,
+                file_path=file_path,
+                idx=idx,
+                raw_line=raw_line,
+                stripped=stripped,
+                noqa_map=noqa_map,
             )
-            if m_at:
-                at_clause = m_at.group(1)
-                parts: list[str] = []
-                curr: list[str] = []
-                paren_depth = 0
-                for ch in at_clause:
-                    if ch == "(":
-                        paren_depth += 1
-                    elif ch == ")":
-                        paren_depth -= 1
-                    elif ch == "," and paren_depth == 0:
-                        parts.append("".join(curr).strip())
-                        curr = []
-                        continue
-                    curr.append(ch)
-                if curr:
-                    parts.append("".join(curr).strip())
-
-                for part in parts:
-                    m_name = re.match(r"^([^\W\d]\w*)", part)
-                    if not m_name:
-                        continue
-                    trans_name = m_name.group(1)
-                    if (
-                        trans_name not in self.analyzer.declared_symbols
-                        and trans_name not in self.analyzer.user_symbols
-                    ):
-                        all_candidates = [
-                            s for s in self.analyzer.declared_symbols if s.isidentifier()
-                        ]
-                        matches = difflib.get_close_matches(
-                            trans_name, all_candidates, n=1, cutoff=0.6
-                        )
-                        hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
-                        start_c, end_c = self.analyzer._get_utf16_range(raw_line, trans_name)
-                        self.analyzer._add_diagnostic(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=idx + 1,
-                                line_content=stripped,
-                                code="RPY502",
-                                message=f"Transform or position '{trans_name}' is not defined{hint}. Causes runtime NameError.",
-                                col=start_c,
-                                end_col=end_c,
-                                fix_title=f"Change to '{matches[0]}'" if matches else None,
-                                fix_replacement=matches[0] if matches else None,
-                            ),
-                            noqa_map,
-                        )
-
-        # RPY502: Проверка переходов в конструкции 'with <transition>'
+            self._validate_atl_transforms(
+                m_show=m_show,
+                stripped=stripped,
+                file_path=file_path,
+                idx=idx,
+                raw_line=raw_line,
+                noqa_map=noqa_map,
+            )
         if not is_in_screen and not stripped.startswith(("$", "python")):
-            trans_expr: str | None = None
-            if stripped.startswith(("show ", "scene ")):
-                m_sw = re.search(
-                    r"\bwith\s+([^:#]+?)(?:\s+(?:onlayer|zorder|behind|as)\b|:|$)", stripped
-                )
-                if m_sw:
-                    trans_expr = m_sw.group(1)
-            elif (
-                stripped.startswith(("with ", "with\t"))
-                and not stripped.endswith(":")
-                and not re.search(r"\bas\b", stripped)
-            ):
-                m_w = re.match(r"^with\s+([^:#]+)", stripped)
-                if m_w:
-                    trans_expr = m_w.group(1)
-            elif re.search(r'["\']\s+with\s+([^:#]+)$', stripped):
-                m_dw = re.search(r'["\']\s+with\s+([^:#]+)$', stripped)
-                if m_dw:
-                    trans_expr = m_dw.group(1)
+            self._validate_transition_clause(
+                stripped=stripped,
+                file_path=file_path,
+                idx=idx,
+                raw_line=raw_line,
+                noqa_map=noqa_map,
+            )
 
-            if trans_expr:
-                self._validate_transition_expr(
-                    file_path, idx, raw_line, stripped, trans_expr, noqa_map
-                )
+    def _validate_show_scene_image(
+        self,
+        *,
+        m_show,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        stripped: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY502: Validate the image name and attributes in show/scene."""
+        raw_tokens = m_show.group(2).split()
+        img_tokens = []
+        for t in raw_tokens:
+            clean_t = t.rstrip(":")
+            if clean_t in CLAUSE_KEYWORDS:
+                break
+            img_tokens.append(clean_t)
+            if t.endswith(":"):
+                break
+
+        # "show layer <имя>" — очистка слоя, а НЕ показ изображения
+        if img_tokens and img_tokens[0] == "layer" and m_show.group(1) == "show":
+            img_tokens = []
+
+        if not img_tokens:
+            return
+
+        full_img_tag = " ".join(img_tokens)
+        self.analyzer._mark_asset_used(full_img_tag)
+        base_tag = img_tokens[0]
+        all_valid = self.analyzer.valid_images.union(self.analyzer.images.keys())
+
+        has_base = (
+            base_tag in self.analyzer.images and self.analyzer.images[base_tag].is_layered
+        ) or any(img.startswith(base_tag + " ") or img == base_tag for img in all_valid)
+        is_single_tag = len(img_tokens) == 1 and m_show.group(1) == "show"
+
+        # Case 1: full tag or single-tag-with-base is valid → OK
+        if (
+            full_img_tag in all_valid
+            or full_img_tag in BUILTIN_COLORS
+            or (is_single_tag and has_base)
+        ):
+            return
+
+        # Case 2: base tag exists, but some attributes are wrong
+        if has_base:
+            self._validate_image_attributes(
+                base_tag=base_tag,
+                img_tokens=img_tokens,
+                full_img_tag=full_img_tag,
+                all_valid=all_valid,
+                file_path=file_path,
+                idx=idx,
+                raw_line=raw_line,
+                stripped=stripped,
+                noqa_map=noqa_map,
+            )
+            return
+
+        # Case 3: base tag not found → suggest closest
+        self._emit_unknown_base_tag(
+            base_tag=base_tag,
+            all_valid=all_valid,
+            file_path=file_path,
+            idx=idx,
+            raw_line=raw_line,
+            stripped=stripped,
+            noqa_map=noqa_map,
+        )
+
+    def _validate_image_attributes(
+        self,
+        *,
+        base_tag: str,
+        img_tokens: list[str],
+        full_img_tag: str,
+        all_valid: set,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        stripped: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY502: Validate attributes of a known base tag (e.g. `sayori happy` → check `happy`)."""
+        valid_attrs = self.analyzer._get_tag_known_attributes(base_tag, all_valid)
+        provided_attrs = img_tokens[1:]
+        invalid_attrs = []
+        for attr in provided_attrs:
+            clean_attr = attr.removeprefix("-")
+            if clean_attr not in valid_attrs:
+                invalid_attrs.append(clean_attr)
+
+        if valid_attrs and not invalid_attrs:
+            return  # all provided attributes are valid
+
+        err_attr = invalid_attrs[0] if invalid_attrs else full_img_tag
+        matches = difflib.get_close_matches(err_attr, list(valid_attrs), n=1, cutoff=0.6)
+        hint = f" (did you mean attribute '{matches[0]}' ?)" if matches else ""
+        start_c, end_c = self.analyzer._get_utf16_range(raw_line, err_attr)
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=idx + 1,
+                line_content=stripped,
+                code="RPY502",
+                message=f"Attribute '{err_attr}' is not defined for character '{base_tag}'{hint}.",
+                col=start_c,
+                end_col=end_c,
+                fix_title=f"Change to '{matches[0]}'" if matches else None,
+                fix_replacement=matches[0] if matches else None,
+            ),
+            noqa_map,
+        )
+
+    def _emit_unknown_base_tag(
+        self,
+        *,
+        base_tag: str,
+        all_valid: set,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        stripped: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY502: Emit 'sprite not found' diagnostic with closest-match suggestion."""
+        all_tags = {img.split()[0] for img in all_valid}.union(
+            k for k, v in self.analyzer.images.items() if v.is_layered
+        )
+        matched_tags = difflib.get_close_matches(base_tag, list(all_tags), n=1, cutoff=0.7)
+        hint = f" (did you mean base tag '{matched_tags[0]}' ?)" if matched_tags else ""
+        start_c, end_c = self.analyzer._get_utf16_range(raw_line, base_tag)
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=idx + 1,
+                line_content=stripped,
+                code="RPY502",
+                message=f"Sprite or background '{base_tag}' not found in assets or 'image' definitions{hint}.",
+                col=start_c,
+                end_col=end_c,
+                fix_title=f"Change to '{matched_tags[0]}'" if matched_tags else None,
+                fix_replacement=matched_tags[0] if matched_tags else None,
+            ),
+            noqa_map,
+        )
+
+    def _validate_atl_transforms(
+        self,
+        *,
+        m_show,
+        stripped: str,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY502: Validate ATL transforms in `show X at <transform>`."""
+        m_at = re.search(r"\bat\s+([^:]+?)(?:\s+(?:with|as|zorder|behind|onlayer)\b|:|$)", stripped)
+        if not m_at:
+            return
+
+        at_clause = m_at.group(1)
+        parts = _split_at_clause(at_clause)
+        for part in parts:
+            m_name = re.match(r"^([^\W\d]\w*)", part)
+            if not m_name:
+                continue
+            trans_name = m_name.group(1)
+            if (
+                trans_name in self.analyzer.declared_symbols
+                or trans_name in self.analyzer.user_symbols
+            ):
+                continue
+            # Transform not found → suggest closest
+            all_candidates = [s for s in self.analyzer.declared_symbols if s.isidentifier()]
+            matches = difflib.get_close_matches(trans_name, all_candidates, n=1, cutoff=0.6)
+            hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
+            start_c, end_c = self.analyzer._get_utf16_range(raw_line, trans_name)
+            self.analyzer._add_diagnostic(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=idx + 1,
+                    line_content=stripped,
+                    code="RPY502",
+                    message=f"Transform or position '{trans_name}' is not defined{hint}. Causes runtime NameError.",
+                    col=start_c,
+                    end_col=end_c,
+                    fix_title=f"Change to '{matches[0]}'" if matches else None,
+                    fix_replacement=matches[0] if matches else None,
+                ),
+                noqa_map,
+            )
+
+    def _validate_transition_clause(
+        self,
+        *,
+        stripped: str,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY502: Detect `with <transition>` and delegate to `_validate_transition_expr`."""
+        trans_expr: str | None = None
+        if stripped.startswith(("show ", "scene ")):
+            m_sw = re.search(
+                r"\bwith\s+([^:#]+?)(?:\s+(?:onlayer|zorder|behind|as)\b|:|$)", stripped
+            )
+            if m_sw:
+                trans_expr = m_sw.group(1)
+        elif (
+            stripped.startswith(("with ", "with\t"))
+            and not stripped.endswith(":")
+            and not re.search(r"\bas\b", stripped)
+        ):
+            m_w = re.match(r"^with\s+([^:#]+)", stripped)
+            if m_w:
+                trans_expr = m_w.group(1)
+        elif re.search(r'["\']\s+with\s+([^:#]+)$', stripped):
+            m_dw = re.search(r'["\']\s+with\s+([^:#]+)$', stripped)
+            if m_dw:
+                trans_expr = m_dw.group(1)
+
+        if trans_expr:
+            self._validate_transition_expr(file_path, idx, raw_line, stripped, trans_expr, noqa_map)
 
     def _check_audio_statement(
         self,
