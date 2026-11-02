@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 
 from senpy.core.cache import CachedFileEntry, CacheManager, CacheManifest, compute_file_hash
 from senpy.core.config import load_config
@@ -203,6 +204,23 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     indent = len(clean_parts[0]) - len(clean_parts[0].lstrip())
     joined_clean = (" " * indent) + " ".join(cleaned_tokens)
     return curr_idx + 1, "".join(raw_parts), joined_clean
+
+
+@dataclass(slots=True)
+class _FileAnalysisState:
+    """Per-file mutable state shared across _analyze_file helpers.
+
+    Bundles the 5 checkers + scope stack + file_modified flag so the
+    dispatcher can pass a single object instead of 7 parameters.
+    """
+
+    scope_stack: ScopeStack
+    fmt: FormattingChecker
+    screen: ScreenChecker
+    asset: AssetChecker
+    dialogue: DialogueChecker
+    st_checker: StateChecker
+    file_modified: bool = False
 
 
 class SenpyAnalyzer:
@@ -1323,127 +1341,180 @@ class SenpyAnalyzer:
         return attrs
 
     def _analyze_file(self, file_path: str):
+        """Analyze a single .rpy file: collect symbols and run all lint rules.
+
+        This is the per-file dispatcher. The main loop walks logical lines
+        and delegates to 6 checkers (format, screen, asset, dialogue,
+        quoted-strings, state) plus init-python-block AST checks.
+        """
         lines = self._read_file_lines(file_path)
         if lines is None or file_path.endswith("_ren.py"):
             return
 
         self.total_lines += len(lines)
-        file_modified = False
-
-        scope_stack = ScopeStack(self.declared_symbols)
-        format_checker = FormattingChecker(self)
-        screen_checker = ScreenChecker(self)
-        asset_checker = AssetChecker(self)
-        dialogue_checker = DialogueChecker(self)
-        state_checker = StateChecker(self)
-
-        noqa_map: dict[int, set[str] | None] = {}
-        for line_no, raw_line in enumerate(lines, start=1):
-            has_noqa, codes = self._parse_noqa(raw_line)
-            if has_noqa:
-                noqa_map[line_no] = codes
+        state = _FileAnalysisState(
+            scope_stack=ScopeStack(self.declared_symbols),
+            fmt=FormattingChecker(self),
+            screen=ScreenChecker(self),
+            asset=AssetChecker(self),
+            dialogue=DialogueChecker(self),
+            st_checker=StateChecker(self),
+        )
+        noqa_map = self._build_noqa_map(lines)
 
         idx = 0
         while idx < len(lines):
             next_idx, raw_line, clean = _get_logical_line(lines, idx)
             stripped = clean.strip()
-
             if not stripped:
                 idx = next_idx
                 continue
 
             line_indent = len(raw_line) - len(raw_line.lstrip(" "))
-            scope_stack.pop_to_indent(line_indent)
+            state.scope_stack.pop_to_indent(line_indent)
 
-            # 1. FormattingChecker (RPY001, RPY002, RPY107)
-            raw_line, modified = format_checker.check_line(
-                file_path, idx, raw_line, clean, scope_stack, noqa_map, lines
+            raw_line, modified = state.fmt.check_line(
+                file_path, idx, raw_line, clean, state.scope_stack, noqa_map, lines
             )
             if modified:
-                file_modified = True
+                state.file_modified = True
 
-            m_init = RE_INIT_PYTHON_START.match(raw_line)
-            if m_init:
-                indent = len(m_init.group(1))
-                next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
-                if block_lines:
-                    self._scan_python_assets(block_lines)
-                    import textwrap
-
-                    code = textwrap.dedent("".join(block_lines))
-                    self.python_ast.check_init_dependency(code, file_path, idx + 2, noqa_map, lines)
-                    self.python_ast.check_python_ast(code, file_path, idx + 2, noqa_map, lines)
-                idx = next_idx
+            init_next = self._handle_init_python_block(lines, idx, file_path, noqa_map)
+            if init_next is not None:
+                idx = init_next
                 continue
 
-            # Scope: Labels
-            m_label = RE_LABEL.match(clean)
-            if m_label:
-                scope_stack.push(ScopeType.LABEL, m_label.group(1), line_indent)
-                state_checker.reset()
-                raw_params = m_label.group(2)
-                if raw_params:
-                    for p in raw_params.split(","):
-                        p_clean = p.split("=")[0].strip()
-                        if p_clean and p_clean.isidentifier():
-                            scope_stack.add_symbol(p_clean)
+            self._push_label_scope_if_match(clean, state, line_indent)
 
-            # Scope: Screens
-            m_screen = RE_SCREEN_START.match(raw_line)
-            if m_screen:
-                screen_name = m_screen.group(2)
-                scope_stack.push(ScopeType.SCREEN, screen_name, line_indent)
-                params_str = m_screen.group(3)
-                if params_str:
-                    for p in params_str.split(","):
-                        p_clean = p.split("=")[0].strip()
-                        if p_clean and p_clean.isidentifier():
-                            scope_stack.add_symbol(p_clean)
+            if self._push_screen_scope_if_match(raw_line, state, line_indent):
                 idx += 1
                 continue
 
-            # 2. ScreenChecker (RPY203, RPY204, RPY206)
-            _, _ = screen_checker.check_line(
-                file_path, idx, raw_line, clean, scope_stack, noqa_map, lines
+            next_idx = self._run_line_checkers(
+                file_path, idx, next_idx, raw_line, clean, stripped, state, noqa_map, lines
             )
-
-            # 3. AssetChecker (RPY501, RPY502)
-            _, _ = asset_checker.check_line(
-                file_path, idx, raw_line, clean, scope_stack, noqa_map, lines
-            )
-
-            # 4. DialogueChecker (RPY302, RPY305, RPY306, RPY308)
-            _, _ = dialogue_checker.check_line(
-                file_path,
-                idx,
-                raw_line,
-                clean,
-                scope_stack,
-                noqa_map,
-                lines,
-                state_checker.branch_uninitialized,
-            )
-
-            # 5. Quoted strings check (RPY101, RPY301, RPY304)
-            if not stripped.startswith(("$", "python")):
-                new_line, modified = self._check_and_fix_quoted_strings(
-                    file_path, idx + 1, raw_line, scope_stack.get_local_symbols(), noqa_map
-                )
-                if modified:
-                    lines[idx] = new_line
-                    file_modified = True
-
-            # 6. StateChecker (RPY102-106, RPY201, RPY205, RPY401-403)
-            next_idx, _ = state_checker.check_line(
-                file_path, idx, next_idx, raw_line, clean, scope_stack, noqa_map, lines
-            )
-
             idx = next_idx
 
-        state_checker._pop_and_merge_all_if()
-
-        if file_modified and self.fix:
+        state.st_checker._pop_and_merge_all_if()
+        if state.file_modified and self.fix:
             self._write_fixed_file(file_path, lines)
+
+    def _build_noqa_map(self, lines: list[str]) -> dict[int, set[str] | None]:
+        """Pre-parse all `# noqa` comments in the file into a line→codes map."""
+        noqa_map: dict[int, set[str] | None] = {}
+        for line_no, raw_line in enumerate(lines, start=1):
+            has_noqa, codes = self._parse_noqa(raw_line)
+            if has_noqa:
+                noqa_map[line_no] = codes
+        return noqa_map
+
+    def _handle_init_python_block(
+        self, lines: list[str], idx: int, file_path: str, noqa_map: dict
+    ) -> int | None:
+        """Detect `init python:` block and run AST checks on it.
+
+        Returns `next_idx` (the index after the block) if an init block was
+        found and processed, or `None` if the current line is not an init
+        python block start.
+        """
+        # Use the raw_line from lines[idx] — format_checker may have modified it.
+        raw_line = lines[idx]
+        m_init = RE_INIT_PYTHON_START.match(raw_line)
+        if not m_init:
+            return None
+
+        indent = len(m_init.group(1))
+        next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
+        if block_lines:
+            self._scan_python_assets(block_lines)
+            import textwrap
+
+            code = textwrap.dedent("".join(block_lines))
+            self.python_ast.check_init_dependency(code, file_path, idx + 2, noqa_map, lines)
+            self.python_ast.check_python_ast(code, file_path, idx + 2, noqa_map, lines)
+        return next_idx
+
+    def _push_label_scope_if_match(
+        self, clean: str, state: _FileAnalysisState, line_indent: int
+    ) -> None:
+        """If `clean` matches `label X:`, push a LABEL scope and register params."""
+        m_label = RE_LABEL.match(clean)
+        if not m_label:
+            return
+        state.scope_stack.push(ScopeType.LABEL, m_label.group(1), line_indent)
+        state.st_checker.reset()
+        raw_params = m_label.group(2)
+        if raw_params:
+            for p in raw_params.split(","):
+                p_clean = p.split("=")[0].strip()
+                if p_clean and p_clean.isidentifier():
+                    state.scope_stack.add_symbol(p_clean)
+
+    def _push_screen_scope_if_match(
+        self, raw_line: str, state: _FileAnalysisState, line_indent: int
+    ) -> bool:
+        """If `raw_line` matches `screen X():`, push a SCREEN scope + params.
+
+        Returns True if a screen scope was pushed (caller should `continue`),
+        False otherwise.
+        """
+        m_screen = RE_SCREEN_START.match(raw_line)
+        if not m_screen:
+            return False
+        screen_name = m_screen.group(2)
+        state.scope_stack.push(ScopeType.SCREEN, screen_name, line_indent)
+        params_str = m_screen.group(3)
+        if params_str:
+            for p in params_str.split(","):
+                p_clean = p.split("=")[0].strip()
+                if p_clean and p_clean.isidentifier():
+                    state.scope_stack.add_symbol(p_clean)
+        return True
+
+    def _run_line_checkers(
+        self,
+        file_path: str,
+        idx: int,
+        next_idx: int,
+        raw_line: str,
+        clean: str,
+        stripped: str,
+        state: _FileAnalysisState,
+        noqa_map: dict,
+        lines: list[str],
+    ) -> int:
+        """Run screen, asset, dialogue, quoted-string, and state checkers
+        for one logical line. Returns the next line index (may differ from
+        `next_idx` if state_checker overrides it).
+        """
+        # 2. ScreenChecker (RPY203, RPY204, RPY206)
+        state.screen.check_line(file_path, idx, raw_line, clean, state.scope_stack, noqa_map, lines)
+        # 3. AssetChecker (RPY501, RPY502)
+        state.asset.check_line(file_path, idx, raw_line, clean, state.scope_stack, noqa_map, lines)
+        # 4. DialogueChecker (RPY302, RPY305, RPY306, RPY308)
+        state.dialogue.check_line(
+            file_path,
+            idx,
+            raw_line,
+            clean,
+            state.scope_stack,
+            noqa_map,
+            lines,
+            state.st_checker.branch_uninitialized,
+        )
+        # 5. Quoted strings check (RPY101, RPY301, RPY304)
+        if not stripped.startswith(("$", "python")):
+            new_line, modified = self._check_and_fix_quoted_strings(
+                file_path, idx + 1, raw_line, state.scope_stack.get_local_symbols(), noqa_map
+            )
+            if modified:
+                lines[idx] = new_line
+                state.file_modified = True
+        # 6. StateChecker (RPY102-106, RPY201, RPY205, RPY401-403)
+        next_idx, _ = state.st_checker.check_line(
+            file_path, idx, next_idx, raw_line, clean, state.scope_stack, noqa_map, lines
+        )
+        return next_idx
 
     def _read_file_lines(self, file_path: str) -> list[str] | None:
         """Read file lines for analysis: in-memory, stage1 cache, or from disk.
