@@ -299,84 +299,108 @@ def signature_help(ls: LanguageServer, params: lsp.SignatureHelpParams) -> lsp.S
     line = doc.lines[line_idx]
     cursor_pos = params.position.character
 
-    # Find call/use pattern on this line, with cursor inside the parens
-    match = None
-    paren_start = -1
-    for m in _RE_CALL_USE.finditer(line):
-        # Check if cursor is after the opening paren
-        if m.end() - 1 <= cursor_pos:  # cursor is at or after the `(`
-            # Find closing paren
-            paren_start = m.end() - 1
-            # Find closing paren after cursor
-            close_pos = line.find(")", cursor_pos)
-            if close_pos == -1:
-                close_pos = len(line)
-            if paren_start <= cursor_pos <= close_pos:
-                match = m
-                break
-    else:
-        return None  # no call/use pattern with cursor inside
-
-    if match is None:
+    # Phase 1: locate the call/use pattern with the cursor inside the parens.
+    target_name, paren_start = _find_call_use_target(line=line, cursor_pos=cursor_pos)
+    if target_name is None:
         return None
 
-    target_name = match.group(1)
-    # Handle dotted names (label.sublabel) — take the last part for lookup
-    if "." in target_name:
-        target_name = target_name.split(".")[-1]
+    # Phase 2: look up the target symbol (label or screen).
+    symbol = _lookup_call_target(target_name=target_name, server_mod=server_mod)
+    if symbol is None:
+        return None
 
-    # Look up in labels and screens (snapshot for cross-file stability,
-    # fallback to analyzer for cases where snapshot is not yet refreshed)
-    labels = server_mod._symbol_snapshot.get("labels", {})
-    screens = server_mod._symbol_snapshot.get("screens", {})
-    # Fallback: if not in snapshot, check analyzer directly (test scenarios,
-    # or immediately after did_change before snapshot refresh)
-    if target_name not in labels and server_mod._active_analyzer is not None:
-        labels = server_mod._active_analyzer.labels
-    if target_name not in screens and server_mod._active_analyzer is not None:
-        screens = server_mod._active_analyzer.screens
+    # Phase 3: build the SignatureInformation (label + parameters).
+    # NB: labels without parameters still produce a `SignatureHelp` with
+    # an empty parameter list (label "name()") — see
+    # `test_signature_help_for_label_without_params`.
+    sig_info = _build_signature_info(target_name=target_name, symbol=symbol)
 
-    symbol = None
-    if target_name in labels:
-        symbol = labels[target_name]
-    elif target_name in screens:
-        symbol = screens[target_name]
-    else:
-        return None  # unknown label/screen
-
-    # Build signature label
-    sig = symbol.signature
-    if sig and sig.has_params:
-        # Build "name(param1, param2=default)" style
-        param_parts = []
-        for i, name in enumerate(sig.pos_names):
-            param_parts.append(name)
-        # Note: we don't have default values in SignatureInfo, only names
-        # So we just show names. If we had defaults, we'd append "=default"
-        params_str = ", ".join(param_parts)
-    else:
-        params_str = ""
-
-    sig_label = f"{target_name}({params_str})"
-
-    # Build ParameterInformation list
-    param_infos: list[lsp.ParameterInformation] = []
-    if sig and sig.has_params:
-        for name in sig.pos_names:
-            param_infos.append(lsp.ParameterInformation(label=name))
-
-    sig_info = lsp.SignatureInformation(
-        label=sig_label,
-        parameters=param_infos,
-    )
-
-    # Calculate active parameter (which param cursor is on)
+    # Phase 4: highlight the parameter the cursor is currently on.
     active_param = _count_active_parameter(line, cursor_pos, paren_start)
-    if active_param >= len(param_infos):
-        active_param = max(0, len(param_infos) - 1)
+    if active_param >= len(sig_info.parameters):
+        active_param = max(0, len(sig_info.parameters) - 1)
 
     return lsp.SignatureHelp(
         signatures=[sig_info],
         active_signature=0,
         active_parameter=active_param,
+    )
+
+
+def _find_call_use_target(*, line: str, cursor_pos: int) -> tuple[str | None, int]:
+    """Locate a `call/use NAME(` pattern whose parens contain the cursor.
+
+    Returns `(target_name, paren_start)` if found, or `(None, -1)` if no
+    `call`/`use` pattern on this line has the cursor inside its parens.
+
+    `target_name` is the (un-dotted) name after `call`/`use`. `paren_start`
+    is the 0-based index of the `(` — used by the caller to compute the
+    active parameter via `_count_active_parameter`.
+    """
+    for m in _RE_CALL_USE.finditer(line):
+        if m.end() - 1 > cursor_pos:
+            # cursor is before the opening paren — skip this match
+            continue
+        paren_start = m.end() - 1
+        close_pos = line.find(")", cursor_pos)
+        if close_pos == -1:
+            close_pos = len(line)
+        if paren_start <= cursor_pos <= close_pos:
+            return m.group(1), paren_start
+    return None, -1
+
+
+def _lookup_call_target(*, target_name: str, server_mod):
+    """Look up `target_name` (after dot-stripping) as a label or screen.
+
+    Uses the symbol snapshot first (cross-file stable), with a fallback
+    to the live analyzer (for the brief window between `did_change` and
+    the next snapshot refresh).
+
+    Returns the label/screen symbol, or None if neither exists.
+    """
+    # Handle dotted names (label.sublabel) — take the last part for lookup.
+    if "." in target_name:
+        target_name = target_name.split(".")[-1]
+
+    labels = server_mod._symbol_snapshot.get("labels", {})
+    screens = server_mod._symbol_snapshot.get("screens", {})
+
+    # Fallback: if not in snapshot, check analyzer directly (test scenarios,
+    # or immediately after did_change before snapshot refresh).
+    if target_name not in labels and server_mod._active_analyzer is not None:
+        labels = server_mod._active_analyzer.labels
+    if target_name not in screens and server_mod._active_analyzer is not None:
+        screens = server_mod._active_analyzer.screens
+
+    if target_name in labels:
+        return labels[target_name]
+    if target_name in screens:
+        return screens[target_name]
+    return None
+
+
+def _build_signature_info(*, target_name: str, symbol) -> lsp.SignatureInformation:
+    """Build a `SignatureInformation` for `call NAME(...)` / `use NAME(...)`.
+
+    Returns a `SignatureInformation` even when the symbol has no
+    parameters — the label will be `NAME()` with an empty `parameters`
+    list. The original behavior (preserved by
+    `test_signature_help_for_label_without_params`) was to return a
+    non-None `SignatureHelp` in this case, so we never return None here.
+
+    Default values are not shown because `SignatureInfo` only stores
+    param names, not defaults.
+    """
+    sig = symbol.signature
+    pos_names = sig.pos_names if (sig and sig.has_params) else []
+
+    # Build "name(param1, param2)" style — names only, no defaults.
+    params_str = ", ".join(pos_names)
+    sig_label = f"{target_name}({params_str})"
+
+    param_infos = [lsp.ParameterInformation(label=name) for name in pos_names]
+    return lsp.SignatureInformation(
+        label=sig_label,
+        parameters=param_infos,
     )
