@@ -53,12 +53,6 @@ from senpy.rules.deprecated import DeprecationChecker
 from senpy.rules.flow import StoryFlowAnalyzer
 from senpy.rules.python_ast import PythonAstChecker, infer_expr_type
 
-# Pre-compiled regex for word tokenization. Used by _check_unused_declarations
-# to build a word→locations index in a single pass over all files (O(N+M)
-# instead of O(N*M) for naive per-symbol re.search loop).
-_WORD_RE = re.compile(r"\w+")
-
-
 # Фаза 1.3 (0.5.3): _strip_comment вынесен в senpy/text_utils.py для разрыва
 # циклической зависимости checkers/flow → analyzer. Реэкспортируем для backward compat.
 from senpy.text_utils import _strip_comment  # noqa: E402, F401
@@ -309,16 +303,6 @@ class SenpyAnalyzer:
     def _check_unused_assets(self) -> None:
         self.diagnostics.extend(self.assets.check_unused())
 
-    def _check_unused_declarations(self) -> None:
-        """RPY701-703: Unused define/transform/screen (dead code).
-
-        Delegates to senpy.rules.dead_code.check_unused_declarations.
-        Kept as a thin wrapper for backward compat.
-        """
-        from senpy.rules.dead_code import check_unused_declarations
-
-        check_unused_declarations(self)
-
     def run(self, quiet: bool = False) -> AnalysisResult:
         self._run_reset()
 
@@ -505,12 +489,15 @@ class SenpyAnalyzer:
         current_global_hash: str,
     ) -> None:
         """Run post-analysis checks, TL validation, severity overrides, and save cache."""
+        from senpy.rules.checkers.translation import analyze_tl_file
+        from senpy.rules.dead_code import check_unused_declarations
+
         self._check_unreachable_labels()
         self._check_unused_assets()
-        self._check_unused_declarations()
+        check_unused_declarations(self)
 
         for tl_file in tl_rpy:
-            self._analyze_tl_file(tl_file)
+            analyze_tl_file(self, tl_file)
 
         if self.severity_overrides:
             for d in self.diagnostics:
@@ -653,7 +640,9 @@ class SenpyAnalyzer:
             rel_parts = file_path.replace("\\", "/").split("/")
         try:
             if "tl" in rel_parts:
-                self._analyze_tl_file(file_path)
+                from senpy.rules.checkers.translation import analyze_tl_file
+
+                analyze_tl_file(self, file_path)
             else:
                 self._differential_purge_file(norm_path, file_path)
                 self._collect_symbols(file_path)
@@ -1598,28 +1587,19 @@ class SenpyAnalyzer:
             file_path, line_idx, line_content, expr, screen_name, screen_local_symbols, noqa_map
         )
 
-    def _analyze_tl_file(self, file_path: str):
-        """Analyze translation file for RPY601/602/603.
-
-        Delegates to senpy.rules.checkers.translation.analyze_tl_file.
-        Kept as a thin wrapper for backward compat.
-        """
-        from senpy.rules.checkers.translation import analyze_tl_file
-
-        analyze_tl_file(self, file_path)
-
     @staticmethod
     def _parse_tl_pairs(lines: list[str]) -> list[tuple[str, int, str, int]]:
-        """Parse translation pairs. Delegates to translation module."""
+        """Parse translation pairs.
+
+        .. deprecated::
+            Use ``senpy.rules.checkers.translation.parse_tl_pairs`` directly.
+            Kept as a ``@staticmethod`` for backward compat — ``core/coverage.py``
+            calls it via ``SenpyAnalyzer._parse_tl_pairs(lines)`` and external
+            plugin code may rely on the same path.
+        """
         from senpy.rules.checkers.translation import parse_tl_pairs
 
         return parse_tl_pairs(lines)
-
-    def _validate_tl_pairs(self, pairs: list[tuple[str, int, str, int]], file_path: str):
-        """Validate translation pairs. Delegates to translation module."""
-        from senpy.rules.checkers.translation import validate_tl_pairs
-
-        validate_tl_pairs(self, pairs, file_path)
 
     def generate_defaults_file(self) -> tuple[str, int]:
         if not self.missing_defaults:
