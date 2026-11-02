@@ -48,8 +48,8 @@ SENPY_CACHE_DIR = os.path.expanduser("~/.senpy/tools/unrpyc")
 # zip's SHA256, and update both constants).
 #
 # Current pinned commit:
-UNRPYC_PINNED_COMMIT = "v2.0.4"
-UNRPYC_PINNED_SHA256 = "df7446d89f68a9a94a62378248da875e9e75e983bf81de53d92b2c19f359673e"  # computed 2026-10-28 via update_unrpyc_pin.py
+UNRPYC_PINNED_COMMIT = "3ae8334ed71a05535927dcc559663d3aca51215b"
+UNRPYC_PINNED_SHA256 = "36a0e8d05b00939f45c07c7a7d1e7eca37c3b28347d2baea9007ea3b2b5a41b8"  # computed 2026-10-28 via update_unrpyc_pin.py
 UNRPYC_GITHUB_ZIP_TEMPLATE = "https://github.com/CensoredUsername/unrpyc/archive/{commit}.zip"
 
 

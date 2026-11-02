@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""update_unrpyc_pin.py — обновление pinned unrpyc commit + SHA256 в senpy/cli.py.
+"""update_unrpyc_pin.py — обновление pinned unrpyc commit + SHA256 в senpy/cli/unrpyc.py.
 
 Senpy пиннит unrpyc к конкретному git-коммиту/тегу (не master-ветке
 в общем случае) и проверяет SHA256 скачанного zip. Этот скрипт обновляет
@@ -58,10 +58,10 @@ unrpyc имеет две ветки:
 1. Получает SHA указанного коммита/тега через GitHub API.
 2. Скачивает zip для этого коммита.
 3. Считает SHA256 zip'а.
-4. Обновляет UNRPYC_PINNED_COMMIT и UNRPYC_PINNED_SHA256 в senpy/cli.py.
+4. Обновляет UNRPYC_PINNED_COMMIT и UNRPYC_PINNED_SHA256 в senpy/cli/unrpyc.py.
 
 Затем закоммитьте изменения:
-    git add senpy/cli.py
+    git add senpy/cli/unrpyc.py
     git commit -m "pin unrpyc to <version> (Ren'Py 6.99/7.x/8.x supported)"
 """
 
@@ -77,7 +77,7 @@ from pathlib import Path
 
 GITHUB_API = "https://api.github.com/repos/CensoredUsername/unrpyc/commits/{ref}"
 ZIP_URL_TEMPLATE = "https://github.com/CensoredUsername/unrpyc/archive/{commit}.zip"
-CLI_PATH = Path(__file__).parent.parent / "senpy" / "cli.py"
+CLI_PATH = Path(__file__).parent.parent / "senpy" / "cli" / "unrpyc.py"
 
 
 # =============================================================================
@@ -237,7 +237,7 @@ def download_zip_and_hash(commit_sha: str) -> tuple[bytes, str]:
 # Обновление senpy/cli.py
 # =============================================================================
 def update_cli_py(commit_sha: str, sha256_hex: str, profile: UnrpycProfile) -> None:
-    """Обновляет UNRPYC_PINNED_COMMIT и UNRPYC_PINNED_SHA256 в senpy/cli.py.
+    """Обновляет UNRPYC_PINNED_COMMIT и UNRPYC_PINNED_SHA256 в senpy/cli/unrpyc.py.
 
     Также добавляет комментарий с описанием профиля (для документации).
     """
@@ -433,7 +433,9 @@ def run_update(profile: UnrpycProfile) -> int:
     print(f"[★] Готово. Pinned unrpyc к {profile.label} (commit {commit_sha[:8]}).")
     print(f"    Поддерживаемые версии Ren'Py: {profile.renpy_versions}")
     print()
-    print(f"    Закоммитьте: git add senpy/cli.py && git commit -m 'pin unrpyc to {profile.ref}'")
+    print(
+        f"    Закоммитьте: git add senpy/cli/unrpyc.py && git commit -m 'pin unrpyc to {profile.ref}'"
+    )
     return 0
 
 
