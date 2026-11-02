@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
   "label": "speed",
-  "message": "0.338s warm (0.3s cold)",
-  "color": "green"
+  "message": "0.048s warm (1.0s cold, 15868 lines)",
+  "color": "brightgreen"
 }
