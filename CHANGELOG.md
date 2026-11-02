@@ -1,5 +1,7 @@
 # Changelog
 
+<a id="up"></a>
+
 All notable changes to Senpy are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -123,6 +125,7 @@ installed, so the bug was hidden before).
 * Coverage stable.
 
 <a id="073"></a>
+[up](#up)
 
 ## [0.7.3] — Plugin trust UX, English-only codebase, expanded badges
 
@@ -245,6 +248,7 @@ IDs in user-facing files, no Russian text in comments or
 docstrings. Both are now machine-checked.
 
 <a id="072"></a>
+[up](#up)
 
 ## [0.7.2] — God-function splitting, DRY cleanup
 
@@ -304,6 +308,7 @@ meaningful split, or LSP handlers at exactly 80 lines. Deferred to 0.8.0
 * 0 import cycles across 79 modules (+2 new: `core/paths.py`, `core/progress.py`).
 
 <a id="071"></a>
+[up](#up)
 
 ## [0.7.1] — Stabilization, dynamic badges, CONTRIBUTING refresh
 
@@ -460,6 +465,7 @@ caused real bugs.
   follow-up; not blocking for 0.7.1.
 
 <a id="070"></a>
+[up](#up)
 
 ## [0.7.0] — renpy-magic-inspired features
 
@@ -542,6 +548,7 @@ on rules (45+ vs 5), dataflow, caching, plugins, and CLI.
   backward compat.
 
 <a id="066"></a>
+[up](#up)
 
 ## [0.6.6] — Core & Other God-functions Refactor (internal, not tagged)
 
@@ -586,6 +593,7 @@ diagnostics, and behavior identical. 6 god-functions split into 14 helpers.
 * **Not tagged** — internal refactor.
 
 <a id="065"></a>
+[up](#up)
 
 ## [0.6.5] — AST & Checkers God-functions Refactor
 
@@ -644,6 +652,7 @@ testable helpers.
 * **7 god-functions → 31 helpers** — cyclomatic complexity
 
 <a id="064"></a>
+[up](#up)
 
 ## [0.6.4] — CLI God-functions Refactor (internal, not tagged)
 
@@ -694,6 +703,7 @@ All 5 god-functions split into testable helpers with characterization tests.
   (0.6.5) will include these commits.
 
 <a id="063"></a>
+[up](#up)
 
 ## [0.6.3]
 
@@ -722,6 +732,7 @@ All 5 god-functions split into testable helpers with characterization tests.
 * **Breaking change for advanced users**: `load_config()` now returns pydantic-validated dict with all default fields populated (was raw TOML dict). If your code does exact dict comparison on config, update to check specific keys.
 
 <a id="062"></a>
+[up](#up)
 
 ## [0.6.2]
 
@@ -758,6 +769,7 @@ All 5 god-functions split into testable helpers with characterization tests.
 * 759 passed.
 
 <a id="061"></a>
+[up](#up)
 
 ## [0.6.1]
 
@@ -780,6 +792,7 @@ All 5 god-functions split into testable helpers with characterization tests.
 * **`senpy.spec`**: Added `collect_all('senpy')` to ensure all submodules (including dynamically imported `senpy.plugins.*` and `senpy.formatter.rules.*`) are bundled into `senpy.exe`.
 
 <a id="060"></a>
+[up](#up)
 
 ## [0.6.0]
 
@@ -823,6 +836,7 @@ All 5 god-functions split into testable helpers with characterization tests.
 * LSP features bring Senpy closer to parity with rust-analyzer / pyright for Ren'Py development.
 
 <a id="058"></a>
+[up](#up)
 
 ## [0.5.8]
 
@@ -857,6 +871,7 @@ All 5 god-functions split into testable helpers with characterization tests.
 * Это stability & cleanup релиз: закрыты все P0 из аудита v0.5.7 (AUD-001..004), CI gates налажены, документация актуализирована. Никаких breaking changes, никаких новых фич — подготовка фундамента под 0.6.0 (LSP killer-features + plugin system).
 
 <a id="057"></a>
+[up](#up)
 
 ## [0.5.7]
 
@@ -870,6 +885,7 @@ All 5 god-functions split into testable helpers with characterization tests.
 * Это минорный рефакторинг-релиз: поведение неизменно, 497 тестов зелёные.
 
 <a id="056"></a>
+[up](#up)
 
 ## [0.5.6]
 
@@ -884,6 +900,7 @@ All 5 god-functions split into testable helpers with characterization tests.
 * `current_screen` context не сбрасывался для non-screen top-level строк (исправлено)
 
 <a id="055"></a>
+[up](#up)
 
 ## [0.5.5]
 
@@ -914,6 +931,7 @@ test_imports.py обновлён с новыми путями модулей.
 test_packaging.py обновлён с новыми путями файлов.
 
 <a id="054"></a>
+[up](#up)
 
 ## [0.5.4] ⚠️ YANKED
 
@@ -927,6 +945,7 @@ test_packaging.py обновлён с новыми путями файлов.
 Поскольку PyPI иммутабелен (неизменяем), опубликованный релиз 0.5.4 нельзя перезаписать или удалить — его можно было только пометить как **yanked**.
 
 <a id="053"></a>
+[up](#up)
 
 ## [0.5.3]
 
@@ -997,6 +1016,7 @@ test_packaging.py обновлён с новыми путями файлов.
 - **Локальный pytest ≠ CI pytest** — на чистом CI могут всплыть import-баги, замаскированные локально rootdir detection. Всегда прогонять `pytest tests/` перед коммитом.
 
 <a id="052"></a>
+[up](#up)
 
 ## [0.5.2]
 
@@ -1048,6 +1068,7 @@ test_packaging.py обновлён с новыми путями файлов.
 - `UNRPYC_PINNED_SHA256` теперь реально проверяется (раньше был None placeholder). Defence-in-depth от MITM/compromised GitHub теперь работает.
 
 <a id="051"></a>
+[up](#up)
 
 ## [0.5.1]
 
@@ -1114,6 +1135,7 @@ test_packaging.py обновлён с новыми путями файлов.
 - pytest pass rate: 99.6 % (284/285). 1 failed (`test_vscode_extension.py::test_file_exists` — TDD RED для language-configuration.json), 7 skipped (RED phase related tests).
 
 <a id="050"></a>
+[up](#up)
 
 ## [0.5.0]
 
@@ -1129,6 +1151,7 @@ test_packaging.py обновлён с новыми путями файлов.
 - `_unrpyc_bootstrap.py` (356 строк) выделен из `cli.py` — unrpyc download/search/verify/extract + .rpa extraction.
 
 <a id="048"></a>
+[up](#up)
 
 ## [0.4.8]
 
@@ -1188,6 +1211,7 @@ test_packaging.py обновлён с новыми путями файлов.
 - `test_mega_broken_script_catches_all_rules` now dynamically checks all 42 rules (was 29)
 
 <a id="047"></a>
+[up](#up)
 
 ## [0.4.7]
 
