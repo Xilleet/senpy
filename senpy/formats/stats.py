@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from senpy.core.analyzer import _get_logical_line
 from senpy.core.constants import NON_DIALOGUE_STATEMENTS
+from senpy.core.paths import normalize_path
 
 if TYPE_CHECKING:
     from senpy.core.analyzer import SenpyAnalyzer
@@ -118,7 +118,7 @@ def _read_stats_lines(file_path: str, analyzer: SenpyAnalyzer) -> list[str] | No
     Returns None if the file is not readable (e.g. missing, UTF-8 decode
     error) — caller should skip the file silently.
     """
-    norm_path = os.path.normcase(os.path.abspath(file_path))
+    norm_path = normalize_path(file_path)
     if norm_path in analyzer.in_memory_files:
         return analyzer.in_memory_files[norm_path].splitlines(keepends=True)
     try:

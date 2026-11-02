@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import difflib
 import os
 import re
 
@@ -42,11 +41,15 @@ def get_utf16_range(line: str, sub: str | None = None) -> tuple[int, int]:
 
 
 def suggest_similar_symbol(unknown_var: str, user_symbols: set[str]) -> str:
-    """Предлагает близкое по написанию имя переменной."""
-    matches = difflib.get_close_matches(unknown_var, list(user_symbols), n=1, cutoff=0.6)
-    if matches:
-        return f" (did you mean '{matches[0]}' ?)"
-    return ""
+    """Предлагает близкое по написанию имя переменной.
+
+    .. deprecated::
+        Use ``senpy.text_utils.suggest_similar`` directly instead.
+        Kept for backward compat — ``python_ast.py`` imports this name.
+    """
+    from senpy.text_utils import suggest_similar
+
+    return suggest_similar(unknown_var, user_symbols)
 
 
 def process_quoted_strings(

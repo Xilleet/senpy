@@ -21,6 +21,8 @@ import zlib
 from rich.console import Console
 
 from senpy.core.logging import get_logger
+from senpy.core.paths import normalize_path
+from senpy.core.progress import progress_print
 from senpy.domain.rpa import safe_load_rpa_index
 from senpy.domain.tsundere import IS_RU
 
@@ -324,13 +326,11 @@ def decompile_to_sandbox(
     for i, f in enumerate(orphans, 1):
         base_name = os.path.basename(f)
         dest = os.path.join(temp_dir, base_name)
-        if os.path.exists(f) and os.path.normcase(os.path.abspath(f)) != os.path.normcase(
-            os.path.abspath(dest)
-        ):
+        if os.path.exists(f) and normalize_path(f) != normalize_path(dest):
             shutil.copy2(f, dest)
         temp_rpyc_files.append(dest)
         msg = f"\r{prep_label} {i}/{total} ({base_name[:25]})"
-        print(msg.ljust(75), end="", flush=True)
+        progress_print(msg)
 
     print()
 
@@ -348,7 +348,7 @@ def decompile_to_sandbox(
 
         rpy_path = os.path.join(temp_dir, rpy_name)
         msg = f"\r{decomp_label} {done}/{total} ({rpy_name[:25]})"
-        print(msg.ljust(75), end="", flush=True)
+        progress_print(msg)
 
         try:
             rpy_text = decompile_rpyc(rpyc_file)

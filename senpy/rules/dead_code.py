@@ -6,13 +6,13 @@ The function takes an analyzer instance and appends diagnostics directly.
 
 from __future__ import annotations
 
-import os
 import re
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from senpy.core.constants import BUILTIN_SCREENS, BUILTIN_SYMBOLS
 from senpy.core.models import Diagnostic
+from senpy.core.paths import normalize_path
 
 if TYPE_CHECKING:
     from senpy.core.analyzer import SenpyAnalyzer
@@ -51,7 +51,7 @@ def check_unused_declarations(analyzer: SenpyAnalyzer) -> None:
 
     def _is_used(name: str, decl_file: str, decl_line: int) -> bool:
         """O(1) lookup: name is used if it appears outside its declaration line."""
-        decl_norm = os.path.normcase(os.path.abspath(decl_file))
+        decl_norm = normalize_path(decl_file)
         decl_loc = (decl_norm, decl_line - 1)
         locations = word_locations.get(name)
         if not locations:

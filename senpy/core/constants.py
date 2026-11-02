@@ -3,6 +3,11 @@ from __future__ import annotations
 import builtins
 import re
 
+# Default cutoff ratio for difflib.get_close_matches suggestions (e.g. "did
+# you mean '...' ?"). Used by senpy.text_utils.suggest_similar() and all
+# rule checkers that suggest closest matches for typos.
+SUGGESTION_CUTOFF = 0.6
+
 BUILTIN_SCREENS = {
     "say",
     "choice",
@@ -354,10 +359,7 @@ RE_MENU_START = re.compile(r"^(\s*)menu(?:\s+\w+)?\s*:")
 RE_MENU_CHOICE = re.compile(r"^(\s*)(\"[^\"]+\"|\'[^\']+\')(?:\s*\([^)]*\))?(?:\s+if\s+.*)?\s*:")
 RE_TAG = re.compile(r"\{(/)?([a-zA-Z_]+)(?:=([^}]*))?\}")
 RE_STRING_MATCH = re.compile(
-    r'("""[\s\S]*?""")|'
-    r"('''[\s\S]*?''')|"
-    r'("(?:\\.|[^"\\\r\n])*")|'
-    r"('(?:\\.|[^'\\\r\n])*')"
+    r'("""[\s\S]*?""")|' r"('''[\s\S]*?''')|" r'("(?:\\.|[^"\\\r\n])*")|' r"('(?:\\.|[^'\\\r\n])*')"
 )
 RE_NOQA = re.compile(
     r"#\s*(?:noqa|senpy:\s*ignore)(?:\[([a-zA-Z0-9_,\s]+)\]|:\s*([a-zA-Z0-9_,\s]+))?",

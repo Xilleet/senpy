@@ -7,13 +7,13 @@ formatting tags, and empty translations.
 
 from __future__ import annotations
 
-import os
 import re
 from collections import Counter
 from typing import TYPE_CHECKING
 
 from senpy.core.constants import NON_DIALOGUE_STATEMENTS
 from senpy.core.models import Diagnostic
+from senpy.core.paths import normalize_path
 
 if TYPE_CHECKING:
     from senpy.core.analyzer import SenpyAnalyzer
@@ -26,7 +26,7 @@ def analyze_tl_file(analyzer: SenpyAnalyzer, file_path: str) -> None:
     and validates them. Appends diagnostics to analyzer.diagnostics.
     """
     try:
-        norm_path = os.path.normcase(os.path.abspath(file_path))
+        norm_path = normalize_path(file_path)
         if norm_path in analyzer.in_memory_files:
             lines = analyzer.in_memory_files[norm_path].splitlines(keepends=True)
         else:

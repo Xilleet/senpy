@@ -20,9 +20,14 @@
 
 Public API:
     _strip_comment(line: str) -> str
+    suggest_similar(target, candidates, cutoff) -> str
 """
 
 from __future__ import annotations
+
+import difflib
+
+from senpy.core.constants import SUGGESTION_CUTOFF
 
 
 def _strip_comment(line: str) -> str:
@@ -84,3 +89,55 @@ def _strip_comment(line: str) -> str:
             return line[:i]
         i += 1
     return line
+
+
+def suggest_similar(
+    target: str,
+    candidates: list[str] | set[str],
+    cutoff: float = SUGGESTION_CUTOFF,
+) -> str:
+    """Return a "did you mean '...'?" hint string, or "" if no close match.
+
+    Uses ``difflib.get_close_matches`` with ``n=1``. The cutoff threshold
+    defaults to ``SUGGESTION_CUTOFF`` (0.6), but callers that need a stricter
+    match (e.g. base-tag suggestion at 0.7) can pass their own.
+
+    This replaces the old ``suggest_similar_symbol`` in ``text_tags.py``,
+    which was hardcoded to 0.6 and only accepted ``set[str]``. The
+    generalized version accepts any iterable of strings.
+
+    Args:
+        target: The misspelled / unknown identifier.
+        candidates: The list or set of valid names to match against.
+        cutoff: Minimum similarity ratio (0.0–1.0). Default 0.6.
+
+    Returns:
+        ``" (did you mean 'foo' ?)"`` if a match was found, ``""`` otherwise.
+    """
+    matches = difflib.get_close_matches(target, list(candidates), n=1, cutoff=cutoff)
+    if matches:
+        return f" (did you mean '{matches[0]}' ?)"
+    return ""
+
+
+def suggest_match(
+    target: str,
+    candidates: list[str] | set[str],
+    cutoff: float = SUGGESTION_CUTOFF,
+) -> str | None:
+    """Return the closest match string, or None if no close match.
+
+    Unlike ``suggest_similar`` (which returns a formatted hint string),
+    this returns the raw match name — useful when the caller needs to
+    build a QuickFix ``fix_replacement`` from the match.
+
+    Args:
+        target: The misspelled / unknown identifier.
+        candidates: The list or set of valid names to match against.
+        cutoff: Minimum similarity ratio (0.0–1.0). Default 0.6.
+
+    Returns:
+        The closest match string, or ``None`` if no match was found.
+    """
+    matches = difflib.get_close_matches(target, list(candidates), n=1, cutoff=cutoff)
+    return matches[0] if matches else None

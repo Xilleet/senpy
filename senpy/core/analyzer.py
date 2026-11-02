@@ -32,6 +32,8 @@ from senpy.core.constants import (
     SENPY_VERSION,
 )
 from senpy.core.models import RULE_SEVERITY, AnalysisResult, Diagnostic, FileScope
+from senpy.core.paths import normalize_path
+from senpy.core.progress import progress_print
 from senpy.core.scope import ScopeStack, ScopeType
 from senpy.core.signature import parse_signature
 from senpy.core.symbols import (
@@ -241,9 +243,7 @@ class SenpyAnalyzer:
         self.deprecated = DeprecationChecker()
         self.extra_files = extra_files or []
         self.fix = fix
-        self.in_memory_files = {
-            os.path.normcase(os.path.abspath(k)): v for k, v in (in_memory_files or {}).items()
-        }
+        self.in_memory_files = {normalize_path(k): v for k, v in (in_memory_files or {}).items()}
 
         # Настройка уровней строгости: переданные аргументы или секция [tool.senpy.severity] из конфига
         if severity_overrides is not None:
@@ -392,13 +392,13 @@ class SenpyAnalyzer:
 
         for i, file_path in enumerate(rpy_files, 1):
             fname = os.path.basename(file_path)
-            norm_path = os.path.normcase(os.path.abspath(file_path))
+            norm_path = normalize_path(file_path)
             mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else 0.0
             size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
             if not quiet:
                 msg = f"\r[1/2] Сбор символов: {i}/{total_files} ({fname[:25]})"
-                print(msg.ljust(75), end="", flush=True)
+                progress_print(msg)
 
             is_tier1_hit = False
             if (
@@ -445,13 +445,13 @@ class SenpyAnalyzer:
 
         for i, file_path in enumerate(rpy_files, 1):
             fname = os.path.basename(file_path)
-            norm_path = os.path.normcase(os.path.abspath(file_path))
+            norm_path = normalize_path(file_path)
             mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else 0.0
             size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
             if not quiet:
                 msg = f"\r[2/2] Анализ правил: {i}/{total_files} ({fname[:25]})"
-                print(msg.ljust(75), end="", flush=True)
+                progress_print(msg)
 
             is_tier2_hit = False
             if (
@@ -649,7 +649,7 @@ class SenpyAnalyzer:
         file_diags: list[Diagnostic] = []
         old_diags = self.diagnostics
         self.diagnostics = file_diags
-        norm_path = os.path.normcase(os.path.abspath(file_path))
+        norm_path = normalize_path(file_path)
         try:
             rel_parts = os.path.relpath(file_path, self.project_path).replace("\\", "/").split("/")
         except ValueError:
@@ -1111,7 +1111,7 @@ class SenpyAnalyzer:
         Phase 3 Step 5 (0.5.6): разбит с 378 строк на 7 методов + dispatcher.
         """
         try:
-            norm_path = os.path.normcase(os.path.abspath(file_path))
+            norm_path = normalize_path(file_path)
             scope = FileScope()
 
             if norm_path in self.in_memory_files:
@@ -1522,7 +1522,7 @@ class SenpyAnalyzer:
         Returns None if file can't be read.
         """
         try:
-            norm_path = os.path.normcase(os.path.abspath(file_path))
+            norm_path = normalize_path(file_path)
             if norm_path in self.in_memory_files:
                 return self.in_memory_files[norm_path].splitlines(keepends=True)
             elif norm_path in self._stage1_lines:
