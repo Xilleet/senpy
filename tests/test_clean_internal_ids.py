@@ -54,6 +54,7 @@ _WHITELIST_PATHS = [
     "senpy.sarif",
     "scripts/clean_internal_ids.py",
     "tests/test_clean_internal_ids.py",
+    "tests/test_no_russian_comments.py",
     "tests/test_ruff_clean.py",
     ".pre-commit-config.yaml",
     ".github/workflows/ci.yml",
