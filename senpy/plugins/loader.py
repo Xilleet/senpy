@@ -242,7 +242,7 @@ def _default_trust_callback(plugin_name: str) -> bool:
     from senpy.plugins.security import is_plugin_trusted, trust_plugin
 
     # Step 1: Check trust store
-    if is_plugin_trusted(plugin_name): 
+    if is_plugin_trusted(plugin_name):
         return True
 
     # Step 2: If running as LSP server, never prompt — input() would
