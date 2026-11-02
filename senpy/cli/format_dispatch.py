@@ -13,6 +13,7 @@ Options:
     --stdin-filename NAME  Read from stdin, format, write to stdout
     --help, -h           Show help
 """
+
 from __future__ import annotations
 
 import argparse

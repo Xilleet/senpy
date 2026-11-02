@@ -8,6 +8,7 @@ Handler'ы:
 Все функции принимают (ls, params) и обращаются к shared state через
 server_mod._X (lazy import разрывает цикл импортов).
 """
+
 from __future__ import annotations
 
 import os
@@ -28,6 +29,7 @@ from senpy.domain.renpy_api import get_renpy_api_hover
 def _get_server_mod():
     """Ленивый доступ к senpy.lsp.server, разрывает цикл импортов."""
     from senpy.lsp import server
+
     return server
 
 
@@ -71,6 +73,7 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
         parts = stripped_line.split()[1:]
         img_tokens = []
         from senpy.core.constants import CLAUSE_KEYWORDS
+
         for p in parts:
             clean_p = p.rstrip(":")
             if clean_p in CLAUSE_KEYWORDS:

@@ -34,6 +34,7 @@ Usage:
 The script is invoked manually by maintainers and the output is committed
 to the repo (same workflow renpy-magic uses — not auto-regenerated in CI).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -128,12 +129,8 @@ def fetch_url(url: str, timeout: float = 15.0) -> str | None:
 _RE_VAR = re.compile(r"^\.\.\s+var::\s+([a-zA-Z_][a-zA-Z0-9_.]*)\s*(?:=\s*(.+))?$")
 _RE_FUNC = re.compile(r"^\.\.\s+function::\s+([a-zA-Z_][a-zA-Z0-9_.]*)\s*\(([^)]*)\)")
 _RE_CLASS = re.compile(r"^\.\.\s+class::\s+([a-zA-Z_][a-zA-Z0-9_.]*)\s*(?:\(([^)]*)\))?")
-_RE_PROP = re.compile(
-    r"^\.\.\s+(?:style-property|transform-property)::\s+([a-zA-Z_][a-zA-Z0-9_]*)"
-)
-_RE_DEF_LIST_VAR = re.compile(
-    r"^:var:`((?:gui|config|build|renpy)\.[a-zA-Z_][a-zA-Z0-9_]*)`\s*$"
-)
+_RE_PROP = re.compile(r"^\.\.\s+(?:style-property|transform-property)::\s+([a-zA-Z_][a-zA-Z0-9_]*)")
+_RE_DEF_LIST_VAR = re.compile(r"^:var:`((?:gui|config|build|renpy)\.[a-zA-Z_][a-zA-Z0-9_]*)`\s*$")
 _RE_DIRECTIVE_START = re.compile(r"^\.\.\s+\w+::")
 
 # RST role cleanup (same regex chain as collectDescription in the TS).
@@ -192,15 +189,51 @@ def collect_description(lines: list[str], start_index: int) -> str:
 
 # Transition / action name heuristics — same lists as the TS.
 _TRANSITION_NAMES = (
-    "Dissolve", "Fade", "ImageDissolve", "AlphaDissolve", "CropMove",
-    "PushMove", "MoveTransition", "MoveFactory", "MoveIn", "MoveOut",
-    "Pixellate", "Swing", "Zoom", "ZoomInOut",
+    "Dissolve",
+    "Fade",
+    "ImageDissolve",
+    "AlphaDissolve",
+    "CropMove",
+    "PushMove",
+    "MoveTransition",
+    "MoveFactory",
+    "MoveIn",
+    "MoveOut",
+    "Pixellate",
+    "Swing",
+    "Zoom",
+    "ZoomInOut",
 )
 _ACTION_PATTERNS = (
-    "Action", "Jump", "Call", "Show", "Hide", "Return", "Set", "Toggle",
-    "Play", "Stop", "Queue", "Mute", "File", "Preference", "Quit", "Start",
-    "Rollback", "Notify", "Confirm", "If", "Screenshot", "Skip", "Auto",
-    "Menu", "Replay", "End", "Mouse", "Open", "Null",
+    "Action",
+    "Jump",
+    "Call",
+    "Show",
+    "Hide",
+    "Return",
+    "Set",
+    "Toggle",
+    "Play",
+    "Stop",
+    "Queue",
+    "Mute",
+    "File",
+    "Preference",
+    "Quit",
+    "Start",
+    "Rollback",
+    "Notify",
+    "Confirm",
+    "If",
+    "Screenshot",
+    "Skip",
+    "Auto",
+    "Menu",
+    "Replay",
+    "End",
+    "Mouse",
+    "Open",
+    "Null",
 )
 
 
@@ -233,15 +266,15 @@ def parse_rst_file(content: str, filename: str) -> list[dict]:
             default_value = (m.group(2) or "").strip()
             description = collect_description(lines, i + 1)
             namespace = _namespace_of(full_name)
-            entries.append({
-                "name": full_name,
-                "signature": (
-                    f"{full_name} = {default_value}" if default_value else full_name
-                ),
-                "description": description,
-                "category": "variable",
-                "namespace": namespace,
-            })
+            entries.append(
+                {
+                    "name": full_name,
+                    "signature": (f"{full_name} = {default_value}" if default_value else full_name),
+                    "description": description,
+                    "category": "variable",
+                    "namespace": namespace,
+                }
+            )
             seen_names.add(full_name)
             i += 1
             continue
@@ -252,13 +285,15 @@ def parse_rst_file(content: str, filename: str) -> list[dict]:
             full_name = m.group(1)
             params = m.group(2)
             description = collect_description(lines, i + 1)
-            entries.append({
-                "name": full_name,
-                "signature": f"{full_name}({params})",
-                "description": description,
-                "category": "function",
-                "namespace": _namespace_of(full_name),
-            })
+            entries.append(
+                {
+                    "name": full_name,
+                    "signature": f"{full_name}({params})",
+                    "description": description,
+                    "category": "function",
+                    "namespace": _namespace_of(full_name),
+                }
+            )
             seen_names.add(full_name)
             i += 1
             continue
@@ -274,14 +309,14 @@ def parse_rst_file(content: str, filename: str) -> list[dict]:
                 category = "transition"
             elif "action" in filename or _is_action_name(full_name):
                 category = "action"
-            entries.append({
-                "name": full_name,
-                "signature": (
-                    f"{full_name}({params})" if params else full_name
-                ),
-                "description": description,
-                "category": category,
-            })
+            entries.append(
+                {
+                    "name": full_name,
+                    "signature": (f"{full_name}({params})" if params else full_name),
+                    "description": description,
+                    "category": category,
+                }
+            )
             seen_names.add(full_name)
             i += 1
             continue
@@ -291,12 +326,14 @@ def parse_rst_file(content: str, filename: str) -> list[dict]:
         if m:
             name = m.group(1)
             description = collect_description(lines, i + 1)
-            entries.append({
-                "name": name,
-                "signature": name,
-                "description": description,
-                "category": "property",
-            })
+            entries.append(
+                {
+                    "name": name,
+                    "signature": name,
+                    "description": description,
+                    "category": "property",
+                }
+            )
             seen_names.add(name)
             i += 1
             continue
@@ -312,13 +349,15 @@ def parse_rst_file(content: str, filename: str) -> list[dict]:
         if full_name in seen_names:
             continue
         description = collect_description(lines, j + 1)
-        entries.append({
-            "name": full_name,
-            "signature": full_name,
-            "description": description,
-            "category": "variable",
-            "namespace": _namespace_of(full_name),
-        })
+        entries.append(
+            {
+                "name": full_name,
+                "signature": full_name,
+                "description": description,
+                "category": "variable",
+                "namespace": _namespace_of(full_name),
+            }
+        )
         seen_names.add(full_name)
 
     return entries
@@ -341,9 +380,7 @@ def _namespace_of(full_name: str) -> str | None:
 # Ren'Py source (.rpy) parsing — for action classes with docstrings
 # =============================================================================
 
-_RE_PY_CLASS = re.compile(
-    r"^\s*class\s+([A-Z][a-zA-Z0-9_]*)\s*(?:\([^)]*\))?\s*:"
-)
+_RE_PY_CLASS = re.compile(r"^\s*class\s+([A-Z][a-zA-Z0-9_]*)\s*(?:\([^)]*\))?\s*:")
 _RE_PY_INIT = re.compile(r"def\s+__init__\s*\(\s*self\s*,?\s*([^)]*)\)")
 # Allow leading whitespace so the regexes work on indented class-body lines
 # (e.g. ``    """Docstring."""`` inside a class). The TS version uses
@@ -392,9 +429,7 @@ def _collect_python_docstring(lines: list[str], start_index: int) -> str:
     return "\n".join(cleaned).strip()
 
 
-def _extract_signature_from_init(
-    lines: list[str], class_line_index: int, class_name: str
-) -> str:
+def _extract_signature_from_init(lines: list[str], class_line_index: int, class_name: str) -> str:
     """Look for ``def __init__(self, ...)`` in the next ~30 lines."""
     upper = min(class_line_index + 30, len(lines))
     for i in range(class_line_index + 1, upper):
@@ -451,12 +486,14 @@ def parse_rpy_file(content: str, filename: str) -> list[dict]:
                     elif _is_transition_name(class_name):
                         category = "transition"
 
-                    entries.append({
-                        "name": class_name,
-                        "signature": signature,
-                        "description": description,
-                        "category": category,
-                    })
+                    entries.append(
+                        {
+                            "name": class_name,
+                            "signature": signature,
+                            "description": description,
+                            "category": category,
+                        }
+                    )
         i += 1
 
     return entries
@@ -535,7 +572,7 @@ def serialize_python_module(version: str, generated_at: str, entries: list[dict]
         "DO NOT EDIT BY HAND — re-run ``python scripts/fetch_renpy_docs.py``.",
         "",
         "Schema mirrors RENPY_API_DOCS in senpy/domain/renpy_api.py:",
-        '    {signature, doc, [details], [example], [url], [category], [namespace]}',
+        "    {signature, doc, [details], [example], [url], [category], [namespace]}",
         "",
         "Merge strategy in renpy_api.py:",
         "    RENPY_API_DOCS_ALL = {**RENPY_API_DOCS_GENERATED, **RENPY_API_DOCS}",
@@ -552,7 +589,9 @@ def serialize_python_module(version: str, generated_at: str, entries: list[dict]
         lines.append(_serialize_entry(entry))
     lines.append("}")
     lines.append("")
-    lines.append("__all__ = [\"RENPY_API_DOCS_GENERATED\", \"RENPY_DOC_VERSION_GENERATED\", \"RENPY_DOC_GENERATED_AT\"]")
+    lines.append(
+        '__all__ = ["RENPY_API_DOCS_GENERATED", "RENPY_DOC_VERSION_GENERATED", "RENPY_DOC_GENERATED_AT"]'
+    )
     lines.append("")
     return "\n".join(lines)
 
@@ -565,11 +604,13 @@ def serialize_python_module(version: str, generated_at: str, entries: list[dict]
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="Fetch + parse + print summary, but don't write the output file.",
     )
     parser.add_argument(
-        "--output", default=None,
+        "--output",
+        default=None,
         help="Output path. Default: senpy/domain/renpy_api_generated.py next to this repo.",
     )
     args = parser.parse_args()
@@ -584,8 +625,7 @@ def main() -> int:
     # Parallel fetch — same pattern as update_renpy_api.py.
     with ThreadPoolExecutor(max_workers=6) as executor:
         futures = {
-            executor.submit(fetch_url, GITHUB_RAW_BASE + fname): fname
-            for fname in RST_FILES
+            executor.submit(fetch_url, GITHUB_RAW_BASE + fname): fname for fname in RST_FILES
         }
         for future in as_completed(futures):
             fname = futures[future]

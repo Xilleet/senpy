@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 @dataclass(slots=True)
 class CachedFileEntry:
     """Метаданные одного закэшированного файла (для Tier 1 cache)."""
+
     mtime: float
     size: int
     lines_count: int
@@ -44,6 +45,7 @@ class CachedFileEntry:
 @dataclass(slots=True)
 class CacheManifest:
     """Полный манифест кэша: версия Senpy + global symbol hash + все файлы."""
+
     version: str
     global_symbol_hash: str
     files: dict[str, CachedFileEntry] = field(default_factory=dict)
@@ -145,7 +147,8 @@ class CacheManager:
             # is recoverable (just rebuild), but tracking it helps spot bugs.
             _logger.debug(
                 "failed to load cache manifest from %s: %s",
-                self.manifest_path, e,
+                self.manifest_path,
+                e,
             )
         return None
 
@@ -164,7 +167,8 @@ class CacheManager:
             # recoverable (next run rebuilds), but indicates disk issues.
             _logger.debug(
                 "failed to save cache manifest to %s: %s",
-                self.manifest_path, e,
+                self.manifest_path,
+                e,
             )
 
     @staticmethod

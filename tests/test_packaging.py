@@ -15,6 +15,7 @@
 Запуск:
     pytest tests/test_packaging.py -v
 """
+
 from __future__ import annotations
 
 import json
@@ -42,6 +43,7 @@ _RULES_INFO_PY = _PROJECT_ROOT / "senpy" / "rules" / "rules_info.py"
 # P0'-1: LICENSE file
 # =============================================================================
 
+
 class TestLicenseFile:
     """P0'-1: LICENSE файл должен существовать и совпадать с pyproject.toml:14."""
 
@@ -49,12 +51,12 @@ class TestLicenseFile:
         """pyproject.toml должен содержать license = { file = "..." }."""
         with _PYPROJECT.open("rb") as f:
             config = tomllib.load(f)
-        assert "license" in config["project"], (
-            "pyproject.toml [project] должен содержать 'license' field"
-        )
-        assert "file" in config["project"]["license"], (
-            "pyproject.toml [project.license] должен содержать 'file' field"
-        )
+        assert (
+            "license" in config["project"]
+        ), "pyproject.toml [project] должен содержать 'license' field"
+        assert (
+            "file" in config["project"]["license"]
+        ), "pyproject.toml [project.license] должен содержать 'file' field"
 
     def test_license_file_exists_and_matches_pyproject(self):
         """LICENSE файл на диске должен совпадать с тем, что в pyproject.toml.
@@ -79,15 +81,20 @@ class TestLicenseFile:
             config = tomllib.load(f)
         license_path = _PROJECT_ROOT / config["project"]["license"]["file"]
         if not license_path.exists():
-            pytest.skip("LICENSE файл отсутствует — test_license_file_exists_and_matches_pyproject должен был упасть")
+            pytest.skip(
+                "LICENSE файл отсутствует — test_license_file_exists_and_matches_pyproject должен был упасть"
+            )
         content = license_path.read_text(encoding="utf-8")
         assert "MIT License" in content, "LICENSE должен содержать 'MIT License'"
-        assert "Permission is hereby granted" in content, "LICENSE должен содержать стандартный MIT-текст"
+        assert (
+            "Permission is hereby granted" in content
+        ), "LICENSE должен содержать стандартный MIT-текст"
 
 
 # =============================================================================
 # P0'-2: .gitignore
 # =============================================================================
+
 
 class TestGitignore:
     """P0'-2: .gitignore должен существовать и НЕ игнорировать исходники."""
@@ -99,29 +106,32 @@ class TestGitignore:
             "__pycache__/, .pytest_cache/) будут коммититься в репо."
         )
 
-    @pytest.mark.parametrize("dangerous_pattern", [
-        "senpy/analyzer.py",
-        "senpy/cli.py",
-        "senpy/server.py",
-        "senpy/checkers.py",
-        "senpy/python_ast.py",
-        "senpy/flow.py",
-        "senpy/analyzer.py",
-        "senpy-vscode/src/extension.ts",
-        "senpy-vscode/src/test/extension.test.ts",
-        "bump_version.py",
-        "publish_pypi.bat",
-        "check.bat",
-        "install_dev.bat",
-        "run_check.bat",
-        "reinstall.bat",
-        "senpy.spec",
-        "test_formatter_demo.py",
-        "pyproject.toml",
-        "README.md",
-        "CHANGELOG.md",
-        "RULES.md",
-    ])
+    @pytest.mark.parametrize(
+        "dangerous_pattern",
+        [
+            "senpy/analyzer.py",
+            "senpy/cli.py",
+            "senpy/server.py",
+            "senpy/checkers.py",
+            "senpy/python_ast.py",
+            "senpy/flow.py",
+            "senpy/analyzer.py",
+            "senpy-vscode/src/extension.ts",
+            "senpy-vscode/src/test/extension.test.ts",
+            "bump_version.py",
+            "publish_pypi.bat",
+            "check.bat",
+            "install_dev.bat",
+            "run_check.bat",
+            "reinstall.bat",
+            "senpy.spec",
+            "test_formatter_demo.py",
+            "pyproject.toml",
+            "README.md",
+            "CHANGELOG.md",
+            "RULES.md",
+        ],
+    )
     def test_gitignore_does_not_ignore_source_files(self, dangerous_pattern: str):
         """.gitignore НЕ должен игнорировать реальные исходники проекта.
 
@@ -145,15 +155,18 @@ class TestGitignore:
                     f"Удалите эту строку из .gitignore."
                 )
 
-    @pytest.mark.parametrize("personal_pattern", [
-        "Новая папка",
-        "порядок.txt",
-        "пост для реддита.txt",
-        "аудит 0.4.5.md",
-        "Семантический_линтер_Senpy_для_RenPy",
-        "roadmap.txt",
-        "rub_check.bat",
-    ])
+    @pytest.mark.parametrize(
+        "personal_pattern",
+        [
+            "Новая папка",
+            "порядок.txt",
+            "пост для реддита.txt",
+            "аудит 0.4.5.md",
+            "Семантический_линтер_Senpy_для_RenPy",
+            "roadmap.txt",
+            "rub_check.bat",
+        ],
+    )
     def test_gitignore_does_not_contain_personal_files(self, personal_pattern: str):
         """.gitignore НЕ должен содержать личные файлы мейнтейнера.
 
@@ -213,6 +226,7 @@ class TestGitignore:
 # P0'-3: CHANGELOG.md
 # =============================================================================
 
+
 class TestChangelog:
     """P0'-3: CHANGELOG.md должен содержать секцию для текущей версии."""
 
@@ -246,19 +260,18 @@ class TestChangelog:
         if not _CHANGELOG.exists():
             pytest.skip("CHANGELOG.md отсутствует")
         content = _CHANGELOG.read_text(encoding="utf-8")
-        assert "Keep a Changelog" in content, (
-            "CHANGELOG.md должен ссылаться на https://keepachangelog.com "
-            "(это стандартный формат)."
-        )
-        assert "Semantic Versioning" in content, (
-            "CHANGELOG.md должен ссылаться на https://semver.org "
-            "(это стандарт versioning)."
-        )
+        assert (
+            "Keep a Changelog" in content
+        ), "CHANGELOG.md должен ссылаться на https://keepachangelog.com (это стандартный формат)."
+        assert (
+            "Semantic Versioning" in content
+        ), "CHANGELOG.md должен ссылаться на https://semver.org (это стандарт versioning)."
 
 
 # =============================================================================
 # P0'-4: senpy-vscode/language-configuration.json
 # =============================================================================
+
 
 class TestLanguageConfiguration:
     """P0'-4: language-configuration.json для VS Code .rpy support."""
@@ -280,12 +293,15 @@ class TestLanguageConfiguration:
             pytest.fail(f"language-configuration.json не валидный JSON: {e}")
         assert isinstance(data, dict), "JSON должен быть объектом (dict)"
 
-    @pytest.mark.parametrize("required_key", [
-        "comments",
-        "brackets",
-        "autoClosingPairs",
-        "surroundingPairs",
-    ])
+    @pytest.mark.parametrize(
+        "required_key",
+        [
+            "comments",
+            "brackets",
+            "autoClosingPairs",
+            "surroundingPairs",
+        ],
+    )
     def test_required_keys_present(self, required_key: str):
         """Файл должен содержать все обязательные VS Code language keys."""
         if not _LANG_CONFIG.exists():
@@ -302,9 +318,7 @@ class TestLanguageConfiguration:
             pytest.skip("language-configuration.json отсутствует")
         data = json.loads(_LANG_CONFIG.read_text(encoding="utf-8"))
         comments = data.get("comments", {})
-        assert comments.get("lineComment") == "#", (
-            "comments.lineComment должен быть '#' для Ren'Py"
-        )
+        assert comments.get("lineComment") == "#", "comments.lineComment должен быть '#' для Ren'Py"
 
     def test_package_json_references_language_config(self):
         """package.json должен ссылаться на language-configuration.json."""
@@ -328,6 +342,7 @@ class TestLanguageConfiguration:
 # =============================================================================
 # P0'-5: UNRPYC_PINNED_SHA256
 # =============================================================================
+
 
 class TestUnrpycPin:
     """P0'-5: UNRPYC_PINNED_SHA256 должен быть реальным значением, не None."""
@@ -354,21 +369,25 @@ class TestUnrpycPin:
             pytest.skip("_unrpyc_bootstrap.py отсутствует")
         content = _UNRPYC_BOOTSTRAP.read_text(encoding="utf-8")
         match = re.search(
-            r'UNRPYC_PINNED_SHA256\s*=\s*([^#\n]+?)(?:\s*#.*)?$',
+            r"UNRPYC_PINNED_SHA256\s*=\s*([^#\n]+?)(?:\s*#.*)?$",
             content,
             re.MULTILINE,
         )
         assert match, "UNRPYC_PINNED_SHA256 не найден в _unrpyc_bootstrap.py"
         value = match.group(1).strip()
         # None или None-подобные значения — fail
-        assert value not in ("None", "None  # placeholder", 'None  # placeholder — будет вычислен при update'), (
+        assert value not in (
+            "None",
+            "None  # placeholder",
+            "None  # placeholder — будет вычислен при update",
+        ), (
             f"UNRPYC_PINNED_SHA256 = {value} — это placeholder. "
             f"Verification фактически no-op. "
             f"Запустите: python scripts/update_unrpyc_pin.py"
         )
         # Должно быть 64 hex символа
         clean = value.strip('"').strip("'")
-        assert re.match(r'^[a-fA-F0-9]{64}$', clean), (
+        assert re.match(r"^[a-fA-F0-9]{64}$", clean), (
             f"UNRPYC_PINNED_SHA256 = '{clean}' — не похоже на SHA256 hex (64 символа). "
             f"Запустите: python scripts/update_unrpyc_pin.py"
         )
@@ -377,6 +396,7 @@ class TestUnrpycPin:
 # =============================================================================
 # P0'-6: Rule count consistency
 # =============================================================================
+
 
 class TestRuleCountConsistency:
     """P0'-6: Rule count должен быть консистентен между источниками."""
@@ -403,11 +423,11 @@ class TestRuleCountConsistency:
         # внутри любой Python-строки — это хардкод. Раньше регэксп требовал,
         # чтобы вся строка была "All N Rules", но реально хардкод встречается
         # как часть title="... (All 45 Rules)" — и тест его пропускал.
-        hardcoded = re.findall(r'All\s+\d+\s+Rules', content, re.IGNORECASE)
+        hardcoded = re.findall(r"All\s+\d+\s+Rules", content, re.IGNORECASE)
         assert not hardcoded, (
             f"rules_info.py содержит хардкоженные числа правил: {hardcoded}. "
-            f"Замените на f-string: f\"All {{len(RULES_DATABASE)}} Rules\" "
-            f"или f\"... (All {{len(RULES_DATABASE)}} Rules)\""
+            f'Замените на f-string: f"All {{len(RULES_DATABASE)}} Rules" '
+            f'или f"... (All {{len(RULES_DATABASE)}} Rules)"'
         )
 
     def test_no_hardcoded_rule_count_in_senpy_toml(self):
@@ -417,7 +437,7 @@ class TestRuleCountConsistency:
             pytest.skip("senpy.toml отсутствует")
         content = senpy_toml.read_text(encoding="utf-8")
         # Ищем "All N Rules" в комментариях
-        hardcoded = re.findall(r'All\s+\d+\s+Rules', content, re.IGNORECASE)
+        hardcoded = re.findall(r"All\s+\d+\s+Rules", content, re.IGNORECASE)
         assert not hardcoded, (
             f"senpy.toml содержит хардкоженные числа правил в комментариях: {hardcoded}. "
             f"Уберите число из комментария или замените на динамический подсчёт."
@@ -436,14 +456,15 @@ class TestRuleCountConsistency:
 # Sanity checks
 # =============================================================================
 
+
 class TestSanity:
     """Базовые sanity checks упаковки."""
 
     def test_version_py_exists(self):
         """senpy/__version__.py должен существовать (single source of truth)."""
-        assert _VERSION_PY.exists(), (
-            "senpy/__version__.py отсутствует — это single source of truth для версии"
-        )
+        assert (
+            _VERSION_PY.exists()
+        ), "senpy/__version__.py отсутствует — это single source of truth для версии"
 
     def test_pyproject_uses_dynamic_version(self):
         """pyproject.toml должен использовать dynamic = ['version']."""
@@ -453,9 +474,9 @@ class TestSanity:
             "pyproject.toml НЕ должен содержать static 'version' field. "
             "Используйте dynamic = ['version'] (см.)."
         )
-        assert "version" in config.get("project", {}).get("dynamic", []), (
-            "pyproject.toml должен содержать dynamic = ['version'] в [project] секции"
-        )
+        assert "version" in config.get("project", {}).get(
+            "dynamic", []
+        ), "pyproject.toml должен содержать dynamic = ['version'] в [project] секции"
 
     def test_pyproject_has_required_metadata(self):
         """pyproject.toml должен содержать минимально необходимые метаданные."""

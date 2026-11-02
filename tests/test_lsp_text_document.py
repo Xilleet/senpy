@@ -7,6 +7,7 @@ Safety net перед рефакторингом lsp/server.py в class SenpyLSP
 Эти тесты закрепляют текущее поведение, чтобы при переносе в
 handlers/text_document.py ничего не сломалось.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,6 +21,7 @@ import senpy.lsp.server as server_mod
 # =============================================================================
 # did_open — UX-1
 # =============================================================================
+
 
 def test_did_open_rpy_schedules_full_diagnostics(tmp_path: Path):
     """did_open для .rpy файла должен запустить schedule_full_diagnostics."""
@@ -58,6 +60,7 @@ def test_did_open_non_rpy_does_nothing(tmp_path: Path):
 # did_save — UX-3
 # =============================================================================
 
+
 def test_did_save_rpy_schedules_full_diagnostics(tmp_path: Path):
     """did_save для .rpy должен запустить полный пересканирование."""
     setup_test_workspace(tmp_path)
@@ -67,9 +70,7 @@ def test_did_save_rpy_schedules_full_diagnostics(tmp_path: Path):
     mock_ls = MagicMock()
 
     with patch.object(server_mod, "schedule_full_diagnostics") as mock_schedule:
-        params = lsp.DidSaveTextDocumentParams(
-            text_document=lsp.TextDocumentIdentifier(uri=uri)
-        )
+        params = lsp.DidSaveTextDocumentParams(text_document=lsp.TextDocumentIdentifier(uri=uri))
         server_mod.did_save(mock_ls, params)
         mock_schedule.assert_called_once_with(mock_ls, uri)
 
@@ -90,6 +91,7 @@ def test_did_save_non_rpy_does_nothing(tmp_path: Path):
 # =============================================================================
 # did_change — UX-2
 # =============================================================================
+
 
 def test_did_change_rpy_schedules_change_diagnostics(tmp_path: Path):
     """did_change для .rpy запускает incremental analysis (single-file)."""
@@ -138,6 +140,7 @@ def test_did_change_non_rpy_does_nothing(tmp_path: Path):
 # did_close — UX-6
 # =============================================================================
 
+
 def test_did_close_clears_in_memory_buffer(tmp_path: Path):
     """did_close должен убрать файл из in-memory_files анализатора."""
     setup_test_workspace(tmp_path)
@@ -150,9 +153,7 @@ def test_did_close_clears_in_memory_buffer(tmp_path: Path):
     server_mod._active_analyzer.in_memory_files[norm_file] = "label start:"
 
     mock_ls = MagicMock()
-    params = lsp.DidCloseTextDocumentParams(
-        text_document=lsp.TextDocumentIdentifier(uri=uri)
-    )
+    params = lsp.DidCloseTextDocumentParams(text_document=lsp.TextDocumentIdentifier(uri=uri))
     server_mod.did_close(mock_ls, params)
 
     assert norm_file not in server_mod._active_analyzer.in_memory_files
@@ -178,6 +179,7 @@ def test_did_close_without_active_analyzer_does_not_crash(tmp_path: Path):
 # did_change_watched_files — заглушка против спама в Output логе
 # =============================================================================
 
+
 def test_did_change_watched_files_is_noop(tmp_path: Path):
     """did_change_watched_files должен молча проглатывать события."""
     setup_test_workspace(tmp_path)
@@ -199,6 +201,7 @@ def test_did_change_watched_files_is_noop(tmp_path: Path):
 # =============================================================================
 # schedule_full_diagnostics — debounce logic
 # =============================================================================
+
 
 def test_schedule_full_diagnostics_cancels_previous_timer(tmp_path: Path):
     """Повторный вызов schedule_full_diagnostics отменяет предыдущий timer."""
@@ -227,6 +230,7 @@ def test_schedule_full_diagnostics_cancels_previous_timer(tmp_path: Path):
 # =============================================================================
 # schedule_change_diagnostics — debounce logic
 # =============================================================================
+
 
 def test_schedule_change_diagnostics_cancels_previous_timer(tmp_path: Path):
     """Повторный schedule_change_diagnostics отменяет предыдущий timer."""
@@ -286,11 +290,13 @@ def test_schedule_change_diagnostics_per_uri_isolation(tmp_path: Path):
 
     class DualWorkspace:
         """Workspace, отдающий разные документы для разных URI."""
+
         def __init__(self):
             self._docs = {
                 "file:///test/file1.rpy": doc1,
                 "file:///test/file2.rpy": doc2,
             }
+
         def get_text_document(self, uri: str):
             return self._docs.get(uri)
 
@@ -355,6 +361,7 @@ def test_schedule_change_diagnostics_same_uri_cancels_previous(tmp_path: Path):
 # run_single_file_diagnostics — fallback path
 # =============================================================================
 
+
 def test_run_single_file_without_active_analyzer_schedules_full(tmp_path: Path):
     """Если _active_analyzer = None — single-file fallback на full scan."""
     setup_test_workspace(tmp_path)
@@ -376,6 +383,7 @@ def test_run_single_file_without_active_analyzer_schedules_full(tmp_path: Path):
 # _normalize_path — P0-6 контракт
 # =============================================================================
 
+
 def test_normalize_path_idempotent():
     """_normalize_path должен быть идемпотентным."""
     p1 = server_mod._normalize_path("/foo/bar/script.rpy")
@@ -386,6 +394,7 @@ def test_normalize_path_idempotent():
 def test_normalize_path_handles_relative(tmp_path: Path, monkeypatch):
     """_normalize_path должен разворачивать относительные пути."""
     import os
+
     monkeypatch.chdir(tmp_path)
     p = server_mod._normalize_path("script.rpy")
     assert os.path.isabs(p)

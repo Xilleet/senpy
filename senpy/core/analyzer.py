@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import re
-import warnings
 
 from senpy.core.cache import CachedFileEntry, CacheManager, CacheManifest, compute_file_hash
 from senpy.core.config import load_config
@@ -53,10 +52,6 @@ from senpy.rules.checkers import (
 from senpy.rules.deprecated import DeprecationChecker
 from senpy.rules.flow import StoryFlowAnalyzer
 from senpy.rules.python_ast import PythonAstChecker, infer_expr_type
-
-warnings.filterwarnings("ignore", category=SyntaxWarning)
-
-
 
 # Pre-compiled regex for word tokenization. Used by _check_unused_declarations
 # to build a word→locations index in a single pass over all files (O(N+M)
@@ -321,6 +316,7 @@ class SenpyAnalyzer:
         Kept as a thin wrapper for backward compat.
         """
         from senpy.rules.dead_code import check_unused_declarations
+
         check_unused_declarations(self)
 
     def run(self, quiet: bool = False) -> AnalysisResult:
@@ -333,9 +329,7 @@ class SenpyAnalyzer:
         old_manifest = self.cache_manager.load_manifest() if not self.fix else None
         cached_files = old_manifest.files if old_manifest else {}
 
-        file_hashes, stage1_diags_map = self._collect_all_symbols(
-            rpy_files, cached_files, quiet
-        )
+        file_hashes, stage1_diags_map = self._collect_all_symbols(rpy_files, cached_files, quiet)
 
         self._rebuild_aggregates()
 
@@ -345,8 +339,7 @@ class SenpyAnalyzer:
         )
 
         new_cached_entries = self._analyze_all_files(
-            rpy_files, cached_files, file_hashes, stage1_diags_map,
-            is_global_unchanged, quiet
+            rpy_files, cached_files, file_hashes, stage1_diags_map, is_global_unchanged, quiet
         )
 
         self._finalize_results(tl_rpy, new_cached_entries, current_global_hash)
@@ -433,8 +426,13 @@ class SenpyAnalyzer:
         return file_hashes, stage1_diags_map
 
     def _analyze_all_files(
-        self, rpy_files: list[str], cached_files: dict, file_hashes: dict[str, str],
-        stage1_diags_map: dict[str, list], is_global_unchanged: bool, quiet: bool
+        self,
+        rpy_files: list[str],
+        cached_files: dict,
+        file_hashes: dict[str, str],
+        stage1_diags_map: dict[str, list],
+        is_global_unchanged: bool,
+        quiet: bool,
     ) -> dict[str, CachedFileEntry]:
         """[2/2] Analyze all .rpy files for lint rules (Tier 2 cache).
 
@@ -501,8 +499,10 @@ class SenpyAnalyzer:
         return new_cached_entries
 
     def _finalize_results(
-        self, tl_rpy: list[str], new_cached_entries: dict[str, CachedFileEntry],
-        current_global_hash: str
+        self,
+        tl_rpy: list[str],
+        new_cached_entries: dict[str, CachedFileEntry],
+        current_global_hash: str,
     ) -> None:
         """Run post-analysis checks, TL validation, severity overrides, and save cache."""
         self._check_unreachable_labels()
@@ -887,11 +887,7 @@ class SenpyAnalyzer:
         """
         raw_name = m_label.group(1)
         if raw_name.startswith("."):
-            label_name = (
-                f"{current_global_label}{raw_name}"
-                if current_global_label
-                else raw_name
-            )
+            label_name = f"{current_global_label}{raw_name}" if current_global_label else raw_name
         else:
             label_name = raw_name
             current_global_label = label_name
@@ -966,12 +962,8 @@ class SenpyAnalyzer:
         # Рёбра из экранов (Jump/Call-экшены) и использования экранов
         if current_screen:
             for m_act in RE_SCREEN_JUMP_ACTION.finditer(clean):
-                scope.screen_action_jumps.setdefault(current_screen, set()).add(
-                    m_act.group(1)
-                )
-                self.screen_action_jumps.setdefault(current_screen, set()).add(
-                    m_act.group(1)
-                )
+                scope.screen_action_jumps.setdefault(current_screen, set()).add(m_act.group(1))
+                self.screen_action_jumps.setdefault(current_screen, set()).add(m_act.group(1))
 
         for m_usage in RE_SCREEN_CALL.finditer(clean):
             scope.used_screens.add(m_usage.group(1))
@@ -1076,9 +1068,7 @@ class SenpyAnalyzer:
 
         Возвращает (was_init_python, new_idx).
         """
-        m_chan = re.search(
-            r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', clean
-        )
+        m_chan = re.search(r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', clean)
         if m_chan:
             chan_name = m_chan.group(1).lower()
             scope.registered_audio_channels.add(chan_name)
@@ -1187,8 +1177,13 @@ class SenpyAnalyzer:
 
                 # --- label body (jumps, returns, screen edges) ---
                 self._collect_label_body(
-                    clean, file_path, idx, scope,
-                    current_label, current_global_label, current_screen
+                    clean,
+                    file_path,
+                    idx,
+                    scope,
+                    current_label,
+                    current_global_label,
+                    current_screen,
                 )
 
                 # --- images (layeredimage + image) ---
@@ -1215,7 +1210,6 @@ class SenpyAnalyzer:
             self._emit_encoding_error(file_path, e)
         except OSError:
             pass
-
 
     def _collect_from_python_block(
         self,
@@ -1388,9 +1382,7 @@ class SenpyAnalyzer:
                     import textwrap
 
                     code = textwrap.dedent("".join(block_lines))
-                    self.python_ast.check_init_dependency(
-                        code, file_path, idx + 2, noqa_map, lines
-                    )
+                    self.python_ast.check_init_dependency(code, file_path, idx + 2, noqa_map, lines)
                     self.python_ast.check_python_ast(code, file_path, idx + 2, noqa_map, lines)
                 idx = next_idx
                 continue
@@ -1433,7 +1425,13 @@ class SenpyAnalyzer:
 
             # 4. DialogueChecker (RPY302, RPY305, RPY306, RPY308)
             _, _ = dialogue_checker.check_line(
-                file_path, idx, raw_line, clean, scope_stack, noqa_map, lines,
+                file_path,
+                idx,
+                raw_line,
+                clean,
+                scope_stack,
+                noqa_map,
+                lines,
                 state_checker.branch_uninitialized,
             )
 
@@ -1607,17 +1605,20 @@ class SenpyAnalyzer:
         Kept as a thin wrapper for backward compat.
         """
         from senpy.rules.checkers.translation import analyze_tl_file
+
         analyze_tl_file(self, file_path)
 
     @staticmethod
     def _parse_tl_pairs(lines: list[str]) -> list[tuple[str, int, str, int]]:
         """Parse translation pairs. Delegates to translation module."""
         from senpy.rules.checkers.translation import parse_tl_pairs
+
         return parse_tl_pairs(lines)
 
     def _validate_tl_pairs(self, pairs: list[tuple[str, int, str, int]], file_path: str):
         """Validate translation pairs. Delegates to translation module."""
         from senpy.rules.checkers.translation import validate_tl_pairs
+
         validate_tl_pairs(self, pairs, file_path)
 
     def generate_defaults_file(self) -> tuple[str, int]:

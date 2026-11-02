@@ -161,15 +161,11 @@ def collect_story_stats(analyzer: SenpyAnalyzer) -> StoryStats:
 
 def _count_extend_words(stripped: str) -> tuple[int, int]:
     """Count words in an extend "..." continuation line."""
-    m_ext = re.search(
-        r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')', stripped
-    )
+    m_ext = re.search(r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')', stripped)
     if not m_ext:
         return 0, 0
     text_content = m_ext.group(2) or m_ext.group(3) or ""
-    clean_text = (
-        RE_TEXT_TAGS.sub("", text_content).replace('\\"', '"').replace("\\'", "'")
-    )
+    clean_text = RE_TEXT_TAGS.sub("", text_content).replace('\\"', '"').replace("\\'", "'")
     words = RE_WORDS.findall(clean_text)
     return len(words), sum(len(w) for w in words)
 
@@ -183,9 +179,7 @@ def _parse_dialogue_line(
     raw_speaker = m.group(1)
     text_content = m.group(3) or m.group(4) or ""
 
-    clean_text = (
-        RE_TEXT_TAGS.sub("", text_content).replace('\\"', '"').replace("\\'", "'")
-    )
+    clean_text = RE_TEXT_TAGS.sub("", text_content).replace('\\"', '"').replace("\\'", "'")
     words = RE_WORDS.findall(clean_text)
     word_count = len(words)
     char_count = sum(len(w) for w in words)
@@ -200,9 +194,7 @@ def _parse_dialogue_line(
     )
 
     if speaker_tag not in char_stats:
-        char_stats[speaker_tag] = CharacterStats(
-            tag=speaker_tag, display_name=disp_name
-        )
+        char_stats[speaker_tag] = CharacterStats(tag=speaker_tag, display_name=disp_name)
 
     char_stats[speaker_tag].lines_count += 1
     char_stats[speaker_tag].words_count += word_count

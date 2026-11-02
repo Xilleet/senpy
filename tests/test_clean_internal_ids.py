@@ -27,6 +27,7 @@ script that explains the ID format), add the file to the whitelist in
 Run manually:
     python -m pytest tests/test_clean_internal_ids.py -v
 """
+
 from __future__ import annotations
 
 import re
@@ -77,8 +78,21 @@ _LINE_SKIP_SUBSTRINGS = (
 )
 
 _SCANNABLE_EXTS = {
-    ".py", ".md", ".ts", ".js", ".toml", ".yml", ".yaml", ".json",
-    ".bat", ".sh", ".rst", ".txt", ".cfg", ".ini", ".spec",
+    ".py",
+    ".md",
+    ".ts",
+    ".js",
+    ".toml",
+    ".yml",
+    ".yaml",
+    ".json",
+    ".bat",
+    ".sh",
+    ".rst",
+    ".txt",
+    ".cfg",
+    ".ini",
+    ".spec",
 }
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -116,18 +130,40 @@ def _walk_repo():
         # 'senpy-vscode/node_modules/foo.js' was previously leaking through
         # because rel.startswith('node_modules/') only matches the root.
         skip_subdirs = (
-            "/.git/", "/node_modules/", "/build/", "/dist/",
-            "/.senpy_cache/", "/__pycache__/", "/.vscode-test/",
-            "/.vscode-test-cache/", "/.cache/", "/htmlcov/",
-            "/.pytest_cache/", "/.ruff_cache/", "/.mypy_cache/",
+            "/.git/",
+            "/node_modules/",
+            "/build/",
+            "/dist/",
+            "/.senpy_cache/",
+            "/__pycache__/",
+            "/.vscode-test/",
+            "/.vscode-test-cache/",
+            "/.cache/",
+            "/htmlcov/",
+            "/.pytest_cache/",
+            "/.ruff_cache/",
+            "/.mypy_cache/",
         )
         if any(s in "/" + rel for s in skip_subdirs):
             continue
         # Also catch root-level occurrences (rel == 'node_modules/...').
-        if rel.startswith(("node_modules/", "build/", "dist/", "__pycache__/",
-                           ".git/", ".senpy_cache/", ".vscode-test/",
-                           ".vscode-test-cache/", ".cache/", "htmlcov/",
-                           ".pytest_cache/", ".ruff_cache/", ".mypy_cache/")):
+        if rel.startswith(
+            (
+                "node_modules/",
+                "build/",
+                "dist/",
+                "__pycache__/",
+                ".git/",
+                ".senpy_cache/",
+                ".vscode-test/",
+                ".vscode-test-cache/",
+                ".cache/",
+                "htmlcov/",
+                ".pytest_cache/",
+                ".ruff_cache/",
+                ".mypy_cache/",
+            )
+        ):
             continue
         # Skip test artifacts (in .gitignore but may exist locally).
         if rel.startswith(("test_report.", "tests/test_report.")):
@@ -212,9 +248,9 @@ class TestCleanInternalIdsScript:
     def test_script_exists_and_is_executable(self):
         script = _REPO_ROOT / "scripts" / "clean_internal_ids.py"
         assert script.exists(), "scripts/clean_internal_ids.py should exist"
-        assert os.access(script, os.X_OK), (
-            "scripts/clean_internal_ids.py should be executable (chmod +x)."
-        )
+        assert os.access(
+            script, os.X_OK
+        ), "scripts/clean_internal_ids.py should be executable (chmod +x)."
 
     def test_script_imports_cleanly(self):
         """The script must import without errors (no syntax issues, no
@@ -239,9 +275,11 @@ class TestCleanInternalIdsScript:
         import subprocess
 
         result = subprocess.run(
-            ["python", str(_REPO_ROOT / "scripts" / "clean_internal_ids.py"),
-             "--dry-run"],
-            capture_output=True, text=True, cwd=_REPO_ROOT, timeout=30,
+            ["python", str(_REPO_ROOT / "scripts" / "clean_internal_ids.py"), "--dry-run"],
+            capture_output=True,
+            text=True,
+            cwd=_REPO_ROOT,
+            timeout=30,
         )
         assert result.returncode == 0
         # Dry-run prints a summary line; --apply writes files.
@@ -386,8 +424,7 @@ class TestWhitelist:
                 msg.append(f"In test but not script: {sorted(only_in_test)}")
             pytest.fail(
                 "Whitelist drift between scripts/clean_internal_ids.py and "
-                "tests/test_clean_internal_ids.py. Update both to match:\n"
-                + "\n".join(msg)
+                "tests/test_clean_internal_ids.py. Update both to match:\n" + "\n".join(msg)
             )
 
     def test_changelog_remains_whitelisted(self):

@@ -7,6 +7,7 @@ Re-exports для backward compat: после реструктуризации 0
     from senpy import Diagnostic, RULE_SEVERITY  # → senpy.core.models
     from senpy import main                    # → senpy.cli.main
 """
+
 from __future__ import annotations
 
 # Version
@@ -38,14 +39,25 @@ from senpy.core.symbols import (
 __all__ = [
     # Core
     "SenpyAnalyzer",
-    "CacheManager", "CacheManifest", "CachedFileEntry", "SafeCacheUnpickler",
+    "CacheManager",
+    "CacheManifest",
+    "CachedFileEntry",
+    "SafeCacheUnpickler",
     "load_config",
     "SENPY_VERSION",
-    "Diagnostic", "RULE_SEVERITY", "AnalysisResult", "FileScope",
+    "Diagnostic",
+    "RULE_SEVERITY",
+    "AnalysisResult",
+    "FileScope",
     "DiagnosticSink",
-    "VariableSymbol", "LabelSymbol", "ScreenSymbol", "ImageSymbol", "TransformSymbol",
+    "VariableSymbol",
+    "LabelSymbol",
+    "ScreenSymbol",
+    "ImageSymbol",
+    "TransformSymbol",
     # CLI
     "main",
     # Version
-    "__version__", "VERSION_WITH_PREFIX",
+    "__version__",
+    "VERSION_WITH_PREFIX",
 ]

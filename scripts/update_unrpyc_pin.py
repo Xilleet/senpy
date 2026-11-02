@@ -433,9 +433,7 @@ def run_update(profile: UnrpycProfile) -> int:
     print(f"[★] Готово. Pinned unrpyc к {profile.label} (commit {commit_sha[:8]}).")
     print(f"    Поддерживаемые версии Ren'Py: {profile.renpy_versions}")
     print()
-    print(
-        f"    Закоммитьте: git add senpy/cli.py && git commit -m 'pin unrpyc to {profile.ref}'"
-    )
+    print(f"    Закоммитьте: git add senpy/cli.py && git commit -m 'pin unrpyc to {profile.ref}'")
     return 0
 
 

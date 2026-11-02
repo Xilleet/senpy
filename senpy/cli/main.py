@@ -138,6 +138,7 @@ def _dispatch_format(argv: list[str]) -> int:
     `from senpy.cli.main import _dispatch_format`.
     """
     from senpy.cli.format_dispatch import dispatch_format
+
     return dispatch_format(argv)
 
 
@@ -242,9 +243,7 @@ def _add_lint_args(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Maximum errors to display in terminal (default: 50)",
     )
-    g.add_argument(
-        "--no-cache", action="store_true", help="Disable disk caching (.senpy_cache)"
-    )
+    g.add_argument("--no-cache", action="store_true", help="Disable disk caching (.senpy_cache)")
     g.add_argument(
         "--clear-cache",
         action="store_true",
@@ -309,7 +308,7 @@ def _add_export_args(parser: argparse.ArgumentParser) -> None:
         choices=["text", "json", "sarif", "junit", "github"],
         default="text",
         help="Output format: 'text' (default), 'json' for VS Code, 'sarif' for "
-             "GitHub Actions, 'junit' for CI (XML), 'github' for PR annotations",
+        "GitHub Actions, 'junit' for CI (XML), 'github' for PR annotations",
     )
     g.add_argument(
         "--output-file",
@@ -350,9 +349,7 @@ def _add_tools_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Automatically decompile orphaned .rpyc files into a temporary sandbox",
     )
-    g.add_argument(
-        "--unrpyc", metavar="PATH", help="Custom path to unrpyc.py or unrpyc executable"
-    )
+    g.add_argument("--unrpyc", metavar="PATH", help="Custom path to unrpyc.py or unrpyc executable")
     g.add_argument(
         "--tsundere",
         action="store_true",
@@ -389,6 +386,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     _add_tools_args(parser)
 
     return parser.parse_args(argv)
+
 
 def load_senpy_ignore(project_path: str) -> set[str]:
     """Читает .senpy-ignore файл из корня проекта.
@@ -491,12 +489,14 @@ def filter_diagnostics(
     ]
     return active_diagnostics, hidden_info_count
 
+
 def render_sarif(active_diagnostics, args, console) -> int:
     """Рендерит diagnostics в SARIF формат. Возвращает exit code (не вызывает sys.exit).
 
     Вынесено из main() в Phase 3 Step 2b (0.5.6).
     """
     from senpy.formats.sarif import generate_sarif
+
     sarif_str = generate_sarif(active_diagnostics, args.path)
     if args.output_file:
         with open(args.output_file, "w", encoding="utf-8") as f:
@@ -544,6 +544,7 @@ def render_json(active_diagnostics, result, elapsed, args, console) -> int:
     error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
     return 1 if error_count > 0 else 0
 
+
 def render_junit(active_diagnostics, args, console) -> int:
     """Рендерит diagnostics в JUnit XML формат для CI. Возвращает exit code.
 
@@ -573,7 +574,9 @@ def render_junit(active_diagnostics, args, console) -> int:
         )
         for diag in diags:
             case_name = f"{diag.code}: {diag.message[:80]}"
-            lines.append(f'    <testcase name="{_xml_escape(case_name)}" classname="{_xml_escape(suite_name)}">')
+            lines.append(
+                f'    <testcase name="{_xml_escape(case_name)}" classname="{_xml_escape(suite_name)}">'
+            )
             if diag.severity == "ERROR":
                 lines.append(
                     f'      <failure message="{_xml_escape(diag.message)}" '
@@ -584,9 +587,9 @@ def render_junit(active_diagnostics, args, console) -> int:
                     f'      <skipped message="{_xml_escape(diag.message)}" '
                     f'type="{diag.code}">line {diag.line_number}</skipped>'
                 )
-            lines.append('    </testcase>')
-        lines.append('  </testsuite>')
-    lines.append('</testsuites>')
+            lines.append("    </testcase>")
+        lines.append("  </testsuite>")
+    lines.append("</testsuites>")
 
     junit_str = "\n".join(lines)
     if args.output_file:
@@ -610,19 +613,37 @@ def render_github(active_diagnostics, args, console) -> int:
         # GitHub Actions workflow command format:
         # ::error file=app/index.js,line=10,col=15::Something went wrong
         file_rel = os.path.relpath(diag.file_path, args.path) if args.path else diag.file_path
-        level = "error" if diag.severity == "ERROR" else "warning" if diag.severity == "WARNING" else "notice"
+        level = (
+            "error"
+            if diag.severity == "ERROR"
+            else "warning"
+            if diag.severity == "WARNING"
+            else "notice"
+        )
         # Escape message: newlines and special chars
         msg = diag.message.replace("\n", " ").replace("::", " ")
-        print(f"::{level} file={file_rel},line={diag.line_number},col={diag.col}::{diag.code}: {msg}")
+        print(
+            f"::{level} file={file_rel},line={diag.line_number},col={diag.col}::{diag.code}: {msg}"
+        )
 
     if args.output_file:
         # Also save to file if requested
         with open(args.output_file, "w", encoding="utf-8") as f:
             for diag in active_diagnostics:
-                file_rel = os.path.relpath(diag.file_path, args.path) if args.path else diag.file_path
-                level = "error" if diag.severity == "ERROR" else "warning" if diag.severity == "WARNING" else "notice"
+                file_rel = (
+                    os.path.relpath(diag.file_path, args.path) if args.path else diag.file_path
+                )
+                level = (
+                    "error"
+                    if diag.severity == "ERROR"
+                    else "warning"
+                    if diag.severity == "WARNING"
+                    else "notice"
+                )
                 msg = diag.message.replace("\n", " ").replace("::", " ")
-                f.write(f"::{level} file={file_rel},line={diag.line_number},col={diag.col}::{diag.code}: {msg}\n")
+                f.write(
+                    f"::{level} file={file_rel},line={diag.line_number},col={diag.col}::{diag.code}: {msg}\n"
+                )
         console.print(f"[bold green]✔ GitHub annotations saved to {args.output_file}[/bold green]")
     return 1 if error_count > 0 else 0
 
@@ -630,8 +651,7 @@ def render_github(active_diagnostics, args, console) -> int:
 def _xml_escape(text: str) -> str:
     """Escape special XML characters for JUnit output."""
     return (
-        text
-        .replace("&", "&amp;")
+        text.replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace('"', "&quot;")
@@ -736,9 +756,7 @@ def _render_fixable_report(
                 f"\n[dim magenta][*] {TSUNDERE_UI['fixable'].format(count=result.fixable_count)}[/dim magenta]"
             )
         else:
-            console.print(
-                f"\n[dim][*] {result.fixable_count} fixable with the --fix option[/dim]"
-            )
+            console.print(f"\n[dim][*] {result.fixable_count} fixable with the --fix option[/dim]")
     elif getattr(args, "show_fixes", False) and result.fixed_count == 0:
         # --show-fixes without --fix — "0 fixes applied"
         console.print("\n[dim]0 fixes applied (use --fix to apply fixes).[/dim]")
@@ -856,6 +874,7 @@ def render_text(
     # --exit-zero forces exit 0 even with errors (for non-blocking CI)
     return 0 if args.exit_zero else (1 if error_count > 0 else 0)
 
+
 def _find_rpy_files(project_path: str) -> tuple[set[str], set[str]]:
     """Walk project_path and find all .rpy files.
 
@@ -950,9 +969,7 @@ def _decompile_sandbox(
             f"[bold yellow]Found {len(orphaned_rpyc)} compiled .rpyc file(s) without source code.[/bold yellow]"
         )
         try:
-            answer = (
-                input("Decompile them into a sandbox for analysis? [y/N]: ").strip().lower()
-            )
+            answer = input("Decompile them into a sandbox for analysis? [y/N]: ").strip().lower()
             should_decompile = answer in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
             should_decompile = False
@@ -961,9 +978,7 @@ def _decompile_sandbox(
         return []
 
     custom_unrpyc = args.unrpyc or config.get("unrpyc_path")
-    unrpyc_cmd = find_unrpyc_executable(
-        custom_unrpyc, args.path, auto_download=is_interactive
-    )
+    unrpyc_cmd = find_unrpyc_executable(custom_unrpyc, args.path, auto_download=is_interactive)
     if not unrpyc_cmd:
         return []
 
@@ -1021,6 +1036,7 @@ def discover_files(args, config: dict, project_path: str) -> list[str]:
 
     return extra_rpy_files
 
+
 def _dispatch_subcommand(argv: list[str]) -> int | None:
     """Check for subcommand (e.g. `senpy format`) and dispatch.
 
@@ -1041,18 +1057,21 @@ def _handle_early_exits(args, console, is_tsundere: bool) -> int | None:
     # --version: prints version and returns 0
     if args.version:
         from senpy.__version__ import __version__
+
         print(f"senpy {__version__}", flush=True)
         return 0
 
     # --lsp: starts LSP server and exits
     if args.lsp:
         from senpy.lsp.server import start_lsp
+
         start_lsp()
         sys.exit(0)
 
     # --rules / --rule: lists rules or shows one
     if args.rules or args.rule:
         from senpy.rules.rules_info import show_rule_detail, show_rules_table
+
         if args.rule:
             show_rule_detail(args.rule.upper())
         else:
@@ -1160,6 +1179,7 @@ def _setup_diff_interception(args) -> tuple[dict[str, str], object]:
         return diff_collector, _real_open
 
     import builtins
+
     _real_open = builtins.open
 
     def _intercept_open(file, mode="r", *a, **kw):
@@ -1342,7 +1362,10 @@ def main():
     extra_rpy_files = discover_files(args, config, args.path)
 
     is_quiet_mode = bool(
-        args.graph or args.graph_file or args.stats or args.output_format in ("json", "sarif", "junit", "github")
+        args.graph
+        or args.graph_file
+        or args.stats
+        or args.output_format in ("json", "sarif", "junit", "github")
     )
 
     if not is_quiet_mode:
@@ -1358,6 +1381,7 @@ def main():
     # Restore open() after --diff monkey-patch
     if args.diff:
         import builtins
+
         builtins.open = _real_open
 
     # Post-analysis output handlers (--stats, --export-wiki, --export-html, --graph, --defaults, --stubs)
@@ -1386,7 +1410,16 @@ def main():
     with output_redirect:
         _exit_with_output_redirect(
             args,
-            render_text(active_diagnostics, hidden_info_count, result, args, console, is_tsundere, elapsed, max_errors)
+            render_text(
+                active_diagnostics,
+                hidden_info_count,
+                result,
+                args,
+                console,
+                is_tsundere,
+                elapsed,
+                max_errors,
+            ),
         )
 
 

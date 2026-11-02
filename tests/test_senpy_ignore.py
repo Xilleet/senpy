@@ -20,6 +20,7 @@
 
 Семантика: как если бы пользователь передал --ignore для каждого кода.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -49,6 +50,7 @@ def _write_senpy_ignore(project_path: Path, content: str) -> Path:
 # 1. Базовое чтение файла
 # =============================================================================
 
+
 def test_load_senpy_ignore_returns_empty_set_if_no_file(tmp_path: Path):
     """Если .senpy-ignore не существует — возвращается пустое множество."""
     result = load_senpy_ignore(str(tmp_path))
@@ -65,6 +67,7 @@ def test_load_senpy_ignore_reads_simple_codes(tmp_path: Path):
 # =============================================================================
 # 2. Комментарии
 # =============================================================================
+
 
 def test_load_senpy_ignore_skips_comments(tmp_path: Path):
     """Строки начинающиеся с # — комментарии, игнорируются."""
@@ -99,6 +102,7 @@ def test_load_senpy_ignore_commented_rule_not_included(tmp_path: Path):
 # 3. Нормализация
 # =============================================================================
 
+
 def test_load_senpy_ignore_normalizes_to_uppercase(tmp_path: Path):
     """Rule codes нормализуются к uppercase."""
     _write_senpy_ignore(tmp_path, "rpy101\nRpy104\nRPY301\n")
@@ -116,6 +120,7 @@ def test_load_senpy_ignore_strips_whitespace(tmp_path: Path):
 # =============================================================================
 # 4. Edge cases
 # =============================================================================
+
 
 def test_load_senpy_ignore_empty_file(tmp_path: Path):
     """Пустой файл — пустое множество."""
@@ -146,6 +151,7 @@ def test_load_senpy_ignore_invalid_codes_included(tmp_path: Path):
 # =============================================================================
 # 5. Ищет файл в правильном месте
 # =============================================================================
+
 
 def test_load_senpy_ignore_finds_file_in_project_root(tmp_path: Path):
     """Файл ищется в корне project_path, не в CWD."""

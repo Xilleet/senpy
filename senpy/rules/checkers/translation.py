@@ -4,6 +4,7 @@ Extracted from core/analyzer.py in 0.6.6 to reduce analyzer god-class.
 Handles .rpy translation files (game/tl/) — validates variable interpolation,
 formatting tags, and empty translations.
 """
+
 from __future__ import annotations
 
 import os
@@ -48,12 +49,8 @@ def parse_tl_pairs(lines: list[str]) -> list[tuple[str, int, str, int]]:
 
     Robust to comments, blank lines, voice/with, and missing new.
     """
-    re_old = re.compile(
-        r'^\s*old\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
-    )
-    re_new = re.compile(
-        r'^\s*new\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
-    )
+    re_old = re.compile(r'^\s*old\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')')
+    re_new = re.compile(r'^\s*new\s+("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')')
     re_dialogue_old = re.compile(
         r'^\s*#\s*(?:(?:\w+|"[^"]*"|\'[^\']*\')(?:\s+\w+)*\s+)?("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')'
     )

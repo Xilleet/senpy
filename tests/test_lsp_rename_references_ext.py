@@ -1,4 +1,4 @@
-""" + : rename и references для variables/transform/screen.
+"""+ : rename и references для variables/transform/screen.
 
 До этого спринта rename/references работали только для labels.
 После /18 — поддерживаются variables, transforms, screens.
@@ -14,6 +14,7 @@
     вхождения по всем .rpy файлам.
   - include_declaration flag уважается.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,6 +44,7 @@ class MockWorkspace:
 # =============================================================================
 # rename для variables/transforms/screens
 # =============================================================================
+
 
 def test_rename_variable_updates_declaration_and_usage(tmp_path: Path):
     """rename variable — обновляет default + все использования."""
@@ -90,9 +92,7 @@ def test_rename_variable_updates_declaration_and_usage(tmp_path: Path):
     # 1. default player_gold = 100  (declaration)
     # 2. [player_gold]              (interpolation in dialogue)
     # 3. $ player_gold += 10        (assignment)
-    assert len(all_edits) >= 3, (
-        f"Expected >= 3 edits for variable rename, got {len(all_edits)}"
-    )
+    assert len(all_edits) >= 3, f"Expected >= 3 edits for variable rename, got {len(all_edits)}"
 
     for edit in all_edits:
         assert edit.new_text == "new_gold"
@@ -141,9 +141,7 @@ def test_rename_transform_updates_declaration_and_show_at(tmp_path: Path):
         all_edits.extend(edits)
 
     # Минимум 2: объявление + show ... at slide_in
-    assert len(all_edits) >= 2, (
-        f"Expected >= 2 edits for transform rename, got {len(all_edits)}"
-    )
+    assert len(all_edits) >= 2, f"Expected >= 2 edits for transform rename, got {len(all_edits)}"
 
     for edit in all_edits:
         assert edit.new_text == "slide_left"
@@ -193,9 +191,7 @@ def test_rename_screen_updates_declaration_and_use(tmp_path: Path):
         all_edits.extend(edits)
 
     # Минимум 2: объявление + call screen confirm_dialog()
-    assert len(all_edits) >= 2, (
-        f"Expected >= 2 edits for screen rename, got {len(all_edits)}"
-    )
+    assert len(all_edits) >= 2, f"Expected >= 2 edits for screen rename, got {len(all_edits)}"
 
     for edit in all_edits:
         assert edit.new_text == "ok_dialog"
@@ -204,6 +200,7 @@ def test_rename_screen_updates_declaration_and_use(tmp_path: Path):
 # =============================================================================
 # references для variables/transforms/screens
 # =============================================================================
+
 
 def test_references_variable_finds_all_usages(tmp_path: Path):
     """references на variable — все вхождения по проекту."""
@@ -242,9 +239,7 @@ def test_references_variable_finds_all_usages(tmp_path: Path):
 
     assert result is not None, "References for variable should return locations"
     # Должно быть минимум 3: объявление + [player_gold] + $ player_gold += 10
-    assert len(result) >= 3, (
-        f"Expected >= 3 references for variable, got {len(result)}"
-    )
+    assert len(result) >= 3, f"Expected >= 3 references for variable, got {len(result)}"
 
 
 def test_references_variable_without_declaration(tmp_path: Path):
@@ -372,18 +367,14 @@ def test_references_screen_finds_use_and_call_screen(tmp_path: Path):
 # Backward compat: label rename/references продолжают работать
 # =============================================================================
 
+
 def test_rename_label_still_works(tmp_path: Path):
     """label rename не сломан после добавления variable/transform/screen."""
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True)
     script = game_dir / "script.rpy"
     script.write_text(
-        "label start:\n"
-        "    jump my_label\n"
-        "    return\n"
-        "\n"
-        "label my_label:\n"
-        "    return\n",
+        "label start:\n    jump my_label\n    return\n\nlabel my_label:\n    return\n",
         encoding="utf-8",
     )
 
@@ -424,12 +415,7 @@ def test_references_label_still_works(tmp_path: Path):
     game_dir.mkdir(parents=True)
     script = game_dir / "script.rpy"
     script.write_text(
-        "label start:\n"
-        "    jump my_label\n"
-        "    return\n"
-        "\n"
-        "label my_label:\n"
-        "    return\n",
+        "label start:\n    jump my_label\n    return\n\nlabel my_label:\n    return\n",
         encoding="utf-8",
     )
 

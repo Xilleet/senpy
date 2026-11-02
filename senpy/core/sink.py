@@ -23,6 +23,7 @@ self.analyzer — это будет разорвано в 0.5.5 (когда _col
 Public API:
     DiagnosticSink  — Protocol (typing only, не инстанцируется)
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable

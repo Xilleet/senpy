@@ -325,6 +325,7 @@ my_rule = "my_senpy_plugin.rules:MyRule"
 from senpy.plugins.base import Rule, RuleMeta, RuleContext
 from senpy.plugins.registry import register_rule
 
+
 @register_rule("RPY999")
 class MyRule(Rule):
     meta = RuleMeta(

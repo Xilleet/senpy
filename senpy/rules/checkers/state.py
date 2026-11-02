@@ -106,9 +106,7 @@ class StateChecker(BaseChecker):
 
         return next_idx, file_modified
 
-    def _manage_if_elif_else_stack(
-        self, stripped: str, line_indent: int, idx: int
-    ) -> None:
+    def _manage_if_elif_else_stack(self, stripped: str, line_indent: int, idx: int) -> None:
         """Manage if/elif/else branching stack for control flow analysis."""
         is_if = bool(re.match(r"^if\s+", stripped) and stripped.endswith(":"))
         is_elif = bool(re.match(r"^elif\s+", stripped) and stripped.endswith(":"))

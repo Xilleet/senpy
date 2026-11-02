@@ -40,9 +40,9 @@ from senpy.formatter.rules.op_spacing import _is_dialogue_line, _split_by_string
 # Replace: \1: (no space before colon)
 # Use lookahead to check what's after colon.
 _RE_SPACE_BEFORE_COLON = re.compile(
-    r"(?<=\S)"        # left: non-space char (the word before colon)
-    r"\s+"            # one or more spaces
-    r":"              # the colon
+    r"(?<=\S)"  # left: non-space char (the word before colon)
+    r"\s+"  # one or more spaces
+    r":"  # the colon
     r"(?=\s*$|\s*#)"  # right: end of line (with optional comment) — block opener
 )
 

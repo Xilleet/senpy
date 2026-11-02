@@ -49,6 +49,7 @@ Example:
                     ))
             return diags
 """
+
 from __future__ import annotations
 
 # Re-exports for convenience — see senpy.api for the canonical public API.

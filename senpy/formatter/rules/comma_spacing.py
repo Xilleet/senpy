@@ -24,7 +24,7 @@ from senpy.formatter.rules.op_spacing import _is_dialogue_line, _split_by_string
 # Trailing comma before ) ] } or newline: leave as-is (no space added).
 # Use lookahead to avoid consuming the next char.
 _RE_COMMA_NO_SPACE = re.compile(
-    r",(?=\S)"        # comma immediately followed by non-space (no space after)
+    r",(?=\S)"  # comma immediately followed by non-space (no space after)
 )
 # But we need to NOT add space before ) ] } (closing brackets) — those are fine without space.
 # Actually, Ren'Py/Python convention: f(a,) → f(a,) (no space before close paren).

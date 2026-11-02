@@ -98,8 +98,14 @@ def process_quoted_strings(
 
         # RPY101: Check undeclared variables in [var] interpolation
         _check_interpolation_vars(
-            masked_content, raw_line, line_idx, file_path,
-            declared_symbols, extra_symbols, user_symbols, diagnostics
+            masked_content,
+            raw_line,
+            line_idx,
+            file_path,
+            declared_symbols,
+            extra_symbols,
+            user_symbols,
+            diagnostics,
         )
 
         in_place_replacements: list[tuple[int, int, str]] = []
@@ -112,8 +118,7 @@ def process_quoted_strings(
 
             # RPY304: Validate hex color in {color} tag
             _check_color_tag(
-                tag_name, is_closing, tag_param, raw_line, line_idx,
-                file_path, diagnostics
+                tag_name, is_closing, tag_param, raw_line, line_idx, file_path, diagnostics
             )
 
             if tag_name in SELF_CLOSING_TAGS:
@@ -273,9 +278,7 @@ def _check_color_tag(
     color_val = tag_param.strip("\"'").lower()
     if color_val.startswith("#"):
         hex_str = color_val[1:]
-        if len(hex_str) not in (3, 4, 6, 8) or not all(
-            c in "0123456789abcdef" for c in hex_str
-        ):
+        if len(hex_str) not in (3, 4, 6, 8) or not all(c in "0123456789abcdef" for c in hex_str):
             start_c, end_c = get_utf16_range(raw_line, tag_param)
             diagnostics.append(
                 Diagnostic(

@@ -25,6 +25,7 @@
 Запуск:
     pytest tests/test_imports.py -v
 """
+
 from __future__ import annotations
 
 import importlib
@@ -35,12 +36,14 @@ import pytest
 # 1. Главные классы и функции — canonical API
 # =============================================================================
 
+
 class TestCoreImports:
     """Главные классы, которые пользователи импортируют напрямую."""
 
     def test_import_senpy_analyzer(self):
         """SenpyAnalyzer — главный класс оркестратора."""
         from senpy.core.analyzer import SenpyAnalyzer
+
         assert SenpyAnalyzer is not None
         assert hasattr(SenpyAnalyzer, "run")
         assert hasattr(SenpyAnalyzer, "_collect_symbols")
@@ -49,15 +52,15 @@ class TestCoreImports:
     def test_import_senpy_models(self):
         """Diagnostic, RULE_SEVERITY, AnalysisResult, FileScope — модели данных."""
         from senpy.core.models import RULE_SEVERITY, AnalysisResult, Diagnostic, FileScope
+
         assert Diagnostic is not None
         assert AnalysisResult is not None
         assert FileScope is not None
         # RULE_SEVERITY — dict с минимум 45 правилами (на момент 0.5.2)
         assert isinstance(RULE_SEVERITY, dict)
-        assert len(RULE_SEVERITY) >= 45, (
-            f"RULE_SEVERITY должен содержать минимум 45 правил, "
-            f"сейчас {len(RULE_SEVERITY)}"
-        )
+        assert (
+            len(RULE_SEVERITY) >= 45
+        ), f"RULE_SEVERITY должен содержать минимум 45 правил, сейчас {len(RULE_SEVERITY)}"
 
     def test_import_senpy_cache(self):
         """CacheManager, CacheManifest, CachedFileEntry, SafeCacheUnpickler."""
@@ -68,6 +71,7 @@ class TestCoreImports:
             SafeCacheUnpickler,
             compute_file_hash,
         )
+
         assert CacheManager is not None
         assert CacheManifest is not None
         assert CachedFileEntry is not None
@@ -77,6 +81,7 @@ class TestCoreImports:
     def test_import_senpy_constants(self):
         """SENPY_VERSION — из single source of truth (__version__.py)."""
         from senpy.core.constants import SENPY_VERSION
+
         assert SENPY_VERSION is not None
         assert isinstance(SENPY_VERSION, str)
         assert len(SENPY_VERSION.split(".")) == 3  # X.Y.Z
@@ -84,6 +89,7 @@ class TestCoreImports:
     def test_import_senpy_version(self):
         """__version__ — single source of truth."""
         from senpy.__version__ import MAJOR, MINOR, PATCH, VERSION_WITH_PREFIX, __version__
+
         assert isinstance(__version__, str)
         assert __version__.count(".") == 2
         assert VERSION_WITH_PREFIX.startswith("v")
@@ -96,17 +102,20 @@ class TestCoreImports:
 # 2. CLI / LSP entrypoints
 # =============================================================================
 
+
 class TestEntrypoints:
     """Точки входа: CLI и LSP-сервер."""
 
     def test_import_cli_main(self):
         """senpy.cli.main — главный entrypoint для `senpy` команды."""
         from senpy.cli.main import main
+
         assert callable(main)
 
     def test_import_cli_dispatch_format(self):
         """_dispatch_format — subcommand `senpy format`."""
         from senpy.cli.main import _dispatch_format
+
         assert callable(_dispatch_format)
 
     def test_import_cli_commands_handlers(self):
@@ -123,10 +132,18 @@ class TestEntrypoints:
             handle_stubs,
             handle_traceback,
         )
+
         for handler in [
-            handle_traceback, handle_init_ci, handle_coverage,
-            handle_clear_cache, handle_stats, handle_export_wiki,
-            handle_export_html, handle_graph, handle_defaults, handle_stubs,
+            handle_traceback,
+            handle_init_ci,
+            handle_coverage,
+            handle_clear_cache,
+            handle_stats,
+            handle_export_wiki,
+            handle_export_html,
+            handle_graph,
+            handle_defaults,
+            handle_stubs,
         ]:
             assert callable(handler), f"{handler} should be callable"
 
@@ -140,9 +157,13 @@ class TestEntrypoints:
             find_unrpyc_executable,
             load_config,
         )
+
         for func in [
-            load_config, find_in_directory_tree, download_unrpyc,
-            find_unrpyc_executable, extract_scripts_from_rpa,
+            load_config,
+            find_in_directory_tree,
+            download_unrpyc,
+            find_unrpyc_executable,
+            extract_scripts_from_rpa,
             decompile_to_sandbox,
         ]:
             assert callable(func), f"{func} should be callable"
@@ -150,6 +171,7 @@ class TestEntrypoints:
     def test_import_server(self):
         """LSP-сервер и его handlers."""
         from senpy.lsp.server import server
+
         assert server is not None
         # server — экземпляр LanguageServer из pygls
         assert hasattr(server, "feature")
@@ -178,14 +200,28 @@ class TestEntrypoints:
             schedule_full_diagnostics,
             workspace_symbol,
         )
+
         for handler in [
-            did_open, did_change, did_save, did_close,
-            did_change_watched_files, code_action, completions,
-            definition, references, hover, document_symbols,
-            folding_range, prepare_rename, rename,
-            workspace_symbol, document_highlight,
-            run_full_project_diagnostics, run_single_file_diagnostics,
-            schedule_full_diagnostics, schedule_change_diagnostics,
+            did_open,
+            did_change,
+            did_save,
+            did_close,
+            did_change_watched_files,
+            code_action,
+            completions,
+            definition,
+            references,
+            hover,
+            document_symbols,
+            folding_range,
+            prepare_rename,
+            rename,
+            workspace_symbol,
+            document_highlight,
+            run_full_project_diagnostics,
+            run_single_file_diagnostics,
+            schedule_full_diagnostics,
+            schedule_change_diagnostics,
         ]:
             assert callable(handler), f"{handler} should be callable"
 
@@ -194,12 +230,14 @@ class TestEntrypoints:
 # 3. Чекеры и AST
 # =============================================================================
 
+
 class TestCheckers:
     """5 чекеров + BaseChecker + AST checker."""
 
     def test_import_base_checker(self):
         """BaseChecker — базовый класс для всех чекеров."""
         from senpy.rules.checkers import BaseChecker
+
         assert BaseChecker is not None
         assert hasattr(BaseChecker, "check_line")
 
@@ -212,9 +250,13 @@ class TestCheckers:
             ScreenChecker,
             StateChecker,
         )
+
         for cls in [
-            FormattingChecker, ScreenChecker, AssetChecker,
-            DialogueChecker, StateChecker,
+            FormattingChecker,
+            ScreenChecker,
+            AssetChecker,
+            DialogueChecker,
+            StateChecker,
         ]:
             assert cls is not None
 
@@ -227,6 +269,7 @@ class TestCheckers:
             infer_default_value,
             infer_expr_type,
         )
+
         assert PythonAstChecker is not None
         for func in [infer_ast_type, infer_expr_type, infer_default_value, extract_assigned_names]:
             assert callable(func)
@@ -234,6 +277,7 @@ class TestCheckers:
     def test_import_flow(self):
         """StoryFlowAnalyzer + вспомогательные функции."""
         from senpy.rules.flow import FlowBranch, StoryFlowAnalyzer, merge_flow_branches
+
         assert StoryFlowAnalyzer is not None
         assert FlowBranch is not None
         assert callable(merge_flow_branches)
@@ -243,12 +287,14 @@ class TestCheckers:
 # 4. Domain knowledge
 # =============================================================================
 
+
 class TestDomain:
     """Ren'Py API, text_tags, assets, rpa, tsundere."""
 
     def test_import_renpy_api(self):
         """RENPY_API_DOCS — hover-описания для 220+ Ren'Py API функций."""
         from senpy.domain.renpy_api import RENPY_API_DOCS, get_renpy_api_hover
+
         assert isinstance(RENPY_API_DOCS, dict)
         assert len(RENPY_API_DOCS) > 100, "Должно быть 220+ API описаний"
         assert callable(get_renpy_api_hover)
@@ -256,26 +302,31 @@ class TestDomain:
     def test_import_text_tags(self):
         """text_tags — парсинг {b}, {i}, [var] и т.д."""
         from senpy.domain.text_tags import get_utf16_range
+
         assert callable(get_utf16_range)
 
     def test_import_assets(self):
         """AssetManager — индексация спрайтов/аудио."""
         from senpy.domain.assets import AssetManager
+
         assert AssetManager is not None
 
     def test_import_rpa(self):
         """safe_load_rpa_index — безопасная загрузка .rpa архивов."""
         from senpy.domain.rpa import safe_load_rpa_index
+
         assert callable(safe_load_rpa_index)
 
     def test_import_tsundere(self):
         """Tsundere-режим — IS_RU и сообщения."""
         from senpy.domain.tsundere import IS_RU
+
         assert isinstance(IS_RU, bool)
 
     def test_import_deprecated(self):
         """DEPRECATED_APIS — для RPY107."""
         from senpy.rules.deprecated import DEPRECATED_APIS
+
         assert isinstance(DEPRECATED_APIS, dict)
         assert len(DEPRECATED_APIS) > 0
 
@@ -288,6 +339,7 @@ class TestDomain:
             BUILTIN_SYMBOLS,
             CLAUSE_KEYWORDS,
         )
+
         assert isinstance(BUILTIN_SCREENS, set)
         assert isinstance(BUILTIN_COLORS, set)
         assert isinstance(BUILTIN_AUDIO_CHANNELS, set)
@@ -298,6 +350,7 @@ class TestDomain:
 # =============================================================================
 # 5. Символы, scope, signature
 # =============================================================================
+
 
 class TestSymbolsAndScope:
     """Регистры символов и scope analysis."""
@@ -311,13 +364,14 @@ class TestSymbolsAndScope:
             TransformSymbol,
             VariableSymbol,
         )
-        for cls in [VariableSymbol, LabelSymbol, ScreenSymbol,
-                    ImageSymbol, TransformSymbol]:
+
+        for cls in [VariableSymbol, LabelSymbol, ScreenSymbol, ImageSymbol, TransformSymbol]:
             assert cls is not None
 
     def test_import_scope(self):
         """Scope, ScopeStack, ScopeType — отслеживание области видимости."""
         from senpy.core.scope import Scope, ScopeStack, ScopeType
+
         assert Scope is not None
         assert ScopeStack is not None
         assert ScopeType is not None
@@ -330,6 +384,7 @@ class TestSymbolsAndScope:
             parse_signature,
             validate_call_arguments,
         )
+
         assert SignatureInfo is not None
         for func in [parse_signature, parse_call_args, validate_call_arguments]:
             assert callable(func)
@@ -339,38 +394,45 @@ class TestSymbolsAndScope:
 # 6. I/O форматы
 # =============================================================================
 
+
 class TestIOFormats:
     """Экспортёры в разные форматы: SARIF, HTML, wiki, stubs, ci, traceback, stats."""
 
     def test_import_sarif(self):
         """generate_sarif — для GitHub Code Scanning."""
         from senpy.formats.sarif import generate_sarif
+
         assert callable(generate_sarif)
 
     def test_import_html_report(self):
         """generate_html_report — standalone HTML с Mermaid."""
         from senpy.formats.html_report import generate_html_report
+
         assert callable(generate_html_report)
 
     def test_import_wiki(self):
         """generate_project_wiki — Markdown-документация по правилам."""
         from senpy.formats.wiki import generate_project_wiki
+
         assert callable(generate_project_wiki)
 
     def test_import_stubs(self):
         """generate_stubs — Python type stubs (.pyi)."""
         from senpy.formats.stubs import generate_stubs
+
         assert callable(generate_stubs)
 
     def test_import_ci(self):
         """init_ci_workflow, find_repo_root — GitHub Actions workflow generation."""
         from senpy.formats.ci import find_repo_root, init_ci_workflow
+
         assert callable(init_ci_workflow)
         assert callable(find_repo_root)
 
     def test_import_traceback(self):
         """find_latest_traceback, parse_traceback_file — анализ краш-логов."""
         from senpy.formats.traceback import find_latest_traceback, parse_traceback_file
+
         assert callable(find_latest_traceback)
         assert callable(parse_traceback_file)
 
@@ -382,6 +444,7 @@ class TestIOFormats:
             collect_story_stats,
             extract_character_names,
         )
+
         assert callable(collect_story_stats)
         assert callable(extract_character_names)
         assert StoryStats is not None
@@ -390,12 +453,14 @@ class TestIOFormats:
     def test_import_coverage(self):
         """calculate_translation_coverage — translation coverage."""
         from senpy.core.coverage import LanguageStats, calculate_translation_coverage
+
         assert callable(calculate_translation_coverage)
         assert LanguageStats is not None
 
     def test_import_rules_info(self):
         """RULES_DATABASE — машиночитаемая база правил."""
         from senpy.rules.rules_info import RULES_DATABASE
+
         assert isinstance(RULES_DATABASE, dict)
         assert len(RULES_DATABASE) >= 45
 
@@ -403,6 +468,7 @@ class TestIOFormats:
 # =============================================================================
 # 7. Formatter (subpackage)
 # =============================================================================
+
 
 class TestFormatter:
     """senpy.formatter — opinionated .rpy formatter."""
@@ -415,6 +481,7 @@ class TestFormatter:
             Formatter,
             register_rule,
         )
+
         assert Formatter is not None
         assert FormatConfig is not None
         assert FormatContext is not None
@@ -423,6 +490,7 @@ class TestFormatter:
     def test_formatter_format_code_method(self):
         """Formatter.format_code — главный API."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         assert hasattr(fmt, "format_code")
         assert hasattr(fmt, "format_file")
@@ -435,6 +503,7 @@ class TestFormatter:
     def test_formatter_rules_loaded(self):
         """Все 4 правила formatter'а загружены через @register_rule."""
         from senpy.formatter.core import get_registered_rules
+
         rules = get_registered_rules()
         rule_names = [name for name, _ in rules]
         assert "FMT-INDENT" in rule_names
@@ -447,18 +516,21 @@ class TestFormatter:
 # 8. Vendored unrpyc
 # =============================================================================
 
+
 class TestVendoredUnrpyc:
     """senpy.vendor.unrpyc — встроенный декомпилятор .rpyc."""
 
     def test_import_decompile_rpyc(self):
         """decompile_rpyc — главный API vendored unrpyc."""
         from senpy.vendor.unrpyc import decompile_rpyc, decompile_rpyc_bytes
+
         assert callable(decompile_rpyc)
         assert callable(decompile_rpyc_bytes)
 
     def test_import_unrpyc_exceptions(self):
         """RPYCDecompilationError, BadRpycException — кастомные исключения."""
         from senpy.vendor.unrpyc import BadRpycException, RPYCDecompilationError
+
         assert issubclass(RPYCDecompilationError, Exception)
         assert issubclass(BadRpycException, Exception)
 
@@ -466,6 +538,7 @@ class TestVendoredUnrpyc:
 # =============================================================================
 # 9. Backward-compat: re-exports из senpy/__init__.py (если будут)
 # =============================================================================
+
 
 class TestSenpyPackageInit:
     """Проверка что `import senpy` работает и даёт ключевые имена.
@@ -480,6 +553,7 @@ class TestSenpyPackageInit:
     def test_import_senpy_package(self):
         """`import senpy` — базовый импорт пакета."""
         import senpy
+
         assert senpy is not None
 
     def test_senpy_version_attribute(self):
@@ -493,14 +567,16 @@ class TestSenpyPackageInit:
 
         # __version__ хранится в senpy/__version__.py (single source of truth)
         from senpy.__version__ import __version__
-        assert re.match(r"^\d+\.\d+\.\d+", __version__), (
-            f"__version__ should be in semver format (X.Y.Z), got: {__version__!r}"
-        )
+
+        assert re.match(
+            r"^\d+\.\d+\.\d+", __version__
+        ), f"__version__ should be in semver format (X.Y.Z), got: {__version__!r}"
 
 
 # =============================================================================
 # 10. Module structure integrity — все модули импортируемы
 # =============================================================================
+
 
 class TestModuleIntegrity:
     """Все .py модули в senpy/ (без vendor/) должны быть импортируемыми.
@@ -511,60 +587,63 @@ class TestModuleIntegrity:
     - Циклические импорты, которые ломают import
     """
 
-    @pytest.mark.parametrize("module_name", [
-        # Core
-        "senpy.core.analyzer",
-        "senpy.core.models",
-        "senpy.core.cache",
-        "senpy.core.cache_manifest",
-        "senpy.core.config",
-        "senpy.core.constants",
-        "senpy.core.coverage",
-        "senpy.core.scope",
-        "senpy.core.signature",
-        "senpy.core.sink",
-        "senpy.core.symbols",
-        # Rules
-        "senpy.rules.base",
-        "senpy.rules.checkers",
-        "senpy.rules.checkers.formatting",
-        "senpy.rules.checkers.screen",
-        "senpy.rules.checkers.asset",
-        "senpy.rules.checkers.dialogue",
-        "senpy.rules.checkers.state",
-        "senpy.rules.python_ast",
-        "senpy.rules.flow",
-        "senpy.rules.deprecated",
-        "senpy.rules.rules_info",
-        # CLI
-        "senpy.cli.main",
-        "senpy.cli.commands",
-        "senpy.cli.unrpyc",
-        # LSP
-        "senpy.lsp.server",
-        # I/O formats
-        "senpy.formats.sarif",
-        "senpy.formats.html_report",
-        "senpy.formats.wiki",
-        "senpy.formats.stubs",
-        "senpy.formats.ci",
-        "senpy.formats.traceback",
-        "senpy.formats.stats",
-        # Domain
-        "senpy.domain.renpy_api",
-        "senpy.domain.text_tags",
-        "senpy.domain.assets",
-        "senpy.domain.rpa",
-        "senpy.domain.tsundere",
-        # Meta
-        "senpy.__version__",
-        # Formatter subpackage
-        "senpy.formatter",
-        "senpy.formatter.core",
-        "senpy.formatter.rules",
-        "senpy.formatter.rules.indent",
-        "senpy.formatter.rules.whitespace",
-    ])
+    @pytest.mark.parametrize(
+        "module_name",
+        [
+            # Core
+            "senpy.core.analyzer",
+            "senpy.core.models",
+            "senpy.core.cache",
+            "senpy.core.cache_manifest",
+            "senpy.core.config",
+            "senpy.core.constants",
+            "senpy.core.coverage",
+            "senpy.core.scope",
+            "senpy.core.signature",
+            "senpy.core.sink",
+            "senpy.core.symbols",
+            # Rules
+            "senpy.rules.base",
+            "senpy.rules.checkers",
+            "senpy.rules.checkers.formatting",
+            "senpy.rules.checkers.screen",
+            "senpy.rules.checkers.asset",
+            "senpy.rules.checkers.dialogue",
+            "senpy.rules.checkers.state",
+            "senpy.rules.python_ast",
+            "senpy.rules.flow",
+            "senpy.rules.deprecated",
+            "senpy.rules.rules_info",
+            # CLI
+            "senpy.cli.main",
+            "senpy.cli.commands",
+            "senpy.cli.unrpyc",
+            # LSP
+            "senpy.lsp.server",
+            # I/O formats
+            "senpy.formats.sarif",
+            "senpy.formats.html_report",
+            "senpy.formats.wiki",
+            "senpy.formats.stubs",
+            "senpy.formats.ci",
+            "senpy.formats.traceback",
+            "senpy.formats.stats",
+            # Domain
+            "senpy.domain.renpy_api",
+            "senpy.domain.text_tags",
+            "senpy.domain.assets",
+            "senpy.domain.rpa",
+            "senpy.domain.tsundere",
+            # Meta
+            "senpy.__version__",
+            # Formatter subpackage
+            "senpy.formatter",
+            "senpy.formatter.core",
+            "senpy.formatter.rules",
+            "senpy.formatter.rules.indent",
+            "senpy.formatter.rules.whitespace",
+        ],
+    )
     def test_module_importable(self, module_name: str):
         """Модуль {module_name} должен быть импортируемым без ошибок."""
         try:
@@ -580,6 +659,7 @@ class TestModuleIntegrity:
 # =============================================================================
 # 11. Circular import detection — косвенная проверка
 # =============================================================================
+
 
 class TestNoCircularImports:
     """Проверка что главные модули не создают критических циклических зависимостей.
@@ -597,13 +677,16 @@ class TestNoCircularImports:
     очистки sys.modules — это и будет индикатором что циклы реально разорваны.
     """
 
-    @pytest.mark.parametrize("module_a,module_b", [
-        ("senpy.core.analyzer", "senpy.cli.main"),
-        ("senpy.core.analyzer", "senpy.rules.checkers"),
-        ("senpy.core.analyzer", "senpy.rules.python_ast"),
-        ("senpy.core.analyzer", "senpy.rules.flow"),
-        ("senpy.core.analyzer", "senpy.core.cache"),
-    ])
+    @pytest.mark.parametrize(
+        "module_a,module_b",
+        [
+            ("senpy.core.analyzer", "senpy.cli.main"),
+            ("senpy.core.analyzer", "senpy.rules.checkers"),
+            ("senpy.core.analyzer", "senpy.rules.python_ast"),
+            ("senpy.core.analyzer", "senpy.rules.flow"),
+            ("senpy.core.analyzer", "senpy.core.cache"),
+        ],
+    )
     def test_no_circular_dependency(self, module_a: str, module_b: str):
         """Модули {module_a} и {module_b} должны быть импортируемыми в любом порядке.
 

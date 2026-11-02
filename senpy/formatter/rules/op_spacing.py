@@ -39,17 +39,38 @@ from senpy.formatter.core import FormatConfig, FormatContext, register_rule
 # This prevents double-escaping when r"\+=" goes through re.escape().
 _BINARY_OPS = [
     # Augmented assignments (longest first)
-    "**=", "//=", ">>=", "<<=",
-    "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=",
+    "**=",
+    "//=",
+    ">>=",
+    "<<=",
+    "+=",
+    "-=",
+    "*=",
+    "/=",
+    "%=",
+    "&=",
+    "|=",
+    "^=",
     # Comparison
-    "==", "!=", "<=", ">=",
+    "==",
+    "!=",
+    "<=",
+    ">=",
     # Shift / bitwise
-    "<<", ">>",
+    "<<",
+    ">>",
     # Arithmetic
-    "//", "**",
-    "+", "-", "*", "/", "%",
+    "//",
+    "**",
+    "+",
+    "-",
+    "*",
+    "/",
+    "%",
     # Bitwise single
-    "&", "|", "^",
+    "&",
+    "|",
+    "^",
     # Assignment (last — shortest)
     "=",
 ]
@@ -74,9 +95,9 @@ for op in _BINARY_OPS:
     # Replace with " OP " (single space).
     escaped_op = re.escape(op)
     pattern = re.compile(
-        r"(?<=[\w\)\]\}])"   # left boundary: word char or closing bracket
+        r"(?<=[\w\)\]\}])"  # left boundary: word char or closing bracket
         r"\s*"
-        rf"({escaped_op})"   # the operator (escaped, captured)
+        rf"({escaped_op})"  # the operator (escaped, captured)
         r"\s*"
         r"(?=[\w\(\'\"\{\[])"  # right boundary: word char, opening bracket, or quote
     )
@@ -106,6 +127,7 @@ def _process_code_segment(segment: str) -> str:
         # Use a function replacement to control spacing precisely.
         def _replace(match, op=op):
             return f" {op} "
+
         result = pattern.sub(_replace, result)
     return result
 
@@ -131,18 +153,18 @@ def _split_by_strings(line: str) -> list[tuple[str, bool]]:
         ch = line[i]
 
         # Check for triple-quoted string
-        if line[i:i + 3] in ('"""', "'''"):
+        if line[i : i + 3] in ('"""', "'''"):
             if current_code:
                 segments.append((current_code, False))
                 current_code = ""
-            quote = line[i:i + 3]
+            quote = line[i : i + 3]
             end = line.find(quote, i + 3)
             if end == -1:
                 # Unterminated triple-quote — take rest of line
                 segments.append((line[i:], True))
                 i = n
             else:
-                segments.append((line[i:end + 3], True))
+                segments.append((line[i : end + 3], True))
                 i = end + 3
             continue
 
@@ -161,7 +183,7 @@ def _split_by_strings(line: str) -> list[tuple[str, bool]]:
                     break
                 j += 1
             if j < n:
-                segments.append((line[i:j + 1], True))
+                segments.append((line[i : j + 1], True))
                 i = j + 1
             else:
                 # Unterminated string — take rest of line

@@ -6,6 +6,7 @@
     в выводе — логи идут через logging, не через print().
   - caplog должен ловить эти же сообщения на уровне WARNING.
 """
+
 from __future__ import annotations
 
 import logging
@@ -54,8 +55,7 @@ def test_load_plugin_failed_import_logs_warning(capsys, caplog):
     assert "WARNING" not in captured.out
     # ДОЛЖНО быть в caplog
     assert any(
-        "Failed to load plugin" in r.message and "bad_plugin" in r.message
-        for r in caplog.records
+        "Failed to load plugin" in r.message and "bad_plugin" in r.message for r in caplog.records
     ), f"warning not logged: {caplog.records}"
 
 
@@ -70,8 +70,7 @@ def test_load_plugin_not_rule_subclass_logs_warning(capsys, caplog):
     captured = capsys.readouterr()
     assert "WARNING" not in captured.err
     assert any(
-        "Rule subclass" in r.message and "not_a_rule" in r.message
-        for r in caplog.records
+        "Rule subclass" in r.message and "not_a_rule" in r.message for r in caplog.records
     ), f"warning not logged: {caplog.records}"
 
 
@@ -83,6 +82,7 @@ def test_trust_plugin_prompt_logs_info(capsys, caplog, monkeypatch):
     with caplog.at_level(logging.INFO, logger="senpy.plugins"):
         # untrust before to trigger the prompt path
         from senpy.plugins.security import untrust_plugin
+
         untrust_plugin("trustme_test")
         result = loader_mod._default_trust_callback("trustme_test")
 
@@ -114,6 +114,5 @@ def test_register_loaded_plugins_logs_warning_for_no_meta(capsys, caplog):
     captured = capsys.readouterr()
     assert "WARNING" not in captured.err
     assert any(
-        "no meta" in r.message.lower() and "no_meta_plugin" in r.message
-        for r in caplog.records
+        "no meta" in r.message.lower() and "no_meta_plugin" in r.message for r in caplog.records
     ), f"warning not logged: {caplog.records}"

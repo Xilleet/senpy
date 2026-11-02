@@ -7,6 +7,7 @@ RPY703: Неиспользуемые `screen`-определения
 Все правила отключаются, если в проекте есть динамические jump'ы
 (analyzer.has_dynamic_jumps = True), чтобы избежать ложных срабатываний.
 """
+
 from __future__ import annotations
 
 import time
@@ -39,6 +40,7 @@ def _run_senpy(code: str, tmp_path: Path, extra_files: dict[str, bytes] | None =
 # =============================================================================
 # RPY701: Неиспользуемые define
 # =============================================================================
+
 
 def test_rpy701_unused_define(tmp_path: Path):
     """RPY701: define без использования → HINT."""
@@ -92,6 +94,7 @@ label start:
 # RPY702: Неиспользуемые transform
 # =============================================================================
 
+
 def test_rpy702_unused_transform(tmp_path: Path):
     """RPY702: transform без использования в show/scene at → HINT."""
     code = """
@@ -132,6 +135,7 @@ label start:
 # =============================================================================
 # RPY703: Неиспользуемые screen
 # =============================================================================
+
 
 def test_rpy703_unused_screen(tmp_path: Path):
     """RPY703: screen без call/use/Show → HINT."""
@@ -188,6 +192,7 @@ label start:
 # Отключение при динамических jump'ах
 # =============================================================================
 
+
 def test_rpy701_703_disabled_with_dynamic_jumps(tmp_path: Path):
     """RPY701-703 отключаются, если есть динамические jump'ы."""
     code = """
@@ -210,8 +215,9 @@ label start:
 
 
 # =============================================================================
-# Регрессионный тест производительности 
+# Регрессионный тест производительности
 # =============================================================================
+
 
 def test_rpy7xx_performance_large_project(tmp_path: Path):
     """_check_unused_declarations должен быть O(N+M), а не O(N*M).
@@ -267,9 +273,9 @@ def test_rpy7xx_performance_large_project(tmp_path: Path):
             if n >= num_screens:
                 break
             if n % 2 == 0:
-                lines.append(f"screen scr_{n}():\n    text \"hello\"")
+                lines.append(f'screen scr_{n}():\n    text "hello"')
             else:
-                lines.append(f"screen unused_scr_{n}():\n    text \"hello\"")
+                lines.append(f'screen unused_scr_{n}():\n    text "hello"')
 
         # Используем чётные символы в label
         lines.append("label start:")
@@ -288,9 +294,7 @@ def test_rpy7xx_performance_large_project(tmp_path: Path):
         while len(lines) < lines_per_file:
             lines.append(f"    # padding line {len(lines)}")
 
-        (game_dir / f"script_{f_idx:03d}.rpy").write_text(
-            "\n".join(lines) + "\n", encoding="utf-8"
-        )
+        (game_dir / f"script_{f_idx:03d}.rpy").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     analyzer = SenpyAnalyzer(str(tmp_path))
 

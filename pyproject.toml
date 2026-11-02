@@ -133,6 +133,10 @@ ignore = [
     "B905",    # zip without strict= — unsafe fix (может изменить поведение на неравных длинах)
     "N812",    # lowercase imported as non-lowercase — стилистическое, не критично
     "N806",    # non-lowercase variable in function — стилистическое
+    "N802",    # function name should be lowercase — ломает ast.NodeVisitor.visit_*
+    # (visit_If, visit_ImportFrom, etc.) — это Python AST API, нельзя переименовать.
+    "UP038",   # isinstance(x, (A, B)) → isinstance(x, A | B) — deprecated rule,
+    # меняет семантику на Python 3.9- (где A | B для типов не работает в isinstance).
     "SIM110",  # reimplemented-builtin (any/all вместо for) — иногда читаемость важнее
 ]
 
@@ -155,9 +159,6 @@ ignore = [
 # для ручного patch'а при обновлении unrpyc.
 # html_report.py — содержит HTML/CSS как f-string, whitespace легитимен внутри шаблона
 "senpy/html_report.py" = ["W291", "W293"]
-# analyzer.py, server.py — warnings.filterwarnings() ДО импортов (подавление pygls warnings)
-"senpy/analyzer.py" = ["E402"]
-"senpy/server.py" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"

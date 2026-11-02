@@ -7,6 +7,7 @@
 4. Фильтрует по query (если передан)
 5. Возвращает пустой список, если нет совпадений
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -133,7 +134,7 @@ def test_workspace_symbol_symbol_kinds(tmp_path: Path):
 
     game_dir = tmp_path / "game"
     (game_dir / "extra.rpy").write_text(
-        'screen my_screen():\n    pass\n\ntransform my_transform:\n    pass\n',
+        "screen my_screen():\n    pass\n\ntransform my_transform:\n    pass\n",
         encoding="utf-8",
     )
     analyzer = SenpyAnalyzer(str(tmp_path))

@@ -7,6 +7,8 @@ matters.
 This document covers:
 
 - [Quick start](#quick-start)
+- [Good first issues](#good-first-issues) — where to start if you want to help
+- [Solo-maintainer expectations](#solo-maintainer-expectations) — read this before opening a PR
 - [Project layout](#project-layout)
 - [How to add a new lint rule](#how-to-add-a-new-lint-rule)
 - [How to add a new formatter rule](#how-to-add-a-new-formatter-rule)
@@ -14,6 +16,127 @@ This document covers:
 - [Commit style and pull requests](#commit-style-and-pull-requests)
 - [Releases](#releases)
 - [Code of conduct](#code-of-conduct)
+
+---
+
+## Good first issues
+
+If you want to contribute but don't know where to start, here is a list of
+**low-risk, well-scoped** tasks that are genuinely useful and won't require
+deep knowledge of the analyzer internals. Pick one, leave a comment on the
+relevant issue (or open one if it doesn't exist), and we'll guide you.
+
+### Rules — fixture coverage
+
+Senpy has 40+ rules, but only 23 have fixture tests. Picking a rule and adding
+fixture coverage is the single most valuable contribution a newcomer can
+make — it directly improves the test suite and forces you to understand one
+rule end-to-end.
+
+| Rule | What it catches | Fixture status |
+| ---- | --------------- | -------------- |
+| RPY201 | Predictive state mutation in screen | missing |
+| RPY202 | SetVariable leak via screen action | missing |
+| RPY203 | Dead button (no `action`) | missing |
+| RPY205 | Imperative `for`/`while` loop in screen | missing |
+| RPY301 | Unclosed text tag | partial |
+| RPY401 | Menu branch asymmetry | partial |
+| RPY403 | Logical contradiction | missing |
+| RPY404 | Reading a MAYBE_SET variable | partial |
+| RPY502 | Unresolved sprite / transform / transition | partial |
+| RPY505 | Invalid audio channel | partial |
+
+To add fixtures for, say, `RPY401`:
+
+1. Create `tests/fixtures/rules/RPY401/bad_branch.rpy` with a code sample that
+   triggers the rule.
+2. Create `tests/fixtures/rules/RPY401/bad_branch.json` with the expected
+   diagnostics (look at any existing `bad_*.json` for the format).
+3. Create `tests/fixtures/rules/RPY401/good_branch.rpy` with a code sample
+   that does NOT trigger the rule.
+4. Run `pytest tests/test_fixtures.py -k RPY401 -v` — if it passes, you're done.
+
+### Docs — typo / clarity fixes
+
+If you spot a typo, awkward phrasing, or unclear explanation in `README.md`,
+`README_ru.md`, `RULES.md`, `ARCHITECTURE.md`, or `SECURITY.md` — just open
+a PR. These are merged fast and don't need an issue first.
+
+### Examples — new example .rpy files
+
+The `examples/` directory currently has the plugin example and a formatter
+demo. Useful additions:
+
+- A minimal `.rpy` showing each rule category (RPY0xx, RPY1xx, RPY2xx, ...)
+  with comments explaining what each rule catches.
+- A "before/after" `.rpy` showing what `senpy format` does.
+
+### Plugin rules (advanced but self-contained)
+
+If you have a domain-specific check (e.g. "flag all dialogue lines not wrapped
+in `_()`", or "flag use of `renpy.music.play` with `.mp3` instead of `.ogg`")
+— write it as a plugin, not a core rule. See
+[`examples/my_senpy_plugin/`](examples/my_senpy_plugin/) for a working
+template. Plugin rules don't need any changes to the Senpy core.
+
+---
+
+## Solo-maintainer expectations
+
+**Senpy is a one-maintainer project.** This section sets realistic
+expectations so you don't get frustrated and the maintainer doesn't burn
+out.
+
+### Review time
+
+- Bug reports and feature requests: **acknowledged within ~1 week**.
+- Small PRs (typo, fixture, doc fix): **reviewed within 1–2 weeks**.
+- Larger PRs (new rule, refactoring, LSP handler change): **2–4 weeks**,
+  sometimes longer. The maintainer reviews every line of every PR and runs
+  the change against real Ren'Py projects before merging.
+
+If a PR sits for longer than that, please **ping with a comment** — the
+maintainer sometimes loses notifications. Do not open a duplicate PR.
+
+### What gets merged fast
+
+- TDD-style PRs with fixtures (the test file *is* the spec).
+- Single-purpose PRs (one rule, one fix, one doc section).
+- PRs that follow the existing code style (me don't enforce `ruff format`,
+  but match the file you're editing).
+- PRs that update `CHANGELOG.md` under `[Unreleased]`.
+
+### What gets rejected or stalled
+
+- PRs without tests (the maintainer will ask for them).
+- PRs that mix unrelated changes (a bug fix + a new feature + a refactor).
+- PRs that break the existing `DiagnosticSink` Protocol contract or
+  introduce import cycles (run `python scripts/check_cycles.py` locally).
+- PRs that introduce security-sensitive code (pickle, subprocess, eval,
+  network) without a clear justification and a security test.
+
+### "Good enough" is good enough
+
+The maintainer would rather merge a PR that solves a problem on 80% of
+cases and is easy to read than spend three rounds of review pushing for a
+"perfect" 100%. If your PR has minor style issues, the maintainer may
+**fix them after merge** rather than blocking the PR. Don't be offended —
+that's faster for everyone.
+
+### Plugins are the delegation path
+
+If you want a feature that doesn't fit any existing rule domain, or that
+only makes sense for your specific Ren'Py project — **write it as a plugin,
+not a core rule**. The plugin system exists exactly for this. Plugin rules:
+
+- Don't need maintainer review to be useful (you can use them in your own
+  project immediately).
+- Don't risk breaking the Senpy core if they have a bug.
+- Don't add to the maintainer's review burden.
+
+See `examples/my_senpy_plugin/` and
+[Plugin Development README](examples/my_senpy_plugin/MY_SENPY_PLUGIN_README.md)
+for a working template.
 
 ---
 
@@ -82,11 +205,11 @@ senpy/
 │   │   │   ├── flow.py          # RPY4xx (branch dataflow) + Mermaid builder
 │   │   │   ├── formatting.py    # RPY0xx (style)
 │   │   │   ├── asset.py         # RPY5xx (assets/transforms)
-│   │   │   └── translation.py   # RPY6xx (translations) — TODO 
+│   │   │   └── translation.py   # RPY6xx (translations) — TODO
 │   │   ├── deprecated.py        # RPY107, RPY108, RPY109 (deprecated APIs)
 │   │   ├── python_ast.py        # Python AST visitor for $-statements
 │   │   ├── rules_info.py        # RULES_DATABASE, dynamic rule count
-│   │   └── dead_code.py         # RPY701/702/703 — TODO 
+│   │   └── dead_code.py         # RPY701/702/703 — TODO
 │   ├── formatter/               # Code formatter (like Black for Ren'Py)
 │   │   ├── core.py              # register_rule decorator, Formatter class
 │   │   └── rules/               # FMT-INDENT, FMT-QUOTES, etc.
@@ -134,6 +257,15 @@ senpy/
 
 There are two ways: a **core rule** (in `senpy/rules/`) or a **plugin rule**
 (distributed as a separate pip package). For core rules:
+
+> **When to choose plugin over core?** If your rule only makes sense for a
+> specific Ren'Py project (your visual novel, your mod), or if you're not
+> sure whether the maintainer will accept it into core — **write it as a
+> plugin first**. You can use it in your own project immediately, without
+> waiting for review. If it turns out to be widely useful, you can later
+> propose promoting it to core. See
+> [`examples/my_senpy_plugin/`](examples/my_senpy_plugin/) for a template.
+
 
 ### 1. Pick a rule code
 
@@ -278,6 +410,7 @@ a `@register_rule` decorator:
 # senpy/formatter/rules/comment_align.py
 from senpy.formatter.core import FormatterRule, register_rule
 
+
 @register_rule("FMT-COMMENT-ALIGN")
 class CommentAlignRule(FormatterRule):
     """Align inline comments with the surrounding code."""
@@ -366,7 +499,7 @@ Fixtures cover the basic case and a label with a docstring-only body.
 ```
 
 ```
-security(lsp): validate file: scheme in _uri_to_path 
+security(lsp): validate file: scheme in _uri_to_path
 
 Previously _uri_to_path accepted any URI scheme, including http: and
 https:. A malicious LSP client could trick Senpy into making network
@@ -481,8 +614,36 @@ Contributors **can**:
 Be kind. Be patient. Assume good faith. The maintainer is one person doing
 this in their free time.
 
-If someone is being unkind in an issue or PR, email the maintainer privately.
-We will block repeat offenders.
+### Be patient with review
+
+The maintainer sometimes takes 1–4 weeks to review a PR (see
+[Solo-maintainer expectations](#solo-maintainer-expectations)).
+If your PR sits for longer than that,
+**ping with a comment** instead of opening a duplicate.
+
+### Don't aim for "perfect" — aim for "shipped"
+
+The maintainer would rather merge a "good enough" PR today and improve it
+in a follow-up than wait three months for a "perfect" one. If your PR has
+rough edges, open it anyway and explain them in the description. The
+maintainer will either merge as-is and fix the edges, or suggest a small
+change list.
+
+### Don't be precious about your code
+
+Once a PR is merged, the code is **ours**. The maintainer (and
+other future contributors) will refactor it, rename things, move it around.
+This is normal and don't take it personally — your contribution is still
+credited in the commit history and (if you want) in `CHANGELOG.md`.
+
+### Security reports
+
+If someone is being unkind in an issue or PR, email the maintainer
+privately (see [SECURITY.md](SECURITY.md) for the channel). We will block
+repeat offenders.
+
+Security vulnerabilities are **not** reported via public GitHub Issues —
+see [SECURITY.md](SECURITY.md) for the private reporting channel.
 
 ---
 

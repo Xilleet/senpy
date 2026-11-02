@@ -5,6 +5,7 @@
 2. decompile_rpyc_bytes работает на простых данных
 3. decompile_to_sandbox интегрирована с vendored unrpyc
 """
+
 from __future__ import annotations
 
 import zlib
@@ -58,7 +59,7 @@ def test_decompile_to_sandbox_uses_vendored(tmp_path: Path):
     # Вызываем decompile_to_sandbox
     result = decompile_to_sandbox(
         orphans=[str(rpyc_file)],
-        unrpyc_cmd=None, # : параметр игнорируется
+        unrpyc_cmd=None,  # : параметр игнорируется
         temp_dir=str(tmp_path),
     )
 

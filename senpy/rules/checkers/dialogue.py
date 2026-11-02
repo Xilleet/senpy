@@ -181,12 +181,8 @@ class DialogueChecker(BaseChecker):
                 and self.analyzer.labels[target_label].signature
             ):
                 sig = self.analyzer.labels[target_label].signature
-                m_args = re.search(
-                    r"\bcall\s+(?!screen\b)[^\W\d]\w*\s*(?:\((.*?)\))?", stripped
-                )
-                call_args = (
-                    m_args.group(1) if m_args and m_args.group(1) is not None else None
-                )
+                m_args = re.search(r"\bcall\s+(?!screen\b)[^\W\d]\w*\s*(?:\((.*?)\))?", stripped)
+                call_args = m_args.group(1) if m_args and m_args.group(1) is not None else None
                 err_msg = validate_call_arguments(sig, call_args)
                 if err_msg:
                     self.analyzer._add_diagnostic(
@@ -274,11 +270,7 @@ class DialogueChecker(BaseChecker):
     ) -> None:
         """RPY305: Check for unescaped quotes inside dialogue text."""
         first_token = stripped.split()[0] if stripped.split() else ""
-        if (
-            not self.in_label_context
-            or is_in_screen
-            or first_token in NON_DIALOGUE_STATEMENTS
-        ):
+        if not self.in_label_context or is_in_screen or first_token in NON_DIALOGUE_STATEMENTS:
             return
 
         unescaped_quotes = re.findall(r'(?<!\\)"', stripped)

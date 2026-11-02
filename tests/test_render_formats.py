@@ -6,6 +6,7 @@ GREEN: после extraction из main() — тесты проходят.
 Ключевое отличие от main(): функции ВОЗВРАЩАЮТ exit code,
 а НЕ вызывают sys.exit() напрямую. main() делает sys.exit(render_sarif(...)).
 """
+
 from __future__ import annotations
 
 import json
@@ -17,6 +18,7 @@ import pytest
 # =============================================================================
 # Helpers: mock Diagnostic и AnalysisResult (как в test_filter_diagnostics)
 # =============================================================================
+
 
 @dataclass
 class MockDiagnostic:
@@ -46,6 +48,7 @@ class MockResult:
 def _make_args(**kwargs):
     """Создаёт mock Namespace с нужными атрибутами."""
     from argparse import Namespace
+
     defaults = {
         "path": ".",
         "output_file": None,
@@ -59,12 +62,14 @@ def _make_args(**kwargs):
 # render_sarif()
 # =============================================================================
 
+
 class TestRenderSarif:
     """Тесты для render_sarif() — извлечено из main() в Phase 3 Step 2b."""
 
     def test_render_sarif_exists(self):
         """render_sarif() должна существовать в senpy.cli.main."""
         from senpy.cli.main import render_sarif
+
         assert callable(render_sarif)
 
     def test_returns_int_exit_code(self):
@@ -72,6 +77,7 @@ class TestRenderSarif:
         from rich.console import Console
 
         from senpy.cli.main import render_sarif
+
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
         args = _make_args(output_format="sarif")
@@ -83,6 +89,7 @@ class TestRenderSarif:
         from rich.console import Console
 
         from senpy.cli.main import render_sarif
+
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
         args = _make_args(output_format="sarif")
@@ -94,6 +101,7 @@ class TestRenderSarif:
         from rich.console import Console
 
         from senpy.cli.main import render_sarif
+
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY104", severity="WARNING")]
         args = _make_args(output_format="sarif")
@@ -105,6 +113,7 @@ class TestRenderSarif:
         from rich.console import Console
 
         from senpy.cli.main import render_sarif
+
         console = Console(force_terminal=False, legacy_windows=False)
         args = _make_args(output_format="sarif")
         exit_code = render_sarif([], args, console)
@@ -115,6 +124,7 @@ class TestRenderSarif:
         from rich.console import Console
 
         from senpy.cli.main import render_sarif
+
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
         args = _make_args(output_format="sarif")
@@ -130,6 +140,7 @@ class TestRenderSarif:
         from rich.console import Console
 
         from senpy.cli.main import render_sarif
+
         console = Console(force_terminal=False, legacy_windows=False)
         out_file = tmp_path / "report.sarif"
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
@@ -144,12 +155,14 @@ class TestRenderSarif:
 # render_json()
 # =============================================================================
 
+
 class TestRenderJson:
     """Тесты для render_json() — извлечено из main() в Phase 3 Step 2b."""
 
     def test_render_json_exists(self):
         """render_json() должна существовать в senpy.cli.main."""
         from senpy.cli.main import render_json
+
         assert callable(render_json)
 
     def test_returns_int_exit_code(self):
@@ -157,6 +170,7 @@ class TestRenderJson:
         from rich.console import Console
 
         from senpy.cli.main import render_json
+
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
         result = MockResult(diagnostics=diags, total_lines=100, fixed_count=0)
@@ -169,6 +183,7 @@ class TestRenderJson:
         from rich.console import Console
 
         from senpy.cli.main import render_json
+
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
         result = MockResult(diagnostics=diags)
@@ -181,6 +196,7 @@ class TestRenderJson:
         from rich.console import Console
 
         from senpy.cli.main import render_json
+
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [MockDiagnostic(code="RPY104", severity="WARNING")]
         result = MockResult(diagnostics=diags)
@@ -193,9 +209,12 @@ class TestRenderJson:
         from rich.console import Console
 
         from senpy.cli.main import render_json
+
         console = Console(force_terminal=False, legacy_windows=False)
         diags = [
-            MockDiagnostic(code="RPY101", severity="ERROR", file_path="game/script.rpy", line_number=10),
+            MockDiagnostic(
+                code="RPY101", severity="ERROR", file_path="game/script.rpy", line_number=10
+            ),
         ]
         result = MockResult(diagnostics=diags, total_lines=500, fixed_count=2)
         args = _make_args(output_format="json")
@@ -216,6 +235,7 @@ class TestRenderJson:
         from rich.console import Console
 
         from senpy.cli.main import render_json
+
         console = Console(force_terminal=False, legacy_windows=False)
         out_file = tmp_path / "report.json"
         diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
@@ -231,6 +251,7 @@ class TestRenderJson:
         from rich.console import Console
 
         from senpy.cli.main import render_json
+
         console = Console(force_terminal=False, legacy_windows=False)
         result = MockResult(diagnostics=[], total_lines=0, fixed_count=0)
         args = _make_args(output_format="json")

@@ -12,6 +12,7 @@ Returned dimensions are clamped to a 400x200 bounding box (preserving aspect
 ratio) so hover thumbnails do not dominate the editor. The clamping is the
 same policy renpy-magic uses.
 """
+
 from __future__ import annotations
 
 import struct

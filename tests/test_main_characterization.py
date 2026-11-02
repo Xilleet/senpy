@@ -9,6 +9,7 @@ After it will:
 
 These tests run main() via subprocess to capture real CLI behavior.
 """
+
 from __future__ import annotations
 
 import os
@@ -80,6 +81,7 @@ def _run_senpy(args: list[str], cwd: Path | None = None) -> tuple[int, str, str]
 # 1. --version flag
 # =============================================================================
 
+
 def test_main_version_flag_prints_version_exits_0():
     """`senpy --version` prints 'senpy X.Y.Z' and exits 0."""
     code, out, _ = _run_senpy(["--version"])
@@ -91,14 +93,15 @@ def test_main_version_flag_prints_version_exits_0():
     # the *shape* of the output, not a specific version).
     import re
 
-    assert re.search(r"\b\d+\.\d+\.\d+\b", out), (
-        f"Expected a X.Y.Z version number in --version output, got: {out!r}"
-    )
+    assert re.search(
+        r"\b\d+\.\d+\.\d+\b", out
+    ), f"Expected a X.Y.Z version number in --version output, got: {out!r}"
 
 
 # =============================================================================
 # 2. --help flag
 # =============================================================================
+
 
 def test_main_help_flag_prints_help_exits_0():
     """`senpy --help` prints help and exits 0."""
@@ -115,6 +118,7 @@ def test_main_help_flag_prints_help_exits_0():
 # 3. format subcommand dispatch
 # =============================================================================
 
+
 def test_main_format_subcommand_dispatches(tmp_path: Path):
     """`senpy format X.rpy` dispatches to format subcommand."""
     f = tmp_path / "test.rpy"
@@ -122,15 +126,13 @@ def test_main_format_subcommand_dispatches(tmp_path: Path):
 
     code, out, err = _run_senpy(["format", str(f)], cwd=tmp_path)
 
-    assert code == 0, (
-        f"Expected exit 0, got {code}.\nstdout: {out!r}\nstderr: {err!r}"
-    )
+    assert code == 0, f"Expected exit 0, got {code}.\nstdout: {out!r}\nstderr: {err!r}"
     # File should be reformatted (tabs removed)
     content = f.read_text(encoding="utf-8")
     assert "\t" not in content, f"File not reformatted. stdout: {out!r}\nstderr: {err!r}"
-    assert "Formatted" in out or "formatted" in out.lower(), (
-        f"Expected 'Formatted' in output.\nstdout: {out!r}\nstderr: {err!r}"
-    )
+    assert (
+        "Formatted" in out or "formatted" in out.lower()
+    ), f"Expected 'Formatted' in output.\nstdout: {out!r}\nstderr: {err!r}"
 
 
 def test_main_format_subcommand_check_mode(tmp_path: Path):
@@ -141,9 +143,9 @@ def test_main_format_subcommand_check_mode(tmp_path: Path):
     code, out, err = _run_senpy(["format", "--check", str(f)], cwd=tmp_path)
 
     assert code == 1, f"Expected exit 1, got {code}.\nstdout: {out!r}\nstderr: {err!r}"
-    assert "Would reformat" in out, (
-        f"Expected 'Would reformat' in output.\nstdout: {out!r}\nstderr: {err!r}"
-    )
+    assert (
+        "Would reformat" in out
+    ), f"Expected 'Would reformat' in output.\nstdout: {out!r}\nstderr: {err!r}"
     # File NOT modified
     assert "\t" in f.read_text(encoding="utf-8")
 
@@ -152,17 +154,20 @@ def test_main_format_subcommand_check_mode(tmp_path: Path):
 # 4. Basic analysis on test_game
 # =============================================================================
 
+
 def test_main_analyzes_test_game_finds_diagnostics():
     """`senpy test_game --no-cache --exit-zero` finds diagnostics (12+ errors)."""
     # Find test_game directory (relative to repo root)
     repo_root = Path(__file__).parent.parent
     test_game = repo_root / "test_game"
 
-    code, out, _ = _run_senpy([
-        str(test_game),
-        "--no-cache",
-        "--exit-zero",
-    ])
+    code, out, _ = _run_senpy(
+        [
+            str(test_game),
+            "--no-cache",
+            "--exit-zero",
+        ]
+    )
 
     assert code == 0  # --exit-zero forces 0
     # Should find diagnostics (test_game has known issues)
@@ -178,16 +183,20 @@ def test_main_json_output_format():
     repo_root = Path(__file__).parent.parent
     test_game = repo_root / "test_game"
 
-    code, out, _ = _run_senpy([
-        str(test_game),
-        "--no-cache",
-        "--output-format", "json",
-    ])
+    code, out, _ = _run_senpy(
+        [
+            str(test_game),
+            "--no-cache",
+            "--output-format",
+            "json",
+        ]
+    )
 
     # Exit 1 is OK — JSON output path calls sys.exit before --exit-zero check
     assert code in (0, 1)
     # Output should be valid JSON
     import json
+
     data = json.loads(out)
     assert isinstance(data, dict)
     assert "diagnostics" in data
@@ -196,6 +205,7 @@ def test_main_json_output_format():
 # =============================================================================
 # 5. --rules flag
 # =============================================================================
+
 
 def test_main_rules_flag_lists_rules():
     """`senpy --rules` lists available rules and exits 0."""
@@ -209,6 +219,7 @@ def test_main_rules_flag_lists_rules():
 # 6. Invalid arguments
 # =============================================================================
 
+
 def test_main_invalid_output_format_exits_nonzero():
     """`senpy --output-format invalid` exits with error."""
     code, _, err = _run_senpy(["--output-format", "invalid"])
@@ -220,6 +231,7 @@ def test_main_invalid_output_format_exits_nonzero():
 # =============================================================================
 # 7. --check and --diff dry-run modes (monkey-patch open preserved)
 # =============================================================================
+
 
 def test_main_check_mode_dry_run(tmp_path: Path):
     """`senpy --check test_game --no-cache` is dry-run, doesn't modify files."""
@@ -234,11 +246,13 @@ def test_main_check_mode_dry_run(tmp_path: Path):
 
     original_content = (test_game_copy / "script.rpy").read_text(encoding="utf-8")
 
-    code, out, _ = _run_senpy([
-        str(test_game_copy),
-        "--no-cache",
-        "--check",
-    ])
+    code, out, _ = _run_senpy(
+        [
+            str(test_game_copy),
+            "--no-cache",
+            "--check",
+        ]
+    )
 
     # --check exits 1 if fixable issues found, 0 if none
     # test_game has fixable issues (RPY001 tabs, RPY002 smart quotes)
@@ -259,11 +273,13 @@ def test_main_diff_mode_dry_run(tmp_path: Path):
 
     original_content = (test_game_copy / "script.rpy").read_text(encoding="utf-8")
 
-    code, out, _ = _run_senpy([
-        str(test_game_copy),
-        "--no-cache",
-        "--diff",
-    ])
+    code, out, _ = _run_senpy(
+        [
+            str(test_game_copy),
+            "--no-cache",
+            "--diff",
+        ]
+    )
 
     # --diff exits 1 if changes would be applied, 0 if none
     assert code in (0, 1)
@@ -275,7 +291,9 @@ def test_main_diff_mode_dry_run(tmp_path: Path):
 # 8. Backward compat — main importable
 # =============================================================================
 
+
 def test_main_importable_from_cli_main():
     """main must remain importable from senpy.cli.main after."""
     from senpy.cli.main import main as f1
+
     assert callable(f1)

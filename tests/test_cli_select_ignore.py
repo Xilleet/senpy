@@ -19,6 +19,7 @@
   senpy --select RPY101 RPY102 --extend-ignore RPY101
   → показывает только RPY102 (RPY101 в select, но убран extend_ignore)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,7 +31,9 @@ from senpy.cli.main import filter_diagnostics
 from senpy.core.analyzer import AnalysisResult, Diagnostic
 
 
-def _make_diag(code: str, severity: str = "WARNING", file: str = "test.rpy", line: int = 1) -> Diagnostic:
+def _make_diag(
+    code: str, severity: str = "WARNING", file: str = "test.rpy", line: int = 1
+) -> Diagnostic:
     return Diagnostic(
         file_path=file,
         line_number=line,
@@ -66,6 +69,7 @@ def _make_result(*diags: Diagnostic) -> AnalysisResult:
 # =============================================================================
 # 1. --select: только перечисленные правила
 # =============================================================================
+
 
 def test_select_shows_only_listed_rules():
     """--select RPY101 RPY102 — показывает только их."""
@@ -103,6 +107,7 @@ def test_select_empty_shows_all():
 # 2. --extend-select: добавить к whitelist
 # =============================================================================
 
+
 def test_extend_select_adds_to_select():
     """--select RPY101 --extend-select RPY103 — показываются оба."""
     result = _make_result(
@@ -138,6 +143,7 @@ def test_extend_select_without_select_ignored():
 # =============================================================================
 # 3. --extend-ignore: добавить к blacklist
 # =============================================================================
+
 
 def test_extend_ignore_removes_from_results():
     """--extend-ignore RPY101 — скрывает RPY101."""
@@ -180,6 +186,7 @@ def test_extend_ignore_combines_with_ignore():
 # 4. Combination: --select + --extend-ignore
 # =============================================================================
 
+
 def test_select_with_extend_ignore():
     """--select RPY101 RPY102 --extend-ignore RPY101 — показывает только RPY102."""
     result = _make_result(
@@ -199,6 +206,7 @@ def test_select_with_extend_ignore():
 # =============================================================================
 # 5. Backward compat: существующий --ignore продолжает работать
 # =============================================================================
+
 
 def test_existing_ignore_still_works():
     """Старый --ignore RPY101 — обратная совместимость."""

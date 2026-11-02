@@ -42,8 +42,9 @@ def infer_ast_type(
         return _infer_constant(val_node)
     elif isinstance(val_node, ast.Name):
         return _infer_name(val_node, known_vars)
-    elif isinstance(val_node, (ast.List, ast.ListComp, ast.Dict, ast.DictComp,
-                                ast.Set, ast.SetComp, ast.Tuple)):
+    elif isinstance(
+        val_node, (ast.List, ast.ListComp, ast.Dict, ast.DictComp, ast.Set, ast.SetComp, ast.Tuple)
+    ):
         return _infer_collection(val_node)
     elif isinstance(val_node, ast.JoinedStr):
         return "str"
@@ -102,9 +103,7 @@ def _infer_collection(node: ast.AST) -> str | None:
     return None
 
 
-def _infer_unaryop(
-    node: ast.UnaryOp, known_vars: dict | None, depth: int
-) -> str | None:
+def _infer_unaryop(node: ast.UnaryOp, known_vars: dict | None, depth: int) -> str | None:
     """Infer type from unary operations (not x → bool, -x → int/float)."""
     if isinstance(node.op, ast.Not):
         return "bool"
@@ -115,9 +114,7 @@ def _infer_unaryop(
     return None
 
 
-def _infer_binop(
-    node: ast.BinOp, known_vars: dict | None, depth: int
-) -> str | None:
+def _infer_binop(node: ast.BinOp, known_vars: dict | None, depth: int) -> str | None:
     """Infer type from binary operations (+, -, *, /, //, %)."""
     lt = infer_ast_type(node.left, known_vars, depth + 1)
     rt = infer_ast_type(node.right, known_vars, depth + 1)
@@ -149,9 +146,7 @@ def _infer_binop(
     return None
 
 
-def _infer_ifexp(
-    node: ast.IfExp, known_vars: dict | None, depth: int
-) -> str | None:
+def _infer_ifexp(node: ast.IfExp, known_vars: dict | None, depth: int) -> str | None:
     """Infer type from ternary expression (a if cond else b)."""
     t_body = infer_ast_type(node.body, known_vars, depth + 1)
     t_else = infer_ast_type(node.orelse, known_vars, depth + 1)
@@ -192,8 +187,15 @@ def _infer_method_call(method: str) -> str | None:
     """Infer return type from method calls on known types."""
     # String methods
     if method in (
-        "upper", "lower", "strip", "lstrip", "rstrip",
-        "replace", "format", "capitalize", "title",
+        "upper",
+        "lower",
+        "strip",
+        "lstrip",
+        "rstrip",
+        "replace",
+        "format",
+        "capitalize",
+        "title",
     ):
         return "str"
     if method in ("split", "splitlines"):
@@ -633,6 +635,7 @@ class PythonAstChecker:
         except SyntaxError as e:
             # log debug instead of silent suppress.
             _logger.debug("check_screen_mutation: ast.parse failed: %s", e)
+
     def check_python_ast(
         self,
         py_code: str,
@@ -656,6 +659,7 @@ class PythonAstChecker:
         except SyntaxError as e:
             # log debug instead of silent suppress.
             _logger.debug("check_python_ast: ast.parse failed: %s", e)
+
     def _visit_import(
         self,
         node: ast.Import,
@@ -730,9 +734,7 @@ class PythonAstChecker:
     ) -> None:
         """RPY105/RPY102/RPY108: augmented assignment (+=, -=) checks."""
         if isinstance(node.target, ast.Name):
-            self._check_augassign_name(
-                node, file_path, start_line, noqa_map, lines, local_scope
-            )
+            self._check_augassign_name(node, file_path, start_line, noqa_map, lines, local_scope)
         elif isinstance(node.target, ast.Subscript):
             self._check_augassign_subscript(
                 node, file_path, start_line, noqa_map, lines, local_scope
@@ -753,16 +755,8 @@ class PythonAstChecker:
             return
 
         real_line = start_line + getattr(node, "lineno", 1) - 1
-        raw_l = (
-            lines[real_line - 1]
-            if lines and 0 <= real_line - 1 < len(lines)
-            else ""
-        )
-        if (
-            (not raw_l or var_name not in raw_l)
-            and lines
-            and 0 <= start_line - 1 < len(lines)
-        ):
+        raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+        if (not raw_l or var_name not in raw_l) and lines and 0 <= start_line - 1 < len(lines):
             raw_l = lines[start_line - 1]
         start_c, end_c = get_utf16_range(raw_l, var_name)
 
@@ -819,9 +813,12 @@ class PythonAstChecker:
             return
 
         is_incompatible = (
-            expected_t == "str" and op_t != "str"
-            or expected_t in ("int", "float") and op_t not in ("int", "float")
-            or expected_t == "list" and op_t not in ("list",)
+            expected_t == "str"
+            and op_t != "str"
+            or expected_t in ("int", "float")
+            and op_t not in ("int", "float")
+            or expected_t == "list"
+            and op_t not in ("list",)
             or expected_t in ("dict", "bool")
         )
 
@@ -854,19 +851,11 @@ class PythonAstChecker:
     ) -> None:
         """RPY105/RPY102: augmented assignment to Subscript target ($ CONST[x] += 1)."""
         root_name = _get_root_name(node.target.value)
-        if (
-            not root_name
-            or root_name in local_scope
-            or root_name in SYSTEM_MUTABLE_NAMESPACES
-        ):
+        if not root_name or root_name in local_scope or root_name in SYSTEM_MUTABLE_NAMESPACES:
             return
 
         real_line = start_line + getattr(node, "lineno", 1) - 1
-        raw_l = (
-            lines[real_line - 1]
-            if lines and 0 <= real_line - 1 < len(lines)
-            else ""
-        )
+        raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
         start_c, end_c = get_utf16_range(raw_l, root_name)
 
         root_var = self.analyzer.variables.get(root_name)
@@ -961,8 +950,14 @@ class PythonAstChecker:
         )
 
     def _check_assign_name_target(
-        self, target: ast.Name, value_node: ast.AST, file_path: str,
-        real_line: int, raw_l: str, noqa_map: dict, local_scope: set[str]
+        self,
+        target: ast.Name,
+        value_node: ast.AST,
+        file_path: str,
+        real_line: int,
+        raw_l: str,
+        noqa_map: dict,
+        local_scope: set[str],
     ) -> None:
         """RPY104/RPY108: Check assignment to Name target ($ var = value)."""
         if target.id in local_scope:
@@ -1006,16 +1001,17 @@ class PythonAstChecker:
             )
 
     def _check_assign_subscript_target(
-        self, target: ast.Subscript, file_path: str, real_line: int,
-        raw_l: str, noqa_map: dict, local_scope: set[str]
+        self,
+        target: ast.Subscript,
+        file_path: str,
+        real_line: int,
+        raw_l: str,
+        noqa_map: dict,
+        local_scope: set[str],
     ) -> None:
         """RPY105/RPY102: Check subscript assignment ($ CONST["key"] = "value")."""
         root_name = _get_root_name(target.value)
-        if (
-            not root_name
-            or root_name in local_scope
-            or root_name in SYSTEM_MUTABLE_NAMESPACES
-        ):
+        if not root_name or root_name in local_scope or root_name in SYSTEM_MUTABLE_NAMESPACES:
             return
 
         root_var = self.analyzer.variables.get(root_name)
@@ -1053,15 +1049,25 @@ class PythonAstChecker:
             )
 
     def _check_assign_tuple_target(
-        self, target: ast.Tuple | ast.List, value_node: ast.AST, file_path: str,
-        real_line: int, raw_l: str, noqa_map: dict, local_scope: set[str]
+        self,
+        target: ast.Tuple | ast.List,
+        value_node: ast.AST,
+        file_path: str,
+        real_line: int,
+        raw_l: str,
+        noqa_map: dict,
+        local_scope: set[str],
     ) -> None:
         """RPY104: Check tuple/list unpacking assignment ($ a, b = 1, 2)."""
         for elt in target.elts:
             if isinstance(elt, ast.Name) and elt.id not in local_scope:
                 self._verify_assign_target(
-                    elt.id, file_path, real_line, noqa_map,
-                    raw_line=raw_l, val_node=value_node,
+                    elt.id,
+                    file_path,
+                    real_line,
+                    noqa_map,
+                    raw_line=raw_l,
+                    val_node=value_node,
                 )
 
     def _visit_mutating_methods(
@@ -1088,8 +1094,13 @@ class PythonAstChecker:
                 )
 
     def _check_mutating_method_call(
-        self, sub: ast.Call, file_path: str, start_line: int,
-        noqa_map: dict, lines: list[str] | None, local_scope: set[str]
+        self,
+        sub: ast.Call,
+        file_path: str,
+        start_line: int,
+        noqa_map: dict,
+        lines: list[str] | None,
+        local_scope: set[str],
     ) -> None:
         """RPY105/RPY102: Check mutating methods (.append, .update, etc.) on
         constants and undeclared variables."""
@@ -1098,19 +1109,11 @@ class PythonAstChecker:
             return
 
         root_name = _get_root_name(sub.func.value)
-        if (
-            not root_name
-            or root_name in local_scope
-            or root_name in SYSTEM_MUTABLE_NAMESPACES
-        ):
+        if not root_name or root_name in local_scope or root_name in SYSTEM_MUTABLE_NAMESPACES:
             return
 
         real_line = start_line + getattr(sub, "lineno", 1) - 1
-        raw_l = (
-            lines[real_line - 1]
-            if lines and 0 <= real_line - 1 < len(lines)
-            else ""
-        )
+        raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
         target_str = f"{root_name}.{method_name}"
         sub_str = target_str if target_str in raw_l else root_name
         start_c, end_c = get_utf16_range(raw_l, sub_str)
@@ -1148,8 +1151,13 @@ class PythonAstChecker:
             )
 
     def _check_invalid_method_call(
-        self, sub: ast.Call, file_path: str, start_line: int,
-        noqa_map: dict, lines: list[str] | None, local_scope: set[str]
+        self,
+        sub: ast.Call,
+        file_path: str,
+        start_line: int,
+        noqa_map: dict,
+        lines: list[str] | None,
+        local_scope: set[str],
     ) -> None:
         """RPY108: Check for invalid method calls on known built-in types
         (list.add → .append, dict.append, str.pop, etc.)."""
@@ -1159,11 +1167,7 @@ class PythonAstChecker:
 
         var_id = sub.func.value.id
         var_sym = self.analyzer.variables.get(var_id)
-        if (
-            not var_sym
-            or var_sym.type_name not in KNOWN_TYPE_METHODS
-            or var_id in local_scope
-        ):
+        if not var_sym or var_sym.type_name not in KNOWN_TYPE_METHODS or var_id in local_scope:
             return
 
         t_name = var_sym.type_name
@@ -1172,11 +1176,7 @@ class PythonAstChecker:
             return
 
         real_line = start_line + getattr(sub, "lineno", 1) - 1
-        raw_l = (
-            lines[real_line - 1]
-            if lines and 0 <= real_line - 1 < len(lines)
-            else ""
-        )
+        raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
         target_str = f"{var_id}.{method_name}"
         sub_str = target_str if target_str in raw_l else method_name
         start_c, end_c = get_utf16_range(raw_l, sub_str)
@@ -1184,9 +1184,7 @@ class PythonAstChecker:
         if (t_name, method_name) in METHOD_SUGGESTIONS:
             hint = f" (did you mean '{METHOD_SUGGESTIONS[(t_name, method_name)]}' ?)"
         else:
-            matches = difflib.get_close_matches(
-                method_name, list(valid_methods), n=1, cutoff=0.6
-            )
+            matches = difflib.get_close_matches(method_name, list(valid_methods), n=1, cutoff=0.6)
             hint = f" (did you mean '.{matches[0]}()' ?)" if matches else ""
 
         self.analyzer._add_diagnostic(
@@ -1216,12 +1214,8 @@ class PythonAstChecker:
         local_scope: set[str],
     ) -> None:
         """Рекурсивный обход body и orelse для if/while."""
-        self._walk_python_nodes(
-            node.body, file_path, start_line, noqa_map, lines, local_scope
-        )
-        self._walk_python_nodes(
-            node.orelse, file_path, start_line, noqa_map, lines, local_scope
-        )
+        self._walk_python_nodes(node.body, file_path, start_line, noqa_map, lines, local_scope)
+        self._walk_python_nodes(node.orelse, file_path, start_line, noqa_map, lines, local_scope)
 
     def _visit_for(
         self,
@@ -1240,12 +1234,8 @@ class PythonAstChecker:
             for elt in node.target.elts:
                 if isinstance(elt, ast.Name):
                     loop_scope.add(elt.id)
-        self._walk_python_nodes(
-            node.body, file_path, start_line, noqa_map, lines, loop_scope
-        )
-        self._walk_python_nodes(
-            node.orelse, file_path, start_line, noqa_map, lines, loop_scope
-        )
+        self._walk_python_nodes(node.body, file_path, start_line, noqa_map, lines, loop_scope)
+        self._walk_python_nodes(node.orelse, file_path, start_line, noqa_map, lines, loop_scope)
 
     def _visit_try(
         self,
@@ -1257,22 +1247,14 @@ class PythonAstChecker:
         local_scope: set[str],
     ) -> None:
         """Рекурсивный обход body, orelse, finalbody и handlers для try."""
-        self._walk_python_nodes(
-            node.body, file_path, start_line, noqa_map, lines, local_scope
-        )
-        self._walk_python_nodes(
-            node.orelse, file_path, start_line, noqa_map, lines, local_scope
-        )
-        self._walk_python_nodes(
-            node.finalbody, file_path, start_line, noqa_map, lines, local_scope
-        )
+        self._walk_python_nodes(node.body, file_path, start_line, noqa_map, lines, local_scope)
+        self._walk_python_nodes(node.orelse, file_path, start_line, noqa_map, lines, local_scope)
+        self._walk_python_nodes(node.finalbody, file_path, start_line, noqa_map, lines, local_scope)
         for handler in node.handlers:
             h_scope = set(local_scope)
             if handler.name:
                 h_scope.add(handler.name)
-            self._walk_python_nodes(
-                handler.body, file_path, start_line, noqa_map, lines, h_scope
-            )
+            self._walk_python_nodes(handler.body, file_path, start_line, noqa_map, lines, h_scope)
 
     def _walk_python_nodes(
         self,
@@ -1316,7 +1298,6 @@ class PythonAstChecker:
                 self._visit_for(node, file_path, start_line, noqa_map, lines, local_scope)
             elif isinstance(node, ast.Try):
                 self._visit_try(node, file_path, start_line, noqa_map, lines, local_scope)
-
 
     def _verify_assign_target(
         self,
@@ -1466,6 +1447,7 @@ class PythonAstChecker:
         except SyntaxError as e:
             # log debug instead of silent suppress.
             _logger.debug("check_condition: ast.parse failed: %s", e)
+
     def check_cfg_condition(
         self,
         file_path: str,
@@ -1512,6 +1494,7 @@ class PythonAstChecker:
         except SyntaxError as e:
             # log debug instead of silent suppress.
             _logger.debug("check_cfg_condition: ast.parse failed: %s", e)
+
     def clear_safe_cfg_vars(self, py_code: str, branch_uninitialized: dict) -> None:
         """Удаляет переменные из неинициализированных, если им присвоено значение."""
         try:
@@ -1522,8 +1505,6 @@ class PythonAstChecker:
                         if isinstance(target, ast.Name):
                             branch_uninitialized.pop(target.id, None)
 
-
         except SyntaxError as e:
             # log debug instead of silent suppress.
             _logger.debug("clear_safe_cfg_vars: ast.parse failed: %s", e)
-

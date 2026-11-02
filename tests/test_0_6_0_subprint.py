@@ -18,6 +18,7 @@ FMT-COLON-SPACING — if x : → if x: and def f() : → def f():. NOT menu: (Re
 
 Idempotency tests on each new rule.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -38,25 +39,29 @@ class TestSenpyApiModule:
     def test_api_module_exists(self):
         """senpy.api module must exist as the public entry point."""
         import senpy.api
+
         assert senpy.api is not None
 
     def test_diagnostic_re_exported(self):
         """Diagnostic must be re-exported from senpy.api."""
         from senpy.api import Diagnostic
         from senpy.core.models import Diagnostic as CoreDiagnostic
-        assert Diagnostic is CoreDiagnostic, (
-            "senpy.api.Diagnostic must be the same object as senpy.core.models.Diagnostic"
-        )
+
+        assert (
+            Diagnostic is CoreDiagnostic
+        ), "senpy.api.Diagnostic must be the same object as senpy.core.models.Diagnostic"
 
     def test_rule_severity_re_exported(self):
         """RULE_SEVERITY dict must be re-exported from senpy.api."""
         from senpy.api import RULE_SEVERITY
         from senpy.core.models import RULE_SEVERITY as CoreRuleSeverity  # noqa: N811
+
         assert RULE_SEVERITY is CoreRuleSeverity
 
     def test_analysis_result_re_exported(self):
         """AnalysisResult must be re-exported from senpy.api."""
         from senpy.api import AnalysisResult
+
         assert AnalysisResult is not None
 
     def test_analyze_code_function_exists(self):
@@ -66,17 +71,19 @@ class TestSenpyApiModule:
         to lint a snippet of .rpy code without setting up SenpyAnalyzer.
         """
         from senpy.api import analyze_code
+
         assert callable(analyze_code)
 
     def test_analyze_code_returns_list_of_diagnostics(self):
         """analyze_code() must return list[Diagnostic] for a simple input."""
         from senpy.api import Diagnostic, analyze_code
+
         code = 'label start:\n    "Hello, [unknown_var]!"\n    jump nonexistent\n    return\n'
         result = analyze_code(code)
         assert isinstance(result, list), f"Expected list, got {type(result)}"
-        assert all(isinstance(d, Diagnostic) for d in result), (
-            f"All items must be Diagnostic, got {[type(d).__name__ for d in result]}"
-        )
+        assert all(
+            isinstance(d, Diagnostic) for d in result
+        ), f"All items must be Diagnostic, got {[type(d).__name__ for d in result]}"
         # Should detect RPY101 (unknown_var) and RPY302 (nonexistent label)
         codes = {d.code for d in result}
         assert "RPY101" in codes, f"Expected RPY101 in {codes}"
@@ -85,12 +92,14 @@ class TestSenpyApiModule:
     def test_analyze_code_empty_input(self):
         """analyze_code() on empty input returns empty list, not None or error."""
         from senpy.api import analyze_code
+
         assert analyze_code("") == []
         assert analyze_code("    ") == []
 
     def test_analyze_code_clean_input(self):
         """analyze_code() on already-clean code returns empty list (no diagnostics)."""
         from senpy.api import analyze_code
+
         code = 'label start:\n    "Hello"\n    return\n'
         result = analyze_code(code)
         assert result == [], f"Clean code should produce no diagnostics, got {result}"
@@ -98,6 +107,7 @@ class TestSenpyApiModule:
     def test_location_dataclass_exists(self):
         """Location dataclass for line:col positions (used by plugins)."""
         from senpy.api import Location
+
         loc = Location(line=5, character=10)
         assert loc.line == 5
         assert loc.character == 10
@@ -105,10 +115,11 @@ class TestSenpyApiModule:
     def test_api_all_exports(self):
         """__all__ must list all public names (for `from senpy.api import *`)."""
         import senpy.api
+
         expected = {"Diagnostic", "RULE_SEVERITY", "AnalysisResult", "Location", "analyze_code"}
-        assert expected.issubset(set(senpy.api.__all__)), (
-            f"Missing from __all__: {expected - set(senpy.api.__all__)}"
-        )
+        assert expected.issubset(
+            set(senpy.api.__all__)
+        ), f"Missing from __all__: {expected - set(senpy.api.__all__)}"
 
 
 # =============================================================================
@@ -130,38 +141,42 @@ class TestFmtQuotes:
     def test_smart_double_quotes_in_code(self):
         """$ status = “active” → $ status = "active"."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
-        code = '$ status = \u201cactive\u201d\n'
+        code = "$ status = \u201cactive\u201d\n"
         result = fmt.format_code(code)
-        assert '\u201c' not in result, f"Smart quote not replaced: {result!r}"
-        assert '\u201d' not in result
+        assert "\u201c" not in result, f"Smart quote not replaced: {result!r}"
+        assert "\u201d" not in result
         assert '"active"' in result
 
     def test_smart_single_quotes_in_code(self):
         """$ x = ‘value’ → $ x = 'value'."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x = \u2018value\u2019\n"
         result = fmt.format_code(code)
-        assert '\u2018' not in result
-        assert '\u2019' not in result
+        assert "\u2018" not in result
+        assert "\u2019" not in result
         assert "'value'" in result
 
     def test_dialogue_smart_quotes_preserved(self):
         """Smart quotes in dialogue (line starts with ") must be PRESERVED."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = '    "She said \u201chello\u201d to him."\n'
         result = fmt.format_code(code)
         # Smart quotes in dialogue are stylistic, do not replace
-        assert '\u201c' in result, f"Dialogue smart quote should be preserved: {result!r}"
-        assert '\u201d' in result
+        assert "\u201c" in result, f"Dialogue smart quote should be preserved: {result!r}"
+        assert "\u201d" in result
 
     def test_idempotent(self):
         """FMT-QUOTES: format(format(x)) == format(x)."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
-        code = '$ x = \u201ctest\u201d\n$ y = \u2018single\u2019\n'
+        code = "$ x = \u201ctest\u201d\n$ y = \u2018single\u2019\n"
         once = fmt.format_code(code)
         twice = fmt.format_code(once)
         assert once == twice, f"Not idempotent:\n--- once ---\n{once}\n--- twice ---\n{twice}"
@@ -185,6 +200,7 @@ class TestFmtOpSpacing:
     def test_simple_assignment(self):
         """$ x=1 → $ x = 1."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x=1\n"
         result = fmt.format_code(code)
@@ -193,6 +209,7 @@ class TestFmtOpSpacing:
     def test_arithmetic(self):
         """$ x=1+2*3 → $ x = 1 + 2 * 3."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x=1+2*3\n"
         result = fmt.format_code(code)
@@ -201,6 +218,7 @@ class TestFmtOpSpacing:
     def test_augmented_assignment(self):
         """$ x+=1 → $ x += 1."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x+=1\n"
         result = fmt.format_code(code)
@@ -209,6 +227,7 @@ class TestFmtOpSpacing:
     def test_unary_minus_preserved(self):
         """$ x = -5 → $ x = -5 (NOT $ x = - 5)."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x=-5\n"
         result = fmt.format_code(code)
@@ -218,6 +237,7 @@ class TestFmtOpSpacing:
     def test_string_content_preserved(self):
         """Strings: $ x = 'a=b' → unchanged (no space added inside string)."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x = 'a=b'\n"
         result = fmt.format_code(code)
@@ -227,6 +247,7 @@ class TestFmtOpSpacing:
     def test_idempotent(self):
         """FMT-OP-SPACING: format(format(x)) == format(x)."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x=1+2\n$ y =3*4-5\n$ z=a*b+c\n"
         once = fmt.format_code(code)
@@ -253,6 +274,7 @@ class TestFmtCommaSpacing:
     def test_function_args(self):
         """f(a,b,c) → f(a, b, c)."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x = f(a,b,c)\n"
         result = fmt.format_code(code)
@@ -261,6 +283,7 @@ class TestFmtCommaSpacing:
     def test_list_literal(self):
         """$ x = [1,2,3] → $ x = [1, 2, 3]."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x = [1,2,3]\n"
         result = fmt.format_code(code)
@@ -269,6 +292,7 @@ class TestFmtCommaSpacing:
     def test_dict_literal(self):
         """$ x = {a:1,b:2} → $ x = {a:1, b:2}."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x = {1:2,3:4}\n"
         result = fmt.format_code(code)
@@ -278,6 +302,7 @@ class TestFmtCommaSpacing:
     def test_already_spaced(self):
         """f(a, b, c) → f(a, b, c) (no change, idempotent)."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x = f(a, b, c)\n"
         result = fmt.format_code(code)
@@ -286,6 +311,7 @@ class TestFmtCommaSpacing:
     def test_string_content_preserved(self):
         """$ x = 'a,b,c' → unchanged."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x = 'a,b,c'\n"
         result = fmt.format_code(code)
@@ -295,6 +321,7 @@ class TestFmtCommaSpacing:
     def test_idempotent(self):
         """FMT-COMMA-SPACING: format(format(x)) == format(x)."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x = f(a,b,c)\n$ y = [1,2,3]\n$ z = {1:2,3:4,5:6}\n"
         once = fmt.format_code(code)
@@ -314,7 +341,7 @@ class TestFmtColonSpacing:
     - " :" before block opener → ":"  (remove space before colon)
     - "( ):" → "():" — no space inside empty parens before colon
     - "menu :" → "menu:" (Ren'Py menu: block opener)
-    - "label start :" → "label start:" 
+    - "label start :" → "label start:"
     - Dict literal: {a:1} NOT touched (colon in dict has no space anyway)
     - Slice: x[1:2] NOT touched (colon in slice)
     - Strings preserved
@@ -323,6 +350,7 @@ class TestFmtColonSpacing:
     def test_if_with_space_before_colon(self):
         """if x : → if x:"""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "if x :\n    pass\n"
         result = fmt.format_code(code)
@@ -332,6 +360,7 @@ class TestFmtColonSpacing:
     def test_function_def(self):
         """def f() : → def f():"""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "init python:\n    def f() :\n        return 1\n"
         result = fmt.format_code(code)
@@ -340,6 +369,7 @@ class TestFmtColonSpacing:
     def test_label_with_space_before_colon(self):
         """label start : → label start:"""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "label start :\n    return\n"
         result = fmt.format_code(code)
@@ -348,14 +378,16 @@ class TestFmtColonSpacing:
     def test_menu_with_space_before_colon(self):
         """menu : → menu:"""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
-        code = "menu :\n    \"Option\":\n        pass\n"
+        code = 'menu :\n    "Option":\n        pass\n'
         result = fmt.format_code(code)
         assert "menu:" in result, f"Got: {result!r}"
 
     def test_dict_colon_not_touched(self):
         """$ x = {a:1} → unchanged (dict colon has no space, formatter shouldn't add or remove)."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x = {1:2}\n"
         result = fmt.format_code(code)
@@ -364,6 +396,7 @@ class TestFmtColonSpacing:
     def test_slice_not_touched(self):
         """$ x = a[1:2] → unchanged (slice colon, no space)."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x = a[1:2]\n"
         result = fmt.format_code(code)
@@ -372,6 +405,7 @@ class TestFmtColonSpacing:
     def test_string_content_preserved(self):
         """Strings: $ x = 'a:b' → unchanged."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "$ x = 'a:b'\n"
         result = fmt.format_code(code)
@@ -381,6 +415,7 @@ class TestFmtColonSpacing:
     def test_idempotent(self):
         """FMT-COLON-SPACING: format(format(x)) == format(x)."""
         from senpy.formatter import FormatConfig, Formatter
+
         fmt = Formatter(FormatConfig())
         code = "if x :\n    pass\nlabel start :\n    return\n"
         once = fmt.format_code(code)
@@ -399,40 +434,41 @@ class TestFmtCombinedIdempotency:
     @pytest.fixture
     def fmt(self):
         from senpy.formatter import FormatConfig, Formatter
+
         return Formatter(FormatConfig())
 
     def test_combined_idempotency(self, fmt):
         """Realistic .rpy with quotes, ops, commas, colons — format(format(x)) == format(x)."""
         code = (
-            'label start:\n'
-            '    $ x=\u201cactive\u201d\n'           # smart quotes in code
-            '    $ y =1+2*3\n'                       # missing op spacing
-            '    $ z = f(a,b,c)\n'                   # missing comma spacing
-            '    if x :\n'                            # space before colon
-            '        "Hello, [name]!"\n'              # dialogue, smart quotes preserved
-            '    return\n'
+            "label start:\n"
+            "    $ x=\u201cactive\u201d\n"  # smart quotes in code
+            "    $ y =1+2*3\n"  # missing op spacing
+            "    $ z = f(a,b,c)\n"  # missing comma spacing
+            "    if x :\n"  # space before colon
+            '        "Hello, [name]!"\n'  # dialogue, smart quotes preserved
+            "    return\n"
         )
         once = fmt.format_code(code)
         twice = fmt.format_code(once)
-        assert once == twice, (
-            f"Combined idempotency broken:\n--- once ---\n{once}\n--- twice ---\n{twice}"
-        )
+        assert (
+            once == twice
+        ), f"Combined idempotency broken:\n--- once ---\n{once}\n--- twice ---\n{twice}"
 
     def test_combined_makes_expected_changes(self, fmt):
         """All 4 fixes apply correctly on combined input."""
         code = (
-            'label start:\n'
-            '    $ status = \u201cactive\u201d\n'
-            '    $ result=1+2\n'
-            '    $ items = [1,2,3]\n'
-            '    if status :\n'
+            "label start:\n"
+            "    $ status = \u201cactive\u201d\n"
+            "    $ result=1+2\n"
+            "    $ items = [1,2,3]\n"
+            "    if status :\n"
             '        "Hi"\n'
-            '    return\n'
+            "    return\n"
         )
         result = fmt.format_code(code)
 
         # FMT-QUOTES: smart quotes in code → straight
-        assert '\u201c' not in result or '"Hi"' in result.split('\n')[5]  # dialogue ok
+        assert "\u201c" not in result or '"Hi"' in result.split("\n")[5]  # dialogue ok
         assert '"active"' in result, f"FMT-QUOTES failed: {result!r}"
 
         # FMT-OP-SPACING: 1+2 → 1 + 2
@@ -448,13 +484,13 @@ class TestFmtCombinedIdempotency:
     def test_skip_block_untouched(self, fmt):
         """# senpy: format off ... on — все 4 правила НЕ трогают содержимое skip-блока."""
         code = (
-            '# senpy: format off\n'
-            '$ x=\u201cactive\u201d y=1+2 z=f(a,b,c) if x :\n'
-            '# senpy: format on\n'
+            "# senpy: format off\n"
+            "$ x=\u201cactive\u201d y=1+2 z=f(a,b,c) if x :\n"
+            "# senpy: format on\n"
         )
         result = fmt.format_code(code)
         # Skip block content must be unchanged
-        assert '\u201cactive\u201d' in result, f"Skip block touched quotes: {result!r}"
+        assert "\u201cactive\u201d" in result, f"Skip block touched quotes: {result!r}"
         assert "y=1+2" in result, f"Skip block touched ops: {result!r}"
         assert "f(a,b,c)" in result, f"Skip block touched commas: {result!r}"
         assert "if x :" in result, f"Skip block touched colons: {result!r}"

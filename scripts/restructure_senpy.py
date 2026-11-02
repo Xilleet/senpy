@@ -28,6 +28,7 @@
     Перед запуском — ОБЯЗАТЕЛЬНО закоммитьте все изменения!
     Скрипт меняет много файлов, откатить через git reset --hard будет проще.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -63,22 +64,18 @@ FILE_TO_FOLDER = {
     "signature.py": "core",
     "sink.py": "core",
     "symbols.py": "core",
-
     # === rules/ — lint-правила ===
     "python_ast.py": "rules",
     "flow.py": "rules",
     "deprecated.py": "rules",
     "rules_info.py": "rules",
     # checkers.py — особый случай, split на 5 файлов в rules/checkers/
-
     # === lsp/ — LSP-сервер ===
     "server.py": "lsp",
-
     # === cli/ — CLI ===
     "cli.py": "cli",  # → cli/main.py
     "_cli_commands.py": "cli",  # → cli/commands.py
     "_unrpyc_bootstrap.py": "cli",  # → cli/unrpyc.py
-
     # === formats/ — I/O форматы ===
     "sarif.py": "formats",
     "html_report.py": "formats",
@@ -87,7 +84,6 @@ FILE_TO_FOLDER = {
     "ci.py": "formats",
     "traceback.py": "formats",
     "stats.py": "formats",
-
     # === domain/ — Ren'Py domain knowledge ===
     "renpy_api.py": "domain",
     "text_tags.py": "domain",
@@ -119,6 +115,7 @@ CHECKER_SPLIT = {
 # 1. Создание структуры папок
 # =============================================================================
 
+
 def create_folder_structure(senpy_root: Path, dry_run: bool = False) -> None:
     """Создаёт 7 папок с __init__.py."""
     folders = ["core", "rules", "rules/checkers", "lsp", "cli", "formats", "domain"]
@@ -144,6 +141,7 @@ def create_folder_structure(senpy_root: Path, dry_run: bool = False) -> None:
 # =============================================================================
 # 2. Перемещение файлов
 # =============================================================================
+
 
 def move_file(
     src: Path,
@@ -199,6 +197,7 @@ def move_all_files(senpy_root: Path, dry_run: bool = False) -> None:
 # =============================================================================
 # 3. Split checkers.py на 5 файлов
 # =============================================================================
+
 
 def split_checkers_py(senpy_root: Path, dry_run: bool = False) -> None:
     """Разделяет checkers.py на 5 файлов в rules/checkers/ + base.py в rules/.
@@ -287,11 +286,11 @@ def split_checkers_py(senpy_root: Path, dry_run: bool = False) -> None:
         checkers_init = senpy_root / "rules" / "checkers" / "__init__.py"
         checkers_init.write_text(
             '"""Senpy rules/checkers subpackage — 5 чекеров, split из checkers.py."""\n\n'
-            'from senpy.rules.checkers.formatting import FormattingChecker\n'
-            'from senpy.rules.checkers.screen import ScreenChecker\n'
-            'from senpy.rules.checkers.asset import AssetChecker\n'
-            'from senpy.rules.checkers.dialogue import DialogueChecker\n'
-            'from senpy.rules.checkers.state import StateChecker\n\n'
+            "from senpy.rules.checkers.formatting import FormattingChecker\n"
+            "from senpy.rules.checkers.screen import ScreenChecker\n"
+            "from senpy.rules.checkers.asset import AssetChecker\n"
+            "from senpy.rules.checkers.dialogue import DialogueChecker\n"
+            "from senpy.rules.checkers.state import StateChecker\n\n"
             '__all__ = ["FormattingChecker", "ScreenChecker", "AssetChecker",\n'
             '           "DialogueChecker", "StateChecker"]\n',
             encoding="utf-8",
@@ -361,14 +360,14 @@ def update_imports_in_file(file_path: Path, dry_run: bool = False) -> bool:
         # from senpy.<old> import ... → from <new> import ...
         # Внимание: не трогаем senpy.<old>.<sub> (это подпакеты)
         content = re.sub(
-            rf'\bfrom senpy\.{old_module}\b(?!\.)',
-            f'from {new_module}',
+            rf"\bfrom senpy\.{old_module}\b(?!\.)",
+            f"from {new_module}",
             content,
         )
         # import senpy.<old> → import <new>
         content = re.sub(
-            rf'\bimport senpy\.{old_module}\b(?!\.)',
-            f'import {new_module}',
+            rf"\bimport senpy\.{old_module}\b(?!\.)",
+            f"import {new_module}",
             content,
         )
 
@@ -390,10 +389,9 @@ def update_all_imports(project_root: Path, dry_run: bool = False) -> None:
 
     # Исключаем __pycache__, vendor, .ruff_cache
     py_files = [
-        f for f in py_files
-        if "__pycache__" not in str(f)
-        and "vendor" not in str(f)
-        and ".ruff_cache" not in str(f)
+        f
+        for f in py_files
+        if "__pycache__" not in str(f) and "vendor" not in str(f) and ".ruff_cache" not in str(f)
     ]
 
     updated = 0
@@ -411,6 +409,7 @@ def update_all_imports(project_root: Path, dry_run: bool = False) -> None:
 # =============================================================================
 # 5. Re-exports в senpy/__init__.py
 # =============================================================================
+
 
 def create_senpy_init(senpy_root: Path, dry_run: bool = False) -> None:
     """Создаёт senpy/__init__.py с re-exports для backward compat."""
@@ -473,6 +472,7 @@ __all__ = [
 # 6. Проверки
 # =============================================================================
 
+
 def verify_no_cycles(project_root: Path) -> bool:
     """Запускает check_cycles.py, возвращает True если 0 циклов."""
     print("\n=== Проверка: циклы ===")
@@ -528,6 +528,7 @@ def verify_imports(project_root: Path) -> bool:
 # =============================================================================
 # Главная функция
 # =============================================================================
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -603,7 +604,9 @@ def main() -> int:
             print("\nДальнейшие шаги:")
             print("  1. pytest tests/test_imports.py -v  → 81 passed")
             print("  2. pytest tests/ -v                → 425 passed")
-            print("  3. git add -A && git commit -m 'refactor(0.5.4): restructure senpy/ into subpackages'")
+            print(
+                "  3. git add -A && git commit -m 'refactor(0.5.4): restructure senpy/ into subpackages'"
+            )
             return 0
         print("\n✗ Проверки не прошли. Откатите изменения: git reset --hard")
         return 1

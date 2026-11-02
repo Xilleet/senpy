@@ -6,6 +6,7 @@ we capture its current behavior so refactoring doesn't break it.
 These tests exercise _dispatch_format directly via subprocess-like
 calls (it takes argv list, returns exit code, prints to stdout).
 """
+
 from __future__ import annotations
 
 import sys
@@ -27,6 +28,7 @@ def _run_format(argv: list[str], capsys) -> tuple[int, str, str]:
 # 1. Help message
 # =============================================================================
 
+
 def test_format_help_exits_zero(capsys):
     """`senpy format --help` should print help and exit 0."""
     with pytest.raises(SystemExit) as exc_info:
@@ -42,6 +44,7 @@ def test_format_help_exits_zero(capsys):
 # =============================================================================
 # 2. Stdin mode (--stdin-filename)
 # =============================================================================
+
 
 def test_format_stdin_mode_formats_code(capsys, monkeypatch, tmp_path):
     """`senpy format --stdin-filename X.rpy` reads stdin, writes to stdout."""
@@ -70,6 +73,7 @@ def test_format_stdin_mode_idempotent(capsys, monkeypatch):
 # =============================================================================
 # 3. File mode — basic formatting
 # =============================================================================
+
 
 def test_format_file_writes_formatted(tmp_path, capsys):
     """`senpy format X.rpy` writes formatted version to file."""
@@ -121,6 +125,7 @@ def test_format_directory_recursively(tmp_path, capsys):
 # 4. --check mode (CI-friendly, no writes)
 # =============================================================================
 
+
 def test_format_check_exits_1_if_changes_needed(tmp_path, capsys):
     """`senpy format --check X.rpy` exits 1 if file needs formatting."""
     f = tmp_path / "test.rpy"
@@ -149,6 +154,7 @@ def test_format_check_exits_0_if_already_formatted(tmp_path, capsys):
 # 5. --diff mode (show diff, no writes)
 # =============================================================================
 
+
 def test_format_diff_shows_diff_no_writes(tmp_path, capsys):
     """`senpy format --diff X.rpy` prints unified diff, doesn't write."""
     f = tmp_path / "test.rpy"
@@ -175,6 +181,7 @@ def test_format_diff_already_formatted_exits_0(tmp_path, capsys):
 # =============================================================================
 # 6. Edge cases
 # =============================================================================
+
 
 def test_format_nonexistent_file_skipped(tmp_path, capsys):
     """`senpy format nonexistent.rpy` skips with warning."""
@@ -211,6 +218,7 @@ def test_format_multiple_files(tmp_path, capsys):
 # 7. Backward compat — import path
 # =============================================================================
 
+
 def test_dispatch_format_importable_from_cli_main():
     """_dispatch_format must remain importable from senpy.cli.main after.
 
@@ -219,6 +227,7 @@ def test_dispatch_format_importable_from_cli_main():
     """
     import senpy.cli.format_dispatch as fd_mod
     from senpy.cli.main import _dispatch_format as f1
+
     assert hasattr(fd_mod, "dispatch_format")
     # After : _dispatch_format in main.py should be re-export from format_dispatch
     # (we'll verify exact equality after extraction)

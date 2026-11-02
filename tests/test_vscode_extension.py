@@ -9,6 +9,7 @@
 Эти тесты НЕ требуют установки VS Code — они проверяют декларативные
 файлы конфигурации и наличие handler'а в server.py.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,6 +33,7 @@ _EXTENSION_TS = _VSCODE_DIR / "src" / "extension.ts"
 # =============================================================================
 # UX: language-configuration.json — Ren'Py language settings
 # =============================================================================
+
 
 class TestLanguageConfiguration:
     """Проверка language-configuration.json для VS Code.
@@ -57,10 +59,9 @@ class TestLanguageConfiguration:
     def test_line_comment_is_hash(self, lang_config):
         """lineComment должен быть '#' — единственный комментарий Ren'Py."""
         comments = lang_config.get("comments", {})
-        assert comments.get("lineComment") == "#", (
-            "Ren'Py использует '#' для комментариев. "
-            f"Получено: {comments.get('lineComment')!r}"
-        )
+        assert (
+            comments.get("lineComment") == "#"
+        ), f"Ren'Py использует '#' для комментариев. Получено: {comments.get('lineComment')!r}"
 
     def test_block_comment_absent_or_correct(self, lang_config):
         """blockComment не нужен (Ren'Py не поддерживает /* */), но если есть — корректный."""
@@ -77,9 +78,7 @@ class TestLanguageConfiguration:
         """brackets должен включать основные пары для Ren'Py/Python синтаксиса."""
         brackets = lang_config.get("brackets", [])
         assert isinstance(brackets, list)
-        assert len(brackets) >= 3, (
-            "Должно быть минимум 3 пары скобок: (), [], {}"
-        )
+        assert len(brackets) >= 3, "Должно быть минимум 3 пары скобок: (), [], {}"
         # Нормализуем для удобства проверки
         bracket_pairs = {tuple(b) for b in brackets}
         required = {("(", ")"), ("[", "]"), ("{", "}")}
@@ -94,9 +93,9 @@ class TestLanguageConfiguration:
 
         # Проверяем что есть кавычки (одиночные и двойные — Ren'Py использует оба)
         pair_strs = [json.dumps(p) for p in pairs]
-        assert any('"\\\\\\"' in p or '""' in p for p in pair_strs) or \
-               any('"' in p.get("open", "") and '"' in p.get("close", "") for p in pairs), \
-               "Должна быть пара для двойных кавычек"
+        assert any('"\\\\\\"' in p or '""' in p for p in pair_strs) or any(
+            '"' in p.get("open", "") and '"' in p.get("close", "") for p in pairs
+        ), "Должна быть пара для двойных кавычек"
 
     def test_surrounding_pairs(self, lang_config):
         """surroundingPairs — для surround-selection (выделить и нажать ( )."""
@@ -116,6 +115,7 @@ class TestLanguageConfiguration:
 
         # Проверим, что паттерн реально ловит типичные Ren'Py scope-openers
         import re as re_mod
+
         inc_re = re_mod.compile(inc)
         for sample in [
             "label start:",
@@ -125,17 +125,15 @@ class TestLanguageConfiguration:
             "init python:",
             "transform slide:",
         ]:
-            assert inc_re.search(sample), (
-                f"increaseIndentPattern {inc!r} должен матчить '{sample}'"
-            )
+            assert inc_re.search(sample), f"increaseIndentPattern {inc!r} должен матчить '{sample}'"
 
         dec = ir.get("decreaseIndentPattern", "")
         if dec:
             # Не должен матчить обычные строки
             dec_re = re_mod.compile(dec)
-            assert not dec_re.search("    jump somewhere"), (
-                "decreaseIndentPattern не должен срабатывать на обычной строке"
-            )
+            assert not dec_re.search(
+                "    jump somewhere"
+            ), "decreaseIndentPattern не должен срабатывать на обычной строке"
 
     def test_on_enter_rules_optional(self, lang_config):
         """onEnterRules — опционально, для авто-продолжения комментариев при Enter."""
@@ -147,6 +145,7 @@ class TestLanguageConfiguration:
 # =============================================================================
 # UX: package.json ссылается на language-configuration.json
 # =============================================================================
+
 
 class TestPackageJsonReferences:
     """package.json должен подключать language-configuration.json.
@@ -165,9 +164,9 @@ class TestPackageJsonReferences:
     def test_renpy_language_has_configuration(self, package_json):
         """contributes.languages[0] для 'renpy' должен иметь поле configuration."""
         languages = package_json.get("contributes", {}).get("languages", [])
-        assert any(lang.get("id") == "renpy" for lang in languages), (
-            "Должен быть language с id='renpy'"
-        )
+        assert any(
+            lang.get("id") == "renpy" for lang in languages
+        ), "Должен быть language с id='renpy'"
 
         renpy_lang = next(lang for lang in languages if lang.get("id") == "renpy")
         assert "configuration" in renpy_lang, (
@@ -196,6 +195,7 @@ class TestPackageJsonReferences:
 # UX: prepare_rename handler (textDocument/prepareRename)
 # =============================================================================
 
+
 class TestPrepareRename:
     """LSP-сервер должен поддерживать prepareRename для preview перед F2.
 
@@ -212,9 +212,7 @@ class TestPrepareRename:
             "для textDocument/prepareRename. Без него VS Code не покажет "
             "preview перед F2 rename."
         )
-        assert callable(server_mod.prepare_rename), (
-            "prepare_rename должен быть callable"
-        )
+        assert callable(server_mod.prepare_rename), "prepare_rename должен быть callable"
 
     def test_prepare_rename_returns_range_for_label(self, tmp_path: Path):
         """prepareRename на label возвращает Range слова под курсором."""
@@ -240,9 +238,7 @@ class TestPrepareRename:
 
         # Должен вернуть Range или PrepareRenameResult
         # Допускаем None если позиция невалидна, но для label — должен вернуть Range
-        assert result is not None, (
-            "prepare_rename на валидном label должен вернуть Range, не None"
-        )
+        assert result is not None, "prepare_rename на валидном label должен вернуть Range, не None"
 
         # result может быть Range или PrepareRenameResult(placeholder=...)
         # Проверим что это структура с line/character или имеет .range
@@ -257,9 +253,9 @@ class TestPrepareRename:
         assert rng.start.line == 13, f"start.line должен быть 13, получено {rng.start.line}"
         assert rng.end.line == 13, f"end.line должен быть 13, получено {rng.end.line}"
         # start.character <= 7 <= end.character
-        assert rng.start.character <= 7 <= rng.end.character, (
-            f"Range должен покрывать позицию 7: [{rng.start.character}, {rng.end.character}]"
-        )
+        assert (
+            rng.start.character <= 7 <= rng.end.character
+        ), f"Range должен покрывать позицию 7: [{rng.start.character}, {rng.end.character}]"
 
     def test_prepare_rename_returns_none_for_empty_position(self, tmp_path: Path):
         """prepareRename на пустой строке возвращает None (can't rename here)."""
@@ -300,27 +296,26 @@ class TestPrepareRename:
         # Находим блок @server.feature(lsp.TEXT_DOCUMENT_RENAME, ...)
         # Должен быть RenameOptions с prepare_provider=True
         rename_decorator_match = re.search(
-            r'@server\.feature\(\s*lsp\.TEXT_DOCUMENT_RENAME\s*,?\s*([^)]+)\)',
+            r"@server\.feature\(\s*lsp\.TEXT_DOCUMENT_RENAME\s*,?\s*([^)]+)\)",
             server_src,
             re.DOTALL,
         )
-        assert rename_decorator_match, (
-            "Не найден декоратор @server.feature(lsp.TEXT_DOCUMENT_RENAME, ...)"
-        )
+        assert (
+            rename_decorator_match
+        ), "Не найден декоратор @server.feature(lsp.TEXT_DOCUMENT_RENAME, ...)"
         decorator_args = rename_decorator_match.group(1)
         assert "prepare_provider" in decorator_args, (
             "TEXT_DOCUMENT_RENAME должен быть зарегистрирован с "
             "RenameOptions(prepare_provider=True). Без этого VS Code "
             "не вызовет textDocument/prepareRename."
         )
-        assert "True" in decorator_args, (
-            "prepare_provider должен быть True"
-        )
+        assert "True" in decorator_args, "prepare_provider должен быть True"
 
 
 # =============================================================================
 # UX: extension.ts — synchronize для подхвата.senpy.toml
 # =============================================================================
+
 
 class TestExtensionSynchronize:
     """extension.ts должен настраивать synchronize для .senpy.toml и *.rpy.
@@ -355,28 +350,22 @@ class TestExtensionSynchronize:
         #   synchronize: { ... "**/.senpy.toml" ... }
         # Гибко проверим, что senpy.toml где-то упоминается в synchronize-блоке
         sync_match = re.search(
-            r'synchronize\s*:\s*\{([^}]+)\}',
+            r"synchronize\s*:\s*\{([^}]+)\}",
             extension_src,
             re.DOTALL,
         )
-        assert sync_match, (
-            "Должен быть synchronize: { ... } блок в clientOptions"
-        )
+        assert sync_match, "Должен быть synchronize: { ... } блок в clientOptions"
         sync_body = sync_match.group(1)
-        assert "senpy.toml" in sync_body.lower(), (
-            f"synchronize должен следить за .senpy.toml. "
-            f"Тело synchronize: {sync_body!r}"
-        )
+        assert (
+            "senpy.toml" in sync_body.lower()
+        ), f"synchronize должен следить за .senpy.toml. Тело synchronize: {sync_body!r}"
 
     def test_document_selector_includes_renpy(self, extension_src):
         """documentSelector должен включать language: 'renpy'."""
-        assert "renpy" in extension_src, (
-            "documentSelector должен содержать language: 'renpy'"
-        )
+        assert "renpy" in extension_src, "documentSelector должен содержать language: 'renpy'"
 
     def test_no_vulnerability_in_esbuild_version(self, extension_src):
         """Smoke-тест: extension.ts должен компилироваться (нет очевидных ошибок)."""
         # Простая проверка: активация есть, deactivate есть
         assert "export function activate" in extension_src
-        assert "export function deactivate" in extension_src or \
-               "deactivate()" in extension_src
+        assert "export function deactivate" in extension_src or "deactivate()" in extension_src

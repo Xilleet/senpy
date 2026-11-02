@@ -22,6 +22,7 @@ In 0.6.0 Заход 2 , this registry will be populated from:
 
 For now (Заход 1), only #1 works — @register_rule in code.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

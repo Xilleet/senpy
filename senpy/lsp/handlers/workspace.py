@@ -11,6 +11,7 @@ Handler'ы:
 Все функции принимают (ls, params) и обращаются к shared state через
 server_mod._X (lazy import разрывает цикл импортов).
 """
+
 from __future__ import annotations
 
 import re
@@ -28,6 +29,7 @@ from lsprotocol import types as lsp
 def _get_server_mod():
     """Ленивый доступ к senpy.lsp.server, разрывает цикл импортов."""
     from senpy.lsp import server
+
     return server
 
 
@@ -251,7 +253,11 @@ def document_highlight(
                     or stripped.startswith(f"default {word}")
                     or stripped.startswith(f"define {word}")
                 )
-                kind = lsp.DocumentHighlightKind.Write if is_declaration else lsp.DocumentHighlightKind.Read
+                kind = (
+                    lsp.DocumentHighlightKind.Write
+                    if is_declaration
+                    else lsp.DocumentHighlightKind.Read
+                )
                 highlights.append(
                     lsp.DocumentHighlight(
                         range=lsp.Range(

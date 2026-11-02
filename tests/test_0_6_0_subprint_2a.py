@@ -14,6 +14,7 @@ Architecture:
     ├── registry.py                # : @register_rule, get_registered_lint_rules
     └── security.py                # SEC-P1: PLUGIN_API_VERSION, check_api_version
 """
+
 from __future__ import annotations
 
 import pytest
@@ -48,11 +49,13 @@ class TestRuleBaseClass:
     def test_rule_base_class_exists(self):
         """Rule base class must exist in senpy.plugins.base."""
         from senpy.plugins.base import Rule
+
         assert Rule is not None
 
     def test_rule_meta_dataclass_exists(self):
         """RuleMeta dataclass with required fields (ESLint-style)."""
         from senpy.plugins.base import RuleMeta
+
         meta = RuleMeta(
             code="RPY901",
             docs="Test rule",
@@ -70,6 +73,7 @@ class TestRuleBaseClass:
     def test_rule_meta_severity_must_be_valid(self):
         """RuleMeta.severity must be one of ERROR/WARNING/HINT/INFO."""
         from senpy.plugins.base import RuleMeta
+
         for valid_severity in ("ERROR", "WARNING", "HINT", "INFO"):
             meta = RuleMeta(code="RPY999", docs="x", severity=valid_severity)
             assert meta.severity == valid_severity
@@ -77,12 +81,14 @@ class TestRuleBaseClass:
     def test_rule_meta_invalid_severity_raises(self):
         """RuleMeta.severity = "FATAL" must raise ValueError."""
         from senpy.plugins.base import RuleMeta
+
         with pytest.raises(ValueError, match="severity"):
             RuleMeta(code="RPY999", docs="x", severity="FATAL")
 
     def test_rule_meta_deprecated_with_replaced_by(self):
         """Deprecated rule can declare replacement."""
         from senpy.plugins.base import RuleMeta
+
         meta = RuleMeta(
             code="RPY999",
             docs="Old rule",
@@ -112,6 +118,7 @@ class TestRuleBaseClass:
     def test_rule_meta_code_must_match_rpy_pattern(self):
         """RuleMeta.code must be RPY\\d{3} format."""
         from senpy.plugins.base import RuleMeta
+
         # Valid codes
         for code in ("RPY001", "RPY101", "RPY999"):
             meta = RuleMeta(code=code, docs="x", severity="WARNING")
@@ -149,6 +156,7 @@ class TestRegisterRuleDecorator:
     def test_register_rule_decorator_exists(self):
         """@register_rule must be importable from senpy.plugins.registry."""
         from senpy.plugins.registry import register_rule
+
         assert callable(register_rule)
 
     def test_register_rule_returns_class(self):
@@ -180,6 +188,7 @@ class TestRegisterRuleDecorator:
     def test_get_registered_lint_rules_returns_list(self):
         """get_registered_lint_rules() returns list of (code, rule_cls) tuples."""
         from senpy.plugins.registry import get_registered_lint_rules
+
         rules = get_registered_lint_rules()
         assert isinstance(rules, list)
         # Each entry is (code: str, rule_cls: type[Rule])
@@ -232,6 +241,7 @@ class TestPluginApiVersion:
     def test_plugin_api_version_constant_exists(self):
         """PLUGIN_API_VERSION constant must be defined in senpy.plugins.security."""
         from senpy.plugins.security import PLUGIN_API_VERSION
+
         assert isinstance(PLUGIN_API_VERSION, str)
         # Initial version
         assert PLUGIN_API_VERSION == "1.0"
@@ -239,12 +249,14 @@ class TestPluginApiVersion:
     def test_check_api_version_compatible(self):
         """Plugin declaring same major.minor as Senpy → compatible."""
         from senpy.plugins.security import PLUGIN_API_VERSION, check_api_version
+
         # Plugin version matches Senpy version
         assert check_api_version(PLUGIN_API_VERSION) is True
 
     def test_check_api_version_minor_higher_compatible(self):
         """Plugin declaring higher minor than Senpy → compatible (new optional fields)."""
         from senpy.plugins.security import check_api_version
+
         # Plugin built for 1.5, Senpy has 1.0 — plugin might use fields we don't know,
         # but since they're optional additions, it's OK
         # Actually: this is NOT compatible — plugin expects newer API than Senpy provides.
@@ -254,6 +266,7 @@ class TestPluginApiVersion:
     def test_check_api_version_major_mismatch_incompatible(self):
         """Plugin declaring different major than Senpy → incompatible."""
         from senpy.plugins.security import PLUGIN_API_VERSION, check_api_version
+
         # Plugin built for 2.0, Senpy has 1.x
         assert check_api_version("2.0") is False
         # Plugin built for 1.0, Senpy has 2.x (hypothetical future)
@@ -265,6 +278,7 @@ class TestPluginApiVersion:
     def test_check_api_version_invalid_format(self):
         """Plugin declaring invalid version format → incompatible."""
         from senpy.plugins.security import check_api_version
+
         assert check_api_version("invalid") is False
         assert check_api_version("") is False
         assert check_api_version("1") is False  # must be X.Y
@@ -273,6 +287,7 @@ class TestPluginApiVersion:
     def test_api_version_mismatch_error_message(self):
         """When version mismatch, error message includes both versions."""
         from senpy.plugins.security import ApiVersionMismatchError, check_api_version
+
         with pytest.raises(ApiVersionMismatchError) as exc_info:
             # Force check with mismatched version
             check_api_version("2.0", raise_on_mismatch=True)
@@ -299,6 +314,7 @@ class TestRuleContext:
     def test_rule_context_dataclass_exists(self):
         """RuleContext dataclass with file_path, lines, symbols."""
         from senpy.plugins.base import RuleContext
+
         ctx = RuleContext(file_path="test.rpy", lines=[], symbols={})
         assert ctx.file_path == "test.rpy"
         assert ctx.lines == []
@@ -307,10 +323,11 @@ class TestRuleContext:
     def test_rule_context_with_real_data(self):
         """RuleContext can hold real .rpy data for analysis."""
         from senpy.plugins.base import RuleContext
+
         lines = [
-            'label start:\n',
+            "label start:\n",
             '    "Hello, [name]!"\n',
-            '    return\n',
+            "    return\n",
         ]
         symbols = {"labels": {"start": {"line": 1}}, "variables": {"name": "str"}}
         ctx = RuleContext(file_path="game/script.rpy", lines=lines, symbols=symbols)
@@ -341,21 +358,23 @@ class TestRuleEndToEnd:
                 diags = []
                 for i, line in enumerate(ctx.lines, start=1):
                     if "unused" in line.lower():
-                        diags.append(Diagnostic(
-                            file_path=ctx.file_path,
-                            line_number=i,
-                            line_content=line,
-                            code="RPY999",
-                            message="Found 'unused' in line",
-                            severity="WARNING",
-                        ))
+                        diags.append(
+                            Diagnostic(
+                                file_path=ctx.file_path,
+                                line_number=i,
+                                line_content=line,
+                                code="RPY999",
+                                message="Found 'unused' in line",
+                                severity="WARNING",
+                            )
+                        )
                 return diags
 
         # Instantiate and call
         rule = TestUnusedVarRule()
         ctx = RuleContext(
             file_path="test.rpy",
-            lines=['$ x = 1\n', '$ unused_var = 2\n', '"Hi"\n'],
+            lines=["$ x = 1\n", "$ unused_var = 2\n", '"Hi"\n'],
             symbols={},
         )
         diags = rule.check(ctx)

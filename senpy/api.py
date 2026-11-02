@@ -28,6 +28,7 @@ Migration guide:
 
 The `from senpy.api import *` works — __all__ lists all public names.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

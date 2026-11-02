@@ -24,6 +24,7 @@ Trust store: ~/.senpy/trusted_plugins.json
         "trusted_at": {"my-senpy-plugin": "2026-10-30T12:00:00Z"}
     }
 """
+
 from __future__ import annotations
 
 import json
@@ -55,17 +56,20 @@ class TestPluginDiscovery:
     def test_discover_plugins_function_exists(self):
         """discover_plugins() must be importable from senpy.plugins.loader."""
         from senpy.plugins.loader import discover_plugins
+
         assert callable(discover_plugins)
 
     def test_discover_plugins_returns_list(self):
         """discover_plugins() returns a list (possibly empty)."""
         from senpy.plugins.loader import discover_plugins
+
         plugins = discover_plugins()
         assert isinstance(plugins, list)
 
     def test_discover_plugins_empty_when_no_plugins_installed(self):
         """When no plugins are installed, discover_plugins() returns empty list."""
         from senpy.plugins.loader import discover_plugins
+
         # Mock entry_points to return empty
         with patch("senpy.plugins.loader._get_entry_points", return_value=[]):
             plugins = discover_plugins()
@@ -89,6 +93,7 @@ class TestPluginLoading:
     def test_load_plugin_function_exists(self):
         """load_plugin() must be importable from senpy.plugins.loader."""
         from senpy.plugins.loader import load_plugin
+
         assert callable(load_plugin)
 
     def test_load_plugin_loads_valid_rule(self):
@@ -106,8 +111,10 @@ class TestPluginLoading:
                 class TestRule(Rule):
                     meta = RuleMeta(code="RPY999", docs="test", severity="WARNING")
                     PLUGIN_API_VERSION = "1.0"
+
                     def check(self, ctx):
                         return []
+
                 return TestRule
 
         # Trust explicitly (otherwise default callback declines in non-TTY test env)
@@ -130,6 +137,7 @@ class TestPluginLoading:
             def load(self):
                 class NotARule:
                     pass
+
                 return NotARule
 
         result = load_plugin(_MockEntryPoint())
@@ -146,11 +154,14 @@ class TestPluginLoading:
 
             def load(self):
                 from senpy.plugins.base import Rule, RuleMeta
+
                 class OldRule(Rule):
                     meta = RuleMeta(code="RPY999", docs="old", severity="WARNING")
                     PLUGIN_API_VERSION = "2.0"  # incompatible
+
                     def check(self, ctx):
                         return []
+
                 return OldRule
 
         result = load_plugin(_MockEntryPoint())
@@ -181,11 +192,14 @@ class TestPluginLoading:
 
             def load(self):
                 from senpy.plugins.base import Rule, RuleMeta
+
                 class TestRule(Rule):
                     meta = RuleMeta(code="RPY999", docs="test", severity="WARNING")
                     PLUGIN_API_VERSION = "1.0"
+
                     def check(self, ctx):
                         return []
+
                 return TestRule
 
         # Trust callback accepts
@@ -202,11 +216,14 @@ class TestPluginLoading:
 
             def load(self):
                 from senpy.plugins.base import Rule, RuleMeta
+
                 class TestRule(Rule):
                     meta = RuleMeta(code="RPY999", docs="test", severity="WARNING")
                     PLUGIN_API_VERSION = "1.0"
+
                     def check(self, ctx):
                         return []
+
                 return TestRule
 
         # Trust callback declines
@@ -220,6 +237,7 @@ class TestLoadAllPlugins:
     def test_load_all_plugins_function_exists(self):
         """load_all_plugins() must be importable from senpy.plugins.loader."""
         from senpy.plugins.loader import load_all_plugins
+
         assert callable(load_all_plugins)
 
     def test_load_all_plugins_returns_list_of_loaded(self):
@@ -239,24 +257,31 @@ class TestLoadAllPlugins:
         class _GoodEntryPoint:
             name = "good-plugin"
             value = "test:Rule"
+
             def load(self):
                 from senpy.plugins.base import Rule, RuleMeta
+
                 class TestRule(Rule):
                     meta = RuleMeta(code="RPY999", docs="test", severity="WARNING")
                     PLUGIN_API_VERSION = "1.0"
+
                     def check(self, ctx):
                         return []
+
                 return TestRule
 
         class _BadEntryPoint:
             name = "bad-plugin"
             value = "broken:Rule"
+
             def load(self):
                 raise ImportError("broken")
 
         # Auto-trust all (we're testing isolation, not trust)
-        with patch("senpy.plugins.loader._get_entry_points",
-                   return_value=[_GoodEntryPoint(), _BadEntryPoint()]):
+        with patch(
+            "senpy.plugins.loader._get_entry_points",
+            return_value=[_GoodEntryPoint(), _BadEntryPoint()],
+        ):
             result = load_all_plugins(trust_callback=lambda name: True)
 
         # Good plugin loaded, bad one skipped
@@ -287,6 +312,7 @@ class TestTrustStore:
     def test_get_trust_store_path_function_exists(self):
         """get_trust_store_path() returns path to trust store."""
         from senpy.plugins.security import get_trust_store_path
+
         path = get_trust_store_path()
         assert isinstance(path, str)
         assert ".senpy" in path or "senpy" in path.lower()
@@ -296,6 +322,7 @@ class TestTrustStore:
         """SENPY_HOME env var overrides default ~/.senpy location."""
         monkeypatch.setenv("SENPY_HOME", str(tmp_path))
         from senpy.plugins.security import get_trust_store_path
+
         path = get_trust_store_path()
         assert str(tmp_path) in path
         assert path.endswith("trusted_plugins.json")
@@ -304,6 +331,7 @@ class TestTrustStore:
         """is_plugin_trusted() returns False for plugin not in trust store."""
         monkeypatch.setenv("SENPY_HOME", str(tmp_path))
         from senpy.plugins.security import is_plugin_trusted
+
         # Trust store doesn't exist yet
         assert is_plugin_trusted("unknown-plugin") is False
 
@@ -311,6 +339,7 @@ class TestTrustStore:
         """trust_plugin(name) adds plugin to trust store."""
         monkeypatch.setenv("SENPY_HOME", str(tmp_path))
         from senpy.plugins.security import is_plugin_trusted, trust_plugin
+
         # Initially not trusted
         assert is_plugin_trusted("my-plugin") is False
         # Trust it
@@ -378,6 +407,7 @@ class TestDefaultTrustCallback:
     def test_default_trust_callback_declines_in_non_tty(self, monkeypatch):
         """In non-interactive (no TTY), default callback declines all."""
         from senpy.plugins.loader import _default_trust_callback
+
         # Simulate non-TTY
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
         result = _default_trust_callback("any-plugin")
@@ -414,20 +444,23 @@ class TestLoadAllPluginsWithTrust:
         class _MockEntryPoint:
             name = "trusted-test-plugin"
             value = "test:Rule"
+
             def load(self):
                 from senpy.plugins.base import Rule, RuleMeta
+
                 class TestRule(Rule):
                     meta = RuleMeta(code="RPY999", docs="test", severity="WARNING")
                     PLUGIN_API_VERSION = "1.0"
+
                     def check(self, ctx):
                         return []
+
                 return TestRule
 
         # Non-TTY mode — but plugin is pre-trusted, so should load
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-        with patch("senpy.plugins.loader._get_entry_points",
-                   return_value=[_MockEntryPoint()]):
+        with patch("senpy.plugins.loader._get_entry_points", return_value=[_MockEntryPoint()]):
             result = load_all_plugins()  # default trust callback
 
         assert len(result) == 1
@@ -441,20 +474,23 @@ class TestLoadAllPluginsWithTrust:
         class _MockEntryPoint:
             name = "untrusted-test-plugin"
             value = "test:Rule"
+
             def load(self):
                 from senpy.plugins.base import Rule, RuleMeta
+
                 class TestRule(Rule):
                     meta = RuleMeta(code="RPY999", docs="test", severity="WARNING")
                     PLUGIN_API_VERSION = "1.0"
+
                     def check(self, ctx):
                         return []
+
                 return TestRule
 
         # Non-TTY mode — untrusted plugin should be skipped
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-        with patch("senpy.plugins.loader._get_entry_points",
-                   return_value=[_MockEntryPoint()]):
+        with patch("senpy.plugins.loader._get_entry_points", return_value=[_MockEntryPoint()]):
             result = load_all_plugins()  # default trust callback
 
         assert result == []  # untrusted plugin skipped
@@ -474,6 +510,7 @@ class TestRegisterLoadedPlugins:
         """register_loaded_plugins() registers all loaded plugin rules in the
         lint rule registry (so get_registered_lint_rules() returns them)."""
         from senpy.plugins.loader import register_loaded_plugins
+
         assert callable(register_loaded_plugins)
 
     def test_register_loaded_plugins_adds_to_registry(self, monkeypatch, tmp_path):
@@ -493,19 +530,22 @@ class TestRegisterLoadedPlugins:
         class _MockEntryPoint:
             name = "registry-test-plugin"
             value = "test:Rule"
+
             def load(self):
                 from senpy.plugins.base import Rule, RuleMeta
+
                 class TestRule(Rule):
                     meta = RuleMeta(code="RPY999", docs="test", severity="WARNING")
                     PLUGIN_API_VERSION = "1.0"
+
                     def check(self, ctx):
                         return []
+
                 return TestRule
 
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-        with patch("senpy.plugins.loader._get_entry_points",
-                   return_value=[_MockEntryPoint()]):
+        with patch("senpy.plugins.loader._get_entry_points", return_value=[_MockEntryPoint()]):
             loaded = load_all_plugins()
             register_loaded_plugins(loaded)
 
@@ -522,7 +562,6 @@ class TestRegisterLoadedPlugins:
 # =============================================================================
 
 
-
 # =============================================================================
 # Example plugin (examples/my_senpy_plugin/) works correctly
 # =============================================================================
@@ -531,8 +570,7 @@ class TestRegisterLoadedPlugins:
 def _get_examples_path() -> str:
     """Returns path to examples/my_senpy_plugin/ (relative to this test file)."""
     return os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "examples", "my_senpy_plugin"
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "examples", "my_senpy_plugin"
     )
 
 
@@ -551,7 +589,7 @@ def _examples_plugin_exists() -> bool:
 # CI without examples/ should still pass — example plugin is for documentation.
 _skip_if_no_examples = pytest.mark.skipif(
     not _examples_plugin_exists(),
-    reason="examples/my_senpy_plugin/ not found (optional — copy from senpy_0_6_0_subprint_2b/examples/)"
+    reason="examples/my_senpy_plugin/ not found (optional — copy from senpy_0_6_0_subprint_2b/examples/)",
 )
 
 
@@ -572,10 +610,12 @@ class TestExamplePlugin:
     def test_example_plugin_imports(self):
         """Example plugin module can be imported (when path is set)."""
         import sys
+
         examples_path = _get_examples_path()
         sys.path.insert(0, examples_path)
         try:
             from my_senpy_plugin.rules import HardcodedDialogueRule
+
             assert HardcodedDialogueRule is not None
         finally:
             sys.path.remove(examples_path)
@@ -583,12 +623,14 @@ class TestExamplePlugin:
     def test_example_plugin_api_version_compatible(self):
         """Example plugin's PLUGIN_API_VERSION is compatible with Senpy."""
         import sys
+
         examples_path = _get_examples_path()
         sys.path.insert(0, examples_path)
         try:
             from my_senpy_plugin.rules import PLUGIN_API_VERSION
 
             from senpy.plugins.security import check_api_version
+
             assert check_api_version(PLUGIN_API_VERSION) is True
         finally:
             sys.path.remove(examples_path)
@@ -596,6 +638,7 @@ class TestExamplePlugin:
     def test_example_plugin_rule_works(self):
         """Example plugin's HardcodedDialogueRule returns correct diagnostics."""
         import sys
+
         examples_path = _get_examples_path()
         sys.path.insert(0, examples_path)
         try:
@@ -608,12 +651,12 @@ class TestExamplePlugin:
             ctx = RuleContext(
                 file_path="test.rpy",
                 lines=[
-                    'label start:\n',
-                    '    "Hello, world!"\n',           # flagged
-                    '    _("Translated")\n',            # OK
-                    '    \'Single quoted\'\n',          # flagged
-                    '    $ x = 1\n',                    # not dialogue
-                    '    return\n',
+                    "label start:\n",
+                    '    "Hello, world!"\n',  # flagged
+                    '    _("Translated")\n',  # OK
+                    "    'Single quoted'\n",  # flagged
+                    "    $ x = 1\n",  # not dialogue
+                    "    return\n",
                 ],
                 symbols={},
             )
@@ -631,10 +674,12 @@ class TestExamplePlugin:
     def test_example_plugin_meta_valid(self):
         """Example plugin's RuleMeta has valid fields."""
         import sys
+
         examples_path = _get_examples_path()
         sys.path.insert(0, examples_path)
         try:
             from my_senpy_plugin.rules import HardcodedDialogueRule
+
             meta = HardcodedDialogueRule.meta
             assert meta is not None
             assert meta.code == "RPY901"

@@ -3,6 +3,7 @@
 Extracted from core/analyzer.py in 0.6.6 to reduce analyzer god-class.
 The function takes an analyzer instance and appends diagnostics directly.
 """
+
 from __future__ import annotations
 
 import os

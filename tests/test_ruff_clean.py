@@ -26,6 +26,7 @@ If this test fails:
   5. If a rule is too strict, add it to `ignore` in pyproject.toml
      (with a comment explaining why).
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -42,7 +43,9 @@ def _ruff_available() -> bool:
     try:
         result = subprocess.run(
             ["ruff", "--version"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -83,13 +86,12 @@ class TestRuffClean:
         pyproject = _REPO_ROOT / "pyproject.toml"
         assert pyproject.exists(), "pyproject.toml missing"
         content = pyproject.read_text(encoding="utf-8")
-        assert "[tool.ruff]" in content, (
-            "pyproject.toml must have a [tool.ruff] section for ruff config."
-        )
-        assert "[tool.ruff.lint]" in content, (
-            "pyproject.toml must have a [tool.ruff.lint] section "
-            "with select/ignore rules."
-        )
+        assert (
+            "[tool.ruff]" in content
+        ), "pyproject.toml must have a [tool.ruff] section for ruff config."
+        assert (
+            "[tool.ruff.lint]" in content
+        ), "pyproject.toml must have a [tool.ruff.lint] section with select/ignore rules."
 
     def test_ruff_excludes_vendored_unrpyc(self):
         """senpy/vendor must be excluded — ruff --fix breaks lazy imports there."""
@@ -123,9 +125,9 @@ class TestPreCommitConfig:
         """Pre-commit config must include the ruff hook."""
         config = _REPO_ROOT / ".pre-commit-config.yaml"
         content = config.read_text(encoding="utf-8")
-        assert "ruff" in content, (
-            ".pre-commit-config.yaml must reference ruff (astral-sh/ruff-pre-commit)."
-        )
+        assert (
+            "ruff" in content
+        ), ".pre-commit-config.yaml must reference ruff (astral-sh/ruff-pre-commit)."
 
     def test_pre_commit_has_clean_internal_ids_hook(self):
         """Pre-commit config must include the clean-internal-ids local hook.
@@ -152,12 +154,8 @@ class TestCIWorkflow:
         """ci.yml must have a `lint` job that runs ruff check (blocking)."""
         ci = _REPO_ROOT / ".github" / "workflows" / "ci.yml"
         content = ci.read_text(encoding="utf-8")
-        assert "  lint:" in content, (
-            "ci.yml must have a `lint` job. See CI-1 in the worklog."
-        )
-        assert "ruff check" in content, (
-            "ci.yml lint job must run `ruff check` (blocking step)."
-        )
+        assert "  lint:" in content, "ci.yml must have a `lint` job. See CI-1 in the worklog."
+        assert "ruff check" in content, "ci.yml lint job must run `ruff check` (blocking step)."
 
     def test_ci_has_mypy_step(self):
         """ci.yml lint job must include mypy (warn-only is fine for now)."""

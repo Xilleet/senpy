@@ -367,9 +367,15 @@ class StoryFlowAnalyzer:
                 )
 
                 idx, current_choice, uninitialized_vars = self._analyze_choice_body(
-                    lines, idx, line_indent, stripped, raw_line,
-                    current_choice, uninitialized_vars,
-                    file_path, noqa_map,
+                    lines,
+                    idx,
+                    line_indent,
+                    stripped,
+                    raw_line,
+                    current_choice,
+                    uninitialized_vars,
+                    file_path,
+                    noqa_map,
                 )
                 continue
 

@@ -7,6 +7,7 @@
 Скрипт прогоняет 5 тестов и показывает результаты.
 Никаких файлов не меняет — только печатает в консоль.
 """
+
 from __future__ import annotations
 
 from senpy.formatter import Formatter
@@ -17,9 +18,9 @@ def test(name: str, code: str, expect_changed: bool = True) -> None:
     f = Formatter()
     formatted = f.format_code(code)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"ТЕСТ: {name}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("ВХОД (raw):")
     print(repr(code))
     print()
@@ -78,7 +79,7 @@ def main() -> None:
     # Тест 4: skip block НЕ трогается
     test(
         "Skip block (# senpy: format off) НЕ трогается",
-        '# senpy: format off\n$ x =\t1   \n# senpy: format on\n',
+        "# senpy: format off\n$ x =\t1   \n# senpy: format on\n",
         expect_changed=False,
     )
 
@@ -108,14 +109,14 @@ def main() -> None:
     # Тест 8: пустой файл
     test(
         "Пустой файл",
-        '',
+        "",
         expect_changed=False,
     )
 
     # Тест 9: только комментарии
     test(
         "Только комментарии",
-        '# comment 1\n# comment 2\n',
+        "# comment 1\n# comment 2\n",
         expect_changed=False,
     )
 
@@ -126,9 +127,9 @@ def main() -> None:
         expect_changed=True,
     )
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("ВСЕ ТЕСТЫ ПРОЙДЕНЫ")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,8 @@ class IfBlockContext:
         self.line = line
         self.branches: list[FlowBranch] = []
         self.current_branch: FlowBranch | None = None
+
+
 class BaseChecker:
     def __init__(self, analyzer: DiagnosticSink):
         self.analyzer = analyzer

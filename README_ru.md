@@ -288,6 +288,7 @@ from senpy.plugins import Rule, RuleContext, RuleMeta, register_rule
 
 PLUGIN_API_VERSION = "1.0"
 
+
 @register_rule("RPY901")
 class HardcodedDialogueRule(Rule):
     meta = RuleMeta(
@@ -305,13 +306,16 @@ class HardcodedDialogueRule(Rule):
                 continue
             if stripped.startswith('_("') or stripped.startswith("_('"):
                 continue  # уже переведено
-            diags.append(Diagnostic(
-                file_path=ctx.file_path, line_number=line_no,
-                line_content=raw.rstrip(),
-                code="RPY901",
-                message=f"Жёстко заданный диалог без _() для перевода",
-                severity="WARNING",
-            ))
+            diags.append(
+                Diagnostic(
+                    file_path=ctx.file_path,
+                    line_number=line_no,
+                    line_content=raw.rstrip(),
+                    code="RPY901",
+                    message=f"Жёстко заданный диалог без _() для перевода",
+                    severity="WARNING",
+                )
+            )
         return diags
 ```
 

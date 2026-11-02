@@ -58,9 +58,7 @@ def parse_signature(param_str: str | None) -> SignatureInfo:
     except (SyntaxError, ValueError, TypeError) as e:
         # log debug instead of silent suppress. Caller gets fallback
         # SignatureInfo below, but the failure is now observable for debugging.
-        _logger.debug(
-            "signature parse failed for %r: %s", param_str, e
-        )
+        _logger.debug("signature parse failed for %r: %s", param_str, e)
 
     return SignatureInfo(
         has_params=True, max_args=float("inf"), has_varargs=True, has_varkwargs=True
@@ -81,9 +79,7 @@ def parse_call_args(args_str: str) -> tuple[int, set[str], bool, bool] | None:
             return num_pos, kwargs, has_star, has_star_kw
     except (SyntaxError, ValueError, TypeError) as e:
         # log debug instead of silent suppress.
-        _logger.debug(
-            "call args parse failed for %r: %s", args_str, e
-        )
+        _logger.debug("call args parse failed for %r: %s", args_str, e)
     return None
 
 

@@ -46,16 +46,10 @@ class ScreenChecker(BaseChecker):
             self._check_screen_variable_actions(
                 file_path, idx, raw_line, stripped, scope_stack, noqa_map
             )
-            self._check_screen_action_targets(
-                file_path, idx, raw_line, stripped, noqa_map
-            )
-            self._check_screen_buttons(
-                file_path, idx, raw_line, stripped, noqa_map
-            )
+            self._check_screen_action_targets(file_path, idx, raw_line, stripped, noqa_map)
+            self._check_screen_buttons(file_path, idx, raw_line, stripped, noqa_map)
 
-        self._check_screen_call_targets(
-            file_path, idx, raw_line, stripped, noqa_map
-        )
+        self._check_screen_call_targets(file_path, idx, raw_line, stripped, noqa_map)
 
         return raw_line, False
 
@@ -82,9 +76,7 @@ class ScreenChecker(BaseChecker):
             # RPY208: Using global SetVariable/ToggleVariable on screen-local variable
             if target_var in local_syms and target_var not in SCREEN_LOCAL_IGNORE:
                 correct_act = (
-                    "SetScreenVariable"
-                    if act_name == "SetVariable"
-                    else "ToggleScreenVariable"
+                    "SetScreenVariable" if act_name == "SetVariable" else "ToggleScreenVariable"
                 )
                 start_c, end_c = self.analyzer._get_utf16_range(raw_line, act_name)
                 self.analyzer._add_diagnostic(
@@ -155,14 +147,9 @@ class ScreenChecker(BaseChecker):
             r'\b(?:Show|ShowMenu|Hide)\s*\(\s*["\']([^\W\d]\w*)["\']', stripped
         ):
             target_scr = m_scr_act.group(1)
-            if (
-                target_scr not in self.analyzer.screens
-                and target_scr not in BUILTIN_SCREENS
-            ):
+            if target_scr not in self.analyzer.screens and target_scr not in BUILTIN_SCREENS:
                 all_screens = list(self.analyzer.screens.keys()) + list(BUILTIN_SCREENS)
-                matches = difflib.get_close_matches(
-                    target_scr, all_screens, n=1, cutoff=0.6
-                )
+                matches = difflib.get_close_matches(target_scr, all_screens, n=1, cutoff=0.6)
                 hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
                 start_c, end_c = self.analyzer._get_utf16_range(raw_line, target_scr)
                 self.analyzer._add_diagnostic(
@@ -215,9 +202,7 @@ class ScreenChecker(BaseChecker):
         if m_act:
             fn_name = m_act.group(1)
             if fn_name not in BUILTIN_ACTIONS:
-                start_c, end_c = self.analyzer._get_utf16_range(
-                    raw_line, f"action {fn_name}("
-                )
+                start_c, end_c = self.analyzer._get_utf16_range(raw_line, f"action {fn_name}(")
                 self.analyzer._add_diagnostic(
                     Diagnostic(
                         file_path=file_path,

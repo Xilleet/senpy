@@ -21,6 +21,7 @@
 Public API:
     _strip_comment(line: str) -> str
 """
+
 from __future__ import annotations
 
 

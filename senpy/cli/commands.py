@@ -242,7 +242,7 @@ def handle_export_wiki(args, analyzer, console: Console, is_tsundere: bool) -> i
 
 def handle_export_html(
     args, result, analyzer, console: Console, is_tsundere: bool, ignored_codes: set
-    ) -> int | None:
+) -> int | None:
     """--export-html: автономный HTML отчёт."""
     if not args.export_html:
         return None

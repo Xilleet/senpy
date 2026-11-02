@@ -13,6 +13,7 @@ TDD для :
   2. test_security_error_is_value_error_subclass — backward compat.
   3. test_download_unrpyc_sha_mismatch_logs_error — critical log.
 """
+
 from __future__ import annotations
 
 import logging
@@ -34,6 +35,7 @@ def reset_logging():
 # =============================================================================
 # 1. _uri_to_path raises SecurityError (not ValueError)
 # =============================================================================
+
 
 def test_uri_to_path_raises_security_error_for_http():
     """_uri_to_path должен кидать SecurityError (не просто ValueError)."""
@@ -93,6 +95,7 @@ def test_uri_to_path_security_error_is_catchable_as_senpy_error():
 # 2. download_unrpyc logs ERROR on SHA mismatch (not silent)
 # =============================================================================
 
+
 def test_download_unrpyc_sha_mismatch_logs_error(caplog, tmp_path: Path, monkeypatch):
     """При SHA mismatch download_unrpyc должен логировать ERROR.
 
@@ -106,9 +109,14 @@ def test_download_unrpyc_sha_mismatch_logs_error(caplog, tmp_path: Path, monkeyp
 
     # Мокаем urllib.request.urlopen чтобы вернуть fake context manager
     class FakeResponse:
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def read(self, n=-1): return b"fake data"
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def read(self, n=-1):
+            return b"fake data"
 
     monkeypatch.setattr(
         "urllib.request.urlopen",
@@ -121,9 +129,15 @@ def test_download_unrpyc_sha_mismatch_logs_error(caplog, tmp_path: Path, monkeyp
     class FakeFile:
         def __init__(self, *a, **kw):
             pass
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def write(self, data): pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def write(self, data):
+            pass
 
     monkeypatch.setattr(builtins, "open", lambda *a, **kw: FakeFile())
     # shutil.copyfileobj — no-op
@@ -140,7 +154,9 @@ def test_download_unrpyc_sha_mismatch_logs_error(caplog, tmp_path: Path, monkeyp
     # ERROR должен быть в логах
     error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
     assert any(
-        "sha256" in r.message.lower() or "sha" in r.message.lower()
-        or "supply-chain" in r.message.lower() or "verification" in r.message.lower()
+        "sha256" in r.message.lower()
+        or "sha" in r.message.lower()
+        or "supply-chain" in r.message.lower()
+        or "verification" in r.message.lower()
         for r in error_records
     ), f"no ERROR log for SHA mismatch: {error_records}"

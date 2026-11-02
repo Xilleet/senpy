@@ -15,6 +15,7 @@ This is SEPARATE from the existing senpy.rules.checkers.BaseChecker:
 The two systems coexist. Existing built-in rules continue to use BaseChecker.
 New plugin rules use Rule. Eventually (0.7.0+) built-in rules may migrate.
 """
+
 from __future__ import annotations
 
 import re
@@ -83,20 +84,17 @@ class RuleMeta:
         # Validate code format
         if not _RE_RULE_CODE.match(self.code):
             raise ValueError(
-                f"RuleMeta.code must match RPY\\d{{3}} pattern (e.g. 'RPY901'), "
-                f"got: {self.code!r}"
+                f"RuleMeta.code must match RPY\\d{{3}} pattern (e.g. 'RPY901'), got: {self.code!r}"
             )
         # Validate severity
         if self.severity not in _VALID_SEVERITIES:
             raise ValueError(
-                f"RuleMeta.severity must be one of {_VALID_SEVERITIES}, "
-                f"got: {self.severity!r}"
+                f"RuleMeta.severity must be one of {_VALID_SEVERITIES}, got: {self.severity!r}"
             )
         # Validate replaced_by format if set
         if self.replaced_by is not None and not _RE_RULE_CODE.match(self.replaced_by):
             raise ValueError(
-                f"RuleMeta.replaced_by must match RPY\\d{{3}} pattern, "
-                f"got: {self.replaced_by!r}"
+                f"RuleMeta.replaced_by must match RPY\\d{{3}} pattern, got: {self.replaced_by!r}"
             )
 
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import functools
 import os
 import threading
-import warnings
 from urllib.parse import unquote, urlparse
 
 from lsprotocol import types as lsp
@@ -15,14 +14,13 @@ from senpy.core.logging import get_logger
 
 _logger = get_logger("lsp.server")
 
-warnings.filterwarnings("ignore", category=SyntaxWarning)
-
 try:
     from pygls.lsp.server import LanguageServer
 except ImportError:
     from pygls.server import LanguageServer
 
 server = LanguageServer("senpy-lsp", _SENPY_VERSION)
+
 
 def _uri_to_path(uri: str, workspace_root: str | None = None) -> str:
     """Преобразует LSP file:// URI в filesystem path с security-проверками.
@@ -80,8 +78,7 @@ def _uri_to_path(uri: str, workspace_root: str | None = None) -> str:
             ) from None
         if common != root_real:
             raise SecurityError(
-                f"_uri_to_path: path {path_real!r} is outside workspace "
-                f"root {root_real!r}"
+                f"_uri_to_path: path {path_real!r} is outside workspace root {root_real!r}"
             )
 
     return path
@@ -261,6 +258,7 @@ def _refresh_symbol_snapshot() -> None:
     _symbol_snapshot["jump_sources"] = {
         k: list(v) for k, v in _active_analyzer.jump_sources.items()
     }
+
 
 SEVERITY_MAP = {
     "ERROR": lsp.DiagnosticSeverity.Error,
@@ -489,6 +487,7 @@ def schedule_change_diagnostics(ls: LanguageServer, uri: str):
 def did_open(ls: LanguageServer, params: lsp.DidOpenTextDocumentParams):
     """0.6.0-3: делегирует в handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_open as _impl
+
     _impl(ls, params)
 
 
@@ -496,6 +495,7 @@ def did_open(ls: LanguageServer, params: lsp.DidOpenTextDocumentParams):
 def did_change_watched_files(ls: LanguageServer, params: lsp.DidChangeWatchedFilesParams):
     """0.6.0-3: делегирует в handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_change_watched_files as _impl
+
     _impl(ls, params)
 
 
@@ -503,6 +503,7 @@ def did_change_watched_files(ls: LanguageServer, params: lsp.DidChangeWatchedFil
 def did_save(ls: LanguageServer, params: lsp.DidSaveTextDocumentParams):
     """0.6.0-3: делегирует в handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_save as _impl
+
     _impl(ls, params)
 
 
@@ -510,6 +511,7 @@ def did_save(ls: LanguageServer, params: lsp.DidSaveTextDocumentParams):
 def did_close(ls: LanguageServer, params: lsp.DidCloseTextDocumentParams):
     """0.6.0-3: делегирует в handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_close as _impl
+
     _impl(ls, params)
 
 
@@ -517,6 +519,7 @@ def did_close(ls: LanguageServer, params: lsp.DidCloseTextDocumentParams):
 def did_change(ls: LanguageServer, params: lsp.DidChangeTextDocumentParams):
     """0.6.0-3: делегирует в handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_change as _impl
+
     _impl(ls, params)
 
 
@@ -528,6 +531,7 @@ def did_change(ls: LanguageServer, params: lsp.DidChangeTextDocumentParams):
 def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.CodeAction]:
     """0.6.0: делегирует в handlers.diagnostics."""
     from senpy.lsp.handlers.diagnostics import code_action as _impl
+
     return _impl(ls, params)
 
 
@@ -536,6 +540,7 @@ def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.Co
 def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.CompletionList:
     """0.6.0: делегирует в handlers.completion."""
     from senpy.lsp.handlers.completion import completions as _impl
+
     return _impl(ls, params)
 
 
@@ -544,6 +549,7 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
 def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location | None:
     """0.6.0-4: делегирует в handlers.navigation."""
     from senpy.lsp.handlers.navigation import definition as _impl
+
     return _impl(ls, params)
 
 
@@ -552,6 +558,7 @@ def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location
 def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Location] | None:
     """0.6.0-4: делегирует в handlers.navigation."""
     from senpy.lsp.handlers.navigation import references as _impl
+
     return _impl(ls, params)
 
 
@@ -560,6 +567,7 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
 def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
     """0.6.0: делегирует в handlers.hover."""
     from senpy.lsp.handlers.hover import hover as _impl
+
     return _impl(ls, params)
 
 
@@ -570,6 +578,7 @@ def document_symbols(
 ) -> list[lsp.DocumentSymbol]:
     """0.6.0-4: делегирует в handlers.navigation."""
     from senpy.lsp.handlers.navigation import document_symbols as _impl
+
     return _impl(ls, params)
 
 
@@ -592,6 +601,7 @@ def document_symbols(
 def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[lsp.FoldingRange]:
     """0.6.0: делегирует в handlers.workspace."""
     from senpy.lsp.handlers.workspace import folding_range as _impl
+
     return _impl(ls, params)
 
 
@@ -615,6 +625,7 @@ def prepare_rename(
 ) -> lsp.Range | lsp.PrepareRenameResult | None:
     """0.6.0-4: делегирует в handlers.navigation."""
     from senpy.lsp.handlers.navigation import prepare_rename as _impl
+
     return _impl(ls, params)
 
 
@@ -639,6 +650,7 @@ def prepare_rename(
 def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | None:
     """0.6.0-4: делегирует в handlers.navigation."""
     from senpy.lsp.handlers.navigation import rename as _impl
+
     return _impl(ls, params)
 
 
@@ -657,6 +669,7 @@ def workspace_symbol(
 ) -> list[lsp.WorkspaceSymbol]:
     """0.6.0: делегирует в handlers.workspace."""
     from senpy.lsp.handlers.workspace import workspace_symbol as _impl
+
     return _impl(ls, params)
 
 
@@ -669,6 +682,7 @@ def workspace_symbol(
 def initialized(ls: LanguageServer, params: lsp.InitializedParams) -> None:
     """0.6.0: делегирует в handlers.workspace."""
     from senpy.lsp.handlers.workspace import initialized as _impl
+
     return _impl(ls, params)
 
 
@@ -685,6 +699,7 @@ def document_highlight(
 ) -> list[lsp.DocumentHighlight]:
     """0.6.0: делегирует в handlers.workspace."""
     from senpy.lsp.handlers.workspace import document_highlight as _impl
+
     return _impl(ls, params)
 
 
@@ -703,6 +718,7 @@ def document_color(
 ) -> list[lsp.ColorInformation]:
     """0.6.0 Под-спринт 3: делегирует в handlers.diagnostics."""
     from senpy.lsp.handlers.diagnostics import document_color as _impl
+
     return _impl(ls, params)
 
 
@@ -713,6 +729,7 @@ def color_presentation(
 ) -> list[lsp.ColorPresentation]:
     """0.6.0 Под-спринт 3: делегирует в handlers.diagnostics."""
     from senpy.lsp.handlers.diagnostics import color_presentation as _impl
+
     return _impl(ls, params)
 
 
@@ -723,11 +740,10 @@ def color_presentation(
 # Shift+Alt+F → formatting() — formats whole document
 # Ctrl+K Ctrl+F → range_formatting() — formats selected range
 @server.feature(lsp.TEXT_DOCUMENT_FORMATTING)
-def formatting(
-    ls: LanguageServer, params: lsp.DocumentFormattingParams
-) -> list[lsp.TextEdit]:
+def formatting(ls: LanguageServer, params: lsp.DocumentFormattingParams) -> list[lsp.TextEdit]:
     """0.6.0 Под-спринт 3: делегирует в handlers.diagnostics."""
     from senpy.lsp.handlers.diagnostics import formatting as _impl
+
     return _impl(ls, params)
 
 
@@ -737,6 +753,7 @@ def range_formatting(
 ) -> list[lsp.TextEdit]:
     """0.6.0 Под-спринт 3: делегирует в handlers.diagnostics."""
     from senpy.lsp.handlers.diagnostics import range_formatting as _impl
+
     return _impl(ls, params)
 
 
@@ -747,11 +764,10 @@ def range_formatting(
 # the parameter list from the label's signature.
 @server.feature(lsp.TEXT_DOCUMENT_SIGNATURE_HELP)
 @_with_analysis_lock
-def signature_help(
-    ls: LanguageServer, params: lsp.SignatureHelpParams
-) -> lsp.SignatureHelp | None:
+def signature_help(ls: LanguageServer, params: lsp.SignatureHelpParams) -> lsp.SignatureHelp | None:
     """0.6.0 Под-спринт 3b: делегирует в handlers.completion."""
     from senpy.lsp.handlers.completion import signature_help as _impl
+
     return _impl(ls, params)
 
 
@@ -767,6 +783,7 @@ def prepare_call_hierarchy(
 ) -> list[lsp.CallHierarchyItem]:
     """0.6.0 Под-спринт 3b: делегирует в handlers.navigation."""
     from senpy.lsp.handlers.navigation import prepare_call_hierarchy as _impl
+
     return _impl(ls, params)
 
 
@@ -777,6 +794,7 @@ def incoming_calls(
 ) -> list[lsp.CallHierarchyIncomingCall]:
     """0.6.0 Под-спринт 3b: делегирует в handlers.navigation."""
     from senpy.lsp.handlers.navigation import incoming_calls as _impl
+
     return _impl(ls, params)
 
 
@@ -787,6 +805,7 @@ def outgoing_calls(
 ) -> list[lsp.CallHierarchyOutgoingCall]:
     """0.6.0 Под-спринт 3b: делегирует в handlers.navigation."""
     from senpy.lsp.handlers.navigation import outgoing_calls as _impl
+
     return _impl(ls, params)
 
 

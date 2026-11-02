@@ -12,6 +12,7 @@ Handler'ы:
 Все функции принимают (ls, params) и обращаются к shared state через
 server_mod._X (lazy import разрывает цикл импортов).
 """
+
 from __future__ import annotations
 
 import os
@@ -36,6 +37,7 @@ def _get_server_mod():
     идут через server_mod = _get_server_mod() в начале каждой функции.
     """
     from senpy.lsp import server
+
     return server
 
 
@@ -237,9 +239,7 @@ def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | 
     return None
 
 
-def _rename_label(
-    server_mod, word: str, new_name: str
-) -> lsp.WorkspaceEdit | None:
+def _rename_label(server_mod, word: str, new_name: str) -> lsp.WorkspaceEdit | None:
     """Rename для label: обновляет объявление + все jump/call ссылки.
 
     Использует jump_sources reverse index из analyzer'а — точнее, чем
@@ -320,9 +320,7 @@ def _rename_label(
 _WORD_BOUNDARY_TEMPLATE = r"(?<![A-Za-z0-9_])({})(?![A-Za-z0-9_])"
 
 
-def _find_text_occurrences_in_project(
-    server_mod, word: str
-) -> list[tuple[str, int, int]]:
+def _find_text_occurrences_in_project(server_mod, word: str) -> list[tuple[str, int, int]]:
     """Ищет все text-вхождения word как whole-word во всех .rpy файлах проекта.
 
     Возвращает list of (file_path, line_idx_0based, col_utf16).
@@ -368,6 +366,7 @@ def _find_text_occurrences_in_project(
 def _get_ignored_dirs() -> set[str]:
     """Список директорий которые не надо обходить."""
     from senpy.core.constants import IGNORED_DIRS
+
     return set(IGNORED_DIRS) if IGNORED_DIRS else {".senpy_cache", "tl", "cache"}
 
 
@@ -470,9 +469,7 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
         or word in server_mod._symbol_snapshot["transforms"]
         or word in server_mod._symbol_snapshot["screens"]
     ):
-        return _references_via_text_search(
-            server_mod, word, params.context.include_declaration
-        )
+        return _references_via_text_search(server_mod, word, params.context.include_declaration)
 
     return None
 
@@ -480,7 +477,7 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
 def _references_via_text_search(
     server_mod, word: str, include_declaration: bool
 ) -> list[lsp.Location]:
-    """ helper: references для variables/transforms/screens.
+    """helper: references для variables/transforms/screens.
 
     Использует _find_text_occurrences_in_project. Если include_declaration=False,
     исключает первую локацию (объявление) — она определяется через snapshot.
@@ -812,10 +809,12 @@ def incoming_calls(
             end=lsp.Position(line=max(0, caller_line - 1), character=80),
         )
 
-        incoming.append(lsp.CallHierarchyIncomingCall(
-            from_=caller_item,
-            from_ranges=[call_range],
-        ))
+        incoming.append(
+            lsp.CallHierarchyIncomingCall(
+                from_=caller_item,
+                from_ranges=[call_range],
+            )
+        )
 
     return incoming
 
@@ -859,7 +858,9 @@ def outgoing_calls(
             ),
             selection_range=lsp.Range(
                 start=lsp.Position(line=max(0, target_label.line_number - 1), character=0),
-                end=lsp.Position(line=max(0, target_label.line_number - 1), character=len(target_name)),
+                end=lsp.Position(
+                    line=max(0, target_label.line_number - 1), character=len(target_name)
+                ),
             ),
         )
 
@@ -870,9 +871,11 @@ def outgoing_calls(
             end=lsp.Position(line=max(0, source_label.line_number - 1), character=80),
         )
 
-        outgoing.append(lsp.CallHierarchyOutgoingCall(
-            to=target_item,
-            from_ranges=[from_range],
-        ))
+        outgoing.append(
+            lsp.CallHierarchyOutgoingCall(
+                to=target_item,
+                from_ranges=[from_range],
+            )
+        )
 
     return outgoing

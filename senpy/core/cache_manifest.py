@@ -5,6 +5,7 @@ dataclasses._is_type() (AttributeError при импорте отдельног�
 во время загрузки __init__.py). Этот файл сохранён только для backward
 compat — `from senpy.core.cache_manifest import CachedFileEntry` продолжает работать.
 """
+
 from __future__ import annotations
 
 from senpy.core.cache import CachedFileEntry, CacheManifest

@@ -3,6 +3,7 @@
 RED: эти тесты падают, потому что _check_* методы ещё не существуют.
 GREEN: после extraction из check_line — тесты проходят.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ class MockImage:
 
 class MockAnalyzer:
     """Минимальный mock для DiagnosticSink + asset store."""
+
     def __init__(self):
         self.diagnostics = []
         self.images = {}
@@ -57,11 +59,13 @@ class MockAnalyzer:
 def _make_checker(analyzer=None):
     from senpy.core.scope import ScopeStack
     from senpy.rules.checkers.asset import AssetChecker
+
     return AssetChecker(analyzer or MockAnalyzer())
 
 
 def _make_scope(in_screen=False):
     from senpy.core.scope import Scope, ScopeStack, ScopeType
+
     ss = ScopeStack({"renpy", "config", "persistent", "store"})
     if in_screen:
         ss.push(Scope(ScopeType.SCREEN, "test_screen"))
@@ -73,11 +77,13 @@ class TestCheckShowScene:
 
     def test_method_exists(self):
         from senpy.rules.checkers.asset import AssetChecker
+
         assert hasattr(AssetChecker, "_check_show_scene")
 
     def test_valid_image_no_diagnostic(self):
         """show bg — валидное изображение, нет diagnostic."""
         from senpy.core.models import Diagnostic
+
         analyzer = MockAnalyzer()
         analyzer.valid_images = {"bg", "black", "white"}
         checker = _make_checker(analyzer)
@@ -99,7 +105,9 @@ class TestCheckShowScene:
         analyzer.declared_symbols = set()
         analyzer.user_symbols = set()
         checker = _make_checker(analyzer)
-        checker._check_show_scene("test.rpy", 0, "show bg at slide", "show bg at slide", _make_scope(), {})
+        checker._check_show_scene(
+            "test.rpy", 0, "show bg at slide", "show bg at slide", _make_scope(), {}
+        )
         assert any(d.code == "RPY502" for d in analyzer.diagnostics)
 
 
@@ -108,6 +116,7 @@ class TestCheckAudioStatement:
 
     def test_method_exists(self):
         from senpy.rules.checkers.asset import AssetChecker
+
         assert hasattr(AssetChecker, "_check_audio_statement")
 
     def test_play_valid_channel_no_file_rpy501(self):
@@ -122,7 +131,9 @@ class TestCheckAudioStatement:
         """play bad_channel → RPY505."""
         analyzer = MockAnalyzer()
         checker = _make_checker(analyzer)
-        checker._check_audio_statement("test.rpy", 0, 'play bad_channel "song.ogg"', 'play bad_channel "song.ogg"', {})
+        checker._check_audio_statement(
+            "test.rpy", 0, 'play bad_channel "song.ogg"', 'play bad_channel "song.ogg"', {}
+        )
         assert any(d.code == "RPY505" for d in analyzer.diagnostics)
 
     def test_stop_invalid_channel_rpy505(self):
@@ -138,7 +149,9 @@ class TestCheckAudioStatement:
         analyzer.registered_audio_channels = {"music"}
         analyzer.known_assets = set()
         checker = _make_checker(analyzer)
-        checker._check_audio_statement("test.rpy", 0, 'play music "nonexistent.ogg"', 'play music "nonexistent.ogg"', {})
+        checker._check_audio_statement(
+            "test.rpy", 0, 'play music "nonexistent.ogg"', 'play music "nonexistent.ogg"', {}
+        )
         assert any(d.code == "RPY501" for d in analyzer.diagnostics)
 
     def test_voice_loop_rpy505(self):
@@ -147,7 +160,9 @@ class TestCheckAudioStatement:
         analyzer.registered_audio_channels = {"voice"}
         analyzer.known_assets = {"song.ogg"}
         checker = _make_checker(analyzer)
-        checker._check_audio_statement("test.rpy", 0, 'play voice "song.ogg" loop', 'play voice "song.ogg" loop', {})
+        checker._check_audio_statement(
+            "test.rpy", 0, 'play voice "song.ogg" loop', 'play voice "song.ogg" loop', {}
+        )
         assert any(d.code == "RPY505" for d in analyzer.diagnostics)
 
 
@@ -157,6 +172,7 @@ class TestCheckLineRefactored:
     def test_show_invalid_sprite(self):
         """check_line обрабатывает show ghost → RPY502."""
         from senpy.core.models import Diagnostic
+
         analyzer = MockAnalyzer()
         analyzer.valid_images = {"bg"}
         checker = _make_checker(analyzer)
@@ -167,7 +183,9 @@ class TestCheckLineRefactored:
         """check_line обрабатывает play bad → RPY505."""
         analyzer = MockAnalyzer()
         checker = _make_checker(analyzer)
-        checker.check_line("test.rpy", 0, 'play bad "song.ogg"', 'play bad "song.ogg"', _make_scope(), {}, [])
+        checker.check_line(
+            "test.rpy", 0, 'play bad "song.ogg"', 'play bad "song.ogg"', _make_scope(), {}, []
+        )
         assert any(d.code == "RPY505" for d in analyzer.diagnostics)
 
     def test_normal_line_no_diagnostic(self):

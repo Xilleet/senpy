@@ -28,6 +28,7 @@ Usage in plugins/loader.py:
   logger = get_logger("plugins")
   logger.warning("Plugin %s failed: %s", name, e)
 """
+
 from __future__ import annotations
 
 import logging

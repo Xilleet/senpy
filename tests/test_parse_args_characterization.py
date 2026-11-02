@@ -14,6 +14,7 @@ parse_args creates argparse parser with 5 groups of arguments:
 After : parse_args will call 5 helpers (_add_general_args, _add_rules_args,
 _add_lint_args, _add_export_args, _add_tools_args). Behavior must be identical.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -23,6 +24,7 @@ from senpy.cli.main import parse_args
 # =============================================================================
 # 1. Defaults — no args
 # =============================================================================
+
 
 def test_parse_args_defaults():
     """parse_args with no argv returns Namespace with all defaults."""
@@ -68,6 +70,7 @@ def test_parse_args_defaults():
 # 2. Positional path
 # =============================================================================
 
+
 def test_parse_args_positional_path():
     """parse_args with positional arg sets path."""
     args = parse_args(["/path/to/project"])
@@ -84,27 +87,31 @@ def test_parse_args_default_path_is_dot():
 # 3. Boolean flags
 # =============================================================================
 
-@pytest.mark.parametrize("flag,attr", [
-    ("--version", "version"),
-    ("--rules", "rules"),
-    ("--fix", "fix"),
-    ("--coverage", "coverage"),
-    ("--stats", "stats"),
-    ("--defaults", "defaults"),
-    ("--errors-only", "errors_only"),
-    ("--info", "info"),
-    ("--no-cache", "no_cache"),
-    ("--clear-cache", "clear_cache"),
-    ("--check", "check"),
-    ("--diff", "diff"),
-    ("--exit-zero", "exit_zero"),
-    ("--show-fixes", "show_fixes"),
-    ("--graph", "graph"),
-    ("--lsp", "lsp"),
-    ("--init-ci", "init_ci"),
-    ("--decompile", "decompile"),
-    ("--tsundere", "tsundere"),
-])
+
+@pytest.mark.parametrize(
+    "flag,attr",
+    [
+        ("--version", "version"),
+        ("--rules", "rules"),
+        ("--fix", "fix"),
+        ("--coverage", "coverage"),
+        ("--stats", "stats"),
+        ("--defaults", "defaults"),
+        ("--errors-only", "errors_only"),
+        ("--info", "info"),
+        ("--no-cache", "no_cache"),
+        ("--clear-cache", "clear_cache"),
+        ("--check", "check"),
+        ("--diff", "diff"),
+        ("--exit-zero", "exit_zero"),
+        ("--show-fixes", "show_fixes"),
+        ("--graph", "graph"),
+        ("--lsp", "lsp"),
+        ("--init-ci", "init_ci"),
+        ("--decompile", "decompile"),
+        ("--tsundere", "tsundere"),
+    ],
+)
 def test_parse_args_boolean_flags(flag, attr):
     """Each boolean flag sets its attribute to True."""
     args = parse_args([flag])
@@ -114,6 +121,7 @@ def test_parse_args_boolean_flags(flag, attr):
 # =============================================================================
 # 4. String/value flags
 # =============================================================================
+
 
 def test_parse_args_rule_flag():
     """--rule RPY104 sets rule attribute."""
@@ -228,15 +236,19 @@ def test_parse_args_unrpyc():
 # 5. Combined flags
 # =============================================================================
 
+
 def test_parse_args_multiple_flags_combined():
     """Multiple flags can be combined."""
-    args = parse_args([
-        "/path/to/project",
-        "--fix",
-        "--errors-only",
-        "--no-cache",
-        "--output-format", "json",
-    ])
+    args = parse_args(
+        [
+            "/path/to/project",
+            "--fix",
+            "--errors-only",
+            "--no-cache",
+            "--output-format",
+            "json",
+        ]
+    )
     assert args.path == "/path/to/project"
     assert args.fix is True
     assert args.errors_only is True
@@ -256,6 +268,7 @@ def test_parse_args_path_with_flags():
 # 6. Help exits with SystemExit
 # =============================================================================
 
+
 def test_parse_args_help_exits_zero(capsys):
     """--help prints help and exits 0."""
     with pytest.raises(SystemExit) as exc_info:
@@ -272,6 +285,7 @@ def test_parse_args_help_exits_zero(capsys):
 # 7. Invalid choices raise SystemExit
 # =============================================================================
 
+
 def test_parse_args_invalid_output_format_exits_nonzero(capsys):
     """--output-format invalid choice exits with error."""
     with pytest.raises(SystemExit) as exc_info:
@@ -283,7 +297,9 @@ def test_parse_args_invalid_output_format_exits_nonzero(capsys):
 # 8. Backward compat — parse_args importable
 # =============================================================================
 
+
 def test_parse_args_importable_from_cli_main():
     """parse_args must remain importable from senpy.cli.main after."""
     from senpy.cli.main import parse_args as f1
+
     assert callable(f1)

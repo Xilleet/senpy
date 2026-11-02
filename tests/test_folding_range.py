@@ -3,6 +3,7 @@
 Проверяет, что folding_range() правильно определяет границы сворачиваемых блоков:
 label, screen, menu, init python, transform, python.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -155,10 +156,10 @@ def test_folding_range_no_blocks(tmp_path: Path):
     """Файл без scope-opening ключевых слов — нет folding ranges."""
     setup_test_workspace(tmp_path)
 
-    content = '''# Just comments
+    content = """# Just comments
 # And dialogue
 "Hello world"
-'''
+"""
     uri = "file:///test/no_blocks.rpy"
     doc = MockDocument(uri, content)
     mock_ls = MagicMock()

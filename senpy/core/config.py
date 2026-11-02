@@ -18,6 +18,7 @@ Public API:
     load_config(project_path: str) -> dict
     validate_config(raw: dict) -> dict    (: pydantic валидация)
 """
+
 from __future__ import annotations
 
 import os
@@ -33,6 +34,7 @@ _logger = get_logger("config")
 # =============================================================================
 # pydantic-модель для валидации конфига
 # =============================================================================
+
 
 class SenpyConfig(BaseModel):
     """Pydantic-схема конфигурации Senpy ([tool.senpy] секция).
@@ -60,7 +62,7 @@ class SenpyConfig(BaseModel):
     tsundere: bool = False
     unrpyc_path: str | None = None
     allow_image_overrides: bool | None = None
-    strict: bool = False # : все правила = ERROR
+    strict: bool = False  # : все правила = ERROR
 
     # Rule filtering
     ignore: list[str] = Field(default_factory=list)
@@ -151,15 +153,15 @@ def load_config(project_path: str) -> dict:
             # игнорируется. Без этого — часы дебага "почему мои ignore-правила
             # не работают?".
             _logger.warning(
-                "TOMLDecodeError reading config %s: %s. Falling back to "
-                "default (empty) config.",
-                c, e,
+                "TOMLDecodeError reading config %s: %s. Falling back to default (empty) config.",
+                c,
+                e,
             )
         except OSError as e:
             # Permission denied, disk error, etc. — тоже логируем.
             _logger.warning(
-                "OSError reading config %s: %s. Falling back to "
-                "default (empty) config.",
-                c, e,
+                "OSError reading config %s: %s. Falling back to default (empty) config.",
+                c,
+                e,
             )
     return {}

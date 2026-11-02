@@ -128,6 +128,7 @@ include = ["my_plugin*"]
 
 ```python
 """My custom Senpy rules."""
+
 from __future__ import annotations
 
 from senpy.api import Diagnostic
@@ -157,14 +158,16 @@ class MyRule(Rule):
         for line_idx, raw_line in enumerate(ctx.lines, start=1):
             stripped = raw_line.strip()
             if stripped.startswith("#") and "TODO" in stripped.upper():
-                diags.append(Diagnostic(
-                    file_path=ctx.file_path,
-                    line_number=line_idx,
-                    line_content=raw_line.rstrip("\n\r"),
-                    code="RPY902",
-                    message=f"TODO comment: {stripped}",
-                    severity="HINT",
-                ))
+                diags.append(
+                    Diagnostic(
+                        file_path=ctx.file_path,
+                        line_number=line_idx,
+                        line_content=raw_line.rstrip("\n\r"),
+                        code="RPY902",
+                        message=f"TODO comment: {stripped}",
+                        severity="HINT",
+                    )
+                )
 
         return diags
 ```
@@ -253,20 +256,22 @@ class FixSmartQuotesRule(Rule):
 
             for i, ch in enumerate(raw_line):
                 if ch in "\u201c\u201d":  # " "
-                    diags.append(Diagnostic(
-                        file_path=ctx.file_path,
-                        line_number=line_idx,
-                        line_content=raw_line.rstrip("\n\r"),
-                        code="RPY903",
-                        message=f"Smart quote '{ch}' in code — use straight quote instead",
-                        severity="ERROR",
-                        col=i,
-                        end_col=i + 1,
-                        fix_title="Replace with straight quote (\")",
-                        fix_replacement='"',
-                        fix_start_col=i,
-                        fix_end_col=i + 1,
-                    ))
+                    diags.append(
+                        Diagnostic(
+                            file_path=ctx.file_path,
+                            line_number=line_idx,
+                            line_content=raw_line.rstrip("\n\r"),
+                            code="RPY903",
+                            message=f"Smart quote '{ch}' in code — use straight quote instead",
+                            severity="ERROR",
+                            col=i,
+                            end_col=i + 1,
+                            fix_title='Replace with straight quote (")',
+                            fix_replacement='"',
+                            fix_start_col=i,
+                            fix_end_col=i + 1,
+                        )
+                    )
 
         return diags
 ```
@@ -281,6 +286,7 @@ Create `tests/test_my_rule.py` in your plugin project:
 
 ```python
 """Tests for my_plugin.rules.MyRule."""
+
 from my_plugin.rules import MyRule
 from senpy.plugins.base import RuleContext
 from senpy.api import Diagnostic
@@ -291,10 +297,10 @@ def test_rule_detects_todo():
     ctx = RuleContext(
         file_path="test.rpy",
         lines=[
-            'label start:\n',
-            '    # TODO: implement this\n',      # flagged
-            '    "Hi"\n',                          # not flagged
-            '    return\n',
+            "label start:\n",
+            "    # TODO: implement this\n",  # flagged
+            '    "Hi"\n',  # not flagged
+            "    return\n",
         ],
         symbols={},
     )
@@ -420,6 +426,7 @@ If any of these fail, that's your problem. Fix it, reinstall with `pip install -
    class MyRule(Rule):
        PLUGIN_API_VERSION = "1.0"  # ← class-level
 
+
    # WRONG (won't be detected)
    class MyRule(Rule):
        def __init__(self):
@@ -446,6 +453,7 @@ If any of these fail, that's your problem. Fix it, reinstall with `pip install -
    # CORRECT
    def check(self, ctx):
        return []  # empty list if no issues
+
 
    # WRONG (will crash Senpy)
    def check(self, ctx):

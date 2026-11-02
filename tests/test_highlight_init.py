@@ -6,6 +6,7 @@ UX-12: При инициализации LSP сервера сразу запу�
 UX-5:  Подсветка всех упоминаний слова под курсором в текущем файле.
        VS Code: курсор на переменной → все её упоминания подсвечиваются.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,6 +21,7 @@ from senpy.core.analyzer import SenpyAnalyzer
 # =============================================================================
 # UX-12: initialized handler
 # =============================================================================
+
 
 def test_initialized_triggers_full_diagnostics(tmp_path: Path):
     """При initialized должен запуститься full project scan."""
@@ -52,6 +54,7 @@ def test_initialized_without_workspace_root(tmp_path: Path):
 # =============================================================================
 # UX-5: documentHighlight
 # =============================================================================
+
 
 def _read_script(tmp_path: Path) -> str:
     """Читает содержимое test script.rpy (SIM115-safe)."""
@@ -87,9 +90,9 @@ def test_document_highlight_variable(tmp_path: Path):
 
     # Должны быть разные kinds: Write (default) и Read/Text ($ player_gold += 10)
     kinds = {h.kind for h in result}
-    assert lsp.DocumentHighlightKind.Write in kinds or lsp.DocumentHighlightKind.Text in kinds, (
-        f"Должен быть Write или Text kind: {kinds}"
-    )
+    assert (
+        lsp.DocumentHighlightKind.Write in kinds or lsp.DocumentHighlightKind.Text in kinds
+    ), f"Должен быть Write или Text kind: {kinds}"
 
 
 def test_document_highlight_label(tmp_path: Path):

@@ -16,6 +16,7 @@ Covers the three asset-hover code paths added in :
 The unit-test for the lightweight image-size parser (PNG/JPEG/WEBP/GIF/BMP
 header walkers) is also here, since it is exercised by the image hover.
 """
+
 from __future__ import annotations
 
 import json
@@ -103,7 +104,14 @@ def _make_minimal_webp(width: int, height: int, chunk: bytes = b"VP8 ") -> bytes
         w = width - 1
         h = height - 1
         payload = b"\x00\x00\x00\x00" + bytes(
-            [w & 0xFF, (w >> 8) & 0xFF, (w >> 16) & 0xFF, h & 0xFF, (h >> 8) & 0xFF, (h >> 16) & 0xFF]
+            [
+                w & 0xFF,
+                (w >> 8) & 0xFF,
+                (w >> 16) & 0xFF,
+                h & 0xFF,
+                (h >> 8) & 0xFF,
+                (h >> 16) & 0xFF,
+            ]
         )
     else:
         raise ValueError(f"unsupported chunk: {chunk!r}")
@@ -131,7 +139,9 @@ def _make_minimal_bmp(width: int, height: int) -> bytes:
     )
 
 
-def _setup_asset_workspace(tmp_path: Path, images: dict[str, bytes], audio: dict[str, bytes] | None = None):
+def _setup_asset_workspace(
+    tmp_path: Path, images: dict[str, bytes], audio: dict[str, bytes] | None = None
+):
     """Create a test Ren'Py project with image and audio assets on disk.
 
     *images* maps a rel path (e.g. ``"images/eileen happy.png"``) to file
@@ -566,7 +576,7 @@ class TestVideoHover:
 
 
 class TestExistingHoverRegression:
-    """ changes must not break existing hover paths."""
+    """changes must not break existing hover paths."""
 
     def test_variable_hover_still_works(self, tmp_path):
         script_file, _ = setup_test_workspace(tmp_path)

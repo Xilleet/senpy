@@ -6,6 +6,7 @@
   - Preference writer'у: если есть ожидающий writer, новый reader ждёт
   - Deadlock-безопасность: исключения в handler'ах не оставляют lock зависшим
 """
+
 from __future__ import annotations
 
 import threading
@@ -17,6 +18,7 @@ from senpy.lsp.server import _RWLock
 # =============================================================================
 # _RWLock unit tests
 # =============================================================================
+
 
 def test_rwlock_multiple_readers_parallel():
     """Несколько reader'ов могут держать read lock одновременно."""
@@ -41,7 +43,9 @@ def test_rwlock_multiple_readers_parallel():
         t.join(timeout=2.0)
 
     # Все 3 reader'а должны были войти — barrier не должен был упасть по таймауту
-    assert len(results) == 6, f"Только {len(results)}/6 reader events — значит reader'ы сериализованы"
+    assert (
+        len(results) == 6
+    ), f"Только {len(results)}/6 reader events — значит reader'ы сериализованы"
     assert all("in" in r for r in results[:3]), "Все reader'ы должны были войти"
 
 
@@ -176,9 +180,9 @@ def test_rwlock_writer_preference_blocks_new_readers():
     assert reader1_in.is_set(), "Reader1 должен войти"
     assert writer_waiting.is_set(), "Writer должен ждать"
     assert not writer_in.is_set(), "Writer не должен пройти (reader1 активен)"
-    assert not reader2_in.is_set(), (
-        "Reader2 НЕ должен пройти из-за writer preference — иначе writer может starvation"
-    )
+    assert (
+        not reader2_in.is_set()
+    ), "Reader2 НЕ должен пройти из-за writer preference — иначе writer может starvation"
 
     release_reader1.set()
     t_r1.join(timeout=2.0)
@@ -215,6 +219,7 @@ def test_rwlock_context_managers_work():
 # Integration: _with_analysis_lock использует rw_lock
 # =============================================================================
 
+
 def test_with_analysis_lock_uses_rw_lock_read():
     """_with_analysis_lock должен брать read lock rw_lock, не write.
 
@@ -240,9 +245,9 @@ def test_with_analysis_lock_uses_rw_lock_read():
     mock_handler(None, None)
 
     assert lock_state["reader_in"], "Handler должен был выполниться"
-    assert lock_state["another_reader_can_pass"] is True, (
-        f"Nested read lock должен пройти, но: {lock_state['another_reader_can_pass']}"
-    )
+    assert (
+        lock_state["another_reader_can_pass"] is True
+    ), f"Nested read lock должен пройти, но: {lock_state['another_reader_can_pass']}"
 
 
 def test_rwlock_release_on_exception():

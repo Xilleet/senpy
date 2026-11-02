@@ -12,6 +12,7 @@ Architecture follows existing pattern:
 - server.py: thin @server.feature dispatchers (like folding_range, document_highlight)
 - handlers/<name>.py: actual implementation
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -43,8 +44,9 @@ class MockDocument:
 class MockWorkspace:
     """Minimal mock of pygls Workspace."""
 
-    def __init__(self, documents: dict[str, MockDocument] | None = None,
-                 root_path: str | None = None):
+    def __init__(
+        self, documents: dict[str, MockDocument] | None = None, root_path: str | None = None
+    ):
         self._documents = documents or {}
         self.root_path = root_path
 
@@ -77,6 +79,7 @@ class TestDocumentColorHandler:
     def test_document_color_function_exists(self):
         """document_color() function must be importable from handlers."""
         from senpy.lsp.handlers.diagnostics import document_color
+
         assert callable(document_color)
 
     def test_document_color_returns_list(self):
@@ -87,7 +90,7 @@ class TestDocumentColorHandler:
 
         mock_doc = MockDocument(
             "file:///test.rpy",
-            'label start:\n    "Hello"\n    return\n'  # no colors
+            'label start:\n    "Hello"\n    return\n',  # no colors
         )
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
@@ -107,7 +110,7 @@ class TestDocumentColorHandler:
 
         mock_doc = MockDocument(
             "file:///test.rpy",
-            'label start:\n    "Hello {color=#ff0000}world{/color}!"\n    return\n'
+            'label start:\n    "Hello {color=#ff0000}world{/color}!"\n    return\n',
         )
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
@@ -124,7 +127,9 @@ class TestDocumentColorHandler:
         assert hasattr(color_info, "color")
         # #ff0000 = red 255, green 0, blue 0, alpha 255
         # LSP Color uses 0.0-1.0 floats
-        assert abs(color_info.color.red - 1.0) < 0.01, f"Red should be 1.0, got {color_info.color.red}"
+        assert (
+            abs(color_info.color.red - 1.0) < 0.01
+        ), f"Red should be 1.0, got {color_info.color.red}"
         assert abs(color_info.color.green - 0.0) < 0.01
         assert abs(color_info.color.blue - 0.0) < 0.01
         # alpha defaults to 1.0 if not specified
@@ -136,10 +141,7 @@ class TestDocumentColorHandler:
 
         from senpy.lsp.handlers.diagnostics import document_color
 
-        mock_doc = MockDocument(
-            "file:///test.rpy",
-            'screen test():\n    add Solid("#00ff00")\n'
-        )
+        mock_doc = MockDocument("file:///test.rpy", 'screen test():\n    add Solid("#00ff00")\n')
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
         mock_ls.workspace = mock_workspace
@@ -150,10 +152,7 @@ class TestDocumentColorHandler:
         result = document_color(mock_ls, params)
 
         assert len(result) >= 1
-        green_info = next(
-            (ci for ci in result if abs(ci.color.green - 1.0) < 0.01),
-            None
-        )
+        green_info = next((ci for ci in result if abs(ci.color.green - 1.0) < 0.01), None)
         assert green_info is not None, "Expected a green color (#00ff00) in results"
 
     def test_document_color_handles_alpha_channel(self):
@@ -163,8 +162,7 @@ class TestDocumentColorHandler:
         from senpy.lsp.handlers.diagnostics import document_color
 
         mock_doc = MockDocument(
-            "file:///test.rpy",
-            'label start:\n    "Test {color=#ff0000ff}text{/color}"\n'
+            "file:///test.rpy", 'label start:\n    "Test {color=#ff0000ff}text{/color}"\n'
         )
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
@@ -186,8 +184,7 @@ class TestDocumentColorHandler:
         from senpy.lsp.handlers.diagnostics import document_color
 
         mock_doc = MockDocument(
-            "file:///test.rpy",
-            'label start:\n    "Test {color=#ff000080}text{/color}"\n'
+            "file:///test.rpy", 'label start:\n    "Test {color=#ff000080}text{/color}"\n'
         )
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
@@ -209,8 +206,7 @@ class TestDocumentColorHandler:
         from senpy.lsp.handlers.diagnostics import document_color
 
         mock_doc = MockDocument(
-            "file:///test.rpy",
-            '# This is a comment with #ffffff in it\nlabel start:\n    "Hi"\n'
+            "file:///test.rpy", '# This is a comment with #ffffff in it\nlabel start:\n    "Hi"\n'
         )
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
@@ -231,10 +227,7 @@ class TestDocumentColorHandler:
 
         from senpy.lsp.handlers.diagnostics import document_color
 
-        mock_doc = MockDocument(
-            "file:///test.rpy",
-            '    "Hello {color=#ff0000}world{/color}!"\n'
-        )
+        mock_doc = MockDocument("file:///test.rpy", '    "Hello {color=#ff0000}world{/color}!"\n')
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
         mock_ls.workspace = mock_workspace
@@ -254,9 +247,7 @@ class TestDocumentColorHandler:
         # Extract the matched text from the line
         line_text = mock_doc.lines[line_idx]
         matched_text = line_text[start_char:end_char]
-        assert matched_text == "#ff0000", (
-            f"Range should point to '#ff0000', got {matched_text!r}"
-        )
+        assert matched_text == "#ff0000", f"Range should point to '#ff0000', got {matched_text!r}"
 
     def test_document_color_handles_multiple_colors_in_file(self):
         """Multiple colors in file → multiple ColorInformation entries."""
@@ -266,11 +257,11 @@ class TestDocumentColorHandler:
 
         mock_doc = MockDocument(
             "file:///test.rpy",
-            'label start:\n'
+            "label start:\n"
             '    "Red {color=#ff0000}R{/color}"\n'
             '    "Green {color=#00ff00}G{/color}"\n'
             '    "Blue {color=#0000ff}B{/color}"\n'
-            '    return\n'
+            "    return\n",
         )
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
@@ -292,7 +283,7 @@ class TestDocumentColorHandler:
 
 
 class TestColorPresentationHandler:
-    """ part 2: colorPresentation returns ColorPresentation[] for edits.
+    """part 2: colorPresentation returns ColorPresentation[] for edits.
 
     When user picks a new color in VS Code's color picker, VS Code calls
     colorPresentation to get the text representation of the new color.
@@ -303,6 +294,7 @@ class TestColorPresentationHandler:
 
     def test_color_presentation_function_exists(self):
         from senpy.lsp.handlers.diagnostics import color_presentation
+
         assert callable(color_presentation)
 
     def test_color_presentation_returns_list(self):
@@ -311,10 +303,7 @@ class TestColorPresentationHandler:
 
         from senpy.lsp.handlers.diagnostics import color_presentation
 
-        mock_doc = MockDocument(
-            "file:///test.rpy",
-            '    "Test {color=#ff0000}text{/color}"\n'
-        )
+        mock_doc = MockDocument("file:///test.rpy", '    "Test {color=#ff0000}text{/color}"\n')
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
         mock_ls.workspace = mock_workspace
@@ -353,6 +342,7 @@ class TestFormattingHandler:
     def test_formatting_function_exists(self):
         """formatting() function must be importable from handlers."""
         from senpy.lsp.handlers.diagnostics import formatting
+
         assert callable(formatting)
 
     def test_formatting_returns_list_of_text_edits(self):
@@ -362,10 +352,7 @@ class TestFormattingHandler:
         from senpy.lsp.handlers.diagnostics import formatting
 
         # Already-formatted code → no changes needed → empty list
-        mock_doc = MockDocument(
-            "file:///test.rpy",
-            'label start:\n    "Hello"\n    return\n'
-        )
+        mock_doc = MockDocument("file:///test.rpy", 'label start:\n    "Hello"\n    return\n')
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
         mock_ls.workspace = mock_workspace
@@ -386,7 +373,7 @@ class TestFormattingHandler:
         # Code with tabs (should be 4 spaces)
         mock_doc = MockDocument(
             "file:///test.rpy",
-            'label start:\n\t"Hello"\n\treturn\n'  # tabs, not spaces
+            'label start:\n\t"Hello"\n\treturn\n',  # tabs, not spaces
         )
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
@@ -414,7 +401,7 @@ class TestFormattingHandler:
 
         mock_doc = MockDocument(
             "file:///test.rpy",
-            '$ status = \u201cactive\u201d\n'  # smart quotes in code
+            "$ status = \u201cactive\u201d\n",  # smart quotes in code
         )
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
@@ -441,7 +428,7 @@ class TestFormattingHandler:
 
         mock_doc = MockDocument(
             "file:///test.rpy",
-            '    "She said \u201chello\u201d to him."\n'  # dialogue with smart quotes
+            '    "She said \u201chello\u201d to him."\n',  # dialogue with smart quotes
         )
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
@@ -490,13 +477,13 @@ class TestFormattingHandler:
         if result:
             new_content = result[0].new_text
             # If it's a whole-document replace, new_content should == clean_code
-            assert new_content == clean_code, (
-                "Already-formatted code should not produce different edits"
-            )
+            assert (
+                new_content == clean_code
+            ), "Already-formatted code should not produce different edits"
 
 
 class TestRangeFormattingHandler:
-    """ part 2: textDocument/rangeFormatting formats selected range only.
+    """part 2: textDocument/rangeFormatting formats selected range only.
 
     VS Code calls this on Ctrl+K Ctrl+F ("Format Selection").
     Currently we accept the handler exists; full range formatting is a
@@ -506,6 +493,7 @@ class TestRangeFormattingHandler:
     def test_range_formatting_function_exists(self):
         """range_formatting() function must be importable from handlers."""
         from senpy.lsp.handlers.diagnostics import range_formatting
+
         assert callable(range_formatting)
 
     def test_range_formatting_returns_list(self):
@@ -514,10 +502,7 @@ class TestRangeFormattingHandler:
 
         from senpy.lsp.handlers.diagnostics import range_formatting
 
-        mock_doc = MockDocument(
-            "file:///test.rpy",
-            'label start:\n    "Hello"\n    return\n'
-        )
+        mock_doc = MockDocument("file:///test.rpy", 'label start:\n    "Hello"\n    return\n')
         mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
         mock_ls = MagicMock()
         mock_ls.workspace = mock_workspace

@@ -10,6 +10,7 @@ _() for translation. Translators need _() to extract strings for localization.
 
 Severity: WARNING (not breaking, but accessibility issue)
 """
+
 from __future__ import annotations
 
 from senpy.api import Diagnostic
@@ -68,17 +69,19 @@ class HardcodedDialogueRule(Rule):
                 continue  # already translated
 
             # Flag it
-            diags.append(Diagnostic(
-                file_path=ctx.file_path,
-                line_number=line_idx,
-                line_content=raw_line.rstrip("\n\r"),
-                code="RPY901",
-                message=(
-                    f"Hard-coded dialogue without _() for translation. "
-                    f"Wrap in _() so translators can extract this string: "
-                    f"_({stripped.rstrip()})"
-                ),
-                severity="WARNING",
-            ))
+            diags.append(
+                Diagnostic(
+                    file_path=ctx.file_path,
+                    line_number=line_idx,
+                    line_content=raw_line.rstrip("\n\r"),
+                    code="RPY901",
+                    message=(
+                        f"Hard-coded dialogue without _() for translation. "
+                        f"Wrap in _() so translators can extract this string: "
+                        f"_({stripped.rstrip()})"
+                    ),
+                    severity="WARNING",
+                )
+            )
 
         return diags

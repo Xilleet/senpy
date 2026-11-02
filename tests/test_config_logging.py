@@ -6,6 +6,7 @@
   - caplog должен ловить это сообщение.
   - OSError (например, permission denied) — тоже логируется как WARNING.
 """
+
 from __future__ import annotations
 
 import logging
@@ -51,8 +52,7 @@ def test_load_config_logs_invalid_toml(tmp_path: Path, caplog, monkeypatch):
     ), f"warning not logged: {caplog.records}"
     # В сообщении должен быть путь к файлу
     assert any(
-        str(bad_toml) in r.message or "senpy.toml" in r.message
-        for r in caplog.records
+        str(bad_toml) in r.message or "senpy.toml" in r.message for r in caplog.records
     ), f"path not in log: {caplog.records}"
 
 
@@ -84,8 +84,10 @@ def test_load_config_logs_oserror(tmp_path: Path, caplog, monkeypatch):
     assert result == {}
     # Логирует warning про ошибку чтения
     assert any(
-        "permission" in r.message.lower() or "oserror" in r.message.lower()
-        or "read" in r.message.lower() or "config" in r.message.lower()
+        "permission" in r.message.lower()
+        or "oserror" in r.message.lower()
+        or "read" in r.message.lower()
+        or "config" in r.message.lower()
         for r in caplog.records
     ), f"warning not logged: {caplog.records}"
 

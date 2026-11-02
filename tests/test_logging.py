@@ -22,6 +22,7 @@ TDD-контракт для `setup_logging()`:
   - Caller (cli/main.py, lsp/server.py) явно вызывает `setup_logging(verbose=...)`
     когда хочет вывод.
 """
+
 from __future__ import annotations
 
 import logging
@@ -34,6 +35,7 @@ from senpy.core.logging import get_logger, setup_logging
 # =============================================================================
 # 1. Defaults — library best practice
 # =============================================================================
+
 
 def test_setup_logging_returns_senpy_logger():
     """setup_logging() возвращает logger с именем 'senpy'."""
@@ -63,6 +65,7 @@ def test_setup_logging_no_stream_handler_by_default():
 # 2. Verbose mode
 # =============================================================================
 
+
 def test_setup_logging_verbose_adds_stream_handler():
     """verbose=True добавляет StreamHandler."""
     logger = setup_logging(verbose=True)
@@ -83,6 +86,7 @@ def test_setup_logging_verbose_emits_messages(caplog):
 # 3. Idempotency
 # =============================================================================
 
+
 def test_setup_logging_is_idempotent():
     """Повторный вызов setup_logging не дублирует handlers."""
     logger1 = setup_logging(verbose=True)
@@ -99,14 +103,13 @@ def test_setup_logging_can_switch_modes():
     assert any(type(h).__name__ == "StreamHandler" for h in logger_verbose.handlers)
 
     logger_default = setup_logging()  # verbose=False
-    assert not any(
-        type(h).__name__ == "StreamHandler" for h in logger_default.handlers
-    )
+    assert not any(type(h).__name__ == "StreamHandler" for h in logger_default.handlers)
 
 
 # =============================================================================
 # 4. File handler
 # =============================================================================
+
 
 def test_setup_logging_with_log_file(tmp_path: Path):
     """log_file добавляет FileHandler."""
@@ -133,6 +136,7 @@ def test_setup_logging_log_file_writes_messages(tmp_path: Path):
 # 5. get_logger — public API for submodules
 # =============================================================================
 
+
 def test_get_logger_returns_child():
     """get_logger('plugins') возвращает logger с именем 'senpy.plugins'."""
     sub = get_logger("plugins")
@@ -157,6 +161,7 @@ def test_get_logger_has_no_own_handlers():
 # 6. Formatter — стандартный формат
 # =============================================================================
 
+
 def test_setup_logging_formatter_format(tmp_path: Path):
     """Formatter включает timestamp, level, name, message."""
     log_path = tmp_path / "fmt.log"
@@ -174,6 +179,7 @@ def test_setup_logging_formatter_format(tmp_path: Path):
 # =============================================================================
 # 7. Integration — log levels work correctly
 # =============================================================================
+
 
 def test_log_levels_respected(tmp_path: Path):
     """DEBUG не пишется по умолчанию (level=INFO)."""

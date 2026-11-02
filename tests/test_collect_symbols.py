@@ -6,6 +6,7 @@ GREEN: после extraction из _collect_symbols — тесты проходя
 Тестирует что каждый _collect_* метод существует и обрабатывает
 соответствующий тип объявления, создавая правильные symbols.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -27,12 +28,14 @@ class TestCollectDefault:
 
     def test_method_exists(self):
         from senpy.core.analyzer import SenpyAnalyzer
+
         assert hasattr(SenpyAnalyzer, "_collect_default")
 
     def test_default_creates_variable(self, tmp_path):
         """default x = 1 → VariableSymbol создан."""
         from senpy.core.analyzer import SenpyAnalyzer
-        project = _make_project(tmp_path, 'default x = 1\n')
+
+        project = _make_project(tmp_path, "default x = 1\n")
         analyzer = SenpyAnalyzer(project)
         analyzer.run(quiet=True)
         assert "x" in analyzer.variables
@@ -44,12 +47,14 @@ class TestCollectDefine:
 
     def test_method_exists(self):
         from senpy.core.analyzer import SenpyAnalyzer
+
         assert hasattr(SenpyAnalyzer, "_collect_define")
 
     def test_define_creates_constant(self, tmp_path):
         """define CONST = 42 → VariableSymbol с is_constant=True."""
         from senpy.core.analyzer import SenpyAnalyzer
-        project = _make_project(tmp_path, 'define CONST = 42\n')
+
+        project = _make_project(tmp_path, "define CONST = 42\n")
         analyzer = SenpyAnalyzer(project)
         analyzer.run(quiet=True)
         assert "CONST" in analyzer.variables
@@ -61,11 +66,13 @@ class TestCollectDefineAudio:
 
     def test_method_exists(self):
         from senpy.core.analyzer import SenpyAnalyzer
+
         assert hasattr(SenpyAnalyzer, "_collect_define_audio")
 
     def test_define_audio_creates_alias(self, tmp_path):
         """define audio.music = "bgm.ogg" → alias в defined_audio_map."""
         from senpy.core.analyzer import SenpyAnalyzer
+
         project = _make_project(tmp_path, 'define audio.music = "bgm.ogg"\n')
         analyzer = SenpyAnalyzer(project)
         analyzer.run(quiet=True)
@@ -78,12 +85,14 @@ class TestCollectScreenTransform:
 
     def test_method_exists(self):
         from senpy.core.analyzer import SenpyAnalyzer
+
         assert hasattr(SenpyAnalyzer, "_collect_screen_transform")
 
     def test_screen_creates_symbol(self, tmp_path):
         """screen foo(): → ScreenSymbol."""
         from senpy.core.analyzer import SenpyAnalyzer
-        project = _make_project(tmp_path, 'screen foo():\n    pass\n')
+
+        project = _make_project(tmp_path, "screen foo():\n    pass\n")
         analyzer = SenpyAnalyzer(project)
         analyzer.run(quiet=True)
         assert "foo" in analyzer.screens
@@ -91,7 +100,8 @@ class TestCollectScreenTransform:
     def test_transform_creates_symbol(self, tmp_path):
         """transform slide: → TransformSymbol."""
         from senpy.core.analyzer import SenpyAnalyzer
-        project = _make_project(tmp_path, 'transform slide:\n    linear 1.0 xoffset 100\n')
+
+        project = _make_project(tmp_path, "transform slide:\n    linear 1.0 xoffset 100\n")
         analyzer = SenpyAnalyzer(project)
         analyzer.run(quiet=True)
         assert "slide" in analyzer.transforms
@@ -102,12 +112,14 @@ class TestCollectLabel:
 
     def test_method_exists(self):
         from senpy.core.analyzer import SenpyAnalyzer
+
         assert hasattr(SenpyAnalyzer, "_collect_label")
 
     def test_label_creates_symbol(self, tmp_path):
         """label start: → LabelSymbol."""
         from senpy.core.analyzer import SenpyAnalyzer
-        project = _make_project(tmp_path, 'label start:\n    return\n')
+
+        project = _make_project(tmp_path, "label start:\n    return\n")
         analyzer = SenpyAnalyzer(project)
         analyzer.run(quiet=True)
         assert "start" in analyzer.labels
@@ -119,6 +131,7 @@ class TestCollectLabelBody:
 
     def test_method_exists(self):
         from senpy.core.analyzer import SenpyAnalyzer
+
         assert hasattr(SenpyAnalyzer, "_collect_label_body")
 
 
@@ -127,11 +140,13 @@ class TestCollectImages:
 
     def test_method_exists(self):
         from senpy.core.analyzer import SenpyAnalyzer
+
         assert hasattr(SenpyAnalyzer, "_collect_images")
 
     def test_image_creates_symbol(self, tmp_path):
         """image bg = "bg.png" → ImageSymbol."""
         from senpy.core.analyzer import SenpyAnalyzer
+
         project = _make_project(tmp_path, 'image bg = "bg.png"\n')
         analyzer = SenpyAnalyzer(project)
         analyzer.run(quiet=True)
@@ -143,6 +158,7 @@ class TestCollectMisc:
 
     def test_method_exists(self):
         from senpy.core.analyzer import SenpyAnalyzer
+
         assert hasattr(SenpyAnalyzer, "_collect_misc")
 
 
@@ -152,7 +168,8 @@ class TestCollectSymbolsRefactored:
     def test_default_and_define(self, tmp_path):
         """_collect_symbols обрабатывает default + define."""
         from senpy.core.analyzer import SenpyAnalyzer
-        project = _make_project(tmp_path, 'default x = 1\ndefine CONST = 42\n')
+
+        project = _make_project(tmp_path, "default x = 1\ndefine CONST = 42\n")
         analyzer = SenpyAnalyzer(project)
         analyzer.run(quiet=True)
         assert "x" in analyzer.variables
@@ -162,7 +179,10 @@ class TestCollectSymbolsRefactored:
     def test_label_with_jump(self, tmp_path):
         """_collect_symbols обрабатывает label + jump."""
         from senpy.core.analyzer import SenpyAnalyzer
-        project = _make_project(tmp_path, 'label start:\n    jump chapter2\nlabel chapter2:\n    return\n')
+
+        project = _make_project(
+            tmp_path, "label start:\n    jump chapter2\nlabel chapter2:\n    return\n"
+        )
         analyzer = SenpyAnalyzer(project)
         analyzer.run(quiet=True)
         assert "start" in analyzer.labels
@@ -172,7 +192,8 @@ class TestCollectSymbolsRefactored:
     def test_screen_with_use(self, tmp_path):
         """_collect_symbols обрабатывает screen + use."""
         from senpy.core.analyzer import SenpyAnalyzer
-        project = _make_project(tmp_path, 'screen main():\n    use sub\nscreen sub():\n    pass\n')
+
+        project = _make_project(tmp_path, "screen main():\n    use sub\nscreen sub():\n    pass\n")
         analyzer = SenpyAnalyzer(project)
         analyzer.run(quiet=True)
         assert "main" in analyzer.screens
@@ -182,6 +203,7 @@ class TestCollectSymbolsRefactored:
     def test_image_declaration(self, tmp_path):
         """_collect_symbols обрабатывает image."""
         from senpy.core.analyzer import SenpyAnalyzer
+
         project = _make_project(tmp_path, 'image bg room = "room.png"\n')
         analyzer = SenpyAnalyzer(project)
         analyzer.run(quiet=True)
@@ -190,7 +212,8 @@ class TestCollectSymbolsRefactored:
     def test_init_python_block(self, tmp_path):
         """_collect_symbols обрабатывает init python блок."""
         from senpy.core.analyzer import SenpyAnalyzer
-        project = _make_project(tmp_path, 'init python:\n    def foo():\n        return 42\n')
+
+        project = _make_project(tmp_path, "init python:\n    def foo():\n        return 42\n")
         analyzer = SenpyAnalyzer(project)
         analyzer.run(quiet=True)
         assert "foo" in analyzer.declared_symbols

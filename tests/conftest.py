@@ -17,6 +17,7 @@
 Если вам нужно красивое имя в консоли — используйте `pytest --tb=short`
 или кастомный reporter через `pytest_report_header` / `pytest_runtest_logreport`.
 """
+
 from __future__ import annotations
 
 import json
@@ -57,9 +58,7 @@ def pytest_collection_modifyitems(
 
 
 @pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(
-    item: pytest.Item, call: pytest.CallInfo
-) -> object:
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> object:
     """Собирает результаты каждого теста для отчётов."""
     outcome = yield
     report: pytest.TestReport = outcome.get_result()
@@ -187,6 +186,7 @@ def _clean_lsp_state_after_test():
     # Cleanup после теста
     try:
         import senpy.lsp.server as server_mod
+
         # Отменим все timer'ы
         if getattr(server_mod, "_full_timer", None) is not None:
             try:

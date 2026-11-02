@@ -37,6 +37,7 @@ Usage:
 Exit code 0 always (unless --help). The script never deletes files, never
 removes lines entirely — only edits ID occurrences in place.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -66,7 +67,7 @@ _WHITELIST_PATHS = [
     "senpy/vendor/**",
     "senpy-vscode/package-lock.json",  # auto-generated, contains versions
     "senpy.sarif",  # auto-generated SARIF report
-    "scripts/clean_internal_ids.py",   # this script — describes IDs as objects
+    "scripts/clean_internal_ids.py",  # this script — describes IDs as objects
     "tests/test_clean_internal_ids.py",  # this test — describes IDs as objects
     "tests/test_ruff_clean.py",  # CI-1 test — describes IDs in comments
     ".pre-commit-config.yaml",  # CI-8 config — references CLEAN-1 hook
@@ -93,8 +94,21 @@ _LINE_SKIP_SUBSTRINGS = (
 
 # File extensions we will scan. Skip binaries, images, lockfiles.
 _SCANNABLE_EXTS = {
-    ".py", ".md", ".ts", ".js", ".toml", ".yml", ".yaml", ".json",
-    ".bat", ".sh", ".rst", ".txt", ".cfg", ".ini", ".spec",
+    ".py",
+    ".md",
+    ".ts",
+    ".js",
+    ".toml",
+    ".yml",
+    ".yaml",
+    ".json",
+    ".bat",
+    ".sh",
+    ".rst",
+    ".txt",
+    ".cfg",
+    ".ini",
+    ".spec",
 }
 
 
@@ -123,8 +137,8 @@ def _final_cleanup(line: str) -> str:
     """
     line = re.sub(r"\(\s+\)", "", line)  # "( )" → ""
     line = re.sub(r"\(\s*\)", "", line)  # "()" → ""
-    line = re.sub(r"\(\s+", "(", line)   # "( text" → "(text"
-    line = re.sub(r"\s+\)", ")", line)   # "text )" → "text)"
+    line = re.sub(r"\(\s+", "(", line)  # "( text" → "(text"
+    line = re.sub(r"\s+\)", ")", line)  # "text )" → "text)"
     line = re.sub(r"(?<=\S)  (?=\S)", " ", line)  # "a  b" → "a b"
     # Stray " ," or " /" at start of a content run (after comment marker):
     # "# / CI fix" → "# CI fix"; "  , 0.6.2)" → "  0.6.2)".
@@ -174,7 +188,7 @@ def _scrub_line(line: str) -> tuple[str, int]:
     if leading_m:
         # Strip "ID: " or "ID:" from the start of the line (keep prefix).
         prefix = leading_m.group("prefix")
-        rest = line[leading_m.end():]
+        rest = line[leading_m.end() :]
         line = prefix + rest
         n += 1
         # Re-run for any remaining IDs mid-line. They use the inline logic.
@@ -206,7 +220,7 @@ def _scrub_line(line: str) -> tuple[str, int]:
         # If we matched a preceding dash, swallow it (avoids "Senpy--fetcher").
         if pre == "-":
             return ""
-        rest = line[end:end + 2]
+        rest = line[end : end + 2]
         # "ID: " → strip "ID: "
         if rest == ": ":
             return ""
@@ -277,17 +291,39 @@ def walk_repo(repo_root: Path, restrict_paths: list[Path] | None = None):
             except ValueError:
                 continue
             skip_subdirs = (
-                "/.git/", "/node_modules/", "/build/", "/dist/",
-                "/.senpy_cache/", "/__pycache__/", "/.vscode-test/",
-                "/.vscode-test-cache/", "/.cache/", "/htmlcov/",
-                "/.pytest_cache/", "/.ruff_cache/", "/.mypy_cache/",
+                "/.git/",
+                "/node_modules/",
+                "/build/",
+                "/dist/",
+                "/.senpy_cache/",
+                "/__pycache__/",
+                "/.vscode-test/",
+                "/.vscode-test-cache/",
+                "/.cache/",
+                "/htmlcov/",
+                "/.pytest_cache/",
+                "/.ruff_cache/",
+                "/.mypy_cache/",
             )
             if any(s in "/" + rel for s in skip_subdirs):
                 continue
-            if rel.startswith(("node_modules/", "build/", "dist/", "__pycache__/",
-                               ".git/", ".senpy_cache/", ".vscode-test/",
-                               ".vscode-test-cache/", ".cache/", "htmlcov/",
-                               ".pytest_cache/", ".ruff_cache/", ".mypy_cache/")):
+            if rel.startswith(
+                (
+                    "node_modules/",
+                    "build/",
+                    "dist/",
+                    "__pycache__/",
+                    ".git/",
+                    ".senpy_cache/",
+                    ".vscode-test/",
+                    ".vscode-test-cache/",
+                    ".cache/",
+                    "htmlcov/",
+                    ".pytest_cache/",
+                    ".ruff_cache/",
+                    ".mypy_cache/",
+                )
+            ):
                 continue
             if not _is_scannable(path):
                 continue
@@ -310,14 +346,23 @@ def main() -> int:
         epilog=__doc__.split("\n\n", 1)[1] if "\n\n" in __doc__ else "",
     )
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--dry-run", action="store_true",
-                      help="Show what would change; do not write files.")
-    mode.add_argument("--apply", action="store_true",
-                      help="Write changes to disk.")
-    parser.add_argument("--paths", nargs="*", type=Path, default=None,
-                        help="Restrict scan to these paths (default: whole repo).")
-    parser.add_argument("--verbose", "-v", action="store_true",
-                        help="Print every change, not just files with changes.")
+    mode.add_argument(
+        "--dry-run", action="store_true", help="Show what would change; do not write files."
+    )
+    mode.add_argument("--apply", action="store_true", help="Write changes to disk.")
+    parser.add_argument(
+        "--paths",
+        nargs="*",
+        type=Path,
+        default=None,
+        help="Restrict scan to these paths (default: whole repo).",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Print every change, not just files with changes.",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent

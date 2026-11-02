@@ -7,6 +7,7 @@ textDocument/prepareCallHierarchy — «кто вызывает этот label?�
        Правый клик на label → «Find Callers» → видишь все jump/call к этому label'у.
        Killer для VN — навигация по графу вызовов.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -42,6 +43,7 @@ class TestSignatureHelpHandler:
     def test_signature_help_function_exists(self):
         """signature_help() must be importable from handlers."""
         from senpy.lsp.handlers.completion import signature_help
+
         assert callable(signature_help)
 
     def test_signature_help_returns_none_when_no_analyzer(self):
@@ -58,10 +60,7 @@ class TestSignatureHelpHandler:
         server_mod._is_initialized = False
 
         try:
-            mock_doc = MockDocument(
-                "file:///test.rpy",
-                "call my_label()\n"
-            )
+            mock_doc = MockDocument("file:///test.rpy", "call my_label()\n")
             mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
             mock_ls = MagicMock()
             mock_ls.workspace = mock_workspace
@@ -93,10 +92,7 @@ class TestSignatureHelpHandler:
         server_mod._is_initialized = True
 
         try:
-            mock_doc = MockDocument(
-                "file:///test.rpy",
-                '    "This is dialogue, not a call"\n'
-            )
+            mock_doc = MockDocument("file:///test.rpy", '    "This is dialogue, not a call"\n')
             mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
             mock_ls = MagicMock()
             mock_ls.workspace = mock_workspace
@@ -146,7 +142,7 @@ class TestSignatureHelpHandler:
         try:
             mock_doc = MockDocument(
                 "file:///test.rpy",
-                "call my_label()\n"  # cursor inside parens
+                "call my_label()\n",  # cursor inside parens
             )
             mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
             mock_ls = MagicMock()
@@ -200,10 +196,7 @@ class TestSignatureHelpHandler:
         server_mod._is_initialized = True
 
         try:
-            mock_doc = MockDocument(
-                "file:///test.rpy",
-                "use my_screen()\n"
-            )
+            mock_doc = MockDocument("file:///test.rpy", "use my_screen()\n")
             mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
             mock_ls = MagicMock()
             mock_ls.workspace = mock_workspace
@@ -248,10 +241,7 @@ class TestSignatureHelpHandler:
         server_mod._is_initialized = True
 
         try:
-            mock_doc = MockDocument(
-                "file:///test.rpy",
-                "call simple_label()\n"
-            )
+            mock_doc = MockDocument("file:///test.rpy", "call simple_label()\n")
             mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
             mock_ls = MagicMock()
             mock_ls.workspace = mock_workspace
@@ -287,10 +277,7 @@ class TestSignatureHelpHandler:
         server_mod._is_initialized = True
 
         try:
-            mock_doc = MockDocument(
-                "file:///test.rpy",
-                "call nonexistent_label()\n"
-            )
+            mock_doc = MockDocument("file:///test.rpy", "call nonexistent_label()\n")
             mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
             mock_ls = MagicMock()
             mock_ls.workspace = mock_workspace
@@ -338,10 +325,7 @@ class TestSignatureHelpHandler:
 
         try:
             # call my_label(arg1, arg2) — cursor after the comma, before arg2
-            mock_doc = MockDocument(
-                "file:///test.rpy",
-                "call my_label(arg1, arg2)\n"
-            )
+            mock_doc = MockDocument("file:///test.rpy", "call my_label(arg1, arg2)\n")
             mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
             mock_ls = MagicMock()
             mock_ls.workspace = mock_workspace
@@ -359,9 +343,9 @@ class TestSignatureHelpHandler:
 
             assert result is not None
             # activeParameter should be 1 (second parameter, 0-indexed)
-            assert result.active_parameter == 1, (
-                f"Expected active_parameter=1 (on 2nd param), got {result.active_parameter}"
-            )
+            assert (
+                result.active_parameter == 1
+            ), f"Expected active_parameter=1 (on 2nd param), got {result.active_parameter}"
         finally:
             server_mod._active_analyzer = original_analyzer
             server_mod._is_initialized = original_init
@@ -384,6 +368,7 @@ class TestPrepareCallHierarchyHandler:
     def test_prepare_call_hierarchy_function_exists(self):
         """prepare_call_hierarchy() must be importable from handlers."""
         from senpy.lsp.handlers.navigation import prepare_call_hierarchy
+
         assert callable(prepare_call_hierarchy)
 
     def test_prepare_call_hierarchy_returns_list(self):
@@ -401,10 +386,7 @@ class TestPrepareCallHierarchyHandler:
         server_mod._is_initialized = True
 
         try:
-            mock_doc = MockDocument(
-                "file:///test.rpy",
-                "label start:\n    return\n"
-            )
+            mock_doc = MockDocument("file:///test.rpy", "label start:\n    return\n")
             mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
             mock_ls = MagicMock()
             mock_ls.workspace = mock_workspace
@@ -441,10 +423,7 @@ class TestPrepareCallHierarchyHandler:
         server_mod._is_initialized = True
 
         try:
-            mock_doc = MockDocument(
-                "file:///test.rpy",
-                "label start:\n    return\n"
-            )
+            mock_doc = MockDocument("file:///test.rpy", "label start:\n    return\n")
             mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc}, root_path="/")
             mock_ls = MagicMock()
             mock_ls.workspace = mock_workspace
@@ -478,10 +457,7 @@ class TestPrepareCallHierarchyHandler:
         server_mod._is_initialized = True
 
         try:
-            mock_doc = MockDocument(
-                "file:///test.rpy",
-                '    "This is dialogue"\n'
-            )
+            mock_doc = MockDocument("file:///test.rpy", '    "This is dialogue"\n')
             mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
             mock_ls = MagicMock()
             mock_ls.workspace = mock_workspace
@@ -498,7 +474,7 @@ class TestPrepareCallHierarchyHandler:
 
 
 class TestIncomingCallsHandler:
-    """ part 2: callHierarchy/incomingCalls — who calls this label?
+    """part 2: callHierarchy/incomingCalls — who calls this label?
 
     Returns list[CallHierarchyIncomingCall], each containing:
         from: CallHierarchyItem (the caller label)
@@ -508,6 +484,7 @@ class TestIncomingCallsHandler:
     def test_incoming_calls_function_exists(self):
         """incoming_calls() must be importable from handlers."""
         from senpy.lsp.handlers.navigation import incoming_calls
+
         assert callable(incoming_calls)
 
     def test_incoming_calls_returns_list(self):
@@ -521,8 +498,12 @@ class TestIncomingCallsHandler:
         mock_analyzer = MagicMock()
         # 'target' is called by 'caller1' at line 5
         mock_analyzer.labels = {
-            "target": LabelSymbol(name="target", file_path="/test.rpy", line_number=1, code_line="label target:"),
-            "caller1": LabelSymbol(name="caller1", file_path="/test.rpy", line_number=5, code_line="label caller1:"),
+            "target": LabelSymbol(
+                name="target", file_path="/test.rpy", line_number=1, code_line="label target:"
+            ),
+            "caller1": LabelSymbol(
+                name="caller1", file_path="/test.rpy", line_number=5, code_line="label caller1:"
+            ),
         }
         mock_analyzer.jump_sources = {"target": [("/test.rpy", 5)]}
         original_analyzer = server_mod._active_analyzer
@@ -554,7 +535,7 @@ class TestIncomingCallsHandler:
 
 
 class TestOutgoingCallsHandler:
-    """ part 3: callHierarchy/outgoingCalls — where does this label jump/call to?
+    """part 3: callHierarchy/outgoingCalls — where does this label jump/call to?
 
     Returns list[CallHierarchyOutgoingCall], each containing:
         to: CallHierarchyItem (the callee label)
@@ -564,6 +545,7 @@ class TestOutgoingCallsHandler:
     def test_outgoing_calls_function_exists(self):
         """outgoing_calls() must be importable from handlers."""
         from senpy.lsp.handlers.navigation import outgoing_calls
+
         assert callable(outgoing_calls)
 
     def test_outgoing_calls_returns_list(self):
@@ -585,8 +567,12 @@ class TestOutgoingCallsHandler:
         )
         mock_analyzer.labels = {
             "source": source_label,
-            "dest1": LabelSymbol(name="dest1", file_path="/test.rpy", line_number=10, code_line="label dest1:"),
-            "dest2": LabelSymbol(name="dest2", file_path="/test.rpy", line_number=20, code_line="label dest2:"),
+            "dest1": LabelSymbol(
+                name="dest1", file_path="/test.rpy", line_number=10, code_line="label dest1:"
+            ),
+            "dest2": LabelSymbol(
+                name="dest2", file_path="/test.rpy", line_number=20, code_line="label dest2:"
+            ),
         }
         original_analyzer = server_mod._active_analyzer
         original_init = server_mod._is_initialized

@@ -9,6 +9,7 @@ After:
 
 These tests capture current behavior so refactoring doesn't break it.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ from senpy.cli.main import render_text
 # =============================================================================
 # Helpers: mock Diagnostic and AnalysisResult (same pattern as test_render_formats)
 # =============================================================================
+
 
 @dataclass
 class MockDiagnostic:
@@ -78,6 +80,7 @@ def _run_render(
 
     # Capture console output via redirect
     import io
+
     buf = io.StringIO()
     console.file = buf
 
@@ -97,6 +100,7 @@ def _run_render(
 # =============================================================================
 # 1. Empty diagnostics — "All clean!" message
 # =============================================================================
+
 
 def test_render_text_empty_diags_exits_0():
     """No diagnostics → "All clean!" message, exit 0."""
@@ -129,6 +133,7 @@ def test_render_text_empty_diags_with_fixed_count():
 # =============================================================================
 # 2. With diagnostics — cards + table + summary
 # =============================================================================
+
 
 def test_render_text_with_errors_exits_1():
     """Diagnostics with ERROR severity → exit 1."""
@@ -210,12 +215,10 @@ def test_render_text_summary_line_counts():
 # 3. max_errors limit
 # =============================================================================
 
+
 def test_render_text_max_errors_limits_cards():
     """--max-errors limits number of diagnostic cards shown."""
-    diags = [
-        MockDiagnostic(code=f"RPY10{i}", severity="ERROR", line_number=i)
-        for i in range(10)
-    ]
+    diags = [MockDiagnostic(code=f"RPY10{i}", severity="ERROR", line_number=i) for i in range(10)]
     exit_code, output = _run_render(diagnostics=diags, max_errors=3)
 
     # Should mention that 7 more were omitted
@@ -225,6 +228,7 @@ def test_render_text_max_errors_limits_cards():
 # =============================================================================
 # 4. Fixable / fixed report
 # =============================================================================
+
 
 def test_render_text_fixable_count_without_fix_flag():
     """fixable_count > 0 without --fix → "fixable with --fix" message."""
@@ -284,6 +288,7 @@ def test_render_text_show_fixes_without_fix_says_zero():
 # 5. hidden_info_count
 # =============================================================================
 
+
 def test_render_text_hidden_info_count_message():
     """hidden_info_count > 0 → "info notice(s) omitted" message."""
     exit_code, output = _run_render(
@@ -300,13 +305,19 @@ def test_render_text_hidden_info_count_message():
 # 6. Tsundere mode
 # =============================================================================
 
+
 def test_render_text_tsundere_empty_diags():
     """Tsundere mode + empty diagnostics → tsundere clean message."""
     exit_code, output = _run_render(diagnostics=[], is_tsundere=True)
 
     assert exit_code == 0
     # Tsundere UI has specific phrases
-    assert "бака" in output or "baka" in output.lower() or "hmph" in output.lower() or "senpy" in output.lower()
+    assert (
+        "бака" in output
+        or "baka" in output.lower()
+        or "hmph" in output.lower()
+        or "senpy" in output.lower()
+    )
 
 
 def test_render_text_tsundere_with_errors():
@@ -321,7 +332,9 @@ def test_render_text_tsundere_with_errors():
 # 7. Backward compat — render_text importable
 # =============================================================================
 
+
 def test_render_text_importable_from_cli_main():
     """render_text must remain importable from senpy.cli.main after."""
     from senpy.cli.main import render_text as f1
+
     assert callable(f1)

@@ -6,6 +6,7 @@
 3. Возвращает WorkspaceEdit с правильными TextEdit'ами
 4. Возвращает None для переименования переменной (пока не поддерживается)
 """
+
 from __future__ import annotations
 
 from pathlib import Path

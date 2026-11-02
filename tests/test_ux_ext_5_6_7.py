@@ -11,6 +11,7 @@ UX: workspace/didChangeConfiguration не должен падать с ошиб�
 "Ignoring notification for unknown method". Сервер должен либо
 регистрировать handler, либо extension не должен слать этот notification.
 """
+
 from __future__ import annotations
 
 import json
@@ -46,6 +47,7 @@ def _make_hover_params(uri: str, line: int, char: int) -> lsp.HoverParams:
 # UX: Cross-file autocomplete
 # =============================================================================
 
+
 class TestCrossFileAutocomplete:
     """Автокомплит должен предлагать labels из ВСЕХ файлов проекта.
 
@@ -70,9 +72,7 @@ class TestCrossFileAutocomplete:
 
         # file2.rpy: label во втором файле
         (game_dir / "file2.rpy").write_text(
-            "label day10_intro:\n"
-            "    \"Day 10\"\n"
-            "    return\n",
+            'label day10_intro:\n    "Day 10"\n    return\n',
             encoding="utf-8",
         )
 
@@ -90,9 +90,10 @@ class TestCrossFileAutocomplete:
 
         # Вызываем analyze_file_only (это делает did_change handler)
         import os
-        analyzer.in_memory_files[
-            os.path.normcase(os.path.abspath(str(game_dir / "file1.rpy")))
-        ] = file1_content
+
+        analyzer.in_memory_files[os.path.normcase(os.path.abspath(str(game_dir / "file1.rpy")))] = (
+            file1_content
+        )
         analyzer.analyze_file_only(str(game_dir / "file1.rpy"))
 
         # Теперь вызываем autocomplete на строке 1, после "jump "
@@ -121,19 +122,15 @@ class TestCrossFileAutocomplete:
         game_dir.mkdir(parents=True, exist_ok=True)
 
         (game_dir / "a.rpy").write_text(
-            "label start:\n"
-            "    call \n"
-            "    return\n",
+            "label start:\n    call \n    return\n",
             encoding="utf-8",
         )
         (game_dir / "b.rpy").write_text(
-            "label chapter_two:\n"
-            "    return\n",
+            "label chapter_two:\n    return\n",
             encoding="utf-8",
         )
         (game_dir / "c.rpy").write_text(
-            "label ending_credits:\n"
-            "    return\n",
+            "label ending_credits:\n    return\n",
             encoding="utf-8",
         )
 
@@ -146,6 +143,7 @@ class TestCrossFileAutocomplete:
 
         # did_change на a.rpy
         import os
+
         a_path = str(game_dir / "a.rpy")
         a_content = (game_dir / "a.rpy").read_text(encoding="utf-8")
         norm_a = os.path.normcase(os.path.abspath(a_path))
@@ -168,6 +166,7 @@ class TestCrossFileAutocomplete:
 # =============================================================================
 # UX: Hover-карточка с кликабельной ссылкой
 # =============================================================================
+
 
 class TestHoverClickableLink:
     """Hover должен содержать Markdown-ссылку на file:// URI с #L42 anchor.
@@ -203,17 +202,17 @@ class TestHoverClickableLink:
 
         # Должна быть Markdown-ссылка вида [text](file://...#L1)
         import re
+
         # Ищем паттерн: [что-то](file://путь#L<номер>)
-        link_match = re.search(r'\[[^\]]+\]\((file://[^)]+#L\d+)\)', content)
-        assert link_match, (
-            f"Hover должен содержать Markdown-ссылку [text](file://...#L<N>). "
-            f"Получено: {content!r}"
-        )
+        link_match = re.search(r"\[[^\]]+\]\((file://[^)]+#L\d+)\)", content)
+        assert (
+            link_match
+        ), f"Hover должен содержать Markdown-ссылку [text](file://...#L<N>). Получено: {content!r}"
 
         link_url = link_match.group(1)
         assert "#L" in link_url, f"Ссылка должна содержать #L anchor. URL: {link_url}"
         # Номер строки должен быть >= 1
-        line_match = re.search(r'#L(\d+)', link_url)
+        line_match = re.search(r"#L(\d+)", link_url)
         assert line_match, f"Должен быть номер строки. URL: {link_url}"
         assert int(line_match.group(1)) >= 1
 
@@ -238,10 +237,9 @@ class TestHoverClickableLink:
         content = result.contents.value
 
         import re
-        link_match = re.search(r'\[[^\]]+\]\((file://[^)]+#L\d+)\)', content)
-        assert link_match, (
-            f"Hover на label должен содержать Markdown-ссылку. Получено: {content!r}"
-        )
+
+        link_match = re.search(r"\[[^\]]+\]\((file://[^)]+#L\d+)\)", content)
+        assert link_match, f"Hover на label должен содержать Markdown-ссылку. Получено: {content!r}"
 
     def test_hover_link_points_to_correct_line(self, tmp_path: Path):
         """Ссылка должна указывать на правильную строку объявления."""
@@ -260,9 +258,10 @@ class TestHoverClickableLink:
         content = result.contents.value
 
         import re
+
         # default player_gold = 100 — это строка 2 в файле (1-based)
         # т.к. файл начинается с пустой строки (line 0 = empty)
-        line_match = re.search(r'#L(\d+)', content)
+        line_match = re.search(r"#L(\d+)", content)
         assert line_match, f"Не найден #L anchor в: {content!r}"
         line_num = int(line_match.group(1))
         # 1-based строка объявления player_gold
@@ -275,6 +274,7 @@ class TestHoverClickableLink:
 # =============================================================================
 # UX: workspace/didChangeConfiguration не должен падать
 # =============================================================================
+
 
 class TestDidChangeConfiguration:
     """Сервер не должен логировать 'Ignoring notification for unknown method
@@ -304,8 +304,9 @@ class TestDidChangeConfiguration:
         # Если synchronize есть — в нём НЕ должно быть configurationSection как поля.
         # configurationSection в комментариях — ок (мы пишем почему убрали).
         import re
+
         sync_match = re.search(
-            r'synchronize\s*:\s*\{([^}]+)\}',
+            r"synchronize\s*:\s*\{([^}]+)\}",
             src,
             re.DOTALL,
         )
@@ -314,10 +315,7 @@ class TestDidChangeConfiguration:
             # Удалим строки-комментарии (// ...) — в них configurationSection упоминается
             # только для документации "почему убрали".
             lines = sync_body.split("\n")
-            code_lines = [
-                ln for ln in lines
-                if not ln.strip().startswith("//")
-            ]
+            code_lines = [ln for ln in lines if not ln.strip().startswith("//")]
             code_only = "\n".join(code_lines)
             assert "configurationSection:" not in code_only, (
                 "synchronize НЕ должен содержать configurationSection: как поле — "
@@ -335,8 +333,9 @@ class TestDidChangeConfiguration:
         src = _EXTENSION_TS.read_text(encoding="utf-8")
 
         import re
+
         sync_match = re.search(
-            r'synchronize\s*:\s*\{([^}]+)\}',
+            r"synchronize\s*:\s*\{([^}]+)\}",
             src,
             re.DOTALL,
         )
@@ -346,6 +345,4 @@ class TestDidChangeConfiguration:
             "fileEvents для .senpy.toml должен остаться в synchronize — "
             "это единственный способ получить hot-reload .senpy.toml"
         )
-        assert "senpy.toml" in sync_body.lower(), (
-            "fileEvents должен следить за .senpy.toml"
-        )
+        assert "senpy.toml" in sync_body.lower(), "fileEvents должен следить за .senpy.toml"

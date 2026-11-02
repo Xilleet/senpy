@@ -26,6 +26,7 @@ nothing to scan.
 This test verifies both the empty-URI-with-workspace case and the
 empty-URI-without-workspace case (defensive: should not crash either way).
 """
+
 from __future__ import annotations
 
 import threading
@@ -85,9 +86,7 @@ class TestEmptyTriggerUriNoCrash:
         assert server_mod._active_analyzer is None
         assert server_mod._is_initialized is False
 
-    def test_initialized_handler_with_empty_uri_does_not_crash_thread(
-        self, tmp_path: Path
-    ):
+    def test_initialized_handler_with_empty_uri_does_not_crash_thread(self, tmp_path: Path):
         """End-to-end: the `initialized` handler schedules a debounced scan
         with empty URI; the scan runs in a daemon thread; the thread must
         not crash with SecurityError.

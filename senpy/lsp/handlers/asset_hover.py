@@ -32,6 +32,7 @@ Caching strategy: image_path is extracted at index time and stored on
 ImageSymbol; audio aliases are registered at index time via
 AssetManager.register_audio_alias. Hover never re-reads source files.
 """
+
 from __future__ import annotations
 
 import os
@@ -46,7 +47,9 @@ from senpy.domain.image_size import markdown_size_param
 # (hide references are about dismissing, not displaying — previewing the
 # asset is less useful there). We DO still suppress variable-hover inside
 # hide tokens via the early-return in hover.py (the existing behavior).
-_RE_SHOW_SCENE = re.compile(r"^\s*(show|scene)\s+(.+?)(?:\s+(?:at|with|as|behind|onlayer|zorder)\b|$)")
+_RE_SHOW_SCENE = re.compile(
+    r"^\s*(show|scene)\s+(.+?)(?:\s+(?:at|with|as|behind|onlayer|zorder)\b|$)"
+)
 _RE_PLAY_QUEUE = re.compile(
     r"""^\s*(?:play|queue)\s+(?:music|sound|voice|audio)\s+(["']?)([a-zA-Z_][\w]*)\1"""
 )
@@ -154,14 +157,8 @@ def build_image_hover(line: str, col: int) -> lsp.Hover | None:
     except OSError:
         meta_line = f"*{basename}*\n\n"
 
-    content = (
-        f"**Image** — `{image_name}`\n\n"
-        f"{meta_line}"
-        f"![{image_name}]({file_uri}{size_suffix})"
-    )
-    return lsp.Hover(
-        contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content)
-    )
+    content = f"**Image** — `{image_name}`\n\n{meta_line}![{image_name}]({file_uri}{size_suffix})"
+    return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
 
 
 def _build_video_hover(name: str, disk_path: str, file_uri: str) -> lsp.Hover:
@@ -183,14 +180,8 @@ def _build_video_hover(name: str, disk_path: str, file_uri: str) -> lsp.Hover:
     arg = json.dumps(file_uri)
     cmd_uri = f"command:senpy.openExternal?{quote(arg)}"
 
-    content = (
-        f"**Video** — `{name}`\n\n"
-        f"{meta_line}"
-        f"▶ [Play video in default app]({cmd_uri})"
-    )
-    return lsp.Hover(
-        contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content)
-    )
+    content = f"**Video** — `{name}`\n\n{meta_line}▶ [Play video in default app]({cmd_uri})"
+    return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
 
 
 def build_audio_hover(line: str, col: int) -> lsp.Hover | None:
@@ -241,11 +232,5 @@ def build_audio_hover(line: str, col: int) -> lsp.Hover | None:
     except OSError:
         meta_line = f"*{basename}*\n\n"
 
-    content = (
-        f"**Audio** — `{audio_name}`\n\n"
-        f"{meta_line}"
-        f"▶ [Play audio]({file_uri})"
-    )
-    return lsp.Hover(
-        contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content)
-    )
+    content = f"**Audio** — `{audio_name}`\n\n{meta_line}▶ [Play audio]({file_uri})"
+    return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))

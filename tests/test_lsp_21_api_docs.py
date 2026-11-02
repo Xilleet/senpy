@@ -17,9 +17,10 @@ Covers three layers:
    ``get_renpy_api_hover`` looks up via the merged dict.
 
 The integration test (hover on ``config.name`` resolves to a generated
-entry with the right signature) is the end-to-end proof that 
+entry with the right signature) is the end-to-end proof that
 closes the coverage gap.
 """
+
 from __future__ import annotations
 
 import os
@@ -66,7 +67,7 @@ class TestRstDirectiveRegexes:
     """Verify the regex matchers for RST directives behave as expected."""
 
     def test_var_with_default(self):
-        m = _RE_VAR.match(".. var:: config.name = \"My Game\"")
+        m = _RE_VAR.match('.. var:: config.name = "My Game"')
         assert m is not None
         assert m.group(1) == "config.name"
         assert m.group(2) == '"My Game"'
@@ -395,10 +396,10 @@ class TestParseRpyFile:
         assert "Saves the game" in e["description"]
 
     def test_class_without_docstring_skipped(self):
-        rpy = '''class InternalHelper:
+        rpy = """class InternalHelper:
     def __init__(self):
         pass
-'''
+"""
         entries = parse_rpy_file(rpy, "00action_other.rpy")
         # No triple-quoted docstring → not extracted.
         assert all(e["name"] != "InternalHelper" for e in entries)
@@ -567,44 +568,34 @@ class TestGeneratedModule:
 
     def test_has_config_namespace(self):
         config_entries = [
-            e for e in RENPY_API_DOCS_GENERATED.values()
-            if e.get("namespace") == "config"
+            e for e in RENPY_API_DOCS_GENERATED.values() if e.get("namespace") == "config"
         ]
         # The config.rst file alone yields ~286 entries.
-        assert len(config_entries) > 100, (
-            "Expected ~100+ config.* entries in generated data; "
-            f"got {len(config_entries)}."
-        )
+        assert (
+            len(config_entries) > 100
+        ), f"Expected ~100+ config.* entries in generated data; got {len(config_entries)}."
 
     def test_has_gui_namespace(self):
-        gui_entries = [
-            e for e in RENPY_API_DOCS_GENERATED.values()
-            if e.get("namespace") == "gui"
-        ]
-        assert len(gui_entries) > 50, (
-            "Expected ~50+ gui.* entries in generated data; "
-            f"got {len(gui_entries)}."
-        )
+        gui_entries = [e for e in RENPY_API_DOCS_GENERATED.values() if e.get("namespace") == "gui"]
+        assert (
+            len(gui_entries) > 50
+        ), f"Expected ~50+ gui.* entries in generated data; got {len(gui_entries)}."
 
     def test_has_build_namespace(self):
         build_entries = [
-            e for e in RENPY_API_DOCS_GENERATED.values()
-            if e.get("namespace") == "build"
+            e for e in RENPY_API_DOCS_GENERATED.values() if e.get("namespace") == "build"
         ]
-        assert len(build_entries) > 5, (
-            "Expected ~5+ build.* entries in generated data; "
-            f"got {len(build_entries)}."
-        )
+        assert (
+            len(build_entries) > 5
+        ), f"Expected ~5+ build.* entries in generated data; got {len(build_entries)}."
 
     def test_has_style_and_transform_properties(self):
         prop_entries = [
-            e for e in RENPY_API_DOCS_GENERATED.values()
-            if e.get("category") == "property"
+            e for e in RENPY_API_DOCS_GENERATED.values() if e.get("category") == "property"
         ]
-        assert len(prop_entries) > 50, (
-            "Expected ~50+ style/transform property entries; "
-            f"got {len(prop_entries)}."
-        )
+        assert (
+            len(prop_entries) > 50
+        ), f"Expected ~50+ style/transform property entries; got {len(prop_entries)}."
 
     def test_entries_have_required_fields(self):
         for name, entry in list(RENPY_API_DOCS_GENERATED.items())[:50]:
@@ -653,7 +644,8 @@ class TestMergeLogic:
     def test_generated_only_entries_present(self):
         # config.* is in generated but not curated.
         config_only = [
-            name for name in RENPY_API_DOCS_GENERATED
+            name
+            for name in RENPY_API_DOCS_GENERATED
             if name.startswith("config.") and name not in RENPY_API_DOCS
         ]
         assert len(config_only) > 50, "Expected config.* to be generated-only"
@@ -689,9 +681,7 @@ class TestHoverIntegration:
     def test_generated_entry_hover_gui(self):
         # gui.text_color is generated-only.
         # First find any gui.* entry that's actually in the generated dict.
-        gui_entries = [
-            n for n in RENPY_API_DOCS_GENERATED if n.startswith("gui.")
-        ]
+        gui_entries = [n for n in RENPY_API_DOCS_GENERATED if n.startswith("gui.")]
         assert gui_entries, "No gui.* entries in generated dict"
         sample = gui_entries[0]
         hover = get_renpy_api_hover(sample)
@@ -710,8 +700,7 @@ class TestHoverIntegration:
     def test_hover_for_property_category(self):
         # A style or transform property — these are generated-only.
         prop_entries = [
-            n for n, e in RENPY_API_DOCS_GENERATED.items()
-            if e.get("category") == "property"
+            n for n, e in RENPY_API_DOCS_GENERATED.items() if e.get("category") == "property"
         ]
         assert prop_entries, "No property entries in generated dict"
         sample = prop_entries[0]
@@ -726,11 +715,12 @@ class TestHoverIntegration:
 
 
 class TestBackwardCompat:
-    """ must not break callers of the existing API."""
+    """must not break callers of the existing API."""
 
     def test_renpy_api_docs_dict_still_importable(self):
         # Existing code imports RENPY_API_DOCS directly.
         from senpy.domain.renpy_api import RENPY_API_DOCS
+
         assert isinstance(RENPY_API_DOCS, dict)
         assert len(RENPY_API_DOCS) > 100
 

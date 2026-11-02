@@ -19,6 +19,7 @@ Security checks (per plugin, in order):
 Isolation: if any plugin fails to load (import error, etc.), it's skipped
 with a warning. Other plugins continue to load.
 """
+
 from __future__ import annotations
 
 import sys
@@ -150,10 +151,12 @@ def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
 
     # Step 2: Verify it's a Rule subclass
     from senpy.plugins.base import Rule
+
     if not isinstance(rule_cls, type) or not issubclass(rule_cls, Rule):
         _logger.warning(
             "Plugin %r entry point does not point to a Rule subclass (got: %r). Skipping.",
-            plugin_name, rule_cls,
+            plugin_name,
+            rule_cls,
         )
         return None
 
@@ -162,12 +165,16 @@ def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
     plugin_api_version = getattr(rule_cls, "PLUGIN_API_VERSION", None)
     if plugin_api_version is not None:
         from senpy.plugins.security import check_api_version
+
         if not check_api_version(plugin_api_version):
             from senpy.plugins.security import PLUGIN_API_VERSION
+
             _logger.warning(
                 "Plugin %r requires api_version %r, but Senpy provides %r. "
                 "Skipping. (Update plugin or use compatible Senpy version.)",
-                plugin_name, plugin_api_version, PLUGIN_API_VERSION,
+                plugin_name,
+                plugin_api_version,
+                PLUGIN_API_VERSION,
             )
             return None
 
@@ -243,10 +250,11 @@ def _default_trust_callback(plugin_name: str) -> bool:
 
     # Step 3: Prompt user
     try:
-        answer = input(
-            f"\n[senpy] Plugin '{plugin_name}' wants to load. "
-            f"Trust and enable? [y/N]: "
-        ).strip().lower()
+        answer = (
+            input(f"\n[senpy] Plugin '{plugin_name}' wants to load. Trust and enable? [y/N]: ")
+            .strip()
+            .lower()
+        )
     except (EOFError, KeyboardInterrupt):
         return False
 
@@ -278,9 +286,7 @@ def register_loaded_plugins(loaded: list[_LoadedEntryPoint]) -> None:
         rule_cls = entry.rule_cls
         # Get rule code from meta
         if rule_cls.meta is None:
-            _logger.warning(
-                "Plugin %r has no meta. Skipping registration.", entry.name
-            )
+            _logger.warning("Plugin %r has no meta. Skipping registration.", entry.name)
             continue
         code = rule_cls.meta.code
         # Register (same as @register_rule decorator does)

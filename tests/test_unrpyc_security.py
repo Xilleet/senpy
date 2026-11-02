@@ -23,6 +23,7 @@
 
 Источник: (аудит v0.5.7), сверено с кодом 2026-10-30.
 """
+
 from __future__ import annotations
 
 import builtins
@@ -53,6 +54,7 @@ def _make_malicious_rpyc_bytes(module_name: str = "os", attr_name: str = "system
 # =============================================================================
 # 1. SAFE PATH (основной сценарий) — decompile_rpyc_bytes использует SafeUnpickler
 # =============================================================================
+
 
 def test_decompile_rpyc_bytes_does_not_import_os():
     """Декомпиляция .rpyc, ссылающегося на os.system, НЕ должна вызывать __import__('os').
@@ -105,9 +107,7 @@ def test_decompile_rpyc_bytes_does_not_execute_arbitrary_code(tmp_path: Path):
     # Создаём временную директорию с evil_module.py
     marker_file = tmp_path / "RCE_MARKER"
     evil_module_path = tmp_path / "evil_module.py"
-    evil_module_path.write_text(
-        f"import os; open({str(marker_file)!r}, 'w').write('PWNED')\n"
-    )
+    evil_module_path.write_text(f"import os; open({str(marker_file)!r}, 'w').write('PWNED')\n")
 
     # Добавляем tmp_path в sys.path, чтобы __import__ нашёл evil_module
     sys.path.insert(0, str(tmp_path))
@@ -134,6 +134,7 @@ def test_decompile_rpyc_bytes_does_not_execute_arbitrary_code(tmp_path: Path):
 # =============================================================================
 # 2. DEFENSE-IN-DEPTH: SafeUnpickler.find_class с опасным safe_modules
 # =============================================================================
+
 
 def test_safe_unpickler_rejects_dangerous_modules_in_safe_modules():
     """Defense-in-depth: даже если кто-то случайно добавил 'os' в safe_modules,
@@ -192,6 +193,7 @@ def test_safe_unpickler_rejects_dangerous_modules_in_safe_modules():
 # 3. LEGITIMATE DECOMPILE — regression test
 # =============================================================================
 
+
 def test_legitimate_rpyc_still_decompiles():
     """Regression: после hardening, валидные .rpyc продолжают декомпилироваться.
 
@@ -202,6 +204,7 @@ def test_legitimate_rpyc_still_decompiles():
     import pickle
 
     from senpy.vendor.unrpyc import decompile_rpyc_bytes
+
     payload = pickle.dumps(({}, []), protocol=2)
     slot1_data = zlib.compress(payload)
     slot1_pos = 34
@@ -210,15 +213,15 @@ def test_legitimate_rpyc_still_decompiles():
     rpyc_bytes = b"RENPY RPC2" + slot1_header + slot0_header + slot1_data
 
     result = decompile_rpyc_bytes(rpyc_bytes)
-    assert isinstance(result, str), (
-        f"После hardening валидный .rpyc должен декомпилироваться в str. "
-        f"Получено: {type(result)}"
-    )
+    assert isinstance(
+        result, str
+    ), f"После hardening валидный .rpyc должен декомпилироваться в str. Получено: {type(result)}"
 
 
 # =============================================================================
 # 4. SAFE_MODULES WHITELIST — collections и renpy.* продолжают работать
 # =============================================================================
+
 
 def test_safe_modules_collections_still_imports():
     """Regression: collections (легитимный safe_module) должен импортироваться
@@ -228,6 +231,7 @@ def test_safe_modules_collections_still_imports():
     import pickle
 
     from senpy.vendor.unrpyc.decompiler import magic
+
     # Verify pickle protocol 2 can serialize the OrderedDict reference
     # (the actual test below uses a hand-crafted malicious_pickle instead).
     pickle.dumps(("collections", "OrderedDict"), protocol=2)

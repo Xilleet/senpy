@@ -10,6 +10,7 @@ discover_files does 5 things:
 After: discover_files will call 3 helpers (_find_rpy_files,
 _find_orphaned_rpyc, _decompile_sandbox). Behavior must be identical.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,6 +41,7 @@ def _make_args(**kwargs) -> argparse.Namespace:
 # 1. Empty directory — no .rpy, no .rpyc, no .rpa
 # =============================================================================
 
+
 def test_discover_files_empty_directory(tmp_path: Path):
     """discover_files on empty dir returns [] and creates sandbox dirs."""
     args = _make_args(path=str(tmp_path))
@@ -56,6 +58,7 @@ def test_discover_files_empty_directory(tmp_path: Path):
 # =============================================================================
 # 2. .rpy files only (no orphans, no RPA)
 # =============================================================================
+
 
 def test_discover_files_with_rpy_only(tmp_path: Path):
     """discover_files on dir with .rpy files only returns [] (no extras)."""
@@ -74,6 +77,7 @@ def test_discover_files_with_rpy_only(tmp_path: Path):
 # =============================================================================
 # 3. .rpyc orphan (no matching .rpy) — without --decompile
 # =============================================================================
+
 
 def test_discover_files_rpyc_orphan_no_decompile(tmp_path: Path, monkeypatch):
     """Orphan .rpyc without --decompile + non-interactive → no extras."""
@@ -101,6 +105,7 @@ def test_discover_files_rpyc_orphan_with_decompile_flag(tmp_path: Path, monkeypa
 
     # Mock unrpyc functions in cli.main module (where they're imported by name)
     import sys
+
     cli_main_mod = sys.modules["senpy.cli.main"]
     monkeypatch.setattr(
         cli_main_mod,
@@ -125,6 +130,7 @@ def test_discover_files_rpyc_orphan_with_decompile_flag(tmp_path: Path, monkeypa
 # 4. .rpyc with matching .rpy — not an orphan, no decompile needed
 # =============================================================================
 
+
 def test_discover_files_rpyc_with_matching_rpy(tmp_path: Path):
     """If orphan.rpyc has matching orphan.rpy — not an orphan, skipped."""
     (tmp_path / "script.rpy").write_text("label start:\n    return\n", encoding="utf-8")
@@ -143,19 +149,19 @@ def test_discover_files_rpyc_with_matching_rpy(tmp_path: Path):
 # 5. RPA archive extraction
 # =============================================================================
 
+
 def test_discover_files_rpa_extraction(tmp_path: Path, monkeypatch):
     """If .rpa archive exists — extract scripts, add to extras."""
     (tmp_path / "game.rpa").write_bytes(b"RPA-3.0 00000000\nfake rpa content")
 
     # Mock extract_scripts_from_rpa — return fake .rpy
-    fake_rpy_path = os.path.join(
-        str(tmp_path), ".senpy_cache", "rpa_extracted", "extracted.rpy"
-    )
+    fake_rpy_path = os.path.join(str(tmp_path), ".senpy_cache", "rpa_extracted", "extracted.rpy")
     os.makedirs(os.path.dirname(fake_rpy_path), exist_ok=True)
     Path(fake_rpy_path).write_text("label extracted:\n    return\n", encoding="utf-8")
 
     # Patch in cli.main module (where the function is imported by name)
     import sys
+
     cli_main_mod = sys.modules["senpy.cli.main"]
     monkeypatch.setattr(
         cli_main_mod,
@@ -175,6 +181,7 @@ def test_discover_files_rpa_extraction(tmp_path: Path, monkeypatch):
 # =============================================================================
 # 6. RPA extraction respects IGNORED_DIRS
 # =============================================================================
+
 
 def test_discover_files_ignored_dirs_skipped(tmp_path: Path):
     """Files in IGNORED_DIRS (like .senpy_cache) should not be picked up."""
@@ -196,9 +203,11 @@ def test_discover_files_ignored_dirs_skipped(tmp_path: Path):
 # 7. Backward compat — discover_files importable from cli.main
 # =============================================================================
 
+
 def test_discover_files_importable_from_cli_main():
     """discover_files must remain importable from senpy.cli.main after."""
     from senpy.cli.main import discover_files as f1
+
     assert callable(f1)
     # After : helpers _find_rpy_files, _find_orphaned_rpyc, _decompile_sandbox
     # may or may not be exposed — only discover_files is part of public API.

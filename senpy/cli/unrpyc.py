@@ -4,6 +4,7 @@
 Этот модуль полностью независим от cli.py и использует только стандартные
 библиотеки + senpy.constants + senpy.rpa + senpy.tsundere.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -54,11 +55,13 @@ def _unrpyc_zip_url() -> str:
     """URL для скачивания pinned версии unrpyc."""
     return UNRPYC_GITHUB_ZIP_TEMPLATE.format(commit=UNRPYC_PINNED_COMMIT)
 
+
 # Фаза 1.2 (0.5.3): load_config вынесен в senpy/config.py для разрыва
 # циклической зависимости analyzer ↔ cli. Реэкспортируем для обратной
 # совместимости (старый импорт `from senpy.cli.unrpyc import load_config`
 # продолжает работать).
 from senpy.core.config import load_config  # noqa: E402, F401, I001
+
 
 def find_in_directory_tree(start_dirs: list[str]) -> str | None:
     for base in start_dirs:
@@ -212,7 +215,7 @@ def find_unrpyc_executable(
             [sys.executable, "-m", "unrpyc", "--help"],
             capture_output=True,
             check=False,
-            timeout=30, # : защита от зависшего unrpyc
+            timeout=30,  # : защита от зависшего unrpyc
         )
         if res.returncode == 0:
             return [sys.executable, "-m", "unrpyc"]
@@ -298,14 +301,14 @@ def extract_scripts_from_rpa(rpa_path: str, dest_dir: str) -> list[str]:
         # log debug instead of silent suppress. RPA extraction failure
         # is recoverable (just no .rpy from this archive); but tracking it
         # helps spot corrupt .rpa files.
-        _logger.debug(
-            "failed to extract scripts from RPA %s: %s", rpa_path, e
-        )
+        _logger.debug("failed to extract scripts from RPA %s: %s", rpa_path, e)
 
     return extracted
 
 
-def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str] | None = None, temp_dir: str = "") -> list[str]:
+def decompile_to_sandbox(
+    orphans: list[str], unrpyc_cmd: list[str] | None = None, temp_dir: str = ""
+) -> list[str]:
     """Декомпилирует .rpyc файлы в .rpy в изолированной песочнице.
 
     Теперь использует встроенный (vendored) unrpyc вместо subprocess.
@@ -357,10 +360,7 @@ def decompile_to_sandbox(orphans: list[str], unrpyc_cmd: list[str] | None = None
             # RPYCDecompilationError даёт понятное сообщение,
             # любые другие исключения — выводим тип ошибки
             err_type = type(e).__name__
-            console.print(
-                f"\n[bold red]{err_msg} ({base_name}):[/bold red] "
-                f"[{err_type}] {e}"
-            )
+            console.print(f"\n[bold red]{err_msg} ({base_name}):[/bold red] [{err_type}] {e}")
 
     print()
     success_msg = (

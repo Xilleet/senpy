@@ -11,6 +11,7 @@
   2. core/signature.py — SyntaxError в $-выражении → debug логируется.
   3. rules/python_ast.py — SyntaxError в infer_ast_type → debug логируется.
 """
+
 from __future__ import annotations
 
 import logging
@@ -34,6 +35,7 @@ def reset_logging():
 # 1. core/cache.py — corrupt cache file
 # =============================================================================
 
+
 def test_cache_corrupt_pickle_logs_debug(tmp_path: Path, caplog):
     """CacheManager.load_manifest() при corrupt pickle пишет DEBUG, не падает."""
     from senpy.core.cache import CacheManager
@@ -55,7 +57,8 @@ def test_cache_corrupt_pickle_logs_debug(tmp_path: Path, caplog):
 
     debug_records = [r for r in caplog.records if r.levelno == logging.DEBUG]
     assert any(
-        "manifest" in r.message.lower() or "pickle" in r.message.lower()
+        "manifest" in r.message.lower()
+        or "pickle" in r.message.lower()
         or "cache" in r.message.lower()
         for r in debug_records
     ), f"no debug log for cache corruption: {debug_records}"
@@ -64,6 +67,7 @@ def test_cache_corrupt_pickle_logs_debug(tmp_path: Path, caplog):
 # =============================================================================
 # 2. core/signature.py — SyntaxError в Python AST
 # =============================================================================
+
 
 def test_signature_syntax_error_logs_debug(caplog):
     """parse_signature при SyntaxError пишет DEBUG, возвращает empty SignatureInfo."""
@@ -82,7 +86,8 @@ def test_signature_syntax_error_logs_debug(caplog):
 
     debug_records = [r for r in caplog.records if r.levelno == logging.DEBUG]
     assert any(
-        "syntax" in r.message.lower() or "signature" in r.message.lower()
+        "syntax" in r.message.lower()
+        or "signature" in r.message.lower()
         or "parse" in r.message.lower()
         for r in debug_records
     ), f"no debug log for signature SyntaxError: {debug_records}"
@@ -91,6 +96,7 @@ def test_signature_syntax_error_logs_debug(caplog):
 # =============================================================================
 # 3. rules/python_ast.py — SyntaxError в infer_ast_type
 # =============================================================================
+
 
 def test_python_ast_syntax_error_logs_debug(caplog):
     """extract_assigned_names при SyntaxError пишет DEBUG, возвращает empty set."""
@@ -107,8 +113,7 @@ def test_python_ast_syntax_error_logs_debug(caplog):
 
     debug_records = [r for r in caplog.records if r.levelno == logging.DEBUG]
     assert any(
-        "syntax" in r.message.lower() or "ast" in r.message.lower()
-        or "parse" in r.message.lower()
+        "syntax" in r.message.lower() or "ast" in r.message.lower() or "parse" in r.message.lower()
         for r in debug_records
     ), f"no debug log for python_ast SyntaxError: {debug_records}"
 
@@ -116,6 +121,7 @@ def test_python_ast_syntax_error_logs_debug(caplog):
 # =============================================================================
 # 4. formats/traceback.py — OSError при чтении traceback.txt
 # =============================================================================
+
 
 def test_traceback_read_oserror_logs_debug(tmp_path: Path, caplog, monkeypatch):
     """parse_traceback_file при OSError (файл это директория) пишет DEBUG."""
@@ -139,7 +145,8 @@ def test_traceback_read_oserror_logs_debug(tmp_path: Path, caplog, monkeypatch):
 
     debug_records = [r for r in caplog.records if r.levelno == logging.DEBUG]
     assert any(
-        "traceback" in r.message.lower() or "read" in r.message.lower()
+        "traceback" in r.message.lower()
+        or "read" in r.message.lower()
         or "file" in r.message.lower()
         for r in debug_records
     ), f"no debug log for traceback OSError: {debug_records}"
@@ -149,18 +156,23 @@ def test_traceback_read_oserror_logs_debug(tmp_path: Path, caplog, monkeypatch):
 # 5. Sanity check — suppress не должен остаться в ключевых модулях
 # =============================================================================
 
+
 def test_no_contextlib_suppress_in_core_cache():
     """После миграции в core/cache.py не должно остаться contextlib.suppress."""
     import inspect
 
     import senpy.core.cache as cache_mod
+
     source = inspect.getsource(cache_mod)
     # Допускаем suppress только в комментариях/docstring, не в коде.
     # Простая проверка: считаем строки с `with contextlib.suppress(` (код, не текст).
     code_lines = [
-        line for line in source.splitlines()
-        if "contextlib.suppress(" in line and not line.strip().startswith("#")
-        and not line.strip().startswith('"') and not line.strip().startswith("'")
+        line
+        for line in source.splitlines()
+        if "contextlib.suppress(" in line
+        and not line.strip().startswith("#")
+        and not line.strip().startswith('"')
+        and not line.strip().startswith("'")
     ]
     assert code_lines == [], f"contextlib.suppress still in core/cache.py: {code_lines}"
 
@@ -170,10 +182,14 @@ def test_no_contextlib_suppress_in_core_signature():
     import inspect
 
     import senpy.core.signature as sig_mod
+
     source = inspect.getsource(sig_mod)
     code_lines = [
-        line for line in source.splitlines()
-        if "contextlib.suppress(" in line and not line.strip().startswith("#")
-        and not line.strip().startswith('"') and not line.strip().startswith("'")
+        line
+        for line in source.splitlines()
+        if "contextlib.suppress(" in line
+        and not line.strip().startswith("#")
+        and not line.strip().startswith('"')
+        and not line.strip().startswith("'")
     ]
     assert code_lines == [], f"contextlib.suppress still in core/signature.py: {code_lines}"

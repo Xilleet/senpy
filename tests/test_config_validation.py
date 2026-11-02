@@ -1,12 +1,13 @@
 """pydantic валидация схемы конфига.
 
-  - Создаётся pydantic-модель SenpyConfig с типами полей.
-  - load_config() возвращает dict, который проходит pydantic валидацию.
-  - Если конфиг невалиден (например, max_errors = "много") — логируется
-    WARNING с понятным сообщением, и возвращается пустой config (fallback).
-  - Неизвестные поля в [tool.senpy] игнорируются (forward-compat).
-  - Опциональные поля имеют дефолты.
+- Создаётся pydantic-модель SenpyConfig с типами полей.
+- load_config() возвращает dict, который проходит pydantic валидацию.
+- Если конфиг невалиден (например, max_errors = "много") — логируется
+  WARNING с понятным сообщением, и возвращается пустой config (fallback).
+- Неизвестные поля в [tool.senpy] игнорируются (forward-compat).
+- Опциональные поля имеют дефолты.
 """
+
 from __future__ import annotations
 
 import logging
@@ -27,6 +28,7 @@ def reset_logging():
 # =============================================================================
 # 1. validate_config — базовая валидация
 # =============================================================================
+
 
 def test_validate_config_accepts_valid_config():
     """Валидный конфиг проходит без ошибок."""
@@ -77,6 +79,7 @@ def test_validate_config_unknown_keys_ignored():
 # 2. Type validation
 # =============================================================================
 
+
 def test_validate_config_rejects_max_errors_as_string(caplog):
     """max_errors = "много" — невалидный тип, логируется warning."""
     bad_config = {"max_errors": "много"}
@@ -114,14 +117,14 @@ def test_validate_config_rejects_ignore_as_string(caplog):
 
     assert validated == {} or validated.get("ignore") == []
     assert any(
-        "ignore" in r.message.lower() or "validation" in r.message.lower()
-        for r in caplog.records
+        "ignore" in r.message.lower() or "validation" in r.message.lower() for r in caplog.records
     )
 
 
 # =============================================================================
 # 3. Опциональные поля и дефолты
 # =============================================================================
+
 
 def test_validate_config_partial_config_uses_defaults():
     """Частичный конфиг — недостающие поля берутся из дефолтов."""
@@ -158,6 +161,7 @@ def test_validate_config_severity_dict():
 # =============================================================================
 # 4. Integration с load_config
 # =============================================================================
+
 
 def test_load_config_validates_via_pydantic(tmp_path: Path, monkeypatch, caplog):
     """load_config использует validate_config и логирует ошибки."""

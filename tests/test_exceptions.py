@@ -31,6 +31,7 @@ TDD-контракт для иерархии SenpyError:
   - Никаких `__str__` кастомных — `Exception.__str__` достаточно, кастомизируем
     только через `__init__` сообщение.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -50,6 +51,7 @@ from senpy.core.exceptions import (
 # =============================================================================
 # 1. SenpyError base
 # =============================================================================
+
 
 def test_senpy_error_inherits_from_exception():
     """SenpyError — наследник Exception (НЕ ValueError/RuntimeError)."""
@@ -84,14 +86,18 @@ def test_senpy_error_without_cause():
 # 2. Категории — все наследники SenpyError
 # =============================================================================
 
-@pytest.mark.parametrize("exc_class", [
-    ConfigError,
-    AnalysisError,
-    CacheError,
-    PluginError,
-    SecurityError,
-    DecompilationError,
-])
+
+@pytest.mark.parametrize(
+    "exc_class",
+    [
+        ConfigError,
+        AnalysisError,
+        CacheError,
+        PluginError,
+        SecurityError,
+        DecompilationError,
+    ],
+)
 def test_all_categories_inherit_from_senpy_error(exc_class):
     """Все 6 категорий наследуются от SenpyError."""
     assert issubclass(exc_class, SenpyError)
@@ -101,10 +107,14 @@ def test_all_categories_inherit_from_senpy_error(exc_class):
 # 3. Подкатегории AnalysisError
 # =============================================================================
 
-@pytest.mark.parametrize("exc_class", [
-    ParseError,
-    SymbolResolutionError,
-])
+
+@pytest.mark.parametrize(
+    "exc_class",
+    [
+        ParseError,
+        SymbolResolutionError,
+    ],
+)
 def test_analysis_subcategories_inherit_from_analysis_error(exc_class):
     """ParseError и SymbolResolutionError — наследники AnalysisError."""
     assert issubclass(exc_class, AnalysisError)
@@ -115,6 +125,7 @@ def test_analysis_subcategories_inherit_from_analysis_error(exc_class):
 # 4. ApiVersionMismatchError — backward compat
 # =============================================================================
 
+
 def test_api_version_mismatch_is_plugin_error():
     """ApiVersionMismatchError должен быть наследником PluginError.
 
@@ -123,6 +134,7 @@ def test_api_version_mismatch_is_plugin_error():
     Это позволяет ловить его через `except PluginError:` или `except SenpyError:`.
     """
     from senpy.plugins.security import ApiVersionMismatchError
+
     assert issubclass(ApiVersionMismatchError, PluginError)
     assert issubclass(ApiVersionMismatchError, SenpyError)
 
@@ -130,6 +142,7 @@ def test_api_version_mismatch_is_plugin_error():
 def test_api_version_mismatch_still_works():
     """ApiVersionMismatchError сохраняет原有 API (plugin_version, senpy_version)."""
     from senpy.plugins.security import ApiVersionMismatchError
+
     err = ApiVersionMismatchError("1.5", "1.0")
     assert err.plugin_version == "1.5"
     assert err.senpy_version == "1.0"
@@ -141,16 +154,20 @@ def test_api_version_mismatch_still_works():
 # 5. Constructor — все категории принимают message + cause
 # =============================================================================
 
-@pytest.mark.parametrize("exc_class", [
-    ConfigError,
-    AnalysisError,
-    ParseError,
-    SymbolResolutionError,
-    CacheError,
-    PluginError,
-    SecurityError,
-    DecompilationError,
-])
+
+@pytest.mark.parametrize(
+    "exc_class",
+    [
+        ConfigError,
+        AnalysisError,
+        ParseError,
+        SymbolResolutionError,
+        CacheError,
+        PluginError,
+        SecurityError,
+        DecompilationError,
+    ],
+)
 def test_all_exceptions_accept_message_and_cause(exc_class):
     """Все доменные исключения принимают message + cause."""
     cause = OSError("disk full")
@@ -162,6 +179,7 @@ def test_all_exceptions_accept_message_and_cause(exc_class):
 # =============================================================================
 # 6. Catch-by-base — реальный use case
 # =============================================================================
+
 
 def test_can_catch_any_senpy_error_via_base():
     """Любую доменную ошибку можно поймать через `except SenpyError:`."""
@@ -221,6 +239,7 @@ def test_security_error_is_also_value_error():
 # 7. Практический use case — декомпозиция по категориям
 # =============================================================================
 
+
 def test_practical_use_case_plugin_loader():
     """Plugin loader может ловить PluginError отдельно от других SenpyError."""
     from senpy.plugins.security import ApiVersionMismatchError
@@ -240,6 +259,7 @@ def test_practical_use_case_plugin_loader():
 
 def test_practical_use_case_config_loader():
     """Config loader может выбросить ConfigError, caller решает что делать."""
+
     def load_config():
         raise ConfigError("invalid TOML")
 

@@ -44,6 +44,7 @@ CI интеграция:
     Все разорваны в Фазах 1.2-1.6 (0.5.3). Этот скрипт — safety net
     чтобы они не вернулись.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,6 +56,7 @@ from pathlib import Path
 # =============================================================================
 # 1. Парсинг: извлечение импортов из .py файла
 # =============================================================================
+
 
 class ImportVisitor(ast.NodeVisitor):
     """Собирает все `from senpy.X import Y` и `import senpy.X` из модуля.
@@ -145,13 +147,15 @@ def extract_imports(file_path: Path, package_root: Path) -> tuple[str, set[str]]
 # 2. Построение графа и поиск циклов
 # =============================================================================
 
+
 def build_import_graph(package_root: Path) -> dict[str, set[str]]:
     """Строит граф импортов: {module: {imported_modules}}."""
     graph: dict[str, set[str]] = defaultdict(set)
 
     # Все .py файлы в пакете (без __pycache__, vendor)
     py_files = sorted(
-        f for f in package_root.rglob("*.py")
+        f
+        for f in package_root.rglob("*.py")
         if "__pycache__" not in str(f)
         and "vendor" not in str(f.relative_to(package_root))
         and ".ruff_cache" not in str(f)
@@ -205,6 +209,7 @@ def find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
 # 3. Фильтрация и дедупликация циклов
 # =============================================================================
 
+
 def normalize_cycle(cycle: list[str]) -> tuple[str, ...]:
     """Нормализует цикл для дедупликации: начинает с наименьшего элемента.
 
@@ -236,6 +241,7 @@ def deduplicate_cycles(cycles: list[list[str]]) -> list[list[str]]:
 # =============================================================================
 # 4. Главная функция
 # =============================================================================
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(

@@ -112,9 +112,7 @@ def parse_traceback_file(file_path: str) -> CrashReport | None:
         )
     except (OSError, UnicodeDecodeError) as e:
         # log debug instead of silent suppress.
-        _logger.debug(
-            "failed to read traceback file %s: %s", file_path, e
-        )
+        _logger.debug("failed to read traceback file %s: %s", file_path, e)
         return None
 
 

@@ -39,9 +39,8 @@ Usage:
         # любая доменная ошибка Senpy
         handle_senpy_failure()
 """
-from __future__ import annotations
 
-from typing import Optional
+from __future__ import annotations
 
 __all__ = [
     "SenpyError",
@@ -70,7 +69,7 @@ class SenpyError(Exception):
             into a domain exception — preserves traceback for debugging.
     """
 
-    def __init__(self, message: str, *, cause: Optional[BaseException] = None) -> None:  # noqa: UP045
+    def __init__(self, message: str, *, cause: BaseException | None = None) -> None:  # noqa: UP045
         super().__init__(message)
         if cause is not None:
             self.__cause__ = cause

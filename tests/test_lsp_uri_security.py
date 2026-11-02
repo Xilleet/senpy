@@ -17,6 +17,7 @@ Security-тесты для валидации `file:` scheme и workspace contai
   4. На Windows UNC-пути (двойные backslash-пути к сетевым ресурсам) поведение
      не меняется — `file:` scheme нормализуется через `Path.as_uri()`.
 """
+
 from __future__ import annotations
 
 import os
@@ -30,6 +31,7 @@ import senpy.lsp.server as server_mod
 # =============================================================================
 # Scheme validation
 # =============================================================================
+
 
 def test_uri_to_path_accepts_file_scheme(tmp_path: Path):
     """`file:` URI обязан парситься (backward compat)."""
@@ -67,6 +69,7 @@ def test_uri_to_path_rejects_empty_scheme():
 # =============================================================================
 # Workspace containment check
 # =============================================================================
+
 
 def test_uri_to_path_inside_workspace_ok(tmp_path: Path):
     """URI внутри workspace_root — ОК."""
@@ -124,6 +127,7 @@ def test_uri_to_path_no_workspace_root_skips_containment(tmp_path: Path):
 # =============================================================================
 # Backward compat — без scheme check сломал бы существующие тесты
 # =============================================================================
+
 
 def test_uri_to_path_preserves_backward_compat(tmp_path: Path):
     """Старые вызовы без workspace_root должны работать как раньше
