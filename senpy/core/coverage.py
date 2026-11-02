@@ -21,7 +21,7 @@ class LanguageStats:
 
 def calculate_translation_coverage(project_path: str) -> dict[str, LanguageStats]:
     """
-    Сканирует game/tl/ и возвращает статистику перевода по каждому найденному языку.
+    Scans game/tl/ and returns translation statistics for each found language.
     """
     analyzer = SenpyAnalyzer(project_path)
     _, tl_files = analyzer._get_rpy_files()
@@ -32,7 +32,7 @@ def calculate_translation_coverage(project_path: str) -> dict[str, LanguageStats
         norm_path = file_path.replace("\\", "/")
         rel_parts = norm_path.split("/")
 
-        # Определяем язык: ищем папку сразу после 'tl'
+        # Determine the language: look for the folder right after 'tl'
         if "tl" not in rel_parts:
             continue
         tl_idx = rel_parts.index("tl")
@@ -40,7 +40,7 @@ def calculate_translation_coverage(project_path: str) -> dict[str, LanguageStats
             continue
 
         lang = rel_parts[tl_idx + 1]
-        # Пропускаем служебный язык 'None' движка Ren'Py
+        # Skip the Ren'Py engine 'None' service language
         if lang.lower() == "none":
             continue
 

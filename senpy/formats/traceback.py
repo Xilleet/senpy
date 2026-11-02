@@ -20,7 +20,7 @@ class CrashReport:
     explanation: str
 
 
-# Карта частых рантайм-падений Ren'Py в правила Senpy
+# Map of frequent Ren'Py runtime crashes to Senpy rules
 CRASH_RULES = [
     (
         r"NameError:\s+name\s+'([^']+)'\s+is not defined",
@@ -61,7 +61,7 @@ CRASH_RULES = [
 
 
 def parse_traceback_file(file_path: str) -> CrashReport | None:
-    """Парсит traceback.txt / errors.txt и сопоставляет его с семантикой Senpy."""
+    """Parses traceback.txt / errors.txt and matches it to Senpy semantics."""
     if not os.path.isfile(file_path):
         return None
 
@@ -69,7 +69,7 @@ def parse_traceback_file(file_path: str) -> CrashReport | None:
         with open(file_path, encoding="utf-8", errors="replace") as f:
             content = f.read()
 
-        # 1. Ищем место сбоя в коде игры (File "game/script.rpy", line 42, in ...)
+        # 1. Find the crash location in the game code (File "game/script.rpy", line 42, in ...)
         loc_match = re.search(
             r'File\s+["\']([^"\']+\.rpy)["\'],\s+line\s+(\d+)(?:,\s+in\s+([^\n]+))?\s*\n(?:\s+([^\n]+))?',
             content,
@@ -81,7 +81,7 @@ def parse_traceback_file(file_path: str) -> CrashReport | None:
         line_num = int(loc_match.group(2))
         code_line = (loc_match.group(4) or "").strip()
 
-        # 2. Ищем текст самого исключения
+        # 2. Find the exception text itself
         exc_match = re.search(
             r"([A-Za-z_][A-Za-z0-9_]*(?:Error|Exception)):\s*([^\n]+)",
             content,
@@ -89,7 +89,7 @@ def parse_traceback_file(file_path: str) -> CrashReport | None:
         exc_type = exc_match.group(1) if exc_match else "Exception"
         exc_msg = exc_match.group(2) if exc_match else "Unknown runtime error"
 
-        # 3. Сопоставляем с правилами Senpy
+        # 3. Match it to Senpy rules
         rule_code = "RUNTIME"
         explanation = "Game crashed at runtime. Inspect the indicated file and line."
 
@@ -117,7 +117,7 @@ def parse_traceback_file(file_path: str) -> CrashReport | None:
 
 
 def find_latest_traceback(project_path: str) -> str | None:
-    """Ищет свежий traceback.txt или errors.txt в проекте."""
+    """Finds the latest traceback.txt or errors.txt in the project."""
     candidates = [
         os.path.join(project_path, "traceback.txt"),
         os.path.join(project_path, "errors.txt"),

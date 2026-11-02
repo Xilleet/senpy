@@ -4,14 +4,14 @@ from enum import Enum, auto
 
 
 class ScopeType(Enum):
-    GLOBAL = auto()  # Глобальные переменные (default, define, built-in)
-    LABEL = auto()  # Сюжетные метки (аргументы меток)
-    SCREEN = auto()  # Экраны (аргументы экранов, локальные переменные Python)
-    BLOCK = auto()  # Блоки кода (init python, циклы, menu)
+    GLOBAL = auto()  # Global variables (default, define, built-in)
+    LABEL = auto()  # Story labels (label arguments)
+    SCREEN = auto()  # Screens (screen arguments, local Python variables)
+    BLOCK = auto()  # Code blocks (init python, loops, menu)
 
 
 class Scope:
-    """Представляет одну область видимости в коде."""
+    """Represents a single scope in the code."""
 
     def __init__(self, scope_type: ScopeType, name: str = "", indent: int = 0):
         self.scope_type = scope_type
@@ -23,7 +23,7 @@ class Scope:
 
 
 class ScopeStack:
-    """Стек областей видимости. Управляет переходом между экранами, метками и блоками."""
+    """Scope stack. Manages transitions between screens, labels, and blocks."""
 
     def __init__(self, builtins: set[str]):
         global_scope = Scope(ScopeType.GLOBAL, "global", -1)

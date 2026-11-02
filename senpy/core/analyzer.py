@@ -56,8 +56,8 @@ from senpy.rules.deprecated import DeprecationChecker
 from senpy.rules.flow import StoryFlowAnalyzer
 from senpy.rules.python_ast import PythonAstChecker, infer_expr_type
 
-# Фаза 1.3 (0.5.3): _strip_comment вынесен в senpy/text_utils.py для разрыва
-# циклической зависимости checkers/flow → analyzer. Реэкспортируем для backward compat.
+# Phase 1.3 (0.5.3): _strip_comment was moved to senpy/text_utils.py to break
+# the circular dependency checkers/flow → analyzer. Re-exported for backward compat.
 from senpy.text_utils import _strip_comment  # noqa: E402, F401
 
 # Extract the first quoted string literal from a Python expression
@@ -83,7 +83,7 @@ def _extract_string_literal(expr: str) -> str | None:
 
 
 def _count_bracket_delta(s: str) -> int:
-    """Считает баланс скобок (, [, { вне строковых литералов."""
+    """Counts the bracket balance of (, [, { outside string literals."""
     if not any(c in s for c in "()[]{}"):
         return 0
 
@@ -126,9 +126,9 @@ def _count_bracket_delta(s: str) -> int:
 
 def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     """
-    Склеивает многострочные конструкции (перенос через '\\' или незакрытые скобки).
-    Возвращает (next_idx, raw_line, clean_line).
-    Отказоустойчив: предотвращает каскадное поглощение файла при незакрытых скобках.
+    Joins multi-line constructs (line continuation via '\\' or unclosed brackets).
+    Returns (next_idx, raw_line, clean_line).
+    Fault-tolerant: prevents cascading file swallowing on unclosed brackets.
     """
     first_raw = lines[idx]
     first_clean = _strip_comment(first_raw)
@@ -137,7 +137,7 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     bracket_depth = _count_bracket_delta(first_clean)
     ends_with_backslash = stripped.endswith("\\")
 
-    # Строка требует склейки ТОЛЬКО если есть явный перенос '\' или незакрытая скобка вне кавычек
+    # The line needs joining ONLY if there is an explicit '\' continuation or an unclosed bracket outside quotes
     if not ends_with_backslash and bracket_depth <= 0:
         return idx + 1, first_raw, first_clean
 
@@ -145,7 +145,7 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     clean_parts = [first_clean]
     curr_idx = idx
 
-    max_lookahead = 50  # Защита от бесконечного поглощения строк
+    max_lookahead = 50  # Protection against infinite line swallowing
     lookahead_count = 0
 
     while curr_idx + 1 < len(lines):
@@ -161,9 +161,9 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
         peek_raw = lines[curr_idx + 1]
         peek_clean = _strip_comment(peek_raw).strip()
 
-        # Граница блока: если нет явного обратного слэша '\', а следующая строка —
-        # новая ключевая конструкция верхнего уровня (label, screen, init, define, default, transform, image, style, layeredimage),
-        # принудительно останавливаемся, чтобы не поглотить чужую сцену при сломанной скобке.
+        # Block boundary: if there is no explicit backslash '\', and the next line is
+        # a new top-level keyword construct (label, screen, init, define, default, transform, image, style, layeredimage),
+        # force-stop so we don't swallow another scene on a broken bracket.
         peek_indent = len(peek_raw) - len(peek_raw.lstrip(" "))
         if (
             not ends_with_backslash
@@ -245,7 +245,7 @@ class SenpyAnalyzer:
         self.fix = fix
         self.in_memory_files = {normalize_path(k): v for k, v in (in_memory_files or {}).items()}
 
-        # Настройка уровней строгости: переданные аргументы или секция [tool.senpy.severity] из конфига
+        # Configure severity levels: passed args or the [tool.senpy.severity] section from config
         if severity_overrides is not None:
             self.severity_overrides = {
                 k.strip().upper(): v.strip().upper() for k, v in severity_overrides.items()
@@ -256,21 +256,21 @@ class SenpyAnalyzer:
                 k.strip().upper(): v.strip().upper() for k, v in cfg.get("severity", {}).items()
             }
 
-        # Базовые множества
+        # Base sets
         self.user_symbols: set[str] = set()
         self.declared_symbols: set[str] = set(BUILTIN_SYMBOLS)
         self.referenced_labels: set[str] = set()
         self.defined_audio_map: dict[str, str] = {}
         self.registered_audio_channels: set[str] = set(BUILTIN_AUDIO_CHANNELS)
 
-        # --- Новые объектные реестры (заменяют 13 старых словарей) ---
+        # --- New object registries (replace 13 old dicts) ---
         self.variables: dict[str, VariableSymbol] = {}
         self.labels: dict[str, LabelSymbol] = {}
         self.screens: dict[str, ScreenSymbol] = {}
         self.images: dict[str, ImageSymbol] = {}
         self.transforms: dict[str, TransformSymbol] = {}
 
-        # Остальные структуры и метаданные сканирования
+        # Other structures and scan metadata
         self.jump_sources: dict[str, list[tuple[str, int]]] = {}
         self.screen_action_jumps: dict[str, set[str]] = {}
         self.used_screens: set[str] = set()
@@ -532,14 +532,14 @@ class SenpyAnalyzer:
 
     def _differential_purge_file(self, norm_path: str, file_path: str) -> None:
         """
-        Дифференциально удаляет символы только одного файла из глобальных структур,
-        не вызывая дорогую полную пересборку всех файлов проекта (_rebuild_aggregates).
+        Differentially removes symbols of only one file from the global structures,
+        without invoking an expensive full rebuild of all project files (_rebuild_aggregates).
         """
         old_scope = self.file_scopes.pop(norm_path, None)
         if not old_scope:
             return
 
-        # 1. Быстрое удаление O(1) из объектных реестров
+        # 1. Fast O(1) removal from object registries
         for k in old_scope.variables:
             self.variables.pop(k, None)
         for k in old_scope.labels:
@@ -553,7 +553,7 @@ class SenpyAnalyzer:
         for k in old_scope.defined_audio_map:
             self.defined_audio_map.pop(k, None)
 
-        # 2. Очистка jump_sources только для данного файла
+        # 2. Clear jump_sources only for this file
         for tgt in old_scope.jump_sources:
             if tgt in self.jump_sources:
                 self.jump_sources[tgt] = [
@@ -562,8 +562,8 @@ class SenpyAnalyzer:
                 if not self.jump_sources[tgt]:
                     self.jump_sources.pop(tgt, None)
 
-        # 3. Дифференциальная очистка множеств:
-        # Символ удаляется из глобального множества только если его нет ни в одном другом файле проекта.
+        # 3. Differential set cleanup:
+        # A symbol is removed from the global set only if it is not present in any other file of the project.
         other_scopes = list(self.file_scopes.values())
 
         for sym in old_scope.user_symbols:
@@ -599,13 +599,13 @@ class SenpyAnalyzer:
                 self.registered_audio_channels.discard(chan)
 
     def _purge_file_symbols(self, norm_path: str) -> None:
-        """Полное удаление символов файла с последующей глобальной пересборкой."""
+        """Full removal of a file's symbols followed by a global rebuild."""
         if norm_path in self.file_scopes:
             del self.file_scopes[norm_path]
             self._rebuild_aggregates()
 
     def _rebuild_aggregates(self) -> None:
-        """Пересобирает глобальные множества символов на основе scopes всех остальных файлов."""
+        """Rebuilds global symbol sets based on the scopes of all other files."""
         self.declared_symbols = set(BUILTIN_SYMBOLS)
         self.user_symbols.clear()
         self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
@@ -640,12 +640,12 @@ class SenpyAnalyzer:
             for tgt, locs in scope.jump_sources.items():
                 self.jump_sources.setdefault(tgt, []).extend(locs)
 
-        # экранные Jump/Call-экшены — тоже статические ссылки (RPY303, кэш-стабильно)
+        # screen Jump/Call actions — also static references (RPY303, cache-stable)
         for targets in self.screen_action_jumps.values():
             self.referenced_labels.update(targets)
 
     def analyze_file_only(self, file_path: str) -> list[Diagnostic]:
-        """Быстрый анализ только одного измененного файла для LSP без утечки состояния."""
+        """Fast analysis of only the changed file for LSP without state leakage."""
         file_diags: list[Diagnostic] = []
         old_diags = self.diagnostics
         self.diagnostics = file_diags
@@ -653,8 +653,8 @@ class SenpyAnalyzer:
         try:
             rel_parts = os.path.relpath(file_path, self.project_path).replace("\\", "/").split("/")
         except ValueError:
-            # Windows: file_path и project_path на разных дисках (D: vs C:)
-            # — os.path.relpath падает. Используем абсолютный путь как fallback.
+            # Windows: file_path and project_path are on different drives (D: vs C:)
+            # — os.path.relpath fails. Use the absolute path as a fallback.
             rel_parts = file_path.replace("\\", "/").split("/")
         try:
             if "tl" in rel_parts:
@@ -687,9 +687,9 @@ class SenpyAnalyzer:
         return sorted(main_files), sorted(tl_files)
 
     def _emit_encoding_error(self, file_path: str, err: UnicodeDecodeError) -> None:
-        """RPY100: файл не читается как UTF-8. Раньше decode-ошибка глохла в
-        `except: pass` — линтер молча пропускал файл и рапортовал «чисто»,
-        хотя Ren'Py упадёт на загрузке такого скрипта."""
+        """RPY100: the file is not readable as UTF-8. Previously the decode error was
+        swallowed by `except: pass` — the linter silently skipped the file and reported "clean",
+        although Ren'Py will crash when loading such a script."""
         self.diagnostics.append(
             Diagnostic(
                 file_path=file_path,
@@ -714,7 +714,7 @@ class SenpyAnalyzer:
         idx: int,
         scope: FileScope,
     ) -> None:
-        """Обработка `default var = expr` — RPY105, VariableSymbol."""
+        """Handle `default var = expr` — RPY105, VariableSymbol."""
         var = m_def.group(1)
         if "." in clean.split("=")[0]:
             return
@@ -768,7 +768,7 @@ class SenpyAnalyzer:
         idx: int,
         scope: FileScope,
     ) -> None:
-        """Обработка `define var = expr` — RPY105, VariableSymbol."""
+        """Handle `define var = expr` — RPY105, VariableSymbol."""
         var = m_define.group(1)
         if "." in clean.split("=")[0]:
             return
@@ -816,7 +816,7 @@ class SenpyAnalyzer:
         self.variables[var] = var_sym
 
     def _collect_define_audio(self, m_audio_def, scope: FileScope) -> None:
-        """Обработка `define audio.NAME = "file.ogg"`."""
+        """Handle `define audio.NAME = "file.ogg"`."""
         alias = m_audio_def.group(1)
         target_file = m_audio_def.group(2).replace("\\", "/").lower()
         scope.defined_audio_map[alias] = target_file
@@ -842,9 +842,9 @@ class SenpyAnalyzer:
         idx: int,
         scope: FileScope,
     ) -> str | None:
-        """Обработка `screen name(...)` и `transform name(...)`.
+        """Handle `screen name(...)` and `transform name(...)`.
 
-        Возвращает текущий screen name (или None) для контекста.
+        Returns the current screen name (or None) for context.
         """
         if m_screen_def:
             s_name = m_screen_def.group(2)
@@ -858,7 +858,7 @@ class SenpyAnalyzer:
 
         new_screen = None
 
-        # Контекст экрана (screen-блоки всегда top-level)
+        # Screen context (screen blocks are always top-level)
         if len(line) - len(line.lstrip(" ")) == 0:
             new_screen = m_screen_def.group(2) if m_screen_def else None
 
@@ -888,9 +888,9 @@ class SenpyAnalyzer:
         scope: FileScope,
         current_global_label: str | None,
     ) -> tuple[str, str, str | None]:
-        """Обработка `label name(params):` — RPY307, LabelSymbol.
+        """Handle `label name(params):` — RPY307, LabelSymbol.
 
-        Возвращает (label_name, current_global_label, current_label).
+        Returns (label_name, current_global_label, current_label).
         """
         raw_name = m_label.group(1)
         if raw_name.startswith("."):
@@ -936,7 +936,7 @@ class SenpyAnalyzer:
         current_global_label: str | None,
         current_screen: str | None,
     ) -> None:
-        """Обработка jump/call/return внутри label + screen edges."""
+        """Handle jump/call/return inside label + screen edges."""
         if current_label:
             if RE_RETURN.match(clean):
                 if current_label in scope.labels:
@@ -966,7 +966,7 @@ class SenpyAnalyzer:
                 self.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
                 scope.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
 
-        # Рёбра из экранов (Jump/Call-экшены) и использования экранов
+        # Edges from screens (Jump/Call actions) and screen usage
         if current_screen:
             for m_act in RE_SCREEN_JUMP_ACTION.finditer(clean):
                 scope.screen_action_jumps.setdefault(current_screen, set()).add(m_act.group(1))
@@ -993,9 +993,9 @@ class SenpyAnalyzer:
         lines: list[str],
         scope: FileScope,
     ) -> tuple[bool, int]:
-        """Обработка layeredimage и image declarations — RPY504.
+        """Handle layeredimage and image declarations — RPY504.
 
-        Возвращает (was_handled, new_idx).
+        Returns (was_handled, new_idx).
         """
         m_limg = RE_LAYEREDIMAGE_START.match(clean_line)
         if m_limg:
@@ -1071,9 +1071,9 @@ class SenpyAnalyzer:
         lines: list[str],
         scope: FileScope,
     ) -> tuple[bool, int]:
-        """Обработка channels, dynamic jumps, quoted strings, init python.
+        """Handle channels, dynamic jumps, quoted strings, init python.
 
-        Возвращает (was_init_python, new_idx).
+        Returns (was_init_python, new_idx).
         """
         m_chan = re.search(r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', clean)
         if m_chan:
@@ -1106,9 +1106,9 @@ class SenpyAnalyzer:
         return False, idx
 
     def _collect_symbols(self, file_path: str):
-        """Собирает символы из .rpy файла (default/define/screen/label/image/...).
+        """Collects symbols from a .rpy file (default/define/screen/label/image/...).
 
-        Phase 3 Step 5 (0.5.6): разбит с 378 строк на 7 методов + dispatcher.
+        Phase 3 Step 5 (0.5.6): split from 378 lines into 7 methods + dispatcher.
         """
         try:
             norm_path = normalize_path(file_path)
@@ -1167,9 +1167,9 @@ class SenpyAnalyzer:
                         m_screen_def, m_trans, clean, line, file_path, idx, scope
                     )
 
-                # Контекст экрана (screen-блоки всегда top-level)
-                # Важно: current_screen сбрасывается в None для ЛЮБОЙ top-level строки,
-                # не только screen. Это нужно чтобы label start: сбрасывал screen context.
+                # Screen context (screen blocks are always top-level)
+                # Important: current_screen is reset to None for ANY top-level line,
+                # not only screen. This is needed so `label start:` resets the screen context.
                 if len(line) - len(line.lstrip(" ")) == 0:
                     current_screen = m_screen_def.group(2) if m_screen_def else None
 
@@ -1298,11 +1298,11 @@ class SenpyAnalyzer:
         return True, None
 
     def _scan_python_assets(self, code_lines: list[str] | str) -> None:
-        """Точечный поиск медиа-файлов в блоках Python (защита от ложных RPY503 без оверхеда)."""
+        """Targeted search for media files in Python blocks (protection against false RPY503 without overhead)."""
         if isinstance(code_lines, str):
             code_lines = [code_lines]
         for line in code_lines:
-            if '"' in line or "'" in line:  # Fast-path: сверхбыстрая отсечка
+            if '"' in line or "'" in line:  # Fast-path: ultra-fast pre-filter
                 for match in RE_STRING_MATCH.finditer(line):
                     inner = match.group(0).strip("\"'")
                     val_clean = inner.replace("\\", "/").lower().strip()
@@ -1311,7 +1311,7 @@ class SenpyAnalyzer:
                         self._mark_asset_used(os.path.basename(val_clean))
 
     def _apply_severity(self, diag: Diagnostic) -> None:
-        """Применяет переопределения строгости из конфига или дефолтные уровни."""
+        """Applies severity overrides from the config or default levels."""
         if self.severity_overrides and diag.code in self.severity_overrides:
             diag.severity = self.severity_overrides[diag.code]
         elif not diag.severity:
@@ -1329,7 +1329,7 @@ class SenpyAnalyzer:
         return self.flow.can_reach_return(label_name, visited)
 
     def _get_tag_known_attributes(self, base_tag: str, all_valid: set[str]) -> set[str]:
-        """Возвращает все известные атрибуты для тега (из layeredimage и файловой структуры)."""
+        """Returns all known attributes for a tag (from layeredimage and filesystem structure)."""
         attrs = set()
         if base_tag in self.images and self.images[base_tag].is_layered:
             attrs.update(self.images[base_tag].attributes)
@@ -1581,7 +1581,7 @@ class SenpyAnalyzer:
         return self.flow.analyze_menu_flow(lines, start_idx, menu_indent, file_path, noqa_map)
 
     def export_graph(self) -> str:
-        """Возвращает Mermaid.js диаграмму сюжета."""
+        """Returns a Mermaid.js diagram of the story."""
         return self.flow.generate_mermaid_graph()
 
     def _clear_safe_cfg_vars(self, py_code: str, branch_uninitialized: dict) -> None:

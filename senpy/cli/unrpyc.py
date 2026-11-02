@@ -1,8 +1,8 @@
-"""Unrpyc bootstrap: скачивание, поиск, декомпиляция .rpyc, извлечение .rpa.
+"""Unrpyc bootstrap: downloading, locating, decompiling .rpyc, extracting .rpa.
 
-Вынесено из cli.py (P1-1: Вариант B — умеренный рефакторинг).
-Этот модуль полностью независим от cli.py и использует только стандартные
-библиотеки + senpy.constants + senpy.rpa + senpy.tsundere.
+Extracted from cli.py (P1-1: Option B — moderate refactoring).
+This module is fully independent of cli.py and uses only standard
+libraries + senpy.constants + senpy.rpa + senpy.tsundere.
 """
 
 from __future__ import annotations
@@ -28,40 +28,40 @@ from senpy.domain.tsundere import IS_RU
 
 _logger = get_logger("cli.unrpyc")
 
-# Console для unrpyc-блока (не зависит от глобального console из cli.py)
+# Console for the unrpyc block (does not depend on the global console from cli.py)
 console = Console(legacy_windows=sys.stdout.isatty())
 
 SENPY_CACHE_DIR = os.path.expanduser("~/.senpy/tools/unrpyc")
-# ранее UNRPYC_GITHUB_ZIP указывал на master-ветку, что означало
-# "всегда качать свежий код". Это риск: master может измениться в любой момент,
-# возможны breaking changes или (hypothetically) инъекции вредоносного кода,
-# если аккаунт CensoredUsername скомпрометируют.
+# previously UNRPYC_GITHUB_ZIP pointed at the master branch, which meant
+# "always download the latest code". This is a risk: master can change at any time,
+# possible breaking changes or (hypothetically) injection of malicious code
+# if the CensoredUsername account is compromised.
 #
-# Теперь мы пинним к конкретному коммиту (UNRPYC_PINNED_COMMIT) и проверяем
-# SHA256 скачанного zip (UNRPYC_PINNED_SHA256). Это defence-in-depth:
-# даже если GitHub будет скомпрометирован или TLS-перехват подменит zip,
-# мы отвергнем несовпадающий файл.
+# Now we pin to a specific commit (UNRPYC_PINNED_COMMIT) and verify the
+# SHA256 of the downloaded zip (UNRPYC_PINNED_SHA256). This is defence-in-depth:
+# even if GitHub is compromised or a TLS intercept swaps the zip,
+# we reject a non-matching file.
 #
-# Обновление pinned commit:
+# Updating the pinned commit:
 #   python scripts/update_unrpyc_pin.py
-# (скрипт получит свежий SHA master-ветки, посчитает SHA256 zip'а и
-# обновит обе константы).
+# (the script will fetch the latest SHA of the master branch, compute the
+# zip's SHA256, and update both constants).
 #
-# Текущий pinned commit:
+# Current pinned commit:
 UNRPYC_PINNED_COMMIT = "v2.0.4"
-UNRPYC_PINNED_SHA256 = "df7446d89f68a9a94a62378248da875e9e75e983bf81de53d92b2c19f359673e"  # вычислен 2026-10-28 через update_unrpyc_pin.py
+UNRPYC_PINNED_SHA256 = "df7446d89f68a9a94a62378248da875e9e75e983bf81de53d92b2c19f359673e"  # computed 2026-10-28 via update_unrpyc_pin.py
 UNRPYC_GITHUB_ZIP_TEMPLATE = "https://github.com/CensoredUsername/unrpyc/archive/{commit}.zip"
 
 
 def _unrpyc_zip_url() -> str:
-    """URL для скачивания pinned версии unrpyc."""
+    """URL for downloading the pinned version of unrpyc."""
     return UNRPYC_GITHUB_ZIP_TEMPLATE.format(commit=UNRPYC_PINNED_COMMIT)
 
 
-# Фаза 1.2 (0.5.3): load_config вынесен в senpy/config.py для разрыва
-# циклической зависимости analyzer ↔ cli. Реэкспортируем для обратной
-# совместимости (старый импорт `from senpy.cli.unrpyc import load_config`
-# продолжает работать).
+# Phase 1.2 (0.5.3): load_config was moved to senpy/config.py to break
+# the circular dependency analyzer ↔ cli. Re-exported for backward
+# compatibility (the old import `from senpy.cli.unrpyc import load_config`
+# continues to work).
 from senpy.core.config import load_config  # noqa: E402, F401, I001
 
 
@@ -83,14 +83,14 @@ def find_in_directory_tree(start_dirs: list[str]) -> str | None:
 
 
 def _verify_unrpyc_sha256(zip_path: str) -> bool:
-    """проверяет SHA256 скачанного zip против pinned значения.
+    """Verifies the SHA256 of the downloaded zip against the pinned value.
 
-    Возвращает True, если совпадает (или если UNRPYC_PINNED_SHA256 is None —
-    для backward compat при обновлении с placeholder).
+    Returns True if it matches (or if UNRPYC_PINNED_SHA256 is None —
+    for backward compat when updating from a placeholder).
     """
     if UNRPYC_PINNED_SHA256 is None:
-        # Pinned SHA не задан (placeholder) — пропускаем проверку с предупреждением.
-        # Это interim-состояние, пока мейнтейнер не запустит update_unrpyc_pin.py.
+        # Pinned SHA is not set (placeholder) — skip verification with a warning.
+        # This is an interim state until the maintainer runs update_unrpyc_pin.py.
         console.print(
             "[yellow]WARNING: UNRPYC_PINNED_SHA256 is None — "
             "SHA256 verification skipped. Run 'python scripts/update_unrpyc_pin.py' "
@@ -100,7 +100,7 @@ def _verify_unrpyc_sha256(zip_path: str) -> bool:
 
     hasher = hashlib.sha256()
     with open(zip_path, "rb") as f:
-        # Читаем чанками, чтобы не грузить весь zip в память
+        # Read in chunks so we don't load the entire zip into memory
         for chunk in iter(lambda: f.read(65536), b""):
             hasher.update(chunk)
     actual_sha = hasher.hexdigest()
@@ -118,16 +118,16 @@ def _verify_unrpyc_sha256(zip_path: str) -> bool:
 
 
 def _safe_zip_extract(zip_ref: zipfile.ZipFile, dest_dir: str) -> list[str]:
-    """безопасная распаковка zip с защитой от Zip Slip.
+    """Safe zip extraction with Zip Slip protection.
 
-    Python 3.6+ уже санитайзит пути в extractall, но defence-in-depth:
-    явно проверяем, что все пути внутри dest_dir. Возвращает список распакованных файлов.
+    Python 3.6+ already sanitizes paths in extractall, but as defence-in-depth:
+    explicitly verify that all paths are inside dest_dir. Returns the list of extracted files.
     """
     dest_dir_abs = os.path.abspath(dest_dir)
     extracted = []
     for member in zip_ref.namelist():
         member_path = os.path.abspath(os.path.join(dest_dir, member))
-        # Проверяем, что распаковка не выходит за пределы dest_dir
+        # Verify that extraction does not go outside dest_dir
         if os.path.commonpath([member_path, dest_dir_abs]) != dest_dir_abs:
             console.print(f"[red]Zip Slip detected: {member} — skipping[/red]")
             continue
@@ -137,12 +137,12 @@ def _safe_zip_extract(zip_ref: zipfile.ZipFile, dest_dir: str) -> list[str]:
 
 
 def download_unrpyc() -> list[str] | None:
-    """скачивает pinned версию unrpyc с SHA256 verification.
+    """Downloads the pinned version of unrpyc with SHA256 verification.
 
-    Изменения vs старой версии:
-    - Качает конкретный commit (UNRPYC_PINNED_COMMIT), не master.
-    - Проверяет SHA256 zip'а (UNRPYC_PINNED_SHA256).
-    - Безопасная распаковка (_safe_zip_extract) с защитой от Zip Slip.
+    Changes vs the old version:
+    - Downloads a specific commit (UNRPYC_PINNED_COMMIT), not master.
+    - Verifies the zip's SHA256 (UNRPYC_PINNED_SHA256).
+    - Safe extraction (_safe_zip_extract) with Zip Slip protection.
     """
     console.print(
         f"[bold cyan]Downloading unrpyc (commit: {UNRPYC_PINNED_COMMIT}) from GitHub...[/bold cyan]"
@@ -175,7 +175,7 @@ def download_unrpyc() -> list[str] | None:
                 _logger.debug("failed to remove bad unrpyc zip %s: %s", zip_path, e)
             return None
 
-        # безопасная распаковка
+        # Safe extraction
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             _safe_zip_extract(zip_ref, SENPY_CACHE_DIR)
 
@@ -217,7 +217,7 @@ def find_unrpyc_executable(
             [sys.executable, "-m", "unrpyc", "--help"],
             capture_output=True,
             check=False,
-            timeout=30,  # : защита от зависшего unrpyc
+            timeout=30,  # : protection against a hung unrpyc
         )
         if res.returncode == 0:
             return [sys.executable, "-m", "unrpyc"]
@@ -250,7 +250,7 @@ def find_unrpyc_executable(
 
 
 def extract_scripts_from_rpa(rpa_path: str, dest_dir: str) -> list[str]:
-    """Быстро и инкрементально извлекает .rpy и .rpyc из архива .rpa в изолированную песочницу с защитой от Path Traversal."""
+    """Quickly and incrementally extracts .rpy and .rpyc from a .rpa archive into an isolated sandbox with Path Traversal protection."""
     extracted = []
     rpa_mtime = os.path.getmtime(rpa_path) if os.path.exists(rpa_path) else 0.0
     dest_dir_abs = os.path.abspath(dest_dir)
@@ -275,14 +275,14 @@ def extract_scripts_from_rpa(rpa_path: str, dest_dir: str) -> list[str]:
                 if base_fn.endswith((".rpyc", ".rpy")):
                     dest = os.path.abspath(os.path.join(dest_dir, clean_name))
 
-                    # Защита от Path Traversal: блокируем попытки записи вне dest_dir (например, ../../malicious.rpy)
+                    # Path Traversal protection: block attempts to write outside dest_dir (e.g. ../../malicious.rpy)
                     try:
                         if os.path.commonpath([dest, dest_dir_abs]) != dest_dir_abs:
                             continue
                     except ValueError:
                         continue
 
-                    # Кэш: если файл уже извлечён и свежее архива, пропускаем чтение байт
+                    # Cache: if the file is already extracted and newer than the archive, skip reading bytes
                     if os.path.exists(dest) and os.path.getmtime(dest) >= rpa_mtime:
                         extracted.append(dest)
                         continue
@@ -311,10 +311,10 @@ def extract_scripts_from_rpa(rpa_path: str, dest_dir: str) -> list[str]:
 def decompile_to_sandbox(
     orphans: list[str], unrpyc_cmd: list[str] | None = None, temp_dir: str = ""
 ) -> list[str]:
-    """Декомпилирует .rpyc файлы в .rpy в изолированной песочнице.
+    """Decompiles .rpyc files to .rpy in an isolated sandbox.
 
-    Теперь использует встроенный (vendored) unrpyc вместо subprocess.
-    Параметр unrpyc_cmd сохранён для обратной совместимости, но игнорируется.
+    Now uses the built-in (vendored) unrpyc instead of a subprocess.
+    The unrpyc_cmd parameter is kept for backward compatibility but ignored.
     """
     from senpy.vendor.unrpyc import decompile_rpyc
 
@@ -357,8 +357,8 @@ def decompile_to_sandbox(
             decompiled_rpy.append(rpy_path)
         except Exception as e:
             err_msg = "Ошибка декомпиляции" if IS_RU else "Decompilation error"
-            # RPYCDecompilationError даёт понятное сообщение,
-            # любые другие исключения — выводим тип ошибки
+            # RPYCDecompilationError gives a clear message,
+            # any other exception — print the error type
             err_type = type(e).__name__
             console.print(f"\n[bold red]{err_msg} ({base_name}):[/bold red] [{err_type}] {e}")
 

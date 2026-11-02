@@ -24,17 +24,17 @@ from senpy.domain.tsundere import TSUNDERE_FLAVORS, TSUNDERE_UI
 from senpy.formats.traceback import find_latest_traceback, parse_traceback_file
 from senpy.formatter import FormatConfig, Formatter  # noqa: F401 — re-exported for backward compat
 
-# Пайпы (VS Code-расширение, >file, CI) всегда получают utf-8: дефолтная
-# кодировка пайпа Windows = locale (cp1251) -> UnicodeEncodeError на ✔/(//∇//)
-# и mojibake для кириллицы (Node декодирует пайп как utf8). Интерактивную
-# консоль не трогаем: там rich пишет через WriteConsoleW (Unicode-safe).
+# Pipes (VS Code extension, >file, CI) always receive utf-8: the default
+# Windows pipe encoding is locale (cp1251) -> UnicodeEncodeError on ✔/(//∇//)
+# and mojibake for Cyrillic (Node decodes the pipe as utf8). Interactive
+# console is not touched: rich writes through WriteConsoleW there (Unicode-safe).
 for _stream in (sys.stdout, sys.stderr):
     if _stream is not None and not _stream.isatty() and hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8")
 
-# legacy-рендерер Windows у rich падает на stdout-пайпе (WriteConsoleW на
-# невалидном хэндле): отключаем его, когда вывод не интерактивный терминал.
-# В живой консоли (isatty=True) поведение прежнее.
+# The Windows legacy renderer in rich crashes on a stdout pipe (WriteConsoleW on
+# an invalid handle): disable it when the output is not an interactive terminal.
+# In a live console (isatty=True) the behavior is unchanged.
 console = Console(legacy_windows=sys.stdout.isatty())
 
 SEVERITY_STYLES = {
@@ -44,8 +44,8 @@ SEVERITY_STYLES = {
     "INFO": ("bold blue", "blue dim"),
 }
 
-# P1-1: unrpyc/rpa функции вынесены в senpy/_unrpyc_bootstrap.py
-# (Вариант B — умеренный рефакторинг cli.py)
+# P1-1: unrpyc/rpa functions moved to senpy/_unrpyc_bootstrap.py
+# (Option B — moderate refactoring of cli.py)
 from senpy.cli.commands import (  # noqa: E402
     handle_clear_cache,
     handle_coverage,
@@ -61,8 +61,8 @@ from senpy.cli.commands import (  # noqa: E402
 
 
 class _ReplaceConsole:
-    """Context manager: временно подменяет модульную `console` на `file_console`,
-    корректно закрывая файл при выходе (даже при sys.exit внутри блока)."""
+    """Context manager: temporarily replaces the module-level `console` with `file_console`,
+    properly closing the file on exit (even on sys.exit inside the block)."""
 
     def __init__(self, file_console: Console):
         self._file_console = file_console
@@ -76,39 +76,39 @@ class _ReplaceConsole:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         global console
-        # Возвращаем оригинальную console
+        # Restore the original console
         if self._original_console is not None:
             console = self._original_console
-        # Закрываем файловый поток (rich Console хранит его в .file)
+        # Close the file stream (rich Console stores it in .file)
         try:
             if hasattr(self._file_console.file, "close"):
                 self._file_console.file.close()
         except Exception:
             pass
-        # Не подавляем исключения
+        # Do not suppress exceptions
         return False
 
 
 def _replace_console(file_console: Console) -> _ReplaceConsole:
-    """Фабрика для with-блока: with _replace_console(file_console): ..."""
+    """Factory for the with-block: with _replace_console(file_console): ..."""
     return _ReplaceConsole(file_console)
 
 
 def _exit_with_output_redirect(args, exit_code: int) -> None:
-    """Закрывает файл (если был открыт) и выходит с exit_code.
-    Используется вместо sys.exit() внутри with-блока text-вывода."""
-    # sys.exit() поднимает SystemExit, который корректно обрабатывается
-    # __exit__ context manager'а — файл закроется автоматически.
+    """Closes the file (if it was open) and exits with exit_code.
+    Used instead of sys.exit() inside the with-block of text output."""
+    # sys.exit() raises SystemExit, which is properly handled by
+    # the context manager's __exit__ — the file closes automatically.
     sys.exit(exit_code)
 
 
 def _make_file_console(args) -> Console:
-    """Создаёт файловую Console для text-формата с --output-file.
-    Force_terminal=False чтобы rich не применял ANSI-цвета в файл."""
+    """Creates a file Console for the text format with --output-file.
+    Force_terminal=False so rich does not apply ANSI colors to the file."""
     out_dir = os.path.dirname(os.path.abspath(args.output_file))
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
-    # type: ignore[arg-type] — file ожидает IO[str], file-объект подходит
+    # type: ignore[arg-type] — file expects IO[str], a file object fits
     return Console(
         file=open(args.output_file, "w", encoding="utf-8"),
         force_terminal=False,
@@ -117,7 +117,7 @@ def _make_file_console(args) -> Console:
 
 
 class _NullRedirect:
-    """No-op context manager для случая без --output-file."""
+    """No-op context manager for the case without --output-file."""
 
     def __enter__(self):
         return self
@@ -389,22 +389,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def load_senpy_ignore(project_path: str) -> set[str]:
-    """Читает .senpy-ignore файл из корня проекта.
+    """Reads the .senpy-ignore file from the project root.
 
-    Файл содержит один rule code per line. Поддерживаются:
-      - Полные комментарии (строка начинается с `#`).
-      - Inline комментарии (`RPY101 # typo in dialogue`).
-      - Пустые строки.
-      - Case-insensitive (нормализуется к uppercase).
+    The file contains one rule code per line. Supported formats:
+      - Full-line comments (line starts with `#`).
+      - Inline comments (`RPY101 # typo in dialogue`).
+      - Empty lines.
+      - Case-insensitive (normalized to uppercase).
 
     Args:
-        project_path: Путь к корню проекта (где лежит .senpy-ignore).
+        project_path: Path to the project root (where .senpy-ignore is located).
 
     Returns:
-        Set of rule codes (uppercase) для исключения. Пустое множество если
-        файл не существует или пустой.
+        Set of rule codes (uppercase) to exclude. Empty set if the
+        file does not exist or is empty.
 
-    Пример файла:
+    Example file:
         # .senpy-ignore
         RPY101  # typo in dialogue variable
         RPY104
@@ -419,14 +419,14 @@ def load_senpy_ignore(project_path: str) -> set[str]:
     try:
         with open(ignore_file, encoding="utf-8", errors="replace") as f:
             for line in f:
-                # Убираем inline comment (всё после #)
+                # Remove the inline comment (everything after #)
                 line = line.split("#", 1)[0]
                 code = line.strip().upper()
                 if code:
                     codes.add(code)
     except OSError:
-        # Не удалось прочитать — молча возвращаем пустое множество.
-        # Логирование на DEBUG уровне уже есть в load_config.
+        # Could not read — silently return an empty set.
+        # DEBUG-level logging is already present in load_config.
         pass
 
     return codes
@@ -437,36 +437,36 @@ def filter_diagnostics(
     args,
     ignored_codes: set[str],
 ) -> tuple[list, int]:
-    """Фильтрует diagnostics по --ignore, --select, --errors-only, --info.
+    """Filters diagnostics by --ignore, --select, --errors-only, --info.
 
-    Логика фильтрации:
+    Filtering logic:
       1. start with all rules enabled
       2. if args.select is non-empty: disable all, enable only args.select + args.extend_select
-      3. else: extend_select игнорируется (select пустой — всё включено)
-      4. remove ignored_codes (включает --ignore + --extend-ignore, собранные в main())
-      5. apply --errors-only, --info (существующая логика)
+      3. else: extend_select is ignored (select is empty — everything is enabled)
+      4. remove ignored_codes (includes --ignore + --extend-ignore, collected in main())
+      5. apply --errors-only, --info (existing logic)
 
     Args:
-        result: AnalysisResult с .diagnostics list.
-        args: Namespace с .ignore, .select, .extend_select, .errors_only, .info.
-        ignored_codes: Set кодов правил для игнорирования (включает --ignore
-            --extend-ignore, собранные в main()).
+        result: AnalysisResult with a .diagnostics list.
+        args: Namespace with .ignore, .select, .extend_select, .errors_only, .info.
+        ignored_codes: Set of rule codes to ignore (includes --ignore,
+            --extend-ignore, collected in main()).
 
     Returns:
-        Кортеж (active_diagnostics, hidden_info_count):
-        - active_diagnostics: отфильтрованный список для вывода
-        - hidden_info_count: сколько INFO скрыто (для сообщения "use --info")
+        Tuple (active_diagnostics, hidden_info_count):
+        - active_diagnostics: filtered list for output
+        - hidden_info_count: how many INFO entries are hidden (for the "use --info" message)
     """
-    # Построение whitelist из --select + --extend-select.
-    # extend_select имеет эффект ТОЛЬКО если задан --select (как у ruff).
+    # Build the whitelist from --select + --extend-select.
+    # extend_select only has an effect if --select is set (like ruff).
     select_codes: set[str] = set()
     if getattr(args, "select", None):
         select_codes.update(c.strip().upper() for c in args.select)
         if getattr(args, "extend_select", None):
             select_codes.update(c.strip().upper() for c in args.extend_select)
 
-    # --extend-ignore добавляется к ignored_codes (внутри filter_diagnostics,
-    # чтобы функция была самодостаточной — не зависела от main() сборки).
+    # --extend-ignore is added to ignored_codes (inside filter_diagnostics,
+    # so the function is self-contained — does not depend on main()'s assembly).
     full_ignored = set(ignored_codes)
     if getattr(args, "extend_ignore", None):
         full_ignored.update(c.strip().upper() for c in args.extend_ignore)
@@ -491,9 +491,9 @@ def filter_diagnostics(
 
 
 def render_sarif(active_diagnostics, args, console) -> int:
-    """Рендерит diagnostics в SARIF формат. Возвращает exit code (не вызывает sys.exit).
+    """Renders diagnostics in SARIF format. Returns the exit code (does not call sys.exit).
 
-    Вынесено из main() в Phase 3 Step 2b (0.5.6).
+    Extracted from main() in Phase 3 Step 2b (0.5.6).
     """
     from senpy.formats.sarif import generate_sarif
 
@@ -509,9 +509,9 @@ def render_sarif(active_diagnostics, args, console) -> int:
 
 
 def render_json(active_diagnostics, result, elapsed, args, console) -> int:
-    """Рендерит diagnostics в JSON формат. Возвращает exit code (не вызывает sys.exit).
+    """Renders diagnostics in JSON format. Returns the exit code (does not call sys.exit).
 
-    Вынесено из main() в Phase 3 Step 2b (0.5.6).
+    Extracted from main() in Phase 3 Step 2b (0.5.6).
     """
     json_output = []
     for err in active_diagnostics:
@@ -546,7 +546,7 @@ def render_json(active_diagnostics, result, elapsed, args, console) -> int:
 
 
 def render_junit(active_diagnostics, args, console) -> int:
-    """Рендерит diagnostics в JUnit XML формат для CI. Возвращает exit code.
+    """Renders diagnostics in JUnit XML format for CI. Returns the exit code.
 
     JUnit XML format compatible with
     Jenkins, GitLab CI, TeamCity, etc.
@@ -602,7 +602,7 @@ def render_junit(active_diagnostics, args, console) -> int:
 
 
 def render_github(active_diagnostics, args, console) -> int:
-    """Рендерит diagnostics в GitHub Actions format для PR annotations.
+    """Renders diagnostics in GitHub Actions format for PR annotations.
 
     ::error file=X,line=N::message format.
     GitHub Actions automatically picks these up and shows them as PR annotations.

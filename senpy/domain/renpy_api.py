@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# Версия документации Ren'Py, зафиксированная в этой базе
+# Ren'Py documentation version pinned in this database
 RENPY_DOC_VERSION = "8.5.3.26051504"
 
 RENPY_API_DOCS: dict[str, dict[str, str]] = {
@@ -1276,11 +1276,11 @@ RENPY_API_DOCS_ALL: dict[str, dict[str, str]] = {
 
 
 def get_renpy_api_hover(symbol: str) -> str | None:
-    """Возвращает форматированный Markdown для подсказки Hover по символу Ren'Py API.
+    """Returns formatted Markdown for a Hover tooltip for a Ren'Py API symbol.
 
-    Ищет символ в объединённой базе (curated RENPY_API_DOCS + сгенерированной
-    RENPY_API_DOCS_GENERATED). Curated-записи имеют приоритет — у них есть
-    примеры и проверенные URL, которых нет в auto-generated данных.
+    Looks up the symbol in the combined database (curated RENPY_API_DOCS +
+    generated RENPY_API_DOCS_GENERATED). Curated entries take priority — they
+    have examples and verified URLs that are absent from the auto-generated data.
     """
     entry = RENPY_API_DOCS_ALL.get(symbol)
     if not entry:

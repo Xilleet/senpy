@@ -1,4 +1,4 @@
-"""screen — extracted from checkers.py (Фаза 2, 0.5.4)."""
+"""screen — extracted from checkers.py (Phase 2, 0.5.4)."""
 
 from __future__ import annotations
 

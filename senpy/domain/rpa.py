@@ -5,9 +5,9 @@ import pickle
 import pickletools
 import zlib
 
-# Белый список опкодов: разрешены только примитивные типы данных
+# Opcode allowlist: only primitive data types are allowed
 SAFE_OPCODES = {
-    # Протоколы, маркеры и стек
+    # Protocols, markers, and stack
     "PROTO",
     "FRAME",
     "STOP",
@@ -15,7 +15,7 @@ SAFE_OPCODES = {
     "POP",
     "POP_MARK",
     "DUP",
-    # Мемоизация (ссылки в графе объектов)
+    # Memoization (references in the object graph)
     "PUT",
     "BINPUT",
     "LONG_BINPUT",
@@ -23,7 +23,7 @@ SAFE_OPCODES = {
     "GET",
     "BINGET",
     "LONG_BINGET",
-    # Числа
+    # Numbers
     "INT",
     "BININT",
     "BININT1",
@@ -33,7 +33,7 @@ SAFE_OPCODES = {
     "LONG4",
     "FLOAT",
     "BINFLOAT",
-    # Строки и байты
+    # Strings and bytes
     "STRING",
     "BINSTRING",
     "SHORT_BINSTRING",
@@ -45,11 +45,11 @@ SAFE_OPCODES = {
     "SHORT_BINBYTES",
     "BINBYTES8",
     "BYTEARRAY8",
-    # Константы
+    # Constants
     "NONE",
     "NEWTRUE",
     "NEWFALSE",
-    # Коллекции
+    # Collections
     "EMPTY_TUPLE",
     "TUPLE",
     "TUPLE1",
@@ -68,7 +68,7 @@ SAFE_OPCODES = {
 
 class SafeRPAUnpickler(pickle.Unpickler):
     def find_class(self, module: str, name: str):
-        # Второй рубеж обороны: запрещаем импорт любых классов, функций и модулей
+        # Second line of defense: forbid importing any classes, functions, and modules
         raise pickle.UnpicklingError(
             f"Security Error: Forbidden import '{module}.{name}' in untrusted RPA archive"
         )
@@ -76,23 +76,23 @@ class SafeRPAUnpickler(pickle.Unpickler):
 
 def safe_load_rpa_index(raw_data: bytes, max_uncompressed_bytes: int = 50 * 1024 * 1024) -> dict:
     """
-    Безопасно распаковывает и валидирует индекс RPA-архива.
-    Защищает от RCE (Remote Code Execution), инъекций опкодов и Zip-бомб.
+    Safely unpacks and validates an RPA archive index.
+    Protects against RCE (Remote Code Execution), opcode injection, and zip bombs.
     """
-    # 1. Защита от Decompression Bomb (ограничение размера распакованного индекса до 50 МБ)
+    # 1. Decompression bomb protection (limit the uncompressed index size to 50 MB)
     decompressor = zlib.decompressobj()
     decompressed = decompressor.decompress(raw_data, max_length=max_uncompressed_bytes)
     if decompressor.unconsumed_tail:
         raise ValueError("RPA index exceeds safe limit (decompression bomb protection)")
 
-    # 2. Первый рубеж: статический анализ байткода на отсутствие опасных опкодов
+    # 2. First line of defense: static bytecode analysis to ensure no dangerous opcodes
     for opcode, _, _ in pickletools.genops(decompressed):
         if opcode.name not in SAFE_OPCODES:
             raise pickle.UnpicklingError(
                 f"Security Error: Malicious pickle opcode '{opcode.name}' detected in RPA archive"
             )
 
-    # 3. Второй рубеж: десериализация через изолированный Unpickler
+    # 3. Second line of defense: deserialize via an isolated Unpickler
     unpickler = SafeRPAUnpickler(
         io.BytesIO(decompressed), encoding="utf-8", errors="surrogateescape"
     )

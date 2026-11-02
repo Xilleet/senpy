@@ -1,12 +1,12 @@
 """LSP handlers: completion.
 
-Вынесено из senpy/lsp/server.py в 0.6.0-5 (Фаза 5).
+Extracted from senpy/lsp/server.py in 0.6.0-5 (Phase 5).
 
-Handler'ы:
+Handlers:
   - completions        ← TEXT_DOCUMENT_COMPLETION
 
-Все функции принимают (ls, params) и обращаются к shared state через
-server_mod._X (lazy import разрывает цикл импортов).
+All functions accept (ls, params) and access shared state via
+server_mod._X (lazy import breaks the import cycle).
 """
 
 from __future__ import annotations
@@ -29,14 +29,14 @@ _logger = get_logger("lsp.completion")
 
 
 def _get_server_mod():
-    """Ленивый доступ к senpy.lsp.server, разрывает цикл импортов."""
+    """Lazy access to senpy.lsp.server, breaks the import cycle."""
     from senpy.lsp import server
 
     return server
 
 
 def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.CompletionList:
-    """Контекстный автокомплит для меток, спрайтов и экранов."""
+    """Context-aware autocomplete for labels, sprites and screens."""
     server_mod = _get_server_mod()
     items: list[lsp.CompletionItem] = []
     if server_mod._active_analyzer is None or not server_mod._is_initialized:

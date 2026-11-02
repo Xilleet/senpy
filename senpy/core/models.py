@@ -46,7 +46,7 @@ class FileScope:
     registered_audio_channels: set[str] = field(default_factory=set)
     referenced_labels: set[str] = field(default_factory=set)
 
-    # --- Новая чистая объектная модель ---
+    # --- New clean object model ---
     variables: dict[str, VariableSymbol] = field(default_factory=dict)
     labels: dict[str, LabelSymbol] = field(default_factory=dict)
     screens: dict[str, ScreenSymbol] = field(default_factory=dict)
@@ -60,57 +60,57 @@ class FileScope:
 
 
 RULE_SEVERITY: dict[str, str] = {
-    # 0xx: Синтаксис и форматирование (Критично для парсера)
-    "RPY001": "ERROR",  # Табуляция в отступах -> SyntaxError
-    "RPY002": "ERROR",  # Фигурные/типографские кавычки в коде -> SyntaxError
-    # 1xx: Переменные, состояние и питон
-    "RPY100": "ERROR",  # Файл не декодируется как UTF-8 -> молча выпадал из анализа
-    "RPY101": "ERROR",  # Опечатка в [var] -> KeyError в диалоге
-    "RPY102": "ERROR",  # += до default -> NameError при входе в сцену
-    "RPY103": "ERROR",  # if var: без объявления -> NameError
-    "RPY104": "WARNING",  # $ var = 1 без default -> поломка сейвов после патча
-    "RPY105": "ERROR",  # Мутация define-константы -> ломает откат назад
-    "RPY106": "WARNING",  # Использование random/set в игровом процессе
-    "RPY107": "HINT",  # Устаревший API Ren'Py (LiveComposite и др. работают, но устарели)
-    "RPY108": "ERROR",  # Конфликт типов или несовместимый += -> TypeError
-    "RPY109": "ERROR",  # Нарушение порядка загрузки init python (вызов до объявления)
-    # 2xx: Экраны и UI
-    "RPY201": "WARNING",  # Глобальная мутация внутри screen -> ломает предсказание UI
-    "RPY202": "WARNING",  # Переменная в screen без default
-    "RPY203": "WARNING",  # Кнопка без action (мертвый элемент интерфейса)
-    "RPY204": "ERROR",  # Несуществующий экран -> ScriptError
-    "RPY205": "WARNING",  # Циклы for/while внутри экрана (просадки FPS)
-    "RPY206": "ERROR",  # Прямой вызов функции в action со скобками
-    "RPY207": "ERROR",  # Несовпадение параметров при вызове экрана (use / call screen)
-    "RPY208": "ERROR",  # Утечка локальной переменной экрана в глобальный store (SetVariable вместо SetScreenVariable)
-    # 3xx: Диалоги и граф сюжета
-    "RPY301": "ERROR",  # Незакрытый тег диалога {b}
-    "RPY302": "ERROR",  # Прыжок на несуществующую метку -> ScriptError
-    "RPY303": "HINT",  # Метка-одиночка без ссылок (может вызываться динамически)
-    "RPY304": "ERROR",  # Невалидный hex-цвет
-    "RPY305": "ERROR",  # Неэкранированные кавычки в диалоге
-    "RPY306": "WARNING",  # Поток call не гарантирует return
-    "RPY307": "ERROR",  # Дубликат объявления label -> ScriptError
-    "RPY308": "WARNING",  # Label fallthrough без return/jump
-    "RPY309": "WARNING",  # Сюжетный остров / изолированный цикл сцен
-    "RPY310": "ERROR",  # Несовпадение аргументов вызова метки call (TypeError)
-    # 4xx: Развилки сюжета и условия
-    "RPY401": "WARNING",  # Развилка menu: переменная объявлена не везде
-    "RPY402": "WARNING",  # Пустой выбор в menu
-    "RPY403": "WARNING",  # Заведомо ложное условие (мертвый блок кода)
-    "RPY404": "WARNING",  # Чтение переменной со статусом MAYBE_SET после развилки menu
-    # 5xx: Ассеты и медиа
-    "RPY501": "ERROR",  # Отсутствует аудиофайл на диске
-    "RPY502": "WARNING",  # Спрайт или поза не найдена в ассетах
-    "RPY503": "HINT",  # Неиспользуемый ассет на диске (лишний вес билда)
-    "RPY504": "HINT",  # Повторное объявление/переопределение image (часто намеренно в модах)
-    "RPY505": "WARNING",  # Несуществующий аудиоканал или невалидный модификатор (loop на voice)
-    # 6xx: Локализация (tl/)
-    "RPY601": "ERROR",  # Рассинхрон переменных [var] в переводе -> KeyError
-    "RPY602": "WARNING",  # Рассинхрон тегов {тег} в переводе
-    "RPY603": "WARNING",  # Пустая строка перевода new ""
-    # 7xx: Мёртвый код (Dead Code Detection)
-    "RPY701": "HINT",  # Неиспользуемая define-константа (мёртвый код)
-    "RPY702": "HINT",  # Неиспользуемый transform (мёртвый код)
-    "RPY703": "HINT",  # Неиспользуемый screen (мёртвый код)
+    # 0xx: Syntax and formatting (critical for the parser)
+    "RPY001": "ERROR",  # Tabs in indentation -> SyntaxError
+    "RPY002": "ERROR",  # Curly/typographic quotes in code -> SyntaxError
+    # 1xx: Variables, state and Python
+    "RPY100": "ERROR",  # File does not decode as UTF-8 -> silently dropped from analysis
+    "RPY101": "ERROR",  # Typo in [var] -> KeyError in dialogue
+    "RPY102": "ERROR",  # += before default -> NameError on scene entry
+    "RPY103": "ERROR",  # if var: without declaration -> NameError
+    "RPY104": "WARNING",  # $ var = 1 without default -> breaks saves after a patch
+    "RPY105": "ERROR",  # Mutation of a define constant -> breaks rollback
+    "RPY106": "WARNING",  # Use of random/set during gameplay
+    "RPY107": "HINT",  # Deprecated Ren'Py API (LiveComposite etc. work but are deprecated)
+    "RPY108": "ERROR",  # Type conflict or incompatible += -> TypeError
+    "RPY109": "ERROR",  # init python load order violation (call before declaration)
+    # 2xx: Screens and UI
+    "RPY201": "WARNING",  # Global mutation inside screen -> breaks UI prediction
+    "RPY202": "WARNING",  # Variable in screen without default
+    "RPY203": "WARNING",  # Button without action (dead UI element)
+    "RPY204": "ERROR",  # Non-existent screen -> ScriptError
+    "RPY205": "WARNING",  # for/while loops inside a screen (FPS drops)
+    "RPY206": "ERROR",  # Direct function call in action with parentheses
+    "RPY207": "ERROR",  # Parameter mismatch on screen call (use / call screen)
+    "RPY208": "ERROR",  # Screen local variable leaks into global store (SetVariable instead of SetScreenVariable)
+    # 3xx: Dialogue and story graph
+    "RPY301": "ERROR",  # Unclosed dialogue tag {b}
+    "RPY302": "ERROR",  # Jump to non-existent label -> ScriptError
+    "RPY303": "HINT",  # Lone label without references (may be called dynamically)
+    "RPY304": "ERROR",  # Invalid hex color
+    "RPY305": "ERROR",  # Unescaped quotes in dialogue
+    "RPY306": "WARNING",  # call chain does not guarantee return
+    "RPY307": "ERROR",  # Duplicate label declaration -> ScriptError
+    "RPY308": "WARNING",  # Label fallthrough without return/jump
+    "RPY309": "WARNING",  # Story island / isolated scene cycle
+    "RPY310": "ERROR",  # Argument mismatch on call label (TypeError)
+    # 4xx: Story branches and conditions
+    "RPY401": "WARNING",  # menu: branch: variable not declared in all branches
+    "RPY402": "WARNING",  # Empty menu choice
+    "RPY403": "WARNING",  # Always-false condition (dead code block)
+    "RPY404": "WARNING",  # Reading a variable with MAYBE_SET status after a menu branch
+    # 5xx: Assets and media
+    "RPY501": "ERROR",  # Missing audio file on disk
+    "RPY502": "WARNING",  # Sprite or pose not found in assets
+    "RPY503": "HINT",  # Unused asset on disk (extra build weight)
+    "RPY504": "HINT",  # Re-declaration/override of image (often intentional in mods)
+    "RPY505": "WARNING",  # Non-existent audio channel or invalid modifier (loop on voice)
+    # 6xx: Localization (tl/)
+    "RPY601": "ERROR",  # [var] desync in translation -> KeyError
+    "RPY602": "WARNING",  # {tag} desync in translation
+    "RPY603": "WARNING",  # Empty translation string new ""
+    # 7xx: Dead code (Dead Code Detection)
+    "RPY701": "HINT",  # Unused define constant (dead code)
+    "RPY702": "HINT",  # Unused transform (dead code)
+    "RPY703": "HINT",  # Unused screen (dead code)
 }

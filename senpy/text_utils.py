@@ -1,22 +1,22 @@
-"""Текстовые утилиты Senpy — функции, не имеющие зависимостей от analyzer.
+"""Senpy text utilities — functions with no dependencies on the analyzer.
 
-Вынесено в отдельный модуль в Фазе 1.3 (0.5.3) для разрыва циклических
-зависимостей:
+Extracted into a separate module in Phase 1.3 (0.5.3) to break the circular
+dependencies:
     - checkers.py → analyzer._strip_comment
     - flow.py → analyzer._strip_comment
 
-Раньше _strip_comment лежал в analyzer.py, и checkers/flow делали lazy
-импорт `from senpy.core.analyzer import _strip_comment` внутри методов. Это
-создавало цикл (хотя и через runtime, не через top-level import).
+Previously _strip_comment lived in analyzer.py, and checkers/flow did a lazy
+import `from senpy.core.analyzer import _strip_comment` inside their methods. This
+created a cycle (although through a runtime import, not a top-level one).
 
-Теперь _strip_comment в этом модуле (senpy/text_utils.py), все зависят
-от него однонаправленно:
+Now _strip_comment is in this module (senpy/text_utils.py), everyone depends
+on it one-directionally:
     analyzer.py → senpy.text_utils
     checkers.py → senpy.text_utils
     flow.py → senpy.text_utils
 
-Для обратной совместимости _strip_comment реэкспортируется из analyzer.py
-(старый импорт `from senpy.core.analyzer import _strip_comment` продолжает работать).
+For backward compatibility _strip_comment is re-exported from analyzer.py
+(the old import `from senpy.core.analyzer import _strip_comment` keeps working).
 
 Public API:
     _strip_comment(line: str) -> str
@@ -31,28 +31,28 @@ from senpy.core.constants import SUGGESTION_CUTOFF
 
 
 def _strip_comment(line: str) -> str:
-    """Удаляет комментарий (#), не ломая hex-цвета, экранированные кавычки (\\") и тройные кавычки.
+    """Strips a comment (#) without breaking hex colors, escaped quotes (\\") and triple quotes.
 
-    Алгоритм:
-    1. Если '#' нет в строке — вернуть как есть.
-    2. Идти посимвольно, отслеживая состояние:
-       - Внутри одинарных/двойных кавычек — '#' не считается комментарием.
-       - Внутри тройных кавычек (''' или \"\"\") — аналогично.
-       - Экранированный символ (\\X) — пропускаем 2 символа.
-       - '#' вне строк — начало комментария, обрезаем.
-    3. Если дошли до конца — строка без комментария, вернуть как есть.
+    Algorithm:
+    1. If '#' is not in the line — return as is.
+    2. Walk character by character, tracking state:
+       - Inside single/double quotes — '#' is not counted as a comment.
+       - Inside triple quotes (''' or \"\"\") — same.
+       - An escaped character (\\X) — skip 2 characters.
+       - '#' outside strings — start of the comment, truncate.
+    3. If we reached the end — the line has no comment, return as is.
 
-    Это важно для Ren'Py, где:
-      - '#ffffff' — hex-цвет, не комментарий
-      - '"# not a comment"' — '#' внутри строки, не комментарий
-      - 'label start: # comment' — '#' после кода, комментарий
+    This matters for Ren'Py, where:
+      - '#ffffff' — a hex color, not a comment
+      - '"# not a comment"' — '#' inside a string, not a comment
+      - 'label start: # comment' — '#' after code, a comment
 
     Args:
-        line: Исходная строка (может содержать # в любом месте).
+        line: The original line (may contain # anywhere).
 
     Returns:
-        Строка с обрезанным комментарием (если он был). Пробелы в конце
-        не трогаются — это задача вызывающего кода.
+        The line with the comment stripped (if there was one). Trailing spaces
+        are left untouched — that's the caller's job.
     """
     if "#" not in line:
         return line

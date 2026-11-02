@@ -1,22 +1,22 @@
-"""Single source of truth для версии Senpy.
+"""Single source of truth for the Senpy version.
 
-Все остальные места (pyproject.toml, constants.SENPY_VERSION, server.py,
-senpy-vscode/package.json) должны синхронизироваться с этим файлом через
+All other places (pyproject.toml, constants.SENPY_VERSION, server.py,
+senpy-vscode/package.json) must be synced with this file via
 `python bump_version.py`.
 
-Изменять версию только здесь (или через `bump_version.py`, который сам
-проставит её сюда и во все остальные места).
+Change the version only here (or via `bump_version.py`, which itself
+will set it here and in all the other places).
 """
 
 from __future__ import annotations
 
 __version__ = "0.7.2"
 
-# Удобные алиасы для использования в разных местах кода
-# (например, в LSP-сервере часто нужен "v0.4.7" с префиксом).
+# Convenient aliases for use in various places of the code
+# (for example, the LSP server often needs "v0.4.7" with the prefix).
 VERSION_WITH_PREFIX = f"v{__version__}"
 
-# Semver-разбор для сложных проверок (например, cache invalidation по major.minor)
+# Semver parsing for complex checks (for example, cache invalidation by major.minor)
 MAJOR: int = 0
 MINOR: int = 7
 PATCH: int = 2

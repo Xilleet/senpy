@@ -1,4 +1,4 @@
-"""dialogue — extracted from checkers.py (Фаза 2, 0.5.4)."""
+"""dialogue — extracted from checkers.py (Phase 2, 0.5.4)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from senpy.rules.base import BaseChecker
 
 
 class DialogueChecker(BaseChecker):
-    """RPY3xx — Диалоги, проверка кавычек, переходов jump/call и падений в меток."""
+    """RPY3xx — Dialogue, quote checks, jump/call transitions, and label fallthrough."""
 
     def __init__(self, analyzer: DiagnosticSink):
         super().__init__(analyzer)

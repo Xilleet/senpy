@@ -9,20 +9,20 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class VariableSymbol:
-    """Представляет переменную (default) или константу (define) в проекте."""
+    """Represents a variable (default) or a constant (define) in the project."""
 
     name: str
     file_path: str
     line_number: int
     code_line: str
     type_name: str | None = None
-    is_constant: bool = False  # True если define, False если default
-    is_character: bool = False  # True если это Character(...) или DynamicCharacter(...)
+    is_constant: bool = False  # True if define, False if default
+    is_character: bool = False  # True if this is Character(...) or DynamicCharacter(...)
 
 
 @dataclass(slots=True)
 class LabelSymbol:
-    """Представляет сюжетную метку (label)."""
+    """Represents a story label (label)."""
 
     name: str
     file_path: str
@@ -36,7 +36,7 @@ class LabelSymbol:
 
 @dataclass(slots=True)
 class ScreenSymbol:
-    """Представляет UI экран (screen)."""
+    """Represents a UI screen (screen)."""
 
     name: str
     file_path: str
@@ -46,7 +46,7 @@ class ScreenSymbol:
 
 @dataclass(slots=True)
 class ImageSymbol:
-    """Представляет объявление спрайта или фона (image / layeredimage)."""
+    """Represents a sprite or background declaration (image / layeredimage)."""
 
     name: str
     file_path: str
@@ -64,7 +64,7 @@ class ImageSymbol:
 
 @dataclass(slots=True)
 class TransformSymbol:
-    """Представляет ATL-трансформацию (transform)."""
+    """Represents an ATL transform (transform)."""
 
     name: str
     file_path: str

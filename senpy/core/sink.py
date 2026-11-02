@@ -1,27 +1,27 @@
-"""DiagnosticSink — Protocol для объектов, способных принимать diagnostics.
+"""DiagnosticSink — Protocol for objects capable of accepting diagnostics.
 
-Вынесено в отдельный модуль в Фазе 1.3 (0.5.3) для разрыва циклической
-зависимости analyzer ↔ checkers.
+Extracted into a separate module in Phase 1.3 (0.5.3) to break the circular
+dependency analyzer ↔ checkers.
 
-Раньше BaseChecker.__init__ принимал analyzer: SenpyAnalyzer — это
-заставляло checkers.py импортировать senpy.analyzer, что создавало цикл:
+Previously BaseChecker.__init__ took analyzer: SenpyAnalyzer — this
+forced checkers.py to import senpy.analyzer, which created a cycle:
     analyzer.py → checkers.py → analyzer.py
 
-Теперь BaseChecker.__init__ принимает analyzer: DiagnosticSink (Protocol).
-SenpyAnalyzer реализует этот Protocol, но чекеры зависят только от Protocol,
-не от конкретного класса. Это разрывает импортный цикл.
+Now BaseChecker.__init__ takes analyzer: DiagnosticSink (Protocol).
+SenpyAnalyzer implements this Protocol, but the checkers depend only on the
+Protocol, not on the concrete class. This breaks the import cycle.
 
-В Фазе 1.3 DiagnosticSink содержит только методы, связанные с диагностикой:
+In Phase 1.3 DiagnosticSink contains only the methods related to diagnostics:
     - _add_diagnostic(diag, noqa_map)
     - _get_utf16_range(raw_line, name)
-    - fixable_count, fixed_count, fix (атрибуты)
+    - fixable_count, fixed_count, fix (attributes)
 
-Доступ к символам (screens, labels, variables, ...) пока остаётся через
-self.analyzer — это будет разорвано в 0.5.5 (когда _collect_symbols
-будет разбит на отдельные SymbolRegistry).
+Access to symbols (screens, labels, variables, ...) still goes through
+self.analyzer for now — this will be broken out in 0.5.5 (when _collect_symbols
+is split into a separate SymbolRegistry).
 
 Public API:
-    DiagnosticSink  — Protocol (typing only, не инстанцируется)
+    DiagnosticSink  — Protocol (typing only, not instantiated)
 """
 
 from __future__ import annotations
@@ -34,52 +34,52 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class DiagnosticSink(Protocol):
-    """Protocol для объектов, способных принимать diagnostics и применять QuickFix.
+    """Protocol for objects capable of accepting diagnostics and applying QuickFix.
 
-    SenpyAnalyzer реализует этот Protocol. Чекеры (BaseChecker и наследники)
-    зависят только от Protocol, не от конкретного класса SenpyAnalyzer.
+    SenpyAnalyzer implements this Protocol. The checkers (BaseChecker and its
+    subclasses) depend only on the Protocol, not on the concrete SenpyAnalyzer class.
 
-    Это позволяет:
-    1. Разорвать циклический импорт analyzer ↔ checkers.
-    2. Тестировать чекеры с mock-объектами (в будущем).
-    3. Создавать альтернативные реализации DiagnosticSink (например, для
-      批量 обработки без full SenpyAnalyzer).
+    This allows:
+    1. Breaking the circular import analyzer ↔ checkers.
+    2. Testing the checkers with mock objects (in the future).
+    3. Creating alternative DiagnosticSink implementations (for example, for
+      batch processing without a full SenpyAnalyzer).
 
-    Минимальный контракт (Фаза 1.3):
-        - _add_diagnostic(diag, noqa_map) — добавить diagnostic
-        - _get_utf16_range(raw_line, name) — посчитать UTF-16 диапазон для QuickFix
-        - fixable_count: int — счётчик исправимых ошибок
-        - fixed_count: int — счётчик исправленных ошибок
-        - fix: bool — флаг режима автофикса
+    Minimal contract (Phase 1.3):
+        - _add_diagnostic(diag, noqa_map) — add a diagnostic
+        - _get_utf16_range(raw_line, name) — compute the UTF-16 range for QuickFix
+        - fixable_count: int — counter of fixable errors
+        - fixed_count: int — counter of fixed errors
+        - fix: bool — flag of the autofix mode
 
-    В 0.5.5 (когда _collect_symbols будет разбит) будет добавлен
-    SymbolProvider Protocol для доступа к символам (screens, labels, ...).
+    In 0.5.5 (when _collect_symbols is split) a SymbolProvider Protocol will be
+    added for access to symbols (screens, labels, ...).
     """
 
-    # Атрибуты (instance variables)
+    # Attributes (instance variables)
     fixable_count: int
     fixed_count: int
     fix: bool
 
     def _add_diagnostic(self, diag: Diagnostic, noqa_map: dict[int, set[str] | None]) -> None:
-        """Добавить diagnostic в список найденных ошибок.
+        """Add a diagnostic to the list of found errors.
 
         Args:
-            diag: Diagnostic объект с информацией об ошибке.
-            noqa_map: Map номер строки → set подавленных правил (для # noqa).
+            diag: Diagnostic object with information about the error.
+            noqa_map: Map line number → set of suppressed rules (for # noqa).
         """
         ...
 
     def _get_utf16_range(self, raw_line: str, name: str) -> tuple[int, int]:
-        """Возвращает (start, end) UTF-16 позиции имени в строке.
+        """Returns the (start, end) UTF-16 position of the name in the line.
 
-        Используется для расчёта QuickFix диапазонов в LSP/CLI.
+        Used to compute QuickFix ranges in LSP/CLI.
 
         Args:
-            raw_line: Исходная строка из файла.
-            name: Имя (переменной/метки/экрана/...) для поиска позиции.
+            raw_line: Original line from the file.
+            name: Name (variable/label/screen/...) to find the position of.
 
         Returns:
-            Кортеж (start_char, end_char) — позиции в UTF-16 code units.
+            Tuple (start_char, end_char) — positions in UTF-16 code units.
         """
         ...

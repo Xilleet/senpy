@@ -12,10 +12,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- P0-11: Content-Security-Policy — запрещаем inline-скрипты без nonce,
-         запрещаем external scripts кроме доверенных CDN. Это блокирует XSS
-         через внедрённый в Mermaid-граф HTML (если атакующий подсунет
-         HTML-теги (например, script) в имя метки, CSP его не даст выполнить). Пример: 'script' tag в имени label. -->
+    <!-- P0-11: Content-Security-Policy — disable inline scripts without a nonce,
+         and external scripts except for trusted CDNs. This blocks XSS via
+         HTML injected into the Mermaid graph (if an attacker slips HTML tags
+         (for example, a script) into a label name, CSP prevents it from running).
+         Example: 'script' tag in a label name. -->
     <meta http-equiv="Content-Security-Policy"
           content="default-src 'self';
                    script-src 'self' 'unsafe-inline'
@@ -158,10 +159,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             startOnLoad: false,
             theme: 'dark',
             maxTextSize: 90000,
-            // P0-11: 'strict' (default в новых Mermaid) — отключает HTML
-            // в нодах графа. Раньше было 'loose', что позволяло XSS через
-            // имена меток с <script>/<img onerror=...>. 'strict' рендерит
-            // только текст, HTML-теги экранируются.
+            // P0-11: 'strict' (default in newer Mermaid) — disables HTML
+            // in graph nodes. Previously it was 'loose', which allowed XSS via
+            // label names containing <script>/<img onerror=...>. 'strict'
+            // renders only text, HTML tags are escaped.
             securityLevel: 'strict'
         }});
 
@@ -188,9 +189,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     maxZoom: 20
                 }});
             }} catch (e) {{
-                // P0-11: используем textContent вместо innerHTML, чтобы
-                // e.message (в котором могут быть HTML-символы из графа)
-                // не выполнился как HTML.
+                // P0-11: use textContent instead of innerHTML so that
+                // e.message (which may contain HTML characters from the graph)
+                // is not executed as HTML.
                 const errDiv = document.createElement('div');
                 errDiv.style.cssText = 'color:var(--error); padding: 20px;';
                 errDiv.textContent = 'Failed to render graph: ' + (e.message || String(e));
@@ -217,7 +218,6 @@ def generate_html_report(
     elapsed: float,
     out_path: str,
 ) -> None:
-
     # Strip markdown wrappers if present
     graph_code = graph_mermaid.strip()
     graph_code = graph_code.removeprefix("```mermaid")
@@ -225,13 +225,13 @@ def generate_html_report(
 
     # Escape JS string literals safely
     js_safe_graph = graph_code.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
-    # P0-11: дополнительно экранируем HTML-угловые скобки в Mermaid-коде,
-    # чтобы даже при hypothetical откате securityLevel к 'loose' HTML-теги
-    # в именах меток не выполнились. Mermaid в 'strict' режиме делает это
-    # сам, но defense-in-depth никогда не лишне.
-    # Заменяем только в строковых литералах имён узлов, не трогая сам
-    # Mermaid-синтаксис (-> -- arrows, [] () {} shapes).
-    # Простое решение: заменяем < > на &lt; &gt; — Mermaid это покажет как текст.
+    # P0-11: additionally escape HTML angle brackets in the Mermaid code,
+    # so that even if securityLevel were hypothetically rolled back to 'loose'
+    # HTML tags in label names would not execute. Mermaid in 'strict' mode does
+    # this itself, but defense-in-depth is never redundant.
+    # We replace only in the string literals of node names, without touching the
+    # Mermaid syntax itself (-> -- arrows, [] () {} shapes).
+    # Simple solution: replace < > with &lt; &gt; — Mermaid renders these as text.
     js_safe_graph = js_safe_graph.replace("<", "&lt;").replace(">", "&gt;")
 
     diags_html_parts = []

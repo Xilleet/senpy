@@ -42,12 +42,12 @@ _DEFAULT_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 
 def _clear_handlers(logger: logging.Logger) -> None:
-    """Удалить все существующие handlers (для идемпотентности)."""
+    """Remove all existing handlers (for idempotency)."""
     for h in list(logger.handlers):
         logger.removeHandler(h)
         try:  # noqa: SIM105
             h.close()
-        except Exception:  # noqa: BLE001 — close() не должен падать cleanup
+        except Exception:  # noqa: BLE001 — close() must not fail during cleanup
             pass
 
 
@@ -56,38 +56,38 @@ def setup_logging(
     log_file: str | None = None,
     level: int = logging.INFO,
 ) -> logging.Logger:
-    """Инициализация главного Senpy-логгера.
+    """Initialize the main Senpy logger.
 
-    Идемпотентна: повторные вызовы заменяют конфигурацию (не дублируют
-    handlers). Это позволяет cli/main.py и lsp/server.py независимо
-    вызывать setup_logging — последний вызов выигрывает.
+    Idempotent: repeated calls replace the configuration (they do not duplicate
+    handlers). This allows cli/main.py and lsp/server.py to call
+    setup_logging independently — the last call wins.
 
     Args:
-        verbose: Если True — добавляет StreamHandler на stderr.
-            False (по умолчанию) — тишина (NullHandler). LSP-режим
-            ОБЯЗАН использовать verbose=False.
-        log_file: Если передан — добавляет FileHandler с этим путём.
-            Файл открывается в append-режиме (не перезаписывается).
-        level: Уровень логирования. По умолчанию INFO. DEBUG включает
-            расширенную диагностику.
+        verbose: If True — adds a StreamHandler to stderr.
+            False (default) — silence (NullHandler). LSP mode MUST use
+            verbose=False.
+        log_file: If passed — adds a FileHandler with this path.
+            The file is opened in append mode (not overwritten).
+        level: Logging level. Default INFO. DEBUG enables extended
+            diagnostics.
 
     Returns:
-        Главный logger проекта (имя "senpy").
+        The main logger of the project (name "senpy").
     """
     logger = logging.getLogger(LOGGER_NAME)
     logger.setLevel(level)
-    # propagate=True (по умолчанию): позволяет pytest caplog перехватывать
-    # логи, и позволяет caller'у добавить свой handler на root logger
-    # (например через logging.basicConfig()). Дублирования не возникает,
-    # потому что у root по умолчанию нет handlers (lastResort = WARNING
-    # на stderr срабатывает только если ни у кого нет handlers).
+    # propagate=True (default): allows pytest caplog to capture logs,
+    # and allows the caller to add its own handler on the root logger
+    # (for example via logging.basicConfig()). No duplication occurs
+    # because the root has no handlers by default (lastResort = WARNING
+    # on stderr only triggers when no one has handlers).
     logger.propagate = True
 
-    # Идемпотентность: очищаем старые handlers перед установкой новых.
+    # Idempotency: clear old handlers before installing new ones.
     _clear_handlers(logger)
 
-    # NullHandler всегда добавляется — это гарантирует что даже без
-    # verbose/log_file вызовы logger.* не падают с "No handlers could be found".
+    # NullHandler is always added — this guarantees that even without
+    # verbose/log_file the logger.* calls do not fail with "No handlers could be found".
     logger.addHandler(logging.NullHandler())
 
     formatter = logging.Formatter(_DEFAULT_FORMAT, datefmt=_DEFAULT_DATEFMT)
@@ -99,8 +99,8 @@ def setup_logging(
         logger.addHandler(sh)
 
     if log_file:
-        # append mode, UTF-8 — для кросс-платформенности (Windows cp1251
-        # по умолчанию ломает русские сообщения).
+        # append mode, UTF-8 — for cross-platform support (Windows cp1251
+        # by default breaks Russian messages).
         fh = logging.FileHandler(log_file, mode="a", encoding="utf-8")
         fh.setFormatter(formatter)
         fh.setLevel(level)
@@ -110,19 +110,19 @@ def setup_logging(
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Возвращает child logger с именем "senpy.<name>".
+    """Returns a child logger with the name "senpy.<name>".
 
-    Для подмодулей (cli, lsp, plugins, core, ...). Child-логгер:
-      - Не имеет своих handlers (всё через корень "senpy").
-      - propagate=True (по умолчанию для child loggers в Python).
-      - Уровень наследуется от родителя.
+    For submodules (cli, lsp, plugins, core, ...). The child logger:
+      - Has no handlers of its own (everything goes through the "senpy" root).
+      - propagate=True (the default for child loggers in Python).
+      - The level is inherited from the parent.
 
     Args:
-        name: Имя подмодуля (без префикса "senpy."). Например: "cli",
-            "plugins", "lsp.server".
+        name: Name of the submodule (without the "senpy." prefix). For example:
+            "cli", "plugins", "lsp.server".
 
     Returns:
-        logging.Logger с именем "senpy.<name>".
+        logging.Logger with the name "senpy.<name>".
 
     Example:
         >>> logger = get_logger("plugins")

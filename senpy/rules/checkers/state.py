@@ -1,4 +1,4 @@
-"""state — extracted from checkers.py (Фаза 2, 0.5.4)."""
+"""state — extracted from checkers.py (Phase 2, 0.5.4)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from senpy.rules.python_ast import extract_assigned_names
 
 
 class StateChecker(BaseChecker):
-    """RPY1xx, RPY4xx — Проверка переменных, типов, условий, мутаций и развилок menu."""
+    """RPY1xx, RPY4xx — Check variables, types, conditions, mutations, and menu forks."""
 
     def __init__(self, analyzer: DiagnosticSink):
         super().__init__(analyzer)

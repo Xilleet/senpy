@@ -335,10 +335,10 @@ RULES_DATABASE = {
 
 
 def show_rules_table():
-    # Динамический подсчёт числа правил. Раньше число хардкодилось
-    # в title — это рассинхронизировалось с RULES_DATABASE при добавлении
-    # новых правил. Теперь число подтягивается из самого dict'а, по
-    # которому итерируем.
+    # Dynamic count of rules. Previously the number was hardcoded
+    # in the title — this got out of sync with RULES_DATABASE when new
+    # rules were added. Now the number is pulled from the dict itself,
+    # which we iterate over.
     table = Table(
         title=f"Senpy Linter Rules Reference (All {len(RULES_DATABASE)} Rules)",
         border_style="dim",

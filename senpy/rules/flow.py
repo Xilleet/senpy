@@ -5,7 +5,7 @@ import re
 from collections import deque
 from dataclasses import dataclass, field
 
-# from typing import TYPE_CHECKING  # Фаза 1.5: больше не нужен
+# from typing import TYPE_CHECKING  # Phase 1.5: no longer needed
 from senpy.core.constants import (
     BUILTIN_SCREENS,
     RE_MENU_CHOICE,
@@ -13,7 +13,7 @@ from senpy.core.constants import (
     SYSTEM_LABELS,
 )
 from senpy.core.models import Diagnostic
-from senpy.core.sink import DiagnosticSink  # Фаза 1.5: Protocol вместо SenpyAnalyzer
+from senpy.core.sink import DiagnosticSink  # Phase 1.5: Protocol instead of SenpyAnalyzer
 from senpy.domain.text_tags import get_utf16_range
 from senpy.rules.python_ast import extract_assigned_names
 
@@ -21,13 +21,13 @@ _MERMAID_RESERVED_IDS = {"end"}
 
 
 def _mermaid_safe_id(name: str) -> str:
-    """Имя метки/экрана -> валидный id узла Mermaid.
+    """Label/screen name -> valid Mermaid node id.
 
-    \\W юникодный: кириллица сохраняется, точки саб-меток -> "_".
-    Зарезервированное слово end получает суффикс, иначе Mermaid
-    трактует его как закрытие subgraph и ломает парсинг.
-    Ограничение: санитизация может коллидировать (chapter.start и
-    chapter_start дадут один узел) — принято осознанно.
+    \\W is unicode-aware: Cyrillic is preserved, dots of sub-labels -> "_".
+    The reserved word end receives a suffix, otherwise Mermaid
+    treats it as a subgraph closing and breaks parsing.
+    Limitation: sanitization may collide (chapter.start and
+    chapter_start yield the same node) — accepted consciously.
     """
     safe = re.sub(r"\W", "_", name)
     if safe in _MERMAID_RESERVED_IDS:
@@ -36,20 +36,20 @@ def _mermaid_safe_id(name: str) -> str:
 
 
 def _mermaid_node_ref(name: str) -> str:
-    """Ссылка на узел в ребре: голый id, если санитизация имя не меняла
-    (байт-совместимость со старым выводом), иначе id + кавычканный
-    текст с сырым именем."""
+    """Reference to a node in an edge: bare id if sanitization
+    did not change the name (byte-comparable with old output),
+    otherwise id + quoted text with the raw name."""
     sid = _mermaid_safe_id(name)
     return sid if sid == name else f'{sid}["{name}"]'
 
 
 @dataclass(slots=True)
 class FlowBranch:
-    """Представляет одну ветку развилки (choice в menu: или if/elif/else)."""
+    """Represents a single branch of a fork (choice in menu: or if/elif/else)."""
 
     kind: str  # "choice", "if", "elif", "else"
-    name: str  # Название выбора или описание ветки
-    line: int  # Номер строки
+    name: str  # Choice name or branch description
+    line: int  # Line number
     defined_vars: set[str] = field(default_factory=set)
     terminates: bool = False
     raw: str = ""
@@ -64,11 +64,11 @@ def merge_flow_branches(
     already_guaranteed: set[str],
 ) -> tuple[set[str], dict[str, tuple[str, ...]], bool]:
     """
-    Унифицированное слияние параллельных веток (if/elif/else или menu:).
-    Возвращает:
-      - guaranteed_vars: переменные, гарантированно заданные во всех нетерминирующих путях
-      - uninitialized_vars: словарь переменных MAYBE_SET с метаданными о пропущенной ветке
-      - all_terminating: True, если абсолютно все ветки выходят через jump/return
+    Unified merge of parallel branches (if/elif/else or menu:).
+    Returns:
+      - guaranteed_vars: variables guaranteed to be set on all non-terminating paths
+      - uninitialized_vars: dict of MAYBE_SET variables with metadata about the missing branch
+      - all_terminating: True if absolutely all branches exit via jump/return
     """
     non_terminating = [b for b in branches if not b.terminates]
     if not non_terminating:
@@ -119,13 +119,13 @@ def merge_flow_branches(
 
 
 class StoryFlowAnalyzer:
-    """Анализирует граф переходов, развилки меню и генерирует Mermaid-диаграммы сюжета."""
+    """Analyzes the transition graph, menu forks, and generates Mermaid diagrams of the plot."""
 
     def __init__(self, analyzer: DiagnosticSink):
         self.analyzer = analyzer
 
     def can_reach_return(self, label_name: str, visited: set[str] | None = None) -> bool:
-        """RPY306: DFS-поиск пути от вызванной метки до оператора return."""
+        """RPY306: DFS search for a path from the called label to a return statement."""
         lbl = self.analyzer.labels.get(label_name)
         if lbl and lbl.has_return:
             return True
@@ -142,7 +142,7 @@ class StoryFlowAnalyzer:
         return False
 
     def check_unreachable_labels(self) -> list[Diagnostic]:
-        """RPY303: Выявляет метки, на которые нет статических ссылок (возможный dead code)."""
+        """RPY303: Detects labels with no static references (possible dead code)."""
         diagnostics: list[Diagnostic] = []
         for label_name, lbl in self.analyzer.labels.items():
             clean_name = label_name.strip().lower()
@@ -171,7 +171,7 @@ class StoryFlowAnalyzer:
         return diagnostics
 
     def check_story_islands(self) -> list[Diagnostic]:
-        """RPY309: Находит изолированные подграфы (острова) и циклы, недостижимые из системных точек входа."""
+        """RPY309: Finds isolated subgraphs (islands) and cycles unreachable from system entry points."""
         labels = self.analyzer.labels
 
         root_labels = {lbl for lbl in labels if lbl.lower() in SYSTEM_LABELS or lbl.startswith("_")}
@@ -179,8 +179,8 @@ class StoryFlowAnalyzer:
         if not root_labels:
             return []
 
-        # экраны как мосты графа. Корневые экраны — встроенные (движок
-        # показывает их сам) плюс все экраны со статическими ссылками
+        # screens as graph bridges. Root screens — built-in (the engine
+        # shows them itself) plus all screens with static references
         # (show screen / call screen / use / Show / ShowMenu).
         root_screens = BUILTIN_SCREENS | self.analyzer.used_screens
         screen_targets: set[str] = set()
@@ -191,7 +191,7 @@ class StoryFlowAnalyzer:
         queue = deque(root_labels)
         reachable.update(root_labels)
 
-        # Экшены Jump/Call из доступных экранов открывают новые метки
+        # Jump/Call actions from reachable screens open new labels
         for target in screen_targets:
             if target in labels and target not in reachable:
                 reachable.add(target)
@@ -206,10 +206,10 @@ class StoryFlowAnalyzer:
                     reachable.add(target)
                     queue.append(target)
 
-        # ранее тут было `any(label_name in l.outgoing_jumps for l in labels.values)`
-        # внутри цикла по labels — это O(N²). На проекте с 1000 labels = 1M проверок.
-        # Pre-compute incoming dict за O(N+E) (один проход по всем labels и их outgoing_jumps),
-        # затем O(1) lookup в цикле ниже.
+        # previously here was `any(label_name in l.outgoing_jumps for l in labels.values)`
+        # inside a loop over labels — that is O(N²). On a project with 1000 labels = 1M checks.
+        # Pre-compute incoming dict in O(N+E) (one pass over all labels and their outgoing_jumps),
+        # then O(1) lookup in the loop below.
         incoming_jumps: dict[str, set[str]] = {}
         for src_name, src_lbl in labels.items():
             for tgt in src_lbl.outgoing_jumps:
@@ -253,7 +253,7 @@ class StoryFlowAnalyzer:
         branch_uninitialized: dict[str, tuple[str, ...]],
         noqa_map: dict,
     ) -> None:
-        """RPY404: Проверяет [var] в тексте после меню с переменными в статусе MAYBE_SET."""
+        """RPY404: Checks [var] in text after a menu with variables in MAYBE_SET status."""
         from senpy.core.constants import RE_INTERPOLATION
 
         for match in RE_STRING_MATCH.finditer(line_content):
@@ -283,8 +283,8 @@ class StoryFlowAnalyzer:
                     )
 
     # =========================================================================
-    # analyze_menu_flow разбит на 3 метода.
-    # analyze_menu_flow — теперь dispatcher.
+    # analyze_menu_flow is split into 3 methods.
+    # analyze_menu_flow is now a dispatcher.
     # =========================================================================
 
     def _parse_menu_choices(
@@ -295,9 +295,9 @@ class StoryFlowAnalyzer:
         file_path: str,
         noqa_map: dict,
     ) -> tuple[int, list[FlowBranch], dict[str, tuple[str, ...]]]:
-        """Парсит choices из menu-блока. Возвращает (idx, choices, uninitialized_vars).
+        """Parses choices from a menu block. Returns (idx, choices, uninitialized_vars).
 
-        Вынесено из analyze_menu_flow в Phase 4 Step 2 (0.5.7).
+        Extracted from analyze_menu_flow in Phase 4 Step 2 (0.5.7).
         """
         from senpy.text_utils import _strip_comment
 
@@ -399,9 +399,9 @@ class StoryFlowAnalyzer:
         file_path: str,
         noqa_map: dict,
     ) -> tuple[int, FlowBranch, dict[str, tuple[str, ...]]]:
-        """Анализирует тело choice (вложенные menu, jump, $). Возвращает (idx, choice, uninit).
+        """Analyzes a choice body (nested menu, jump, $). Returns (idx, choice, uninit).
 
-        Вынесено из analyze_menu_flow в Phase 4 Step 2 (0.5.7).
+        Extracted from analyze_menu_flow in Phase 4 Step 2 (0.5.7).
         """
         from senpy.core.constants import RE_MENU_START
 
@@ -440,13 +440,13 @@ class StoryFlowAnalyzer:
         file_path: str,
         noqa_map: dict,
     ) -> tuple[set[str], dict[str, tuple[str, ...]], bool]:
-        """Слияние веток menu + RPY401 диагностика. Возвращает (guaranteed, uninit, all_terminates).
+        """Merge menu branches + RPY401 diagnostics. Returns (guaranteed, uninit, all_terminates).
 
-        Вынесено из analyze_menu_flow в Phase 4 Step 2 (0.5.7).
+        Extracted from analyze_menu_flow in Phase 4 Step 2 (0.5.7).
         """
         merging_choices = [c for c in choices if not c.terminates]
 
-        # RPY401: Диагностика асимметрии между нетерминирующими ветками меню
+        # RPY401: Diagnostics of asymmetry between non-terminating menu branches
         if len(merging_choices) > 1:
             all_defined = set().union(*(c.defined_vars for c in merging_choices))
             for var in all_defined:
@@ -475,7 +475,7 @@ class StoryFlowAnalyzer:
                         noqa_map,
                     )
 
-        # Унифицированное слияние состояния
+        # Unified state merge
         guaranteed_vars, merged_uninit, all_terminates = merge_flow_branches(
             branches=choices,
             block_kind="menu",
@@ -488,7 +488,7 @@ class StoryFlowAnalyzer:
         return guaranteed_vars, merged_uninit, all_terminates
 
     def generate_mermaid_graph(self) -> str:
-        """Делегирует в MermaidBuilder. Сохранён для backward compat."""
+        """Delegates to MermaidBuilder. Kept for backward compat."""
         return MermaidBuilder(self.analyzer).build()
 
     def analyze_menu_flow(
@@ -499,9 +499,9 @@ class StoryFlowAnalyzer:
         file_path: str = "",
         noqa_map: dict | None = None,
     ) -> tuple[int, dict[str, tuple[str, ...]], set[str], bool]:
-        """Анализирует menu-блок: парсит choices, анализирует тела, мержит ветки.
+        """Analyzes a menu block: parses choices, analyzes bodies, merges branches.
 
-        Phase 4 Step 2 (0.5.7): разбит с 152 строк на 3 метода + dispatcher.
+        Phase 4 Step 2 (0.5.7): split from 152 lines into 3 methods + dispatcher.
         """
         noqa_map = noqa_map or {}
 
@@ -523,16 +523,16 @@ class StoryFlowAnalyzer:
 
 
 class MermaidBuilder:
-    """Строит Mermaid.js диаграмму графа сюжета новеллы.
+    """Builds a Mermaid.js diagram of the visual novel plot graph.
 
-    Вынесено из StoryFlowAnalyzer.generate_mermaid_graph в Phase 4 Step 3 (0.5.7).
+    Extracted from StoryFlowAnalyzer.generate_mermaid_graph in Phase 4 Step 3 (0.5.7).
     """
 
     def __init__(self, analyzer):
         self.analyzer = analyzer
 
     def build(self) -> str:
-        """Строит полный Mermaid-граф с метаданными."""
+        """Builds the full Mermaid graph with metadata."""
         lines = [
             "```mermaid",
             "graph TD",

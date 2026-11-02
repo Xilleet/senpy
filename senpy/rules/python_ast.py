@@ -8,7 +8,7 @@ from typing import Any
 from senpy.core.constants import BUILTIN_SYMBOLS, SCREEN_LOCAL_IGNORE
 from senpy.core.logging import get_logger
 from senpy.core.models import Diagnostic
-from senpy.core.sink import DiagnosticSink  # Фаза 1.4: Protocol вместо SenpyAnalyzer
+from senpy.core.sink import DiagnosticSink  # Phase 1.4: Protocol instead of SenpyAnalyzer
 from senpy.domain.text_tags import get_utf16_range, suggest_similar_symbol
 
 _logger = get_logger("rules.python_ast")
@@ -213,7 +213,7 @@ def infer_expr_type(
     expr_str: str | None,
     known_vars: dict[str, Any] | None = None,
 ) -> str | None:
-    """Выводит тип выражения из строки присваивания с учетом известных символов."""
+    """Infers the type of an expression from an assignment string considering known symbols."""
     if not expr_str or not expr_str.strip():
         return None
     try:
@@ -227,7 +227,7 @@ def infer_default_value(
     val_node: ast.AST | None,
     known_vars: dict[str, Any] | None = None,
 ) -> str:
-    """Выводит безопасное дефолтное значение на основе вычисленного типа узла."""
+    """Infers a safe default value based on the computed node type."""
     t = infer_ast_type(val_node, known_vars=known_vars)
     if t == "int":
         return "0"
@@ -248,11 +248,11 @@ def infer_default_value(
     return "False"
 
 
-# Системные пространства имён Ren'Py, мутация которых допустима во время игры
+# Ren'Py system namespaces whose mutation is allowed during the game
 SYSTEM_MUTABLE_NAMESPACES = {"persistent", "config", "store", "gui", "style"}
 
 MUTATING_METHODS = {
-    # Списки (list / deque)
+    # Lists (list / deque)
     "append",
     "extend",
     "insert",
@@ -261,19 +261,19 @@ MUTATING_METHODS = {
     "clear",
     "reverse",
     "sort",
-    # Множества (set)
+    # Sets (set)
     "add",
     "discard",
     "difference_update",
     "intersection_update",
     "symmetric_difference_update",
-    # Словари (dict)
+    # Dictionaries (dict)
     "update",
     "popitem",
     "setdefault",
 }
 
-# Допустимые стандартные методы встроенных типов данных
+# Allowed standard methods of built-in data types
 KNOWN_TYPE_METHODS: dict[str, set[str]] = {
     "list": {
         "append",
@@ -370,7 +370,7 @@ KNOWN_TYPE_METHODS: dict[str, set[str]] = {
     },
 }
 
-# Подсказки частых межтиповых ошибок (например, .add() вместо .append() у списка)
+# Hints for common cross-type mistakes (e.g., .add() instead of .append() on a list)
 METHOD_SUGGESTIONS: dict[tuple[str, str], str] = {
     ("list", "add"): ".append()",
     ("dict", "append"): ".update()",
@@ -379,7 +379,7 @@ METHOD_SUGGESTIONS: dict[tuple[str, str], str] = {
 
 
 def _get_root_name(node: ast.AST | None) -> str | None:
-    """Рекурсивно разворачивает срезы и атрибуты до базового имени переменной (например, a[0]['k'] -> a)."""
+    """Recursively unwraps subscripts and attributes down to the base variable name (e.g., a[0]['k'] -> a)."""
     curr = node
     while isinstance(curr, (ast.Subscript, ast.Attribute)):
         curr = curr.value
@@ -410,7 +410,7 @@ def _extract_assign_target_name(node: ast.Assign | ast.AugAssign) -> tuple[str, 
 
 
 def extract_assigned_names(py_code: str) -> set[str]:
-    """Извлекает имена переменных, которым присваивается значение в строке Python."""
+    """Extracts the variable names that are assigned a value in a Python line."""
     assigned = set()
     try:
         tree = ast.parse(py_code)
@@ -426,13 +426,13 @@ def extract_assigned_names(py_code: str) -> set[str]:
 
 
 class PythonAstChecker:
-    """Проверяет встроенный Python-код через AST на соблюдение правил Ren'Py."""
+    """Checks embedded Python code via AST for compliance with Ren'Py rules."""
 
     def __init__(self, analyzer: DiagnosticSink):
         self.analyzer = analyzer
 
     def collect_from_python_block(self, code_lines: list[str]) -> tuple[dict[str, int], set[str]]:
-        """Собирает функции, классы и переменные из init python блоков вместе с номерами строк."""
+        """Collects functions, classes, and variables from init python blocks along with line numbers."""
         names: dict[str, int] = {}
         refs: set[str] = set()
         code = textwrap.dedent("".join(code_lines))
@@ -464,7 +464,7 @@ class PythonAstChecker:
         noqa_map: dict,
         lines: list[str] | None = None,
     ) -> None:
-        """RPY109: Проверяет вызовы функций в init python на алфавитный порядок файлов."""
+        """RPY109: Checks function calls in init python for alphabetical file order."""
         import os
 
         try:
@@ -472,7 +472,7 @@ class PythonAstChecker:
 
             def walk_and_check(root_node: ast.AST):
                 for child in ast.walk(root_node):
-                    # Игнорируем тела функций и классов (они исполняются отложенно)
+                    # Ignore bodies of functions and classes (they execute lazily)
                     if (
                         isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
                         and child is not root_node
@@ -497,7 +497,7 @@ class PythonAstChecker:
                                     .lower()
                                 )
 
-                                # Если текущий файл загружается раньше файла с определением
+                                # If the current file loads earlier than the file with the definition
                                 if curr_rel < def_rel:
                                     real_line = start_line + getattr(child, "lineno", 1) - 1
                                     raw_l = (
@@ -526,17 +526,17 @@ class PythonAstChecker:
 
             for stmt in tree.body:
                 if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    # У функций сразу при старте вычисляются только декораторы
+                    # For functions only decorators are evaluated immediately at startup
                     for dec in stmt.decorator_list:
                         walk_and_check(dec)
                 elif isinstance(stmt, ast.ClassDef):
-                    # У классов вычисляются декораторы и базовые классы
+                    # For classes, decorators and base classes are evaluated
                     for dec in stmt.decorator_list:
                         walk_and_check(dec)
                     for base in stmt.bases:
                         walk_and_check(base)
                 else:
-                    # Остальные стейтменты (вызовы, присваивания) выполняются сразу
+                    # Other statements (calls, assignments) execute immediately
                     walk_and_check(stmt)
         except SyntaxError as e:
             # log debug instead of silent suppress.
@@ -553,7 +553,7 @@ class PythonAstChecker:
         noqa_map: dict,
         lines: list[str] | None = None,
     ) -> None:
-        """RPY201, RPY205, RPY208: Проверка императивных циклов и мутаций внутри screen."""
+        """RPY201, RPY205, RPY208: Check imperative loops and mutations inside a screen."""
         try:
             tree = ast.parse(py_code)
         except SyntaxError as e:
@@ -745,7 +745,7 @@ class PythonAstChecker:
         noqa_map: dict,
         lines: list[str] | None = None,
     ) -> None:
-        """Парсит Python-код и запускает рекурсивный обход AST."""
+        """Parses Python code and runs a recursive AST traversal."""
         try:
             tree = ast.parse(py_code)
             self._walk_python_nodes(
@@ -1314,7 +1314,7 @@ class PythonAstChecker:
         lines: list[str] | None,
         local_scope: set[str],
     ) -> None:
-        """Рекурсивный обход body и orelse для if/while."""
+        """Recursive traversal of body and orelse for if/while."""
         self._walk_python_nodes(node.body, file_path, start_line, noqa_map, lines, local_scope)
         self._walk_python_nodes(node.orelse, file_path, start_line, noqa_map, lines, local_scope)
 
@@ -1327,7 +1327,7 @@ class PythonAstChecker:
         lines: list[str] | None,
         local_scope: set[str],
     ) -> None:
-        """Рекурсивный обход body и orelse для for, с loop variable в scope."""
+        """Recursive traversal of body and orelse for for, with the loop variable in scope."""
         loop_scope = set(local_scope)
         if isinstance(node.target, ast.Name):
             loop_scope.add(node.target.id)
@@ -1347,7 +1347,7 @@ class PythonAstChecker:
         lines: list[str] | None,
         local_scope: set[str],
     ) -> None:
-        """Рекурсивный обход body, orelse, finalbody и handlers для try."""
+        """Recursive traversal of body, orelse, finalbody, and handlers for try."""
         self._walk_python_nodes(node.body, file_path, start_line, noqa_map, lines, local_scope)
         self._walk_python_nodes(node.orelse, file_path, start_line, noqa_map, lines, local_scope)
         self._walk_python_nodes(node.finalbody, file_path, start_line, noqa_map, lines, local_scope)
@@ -1366,13 +1366,13 @@ class PythonAstChecker:
         lines: list[str] | None,
         local_scope: set[str],
     ) -> None:
-        """Dispatcher: обрабатывает top-level statements через _visit_* методы.
+        """Dispatcher: processes top-level statements via _visit_* methods.
 
-        Phase 3 Step 4 (0.5.6): разбит с 479 строк на 8 методов + dispatcher.
-        Каждый _visit_* метод обрабатывает один тип AST-узла.
+        Phase 3 Step 4 (0.5.6): split from 479 lines into 8 methods + dispatcher.
+        Each _visit_* method handles one type of AST node.
         """
         for node in nodes:
-            # Игнорируем вложенные функции и классы, они создают свой локальный скоуп
+            # Ignore nested functions and classes, they create their own local scope
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 continue
 
@@ -1468,7 +1468,7 @@ class PythonAstChecker:
         screen_local_symbols: set[str],
         noqa_map: dict,
     ) -> None:
-        """RPY403, RPY202, RPY103: Проверяет условия if/elif через AST."""
+        """RPY403, RPY202, RPY103: Checks if/elif conditions via AST."""
         try:
             cond_tree = ast.parse(expr, mode="eval")
             if isinstance(cond_tree.body, ast.Constant) and not bool(cond_tree.body.value):
@@ -1558,7 +1558,7 @@ class PythonAstChecker:
         branch_uninitialized: dict,
         noqa_map: dict,
     ) -> None:
-        """RPY404: Проверяет условие if/elif на переменную в статусе MAYBE_SET."""
+        """RPY404: Checks an if/elif condition for a variable in MAYBE_SET status."""
         try:
             tree = ast.parse(expr, mode="eval")
             for node in ast.walk(tree):
@@ -1597,7 +1597,7 @@ class PythonAstChecker:
             _logger.debug("check_cfg_condition: ast.parse failed: %s", e)
 
     def clear_safe_cfg_vars(self, py_code: str, branch_uninitialized: dict) -> None:
-        """Удаляет переменные из неинициализированных, если им присвоено значение."""
+        """Removes variables from uninitialized if they have been assigned a value."""
         try:
             tree = ast.parse(py_code)
             for node in tree.body:

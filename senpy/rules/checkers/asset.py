@@ -1,4 +1,4 @@
-"""asset — extracted from checkers.py (Фаза 2, 0.5.4)."""
+"""asset — extracted from checkers.py (Phase 2, 0.5.4)."""
 
 from __future__ import annotations
 
@@ -114,8 +114,8 @@ class AssetChecker(BaseChecker):
             )
 
     # =========================================================================
-    # check_line разбит на 2 метода.
-    # check_line — теперь dispatcher
+    # check_line is split into 2 methods.
+    # check_line is now a dispatcher
     # =========================================================================
 
     def _check_show_scene(
@@ -127,7 +127,7 @@ class AssetChecker(BaseChecker):
         scope_stack: ScopeStack,
         noqa_map: dict,
     ) -> None:
-        """RPY502: Проверка show / scene — спрайты, ATL-трансформации, переходы."""
+        """RPY502: Check show / scene — sprites, ATL transforms, transitions."""
         is_in_screen = scope_stack.current_screen_name() is not None
         m_show = (
             RE_SHOW_SCENE.match(stripped)
@@ -181,7 +181,7 @@ class AssetChecker(BaseChecker):
             if t.endswith(":"):
                 break
 
-        # "show layer <имя>" — очистка слоя, а НЕ показ изображения
+        # "show layer <name>" — clearing a layer, NOT showing an image
         if img_tokens and img_tokens[0] == "layer" and m_show.group(1) == "show":
             img_tokens = []
 
@@ -397,7 +397,7 @@ class AssetChecker(BaseChecker):
         stripped: str,
         noqa_map: dict,
     ) -> None:
-        """RPY501/RPY505: Проверка play / queue / stop (каналы и файлы)."""
+        """RPY501/RPY505: Check play / queue / stop (channels and files)."""
         if stripped.startswith("stop "):
             self._check_stop_audio(
                 file_path=file_path,
@@ -718,9 +718,9 @@ class AssetChecker(BaseChecker):
         noqa_map: dict[int, set[str] | None],
         lines: list[str],
     ) -> tuple[str, bool]:
-        """Dispatcher: проверяет show/scene и audio через _check_* методы.
+        """Dispatcher: checks show/scene and audio via _check_* methods.
 
-        Phase 4 Step 1 (0.5.7): разбит с 351 строк на 2 метода + dispatcher.
+        Phase 4 Step 1 (0.5.7): split from 351 lines into 2 methods + dispatcher.
         """
         stripped = clean_line.strip()
 

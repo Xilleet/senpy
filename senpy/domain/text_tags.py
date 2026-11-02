@@ -20,7 +20,7 @@ _NON_NESTABLE_TAGS = frozenset({"b", "i", "u", "s", "plain"})
 
 
 def get_utf16_range(line: str, sub: str | None = None) -> tuple[int, int]:
-    """Возвращает UTF-16 смещения (start, end) для LSP и подсветки в редакторе."""
+    """Returns UTF-16 offsets (start, end) for LSP and editor highlighting."""
     line_clean = line.rstrip("\r\n")
     if not sub:
         indent = len(line_clean) - len(line_clean.lstrip())
@@ -41,7 +41,7 @@ def get_utf16_range(line: str, sub: str | None = None) -> tuple[int, int]:
 
 
 def suggest_similar_symbol(unknown_var: str, user_symbols: set[str]) -> str:
-    """Предлагает близкое по написанию имя переменной.
+    """Suggests a similarly spelled variable name.
 
     .. deprecated::
         Use ``senpy.text_utils.suggest_similar`` directly instead.
@@ -62,13 +62,13 @@ def process_quoted_strings(
     fix: bool = False,
 ) -> tuple[str, bool, list[Diagnostic], int, int, list[str]]:
     """
-    Разбирает все строковые литералы в строке:
-    - Выявляет и автофиксирует незакрытые теги (RPY301).
-    - Проверяет hex-цвета в {color} (RPY304).
-    - Проверяет необъявленные переменные в [var] (RPY101).
-    - Регистрирует упомянутые ассеты (для RPY503).
+    Parses all string literals on the line:
+    - Detects and autofixes unclosed tags (RPY301).
+    - Checks hex colors in {color} (RPY304).
+    - Checks undeclared variables in [var] (RPY101).
+    - Registers referenced assets (for RPY503).
 
-    Возвращает (reconstructed_line, modified, diagnostics, fixed_count,
+    Returns (reconstructed_line, modified, diagnostics, fixed_count,
     fixable_count, used_assets).
     """
     if '"' not in raw_line and "'" not in raw_line:

@@ -1,16 +1,16 @@
 """LSP handlers: diagnostics.
 
-Вынесено из senpy/lsp/server.py в 0.6.0-7 (Фаза 5).
+Extracted from senpy/lsp/server.py in 0.6.0-7 (Phase 5).
 
-Handler'ы:
+Handlers:
   - code_action        ← TEXT_DOCUMENT_CODE_ACTION
-  - document_color     ← TEXT_DOCUMENT_DOCUMENT_COLOR (, 0.6.0 Под-спринт 3)
+  - document_color     ← TEXT_DOCUMENT_DOCUMENT_COLOR (, 0.6.0 Sub-sprint 3)
   - color_presentation ← TEXT_DOCUMENT_COLOR_PRESENTATION
   - formatting         ← TEXT_DOCUMENT_FORMATTING
   - range_formatting   ← TEXT_DOCUMENT_RANGE_FORMATTING
 
-Все функции принимают (ls, params) и обращаются к shared state через
-server_mod._X (lazy import разрывает цикл импортов).
+All functions accept (ls, params) and access shared state via
+server_mod._X (lazy import breaks the import cycle).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ _logger = get_logger("lsp.diagnostics")
 
 
 def _get_server_mod():
-    """Ленивый доступ к senpy.lsp.server, разрывает цикл импортов."""
+    """Lazy access to senpy.lsp.server, breaks the import cycle."""
     from senpy.lsp import server
 
     return server
@@ -43,18 +43,17 @@ def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.Co
     actions: list[lsp.CodeAction] = []
     try:
         uri = params.text_document.uri
-        # P0-6: единая нормализация через server_mod._normalize_path (с os.path.abspath),
-        # как и во всех остальных местах. Раньше тут было os.path.normcase()
-        # без abspath, из-за чего lookup промахивался и срабатывал
-        # basename-fallback, который в multi-module проектах мог выбрать
-        # QuickFix из неправильного файла.
+        # P0-6: unified normalization via server_mod._normalize_path (with os.path.abspath),
+        # like everywhere else. Previously this used os.path.normcase()
+        # without abspath, so lookups missed and the basename-fallback fired,
+        # which in multi-module projects could pick a QuickFix from the wrong file.
         norm_path = server_mod._normalize_path(server_mod._uri_to_path(uri))
 
         diags_for_file = server_mod._latest_diagnostics_by_path.get(norm_path)
-        # P0-6: basename-fallback УБРАН. Если diagnostics для файла не найдены
-        # через точный путь — возвращаем пустой список, как и должно быть.
-        # Если lookup промахивается, это баг в нормализации, его надо чинить
-        # в server_mod._normalize_path, а не обходить небезопасным угадыванием по basename.
+        # P0-6: basename-fallback REMOVED. If diagnostics for the file are not found
+        # via the exact path — return an empty list, as it should be.
+        # If the lookup misses, that is a bug in normalization, which should be fixed
+        # in server_mod._normalize_path rather than bypassed by unsafe basename guessing.
         if not diags_for_file:
             return actions
 
@@ -273,7 +272,7 @@ def color_presentation(
 # =============================================================================
 # textDocument/formatting + rangeFormatting
 # =============================================================================
-# Integrates senpy.formatter (from Под-спринт 1) into VS Code.
+# Integrates senpy.formatter (from Sub-sprint 1) into VS Code.
 # Shift+Alt+F in VS Code calls formatting() to format the whole document.
 # Ctrl+K Ctrl+F calls range_formatting() for selected range only.
 

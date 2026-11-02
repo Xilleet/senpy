@@ -21,7 +21,7 @@ _logger = get_logger("domain.assets")
 
 
 def find_orphaned_rpyc(project_path: str) -> list[str]:
-    """Находит скомпилированные .rpyc файлы, у которых нет исходных .rpy."""
+    """Finds compiled .rpyc files that have no corresponding .rpy source."""
     orphans = []
     for root, dirs, filenames in os.walk(project_path, followlinks=False):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
@@ -57,7 +57,7 @@ class AssetManager:
         self.used_asset_keys: set[str] = set()
 
     def index(self) -> None:
-        """Сканирует директорию проекта и RPA-архивы, индексируя все медиафайлы."""
+        """Scans the project directory and RPA archives, indexing all media files."""
         self.known_assets.clear()
         self.valid_images = set(BUILTIN_COLORS)
         self.media_disk_files.clear()
@@ -111,7 +111,7 @@ class AssetManager:
         for asset in self.known_assets:
             base, ext = os.path.splitext(asset)
 
-            # Оставляем строгий парсинг только для официального стандарта images/
+            # Keep strict parsing only for the official images/ standard
             if ext.lower() in (".png", ".webp", ".jpg", ".jpeg"):
                 clean_name = base.replace("\\", "/").lower()
                 clean_name = clean_name.removeprefix("game/")
@@ -225,13 +225,13 @@ class AssetManager:
             _logger.debug("failed to read RPA index %s: %s", rpa_path, e)
 
     def mark_used(self, asset_ref: str) -> None:
-        """Регистрирует использование ассета в коде."""
+        """Registers usage of an asset in the code."""
         ref_norm = asset_ref.replace("\\", "/").lower().strip()
         self.used_asset_keys.add(ref_norm)
         self.used_asset_keys.add(os.path.basename(ref_norm))
 
     def check_unused(self) -> list[Diagnostic]:
-        """RPY503: Находит медиафайлы на диске, на которые нет ссылок в сценарии."""
+        """RPY503: Finds media files on disk that are not referenced in the scenario."""
         diagnostics: list[Diagnostic] = []
         for rel_path, full_path in sorted(self.media_disk_files.items()):
             if rel_path.startswith("tl/") or "/tl/" in rel_path:

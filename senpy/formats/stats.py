@@ -51,17 +51,17 @@ RE_DIALOGUE_LINE = re.compile(
 
 
 def extract_character_names(analyzer: SenpyAnalyzer) -> dict[str, str]:
-    """Извлекает отображаемые имена персонажей с разворачиванием динамических переменных (DynamicCharacter)."""
+    """Extracts character display names with expansion of dynamic variables (DynamicCharacter)."""
     names: dict[str, str] = {}
     for var_name, sym in analyzer.variables.items():
         if sym.is_character:
             m = RE_CHARACTER_DEF.search(sym.code_line)
             if m:
                 raw_target = m.group(1).strip()
-                # Снимаем интерполяцию [var] если имя задано как Character("[p_name]")
+                # Strip the [var] interpolation if the name is set as Character("[p_name]")
                 clean_target = raw_target.strip("[]\"'")
 
-                # Если имя персонажа ссылается на переменную (как в DDLC: s_name -> Сайори)
+                # If the character name references a variable (as in DDLC: s_name -> Sayori)
                 if clean_target in analyzer.variables:
                     val_match = RE_VAR_VALUE.search(analyzer.variables[clean_target].code_line)
                     if val_match:

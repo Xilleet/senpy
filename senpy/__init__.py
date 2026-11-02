@@ -1,8 +1,8 @@
 """Senpy — semantic linter & LSP for Ren'Py.
 
-Re-exports для backward compat: после реструктуризации 0.5.4 (файлы
-переехали в core/, rules/, lsp/, cli/, formats/, domain/) старые импорты
-продолжают работать:
+Re-exports for backward compat: after the 0.5.4 restructuring (files moved
+into core/, rules/, lsp/, cli/, formats/, domain/) the old imports keep
+working:
     from senpy import SenpyAnalyzer           # → senpy.core.analyzer
     from senpy import Diagnostic, RULE_SEVERITY  # → senpy.core.models
     from senpy import main                    # → senpy.cli.main

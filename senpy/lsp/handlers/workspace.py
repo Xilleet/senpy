@@ -1,15 +1,15 @@
 """LSP handlers: workspace.
 
-Вынесено из senpy/lsp/server.py в 0.6.0-8 (Фаза 5).
+Extracted from senpy/lsp/server.py in 0.6.0-8 (Phase 5).
 
-Handler'ы:
+Handlers:
   - workspace_symbol   ← WORKSPACE_SYMBOL
   - folding_range      ← TEXT_DOCUMENT_FOLDING_RANGE
   - document_highlight ← TEXT_DOCUMENT_DOCUMENT_HIGHLIGHT
   - initialized        ← INITIALIZED
 
-Все функции принимают (ls, params) и обращаются к shared state через
-server_mod._X (lazy import разрывает цикл импортов).
+All functions accept (ls, params) and access shared state via
+server_mod._X (lazy import breaks the import cycle).
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from lsprotocol import types as lsp
 
 
 def _get_server_mod():
-    """Ленивый доступ к senpy.lsp.server, разрывает цикл импортов."""
+    """Lazy access to senpy.lsp.server, breaks the import cycle."""
     from senpy.lsp import server
 
     return server
@@ -37,9 +37,9 @@ def workspace_symbol(
     ls: LanguageServer, params: lsp.WorkspaceSymbolParams
 ) -> list[lsp.WorkspaceSymbol]:
     server_mod = _get_server_mod()
-    """Возвращает все символы проекта (labels, screens, transforms).
+    """Returns all project symbols (labels, screens, transforms).
 
-    VS Code: Ctrl+T → поиск по всем файлам проекта.
+    VS Code: Ctrl+T → search across all files of the project.
     """
     if server_mod._active_analyzer is None or not server_mod._is_initialized:
         return []
@@ -48,14 +48,14 @@ def workspace_symbol(
     symbols: list[lsp.WorkspaceSymbol] = []
 
     def _matches(name: str) -> bool:
-        """Проверяет, подходит ли имя под query (case-insensitive)."""
+        """Checks whether the name matches the query (case-insensitive)."""
         if not query:
             return True
         return query in name.lower()
 
     # 1. Labels (SymbolKind.Function = 12)
-    # UX: используем snapshot, не server_mod._active_analyzer.labels —
-    # analyze_file_only чистит labels из других файлов.
+    # UX: use the snapshot, not server_mod._active_analyzer.labels —
+    # analyze_file_only clears labels from other files.
     for name, lbl in server_mod._symbol_snapshot["labels"].items():
         if not _matches(name):
             continue
@@ -116,9 +116,9 @@ def workspace_symbol(
 
 
 def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[lsp.FoldingRange]:
-    """Возвращает folding ranges для .rpy файла.
+    """Returns folding ranges for a .rpy file.
 
-    VS Code использует это для сворачивания блоков (Ctrl+Shift+[).
+    VS Code uses this to fold blocks (Ctrl+Shift+[).
     """
     doc = ls.workspace.get_text_document(params.text_document.uri)
     if not doc or not doc.lines:
@@ -126,7 +126,7 @@ def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[ls
 
     lines = doc.lines
 
-    # Паттерны для scope-opening строк (как в formatter _build_contexts)
+    # Patterns for scope-opening lines (as in formatter _build_contexts)
     _RE_LABEL = re.compile(r"^label\s+(\w+)")
     _RE_SCREEN = re.compile(r"^screen\s+(\w+)")
     _RE_INIT = re.compile(r"^init\s+python")
@@ -136,19 +136,19 @@ def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[ls
 
     ranges: list[lsp.FoldingRange] = []
 
-    # Стек открытых блоков: (start_line_0based, indent, keyword)
+    # Stack of open blocks: (start_line_0based, indent, keyword)
     open_blocks: list[tuple[int, int, str]] = []
 
     for i, raw_line in enumerate(lines):
-        # Считаем отступ (в пробелах, с expandtabs)
+        # Count the indentation (in spaces, with expandtabs)
         stripped = raw_line.lstrip(" \t")
         leading = raw_line[: len(raw_line) - len(stripped)]
         indent = len(leading.expandtabs(4))
 
-        # Закрываем блоки с бОльшим или равным отступом
+        # Close blocks with greater or equal indentation
         while open_blocks and indent <= open_blocks[-1][1]:
             start_line, start_indent, keyword = open_blocks.pop()
-            if i - 1 > start_line:  # минимум 2 строки в блоке
+            if i - 1 > start_line:  # at least 2 lines in the block
                 ranges.append(
                     lsp.FoldingRange(
                         start_line=start_line,
@@ -157,8 +157,8 @@ def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[ls
                     )
                 )
 
-        # Проверяем, открывает ли строка новый scope
-        clean = stripped.split("#")[0].strip()  # убираем комментарий
+        # Check whether the line opens a new scope
+        clean = stripped.split("#")[0].strip()  # strip the comment
         if clean:
             is_scope_opener = (
                 _RE_LABEL.match(clean)
@@ -171,7 +171,7 @@ def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[ls
             if is_scope_opener and clean.endswith(":"):
                 open_blocks.append((i, indent, clean))
 
-    # Закрываем оставшиеся открытые блоки (до конца файла)
+    # Close remaining open blocks (until end of file)
     for start_line, start_indent, keyword in open_blocks:
         if len(lines) - 1 > start_line:
             ranges.append(
@@ -182,8 +182,8 @@ def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[ls
                 )
             )
 
-    # Сортируем по start_line (блоки закрываются в обратном порядке —
-    # внутренние раньше внешних, но клиент ожидает по порядку)
+    # Sort by start_line (blocks close in reverse order —
+    # inner before outer, but the client expects them in order)
     ranges.sort(key=lambda r: r.start_line)
     return ranges
 
@@ -192,7 +192,7 @@ def document_highlight(
     ls: LanguageServer, params: lsp.DocumentHighlightParams
 ) -> list[lsp.DocumentHighlight]:
     server_mod = _get_server_mod()
-    """Подсвечивает все упоминания слова под курсором в текущем файле."""
+    """Highlights all occurrences of the word under the cursor in the current file."""
     if server_mod._active_analyzer is None or not server_mod._is_initialized:
         return []
 
@@ -207,7 +207,7 @@ def document_highlight(
     line = doc.lines[line_idx]
     col = params.position.character
 
-    # Извлекаем слово под курсором
+    # Extract the word under the cursor
     word = None
     for m in re.finditer(r"[a-zA-Z_][a-zA-Z0-9_\.]*", line):
         if m.start() <= col <= m.end():
@@ -217,7 +217,7 @@ def document_highlight(
     if not word:
         return []
 
-    # Проверяем, что это user-defined символ (label/screen/transform/variable)
+    # Check that this is a user-defined symbol (label/screen/transform/variable)
     is_user_symbol = (
         word in server_mod._active_analyzer.labels
         or word in server_mod._active_analyzer.screens
@@ -229,22 +229,22 @@ def document_highlight(
     if not is_user_symbol:
         return []
 
-    # Ищем все вхождения слова в текущем файле
+    # Find all occurrences of the word in the current file
     highlights: list[lsp.DocumentHighlight] = []
 
     for i, file_line in enumerate(doc.lines):
-        # Простое find для каждого вхождения слова в строке
+        # Simple find for each occurrence of the word in the line
         start = 0
         while True:
             pos = file_line.find(word, start)
             if pos == -1:
                 break
-            # Проверяем границы слова (не часть другого слова)
+            # Check word boundaries (not part of another word)
             before = file_line[pos - 1] if pos > 0 else " "
             after = file_line[pos + len(word)] if pos + len(word) < len(file_line) else " "
             if not (before.isalnum() or before == "_") and not (after.isalnum() or after == "_"):
-                # Это полное слово, не подстрока
-                # Определяем kind: Write если это строка объявления, Read иначе
+                # This is a whole word, not a substring
+                # Determine the kind: Write if this is a declaration line, Read otherwise
                 stripped = file_line.strip()
                 is_declaration = (
                     stripped.startswith(f"label {word}")
@@ -273,7 +273,7 @@ def document_highlight(
 
 
 def initialized(ls: LanguageServer, params: lsp.InitializedParams) -> None:
-    """Запускает full project diagnostics сразу после инициализации LSP."""
+    """Starts full project diagnostics immediately after LSP initialization."""
     server_mod = _get_server_mod()
 
     try:
@@ -283,5 +283,5 @@ def initialized(ls: LanguageServer, params: lsp.InitializedParams) -> None:
 
     if root:
         server_mod._current_workspace_root = root
-        # Запускаем full scan в фоне (debounced)
+        # Start a full scan in the background (debounced)
         server_mod.schedule_full_diagnostics(ls, "")

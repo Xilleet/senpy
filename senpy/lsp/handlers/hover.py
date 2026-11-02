@@ -1,12 +1,12 @@
 """LSP handlers: hover.
 
-Вынесено из senpy/lsp/server.py в 0.6.0-6 (Фаза 5).
+Extracted from senpy/lsp/server.py in 0.6.0-6 (Phase 5).
 
-Handler'ы:
+Handlers:
   - hover              ← TEXT_DOCUMENT_HOVER
 
-Все функции принимают (ls, params) и обращаются к shared state через
-server_mod._X (lazy import разрывает цикл импортов).
+All functions accept (ls, params) and access shared state via
+server_mod._X (lazy import breaks the import cycle).
 """
 
 from __future__ import annotations
@@ -27,14 +27,14 @@ from senpy.domain.renpy_api import get_renpy_api_hover
 
 
 def _get_server_mod():
-    """Ленивый доступ к senpy.lsp.server, разрывает цикл импортов."""
+    """Lazy access to senpy.lsp.server, breaks the import cycle."""
     from senpy.lsp import server
 
     return server
 
 
 def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
-    """Семантические подсказки при наведении курсора на переменные, метки и экраны."""
+    """Semantic hints when hovering the cursor over variables, labels and screens."""
     server_mod = _get_server_mod()
     if server_mod._active_analyzer is None or not server_mod._is_initialized:
         return None
@@ -43,10 +43,10 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
     if not doc or not doc.lines:
         return None
 
-    # P0-5: guard от IndexError при out-of-range line. Аналогичный guard есть
-    # в definition() и references(), но в hover его не было. Это приводило к
-    # падению сервера при hover в первые миллисекунды после did_change, когда
-    # doc.lines ещё не обновился, либо при невалидном position от клиента.
+    # P0-5: guard against IndexError for out-of-range line. A similar guard exists
+    # in definition() and references(), but hover did not have one. This caused
+    # the server to crash when hovering in the first milliseconds after did_change,
+    # when doc.lines was not yet updated, or when the client sent an invalid position.
     line_idx = params.position.line
     if line_idx >= len(doc.lines):
         return None

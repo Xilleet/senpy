@@ -85,7 +85,7 @@ BUILTIN_SYMBOLS = {
     "squares",
     "irisin",
     "irisout",
-    # Стандартные позиции и базовые трансформы Ren'Py
+    # Standard Ren'Py positions and base transforms
     "center",
     "truecenter",
     "left",
@@ -97,7 +97,7 @@ BUILTIN_SYMBOLS = {
     "offscreenright",
     "reset",
     "default",
-    # Встроенные классы переходов Ren'Py (для вызовов с параметрами: Dissolve(1.0), Fade(...))
+    # Built-in Ren'Py transition classes (for calls with parameters: Dissolve(1.0), Fade(...))
     "Dissolve",
     "Fade",
     "Pixellate",
@@ -158,10 +158,10 @@ BUILTIN_ACTIONS = {
     "FilePage",
 }
 
-# единый источник правды о версии — senpy/__version__.py.
-# Раньше версия была захардкожена в 4 местах (pyproject.toml, constants.py,
-# server.py, package.json). Теперь все импортируют отсюда, а сюда пишет
-# bump_version.py. Это снимает P1-13 и P2-16.
+# Single source of truth for the version — senpy/__version__.py.
+# Previously the version was hardcoded in 4 places (pyproject.toml, constants.py,
+# server.py, package.json). Now everyone imports from here, and bump_version.py
+# writes here. This resolves P1-13 and P2-16.
 from senpy.__version__ import __version__ as SENPY_VERSION  # noqa: E402,F401
 
 IGNORED_DIRS = {
@@ -326,7 +326,7 @@ SCREEN_LOCAL_IGNORE = {
     "lastPlayed",
 }
 
-# Скомпилированные регулярные выражения
+# Compiled regular expressions
 RE_DEFAULT = re.compile(r"^\s*default\s+([^\W\d]\w*)(?:\s*=\s*(.*))?")
 RE_DEFINE = re.compile(r"^\s*define\s+([^\W\d]\w*)(?:\s*=\s*(.*))?")
 RE_DEFINE_AUDIO = re.compile(r"^\s*define\s+(?:audio\.)?([^\W\d]\w*)\s*=\s*[\"']([^\"']+)[\"']")

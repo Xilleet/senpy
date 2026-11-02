@@ -5,10 +5,10 @@ import re
 from senpy.core.models import Diagnostic
 from senpy.domain.text_tags import get_utf16_range
 
-# Словарь устаревших API:
-# Имя функции -> (Совет/пояснение, 1-к-1 замена для автофикса или None)
+# Dictionary of deprecated APIs:
+# Function name -> (Advice/explanation, 1-to-1 replacement for autofix or None)
 DEPRECATED_APIS: dict[str, tuple[str, str | None]] = {
-    # Устаревшие Displayables
+    # Deprecated Displayables
     "LiveComposite": (
         "This function is obsolete or outdated. Use 'Composite' instead.",
         "Composite",
@@ -19,14 +19,14 @@ DEPRECATED_APIS: dict[str, tuple[str, str | None]] = {
         "Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead.",
         "Character",
     ),
-    # Устаревшие анимации (заменены на ATL)
+    # Deprecated animations (replaced by ATL)
     "anim.Filmstrip": (
         "Legacy animation helper. Prefer modern ATL (transform / pause) instead.",
         None,
     ),
     "anim.Blink": ("Legacy animation helper. Prefer modern ATL instead.", None),
     "anim.SMAnimation": ("Legacy animation helper. Prefer modern ATL instead.", None),
-    # Устаревшие вызовы ui.* (заменены на Screen Language)
+    # Deprecated ui.* calls (replaced by Screen Language)
     "ui.text": (
         "Legacy 'ui' screen function is obsolete. Use Screen Language 'text' statement.",
         None,
@@ -61,19 +61,19 @@ DEPRECATED_APIS: dict[str, tuple[str, str | None]] = {
     ),
 }
 
-# Предкомпилированное регулярное выражение для быстрого поиска
+# Pre-compiled regular expression for fast lookup
 RE_DEPRECATED = re.compile(r"\b(" + "|".join(re.escape(k) for k in DEPRECATED_APIS) + r")\b")
 
-# Быстрый фильтр подстрок, чтобы не гонять regex по обычным строкам
+# Fast substring filter so we don't run the regex on ordinary strings
 FAST_TERMS = ("Live", "anim.", "ui.", "DynamicCharacter")
 
 
 class DeprecationChecker:
-    """Проверяет строки кода сценария на использование устаревшего API Ren'Py."""
+    """Checks scenario code lines for usage of deprecated Ren'Py APIs."""
 
     @staticmethod
     def _is_in_quotes(s: str, pos: int) -> bool:
-        """Проверяет, находится ли позиция pos внутри строкового литерала."""
+        """Checks whether position pos is inside a string literal."""
         in_quote = None
         i = 0
         while i < pos:
@@ -91,18 +91,18 @@ class DeprecationChecker:
 
     @classmethod
     def check_line(cls, line: str, line_no: int, file_path: str) -> list[Diagnostic]:
-        # 1. Быстрый фильтр: если ни одной подстроки нет, выходим за 5 наносекунд
+        # 1. Fast filter: if no substring matches, exit in 5 nanoseconds
         if not any(term in line for term in FAST_TERMS):
             return []
 
-        # 2. Пропускаем комментарии
+        # 2. Skip comments
         stripped = line.strip()
         if stripped.startswith("#"):
             return []
 
         diagnostics: list[Diagnostic] = []
         for match in RE_DEPRECATED.finditer(line):
-            # Если токен внутри кавычек диалога — игнорируем
+            # If the token is inside dialogue quotes — ignore
             if cls._is_in_quotes(line, match.start()):
                 continue
 

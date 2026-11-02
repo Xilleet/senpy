@@ -23,34 +23,34 @@ server = LanguageServer("senpy-lsp", _SENPY_VERSION)
 
 
 def _uri_to_path(uri: str, workspace_root: str | None = None) -> str:
-    """Преобразует LSP file:// URI в filesystem path с security-проверками.
+    """Converts an LSP file:// URI to a filesystem path with security checks.
 
     Workspace containment check.
 
-    Две защиты:
-      1. **Scheme validation** — принимается только `file:` scheme. Любой
-         другой (`http:`, `https:`, `ftp:`, `git+ssh:`, пустой) → `ValueError`.
-         Защита от malicious client, передающего URI на удалённый ресурс
-         (который `urlparse` пропарсит, но `open()` затем сделает сетевой
-         запрос или прочитает неожиданный путь).
-      2. **Workspace containment** (если передан `workspace_root`) — путь
-         после `realpath` обязан находиться внутри `workspace_root`. Защита
-         от path traversal (`../../../etc/passwd`) и от URI вне проекта.
-         Backward compat: если `workspace_root=None`, проверка пропускается
-         (контракт для handlers, у которых workspace ещё не инициализирован).
+    Two protections:
+      1. **Scheme validation** — only the `file:` scheme is accepted. Any
+         other (`http:`, `https:`, `ftp:`, `git+ssh:`, empty) → `ValueError`.
+         Protection against a malicious client passing a URI to a remote
+         resource (which `urlparse` would parse, but `open()` would then make
+         a network request or read an unexpected path).
+      2. **Workspace containment** (if `workspace_root` is passed) — the path
+         after `realpath` must be inside `workspace_root`. Protection
+         against path traversal (`../../../etc/passwd`) and URIs outside the project.
+         Backward compat: if `workspace_root=None`, the check is skipped
+         (contract for handlers whose workspace is not yet initialized).
 
     Args:
-        uri: LSP URI (обычно `file://...`).
-        workspace_root: Опциональный корень проекта. Если передан — путь
-            обязан находиться внутри него после нормализации.
+        uri: LSP URI (usually `file://...`).
+        workspace_root: Optional project root. If passed — the path
+            must be inside it after normalization.
 
     Returns:
-        Нормализованный filesystem path.
+        Normalized filesystem path.
 
     Raises:
-        SecurityError: если scheme не `file:` ИЛИ путь вне workspace_root.
-            SecurityError наследуется от ValueError для backward compat —
-            старые caller'ы с `except ValueError:` продолжают работать.
+        SecurityError: if the scheme is not `file:` OR the path is outside workspace_root.
+            SecurityError inherits from ValueError for backward compat —
+            old callers with `except ValueError:` keep working.
     """
     parsed = urlparse(uri)
     if parsed.scheme != "file":
@@ -66,12 +66,12 @@ def _uri_to_path(uri: str, workspace_root: str | None = None) -> str:
     if workspace_root is not None:
         root_real = os.path.realpath(workspace_root)
         path_real = os.path.realpath(path)
-        # os.path.commonpath возвращает общий префикс; если path_real не внутри
-        # root_real — commonpath будет короче root_real.
+        # os.path.commonpath returns the common prefix; if path_real is not inside
+        # root_real — commonpath will be shorter than root_real.
         try:
             common = os.path.commonpath([root_real, path_real])
         except ValueError:
-            # ValueError: пути на разных дисках (Windows) или mix abs/rel.
+            # ValueError: paths on different drives (Windows) or mix of abs/rel.
             raise SecurityError(
                 f"_uri_to_path: path {path_real!r} is outside workspace "
                 f"root {root_real!r} (cannot compute common path)"
@@ -91,19 +91,19 @@ def _path_to_uri(path: str) -> str:
 
 
 def _normalize_path(path: str) -> str:
-    """P0-6: единая нормализация путей для ключей _latest_diagnostics_by_path.
+    """P0-6: unified path normalization for _latest_diagnostics_by_path keys.
 
-    Раньше в разных местах использовались разные нормализации:
-    - os.path.normcase(os.path.abspath(...)) — в run_full_project_diagnostics (L127),
+    Previously different places used different normalizations:
+    - os.path.normcase(os.path.abspath(...)) — in run_full_project_diagnostics (L127),
       run_single_file_diagnostics (L155), did_save (L219), document_symbols (L673)
-    - os.path.normcase(_uri_to_path(uri)) без abspath — в code_action (L237)
+    - os.path.normcase(_uri_to_path(uri)) without abspath — in code_action (L237)
 
-    Из-за этого на относительных путях lookup в _latest_diagnostics_by_path
-    не находил diagnostics, и срабатывал небезопасный basename-fallback,
-    который в multi-module проектах мог выбрать QuickFix из неправильного
-    файла (например, game/script.rpy и mods/script.rpy коллайдили).
+    Because of this, lookups in _latest_diagnostics_by_path on relative paths
+    did not find diagnostics, and the unsafe basename-fallback was triggered,
+    which in multi-module projects could pick a QuickFix from the wrong file
+    (e.g., game/script.rpy and mods/script.rpy would collide).
 
-    Теперь все 4 места используют _normalize_path — единый контракт.
+    Now all 4 places use _normalize_path — a single contract.
     """
     return os.path.normcase(os.path.abspath(path))
 
@@ -115,18 +115,18 @@ def _get_workspace_root(ls: LanguageServer, fallback_file_path: str) -> str:
 
 
 class _RWLock:
-    """Reader-writer lock с preference писателям.
+    """Reader-writer lock with writer preference.
 
-    Введено в 0.6.0-12 (P1'-9). Раньше все handler'ы брали эксклюзивный
-    threading.Lock — из-за этого параллельные read-only вызовы (definition,
-    hover, completions) сериализовались. RWLock позволяет нескольким
-    reader'ам работать параллельно, write-lock эксклюзивен.
+    Introduced in 0.6.0-12 (P1'-9). Previously all handlers took an exclusive
+    threading.Lock — because of this, parallel read-only calls (definition,
+    hover, completions) were serialized. RWLock allows multiple readers to
+    work in parallel; the write lock is exclusive.
 
-    Preference писателям: если есть ожидающий writer, новые reader'ы ждут.
-    Это предотвращает starvation writer'ов при постоянном потоке reader'ов
-    (что типично для LSP — клиент шлёт hover/completions постоянно).
+    Writer preference: if there is a waiting writer, new readers wait.
+    This prevents writer starvation under a constant stream of readers
+    (which is typical for LSP — the client sends hover/completions continuously).
 
-    Реализация через Condition + 2 счётчика. Без внешних зависимостей.
+    Implemented with a Condition + 2 counters. No external dependencies.
     """
 
     def __init__(self):
@@ -137,7 +137,7 @@ class _RWLock:
 
     def acquire_read(self) -> None:
         with self._cond:
-            # Ждём, пока активен writer ИЛИ есть ожидающий writer (preference)
+            # Wait while a writer is active OR there is a waiting writer (preference)
             while self._writer_active or self._writers_waiting > 0:
                 self._cond.wait()
             self._readers += 1
@@ -163,7 +163,7 @@ class _RWLock:
             self._writer_active = False
             self._cond.notify_all()
 
-    # Context managers для удобства
+    # Context managers for convenience
     def read_lock(self):
         import contextlib
 
@@ -192,28 +192,28 @@ class _RWLock:
 
 
 class SenpyLSPServer:
-    """Контейнер для LSP-серверного state.
+    """Container for LSP server state.
 
-    Введено в 0.6.0-9 (Фаза 5). Пока что содержит только stateful методы —
-    module-level globals (_active_analyzer, _is_initialized, ...) остаются
-    для back-compat с тестами и handlers. В 0.7.0 module-level state будет
-    убран, и все handler'ы будут обращаться к singleton _lsp_server.
+    Introduced in 0.6.0-9 (Phase 5). For now it only contains stateful methods —
+    module-level globals (_active_analyzer, _is_initialized, ...) remain
+    for back-compat with tests and handlers. In 0.7.0 the module-level state will
+    be removed, and all handlers will address the singleton _lsp_server.
 
-    P1'-7: 9 module globals → class fields (постепенный перенос)
-    P1'-8: per-URI debounce dict[str, Timer] (в 0.6.0-11) ✅
-    P1'-9: reader-writer lock для analysis_lock (в 0.6.0-12) ✅
+    P1'-7: 9 module globals → class fields (gradual migration)
+    P1'-8: per-URI debounce dict[str, Timer] (in 0.6.0-11) ✅
+    P1'-9: reader-writer lock for analysis_lock (in 0.6.0-12) ✅
     """
 
     def __init__(self):
         # P1'-8: per-URI debounce timers.
         self.change_timers: dict[str, threading.Timer] = {}
-        # P1'-9: reader-writer lock для analysis state.
-        # Заменяет module-level _analysis_lock в новой архитектуре.
-        # Module-level _analysis_lock остаётся для back-compat (см. ниже).
+        # P1'-9: reader-writer lock for analysis state.
+        # Replaces the module-level _analysis_lock in the new architecture.
+        # Module-level _analysis_lock remains for back-compat (see below).
         self.rw_lock = _RWLock()
 
 
-# Singleton-инстанс для будущего использования.
+# Singleton instance for future use.
 _lsp_server = SenpyLSPServer()
 
 
@@ -226,11 +226,11 @@ _active_analyzer: SenpyAnalyzer | None = None
 _current_workspace_root: str | None = None
 _is_initialized: bool = False
 
-# UX: snapshot labels/screens/transforms/images для autocomplete/rename/hover.
-# После run() делаем shallow copy этих dict'ов, чтобы analyze_file_only (вызывается
-# при did_change) не выкидывал labels из других файлов из _active_analyzer.labels.
-# Без snapshot'а autocomplete показывает только labels текущего файла —
-# баг "jump в day1a.rpy не предлагает labels из day10a.rpy".
+# UX: snapshot of labels/screens/transforms/images for autocomplete/rename/hover.
+# After run() we make a shallow copy of these dicts so that analyze_file_only (called
+# on did_change) does not drop labels from other files out of _active_analyzer.labels.
+# Without the snapshot, autocomplete only shows labels from the current file —
+# the "jump in day1a.rpy doesn't suggest labels from day10a.rpy" bug.
 _symbol_snapshot: dict[str, dict] = {
     "labels": {},
     "screens": {},
@@ -242,11 +242,11 @@ _symbol_snapshot: dict[str, dict] = {
 
 
 def _refresh_symbol_snapshot() -> None:
-    """Обновляет snapshot labels/screens/transforms/... из _active_analyzer.
+    """Refresh the snapshot of labels/screens/transforms/... from _active_analyzer.
 
-    Вызывается после каждого run() (full project scan). Snapshot используется
-    autocomplete/rename/prepare_rename/hover, чтобы они видели ВСЕ символы
-    проекта, даже если analyze_file_only очистил _active_analyzer.labels.
+    Called after every run() (full project scan). The snapshot is used by
+    autocomplete/rename/prepare_rename/hover so they see ALL symbols of the
+    project, even if analyze_file_only cleared _active_analyzer.labels.
     """
     if _active_analyzer is None:
         return
@@ -294,29 +294,28 @@ def _create_lsp_diagnostic(diag: Diagnostic) -> lsp.Diagnostic:
 
 
 def _with_analysis_lock(func):
-    """Читающие обработчики обязаны ждать _analysis_lock.
+    """Reading handlers must wait for _analysis_lock.
 
-    Писатели (run_full_project_diagnostics / run_single_file_diagnostics)
-    мутируют реестры _active_analyzer только под локом; без него читатели
-    ловят RuntimeError: dictionary changed size during iteration и видят
-    половинные снапшоты. Сигнатура wrapper — строго (ls, params): pygls
-    инспектирует первый параметр (wrap_with_server) и решает, передавать ли
-    серверный инстанс первым аргументом.
+    Writers (run_full_project_diagnostics / run_single_file_diagnostics)
+    mutate the _active_analyzer registries only under the lock; without it, readers
+    catch RuntimeError: dictionary changed size during iteration and see
+    half-written snapshots. The wrapper signature is strictly (ls, params): pygls
+    inspects the first parameter (wrap_with_server) and decides whether to pass
+    the server instance as the first argument.
 
-    P1'-9 (0.6.0-12): используем reader-writer lock. Handler'ы — это
-    read-only операции (они читают _active_analyzer.labels, _symbol_snapshot,
-    и т.д.). Поэтому берём read lock — несколько handler'ов могут работать
-    параллельно. Писатели (run_full_project_diagnostics) берут write lock
-    эксклюзивно.
+    P1'-9 (0.6.0-12): we use a reader-writer lock. Handlers are read-only
+    operations (they read _active_analyzer.labels, _symbol_snapshot, etc.).
+    Therefore we take a read lock — multiple handlers can work in parallel.
+    Writers (run_full_project_diagnostics) take a write lock exclusively.
 
-    Module-level _analysis_lock остаётся как запасной — берём его тоже,
-    для back-compat со старыми тестами, которые могут проверять состояние
-    lock'а напрямую. В 0.7.0 будет убран.
+    The module-level _analysis_lock remains as a fallback — we also take it,
+    for back-compat with old tests that may check the lock state directly.
+    It will be removed in 0.7.0.
     """
 
     @functools.wraps(func)
     def wrapper(ls, params):
-        # P1'-9: берём read lock + старый эксклюзивный lock для back-compat
+        # P1'-9: take the read lock + the old exclusive lock for back-compat
         _lsp_server.rw_lock.acquire_read()
         try:
             with _analysis_lock:
@@ -328,10 +327,10 @@ def _with_analysis_lock(func):
 
 
 def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
-    """Полное сканирование проекта в одном потоке с блокировкой от параллельных запусков.
+    """Full project scan in a single thread with protection against parallel runs.
 
-    P1'-9 (0.6.0-12): берёт write lock — эксклюзивный доступ к state.
-    Пока работает writer, ни один reader (handler) не запустится.
+    P1'-9 (0.6.0-12): takes the write lock — exclusive access to state.
+    While a writer runs, no reader (handler) will start.
     """
     global \
         _previously_diagnosed_uris, \
@@ -369,8 +368,8 @@ def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
 
             result = _active_analyzer.run(quiet=True)
             _is_initialized = True
-            # UX: snapshot символов для autocomplete/rename/hover.
-            # Должен быть ПОСЛЕ run(), но ДО проверки diagnostics.
+            # UX: snapshot of symbols for autocomplete/rename/hover.
+            # Must be AFTER run() but BEFORE the diagnostics check.
             _refresh_symbol_snapshot()
 
             files_diags: dict[str, list[lsp.Diagnostic]] = {}
@@ -380,10 +379,10 @@ def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
                 diag_uri = _path_to_uri(diag.file_path)
                 lsp_diag = _create_lsp_diagnostic(diag)
                 files_diags.setdefault(diag_uri, []).append(lsp_diag)
-                norm_file = _normalize_path(diag.file_path)  # P0-6: единая нормализация
+                norm_file = _normalize_path(diag.file_path)  # P0-6: unified normalization
                 new_diagnostics_by_path.setdefault(norm_file, []).append((diag, lsp_diag))
 
-            # Атомарно обновляем общий кэш (без .clear())
+            # Atomically update the shared cache (without .clear())
             _latest_diagnostics_by_path = new_diagnostics_by_path
 
             current_uris = set(files_diags.keys())
@@ -403,10 +402,10 @@ def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
 
 
 def run_single_file_diagnostics(ls: LanguageServer, uri: str, content: str):
-    """Сверхбыстрый анализ одного файла на лету (15 мс).
+    """Ultra-fast on-the-fly analysis of a single file (15 ms).
 
-    P1'-9 (0.6.0-12): берёт write lock — мутирует _active_analyzer.in_memory_files
-    и _latest_diagnostics_by_path.
+    P1'-9 (0.6.0-12): takes the write lock — mutates _active_analyzer.in_memory_files
+    and _latest_diagnostics_by_path.
     """
     if _active_analyzer is None or not _is_initialized:
         schedule_full_diagnostics(ls, uri)
@@ -416,7 +415,7 @@ def run_single_file_diagnostics(ls: LanguageServer, uri: str, content: str):
     try:
         with _analysis_lock:
             file_path = _uri_to_path(uri)
-            norm_file = _normalize_path(file_path)  # P0-6: единая нормализация
+            norm_file = _normalize_path(file_path)  # P0-6: unified normalization
 
             _active_analyzer.in_memory_files[norm_file] = content
             diags = _active_analyzer.analyze_file_only(file_path)
@@ -438,7 +437,7 @@ def run_single_file_diagnostics(ls: LanguageServer, uri: str, content: str):
 
 
 def schedule_full_diagnostics(ls: LanguageServer, uri: str):
-    """Дебаунс для полного сканирования (гасит пачку одновременных didOpen)."""
+    """Debounce for the full scan (suppresses a batch of simultaneous didOpen)."""
     global _full_timer
     if _full_timer is not None:
         _full_timer.cancel()
@@ -448,15 +447,15 @@ def schedule_full_diagnostics(ls: LanguageServer, uri: str):
 
 
 def schedule_change_diagnostics(ls: LanguageServer, uri: str):
-    """Дебаунс при наборе текста.
+    """Debounce while typing.
 
-    P1'-8 (0.6.0-11): per-URI debounce. Раньше был один общий _change_timer
-    на все URI — при редактировании 2+ файлов одновременно таймеры
-    конфликтовали (последний редактируемый файл отменял pending analysis
-    других файлов). Теперь каждый URI имеет свой timer в _lsp_server.change_timers.
+    P1'-8 (0.6.0-11): per-URI debounce. Previously there was a single shared
+    _change_timer for all URIs — when editing 2+ files at once, the timers
+    conflicted (the last-edited file cancelled the pending analysis of other
+    files). Now each URI has its own timer in _lsp_server.change_timers.
 
-    _change_timer (module-level) оставлен для back-compat с тестами, которые
-    проверяют cancel-логику. В 0.7.0 будет убран.
+    _change_timer (module-level) is kept for back-compat with tests that
+    verify cancel logic. It will be removed in 0.7.0.
     """
     global _change_timer
 
@@ -467,9 +466,9 @@ def schedule_change_diagnostics(ls: LanguageServer, uri: str):
 
     doc = ls.workspace.get_text_document(uri)
     if not doc:
-        # Если документ не найден — убираем pending timer для этого URI
+        # If the document is not found — remove the pending timer for this URI
         _lsp_server.change_timers.pop(uri, None)
-        # Back-compat: сбрасываем и module-level _change_timer (если он был для этого URI)
+        # Back-compat: also reset the module-level _change_timer (if it was for this URI)
         if _change_timer is not None:
             _change_timer.cancel()
             _change_timer = None
@@ -478,14 +477,14 @@ def schedule_change_diagnostics(ls: LanguageServer, uri: str):
     new_timer = threading.Timer(0.15, run_single_file_diagnostics, args=[ls, uri, doc.source])
     new_timer.daemon = True
     _lsp_server.change_timers[uri] = new_timer
-    # Back-compat: дублируем в module-level _change_timer для тестов, проверяющих cancel
+    # Back-compat: duplicate into the module-level _change_timer for tests checking cancel
     _change_timer = new_timer
     new_timer.start()
 
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
 def did_open(ls: LanguageServer, params: lsp.DidOpenTextDocumentParams):
-    """0.6.0-3: делегирует в handlers.text_document."""
+    """0.6.0-3: delegates to handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_open as _impl
 
     _impl(ls, params)
@@ -493,7 +492,7 @@ def did_open(ls: LanguageServer, params: lsp.DidOpenTextDocumentParams):
 
 @server.feature(lsp.WORKSPACE_DID_CHANGE_WATCHED_FILES)
 def did_change_watched_files(ls: LanguageServer, params: lsp.DidChangeWatchedFilesParams):
-    """0.6.0-3: делегирует в handlers.text_document."""
+    """0.6.0-3: delegates to handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_change_watched_files as _impl
 
     _impl(ls, params)
@@ -501,7 +500,7 @@ def did_change_watched_files(ls: LanguageServer, params: lsp.DidChangeWatchedFil
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
 def did_save(ls: LanguageServer, params: lsp.DidSaveTextDocumentParams):
-    """0.6.0-3: делегирует в handlers.text_document."""
+    """0.6.0-3: delegates to handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_save as _impl
 
     _impl(ls, params)
@@ -509,7 +508,7 @@ def did_save(ls: LanguageServer, params: lsp.DidSaveTextDocumentParams):
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_CLOSE)
 def did_close(ls: LanguageServer, params: lsp.DidCloseTextDocumentParams):
-    """0.6.0-3: делегирует в handlers.text_document."""
+    """0.6.0-3: delegates to handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_close as _impl
 
     _impl(ls, params)
@@ -517,7 +516,7 @@ def did_close(ls: LanguageServer, params: lsp.DidCloseTextDocumentParams):
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
 def did_change(ls: LanguageServer, params: lsp.DidChangeTextDocumentParams):
-    """0.6.0-3: делегирует в handlers.text_document."""
+    """0.6.0-3: delegates to handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_change as _impl
 
     _impl(ls, params)
@@ -529,7 +528,7 @@ def did_change(ls: LanguageServer, params: lsp.DidChangeTextDocumentParams):
 )
 @_with_analysis_lock
 def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.CodeAction]:
-    """0.6.0: делегирует в handlers.diagnostics."""
+    """0.6.0: delegates to handlers.diagnostics."""
     from senpy.lsp.handlers.diagnostics import code_action as _impl
 
     return _impl(ls, params)
@@ -538,7 +537,7 @@ def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.Co
 @server.feature(lsp.TEXT_DOCUMENT_COMPLETION)
 @_with_analysis_lock
 def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.CompletionList:
-    """0.6.0: делегирует в handlers.completion."""
+    """0.6.0: delegates to handlers.completion."""
     from senpy.lsp.handlers.completion import completions as _impl
 
     return _impl(ls, params)
@@ -547,7 +546,7 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
 @server.feature(lsp.TEXT_DOCUMENT_DEFINITION)
 @_with_analysis_lock
 def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location | None:
-    """0.6.0-4: делегирует в handlers.navigation."""
+    """0.6.0-4: delegates to handlers.navigation."""
     from senpy.lsp.handlers.navigation import definition as _impl
 
     return _impl(ls, params)
@@ -556,7 +555,7 @@ def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location
 @server.feature(lsp.TEXT_DOCUMENT_REFERENCES)
 @_with_analysis_lock
 def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Location] | None:
-    """0.6.0-4: делегирует в handlers.navigation."""
+    """0.6.0-4: delegates to handlers.navigation."""
     from senpy.lsp.handlers.navigation import references as _impl
 
     return _impl(ls, params)
@@ -565,7 +564,7 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
 @server.feature(lsp.TEXT_DOCUMENT_HOVER)
 @_with_analysis_lock
 def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
-    """0.6.0: делегирует в handlers.hover."""
+    """0.6.0: delegates to handlers.hover."""
     from senpy.lsp.handlers.hover import hover as _impl
 
     return _impl(ls, params)
@@ -576,128 +575,128 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
 def document_symbols(
     ls: LanguageServer, params: lsp.DocumentSymbolParams
 ) -> list[lsp.DocumentSymbol]:
-    """0.6.0-4: делегирует в handlers.navigation."""
+    """0.6.0-4: delegates to handlers.navigation."""
     from senpy.lsp.handlers.navigation import document_symbols as _impl
 
     return _impl(ls, params)
 
 
 # =============================================================================
-# UX-1: textDocument/foldingRange — сворачивание label/screen/menu/init блоков
+# UX-1: textDocument/foldingRange — fold label/screen/menu/init blocks
 # =============================================================================
-# Позволяет в VS Code сворачивать (fold) блоки кода:
-# - label X: ... (до следующего label или конца файла)
+# Allows VS Code to fold code blocks:
+# - label X: ... (until the next label or end of file)
 # - screen X(): ...
 # - menu: ...
 # - init python: ...
 # - transform X: ...
 # - python: ...
 #
-# Алгоритм: проходим по строкам, отслеживаем отступы. При встрече scope-opening
-# ключевого слова — открываем folding range. Закрываем при уменьшении отступа
-# до того же уровня или ниже.
+# Algorithm: walk through lines, track indentation. On a scope-opening
+# keyword — open a folding range. Close when indentation decreases
+# to the same level or below.
 @server.feature(lsp.TEXT_DOCUMENT_FOLDING_RANGE)
 @_with_analysis_lock
 def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[lsp.FoldingRange]:
-    """0.6.0: делегирует в handlers.workspace."""
+    """0.6.0: delegates to handlers.workspace."""
     from senpy.lsp.handlers.workspace import folding_range as _impl
 
     return _impl(ls, params)
 
 
 # =============================================================================
-# UX: textDocument/prepareRename — preview перед F2 rename
+# UX: textDocument/prepareRename — preview before F2 rename
 # =============================================================================
-# VS Code вызывает prepareRename перед самим rename, чтобы:
-# 1. Проверить, что под курсором валидный символ для переименования
-# 2. Показать пользователю Range слова, которое будет переименовано
-# 3. Разрешить отмену до применения изменений (preview mode)
+# VS Code calls prepareRename before the actual rename, to:
+# 1. Check that there is a valid symbol for renaming under the cursor
+# 2. Show the user the Range of the word that will be renamed
+# 3. Allow cancellation before applying changes (preview mode)
 #
-# Если вернуть None — VS Code покажет "The element can't be renamed" и
-# не даст нажать F2.
+# If None is returned — VS Code shows "The element can't be renamed" and
+# does not let the user press F2.
 #
-# Алгоритм: находим слово под курсором. Если это label (есть в
-# _active_analyzer.labels) — возвращаем его Range. Иначе None.
+# Algorithm: find the word under the cursor. If it's a label (present in
+# _active_analyzer.labels) — return its Range. Otherwise None.
 @server.feature(lsp.TEXT_DOCUMENT_PREPARE_RENAME)
 @_with_analysis_lock
 def prepare_rename(
     ls: LanguageServer, params: lsp.PrepareRenameParams
 ) -> lsp.Range | lsp.PrepareRenameResult | None:
-    """0.6.0-4: делегирует в handlers.navigation."""
+    """0.6.0-4: delegates to handlers.navigation."""
     from senpy.lsp.handlers.navigation import prepare_rename as _impl
 
     return _impl(ls, params)
 
 
 # =============================================================================
-# UX-2: textDocument/rename — переименование меток
+# UX-2: textDocument/rename — rename labels
 # =============================================================================
-# Переименовывает label во всех местах:
-# - Объявление (label X:)
-# - Все jump X
-# - Все call X
+# Renames the label everywhere it appears:
+# - Declaration (label X:)
+# - All `jump X`
+# - All `call X`
 #
-# Использует jump_sources обратный индекс из analyzer.
-# Возвращает WorkspaceEdit с изменениями для всех файлов проекта.
+# Uses the jump_sources reverse index from the analyzer.
+# Returns a WorkspaceEdit with changes for all project files.
 #
-# UX: prepare_provider=True — VS Code вызывает prepareRename перед F2,
-# чтобы показать preview и разрешить отмену до применения.
+# UX: prepare_provider=True — VS Code calls prepareRename before F2,
+# to show a preview and allow cancellation before applying.
 @server.feature(
     lsp.TEXT_DOCUMENT_RENAME,
     lsp.RenameOptions(prepare_provider=True),
 )
 @_with_analysis_lock
 def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | None:
-    """0.6.0-4: делегирует в handlers.navigation."""
+    """0.6.0-4: delegates to handlers.navigation."""
     from senpy.lsp.handlers.navigation import rename as _impl
 
     return _impl(ls, params)
 
 
 # =============================================================================
-# UX-3: workspace/symbol — глобальный поиск символов (Ctrl+T)
+# UX-3: workspace/symbol — global symbol search (Ctrl+T)
 # =============================================================================
-# Возвращает все label'ы, screen'ы, transform'ы в проекте.
-# VS Code: Ctrl+T → вводишь имя → переход к определению.
+# Returns all labels, screens, transforms in the project.
+# VS Code: Ctrl+T → type a name → jump to its definition.
 #
-# Поддерживает фильтрацию по query (case-insensitive substring match).
-# Если query пустой — возвращает все символы.
+# Supports query filtering (case-insensitive substring match).
+# If the query is empty — returns all symbols.
 @server.feature(lsp.WORKSPACE_SYMBOL)
 @_with_analysis_lock
 def workspace_symbol(
     ls: LanguageServer, params: lsp.WorkspaceSymbolParams
 ) -> list[lsp.WorkspaceSymbol]:
-    """0.6.0: делегирует в handlers.workspace."""
+    """0.6.0: delegates to handlers.workspace."""
     from senpy.lsp.handlers.workspace import workspace_symbol as _impl
 
     return _impl(ls, params)
 
 
 # =============================================================================
-# UX-12: initialized — запуск full project scan сразу после инициализации
+# UX-12: initialized — start a full project scan right after initialization
 # =============================================================================
-# Без этого handler'а hover/completion не работают первые 300ms после открытия
-# файла (до первого did_save). initialized запускает scan немедленно.
+# Without this handler, hover/completion don't work for the first 300ms after
+# opening a file (until the first did_save). initialized starts the scan immediately.
 @server.feature(lsp.INITIALIZED)
 def initialized(ls: LanguageServer, params: lsp.InitializedParams) -> None:
-    """0.6.0: делегирует в handlers.workspace."""
+    """0.6.0: delegates to handlers.workspace."""
     from senpy.lsp.handlers.workspace import initialized as _impl
 
     return _impl(ls, params)
 
 
 # =============================================================================
-# UX-5: documentHighlight — подсветка всех упоминаний слова в файле
+# UX-5: documentHighlight — highlight all occurrences of a word in the file
 # =============================================================================
-# VS Code: курсор на переменной/метке → все её упоминания в файле подсвечиваются.
-# Ищет слово в: labels, screens, transforms, variables (declared_symbols).
-# Возвращает DocumentHighlight с kind: Write (объявление) / Read (использование).
+# VS Code: cursor on a variable/label → all its occurrences in the file are highlighted.
+# Looks up the word in: labels, screens, transforms, variables (declared_symbols).
+# Returns DocumentHighlight with kind: Write (declaration) / Read (usage).
 @server.feature(lsp.TEXT_DOCUMENT_DOCUMENT_HIGHLIGHT)
 @_with_analysis_lock
 def document_highlight(
     ls: LanguageServer, params: lsp.DocumentHighlightParams
 ) -> list[lsp.DocumentHighlight]:
-    """0.6.0: делегирует в handlers.workspace."""
+    """0.6.0: delegates to handlers.workspace."""
     from senpy.lsp.handlers.workspace import document_highlight as _impl
 
     return _impl(ls, params)
@@ -716,7 +715,7 @@ def document_highlight(
 def document_color(
     ls: LanguageServer, params: lsp.DocumentColorParams
 ) -> list[lsp.ColorInformation]:
-    """0.6.0 Под-спринт 3: делегирует в handlers.diagnostics."""
+    """0.6.0 Sub-sprint 3: delegates to handlers.diagnostics."""
     from senpy.lsp.handlers.diagnostics import document_color as _impl
 
     return _impl(ls, params)
@@ -727,7 +726,7 @@ def document_color(
 def color_presentation(
     ls: LanguageServer, params: lsp.ColorPresentationParams
 ) -> list[lsp.ColorPresentation]:
-    """0.6.0 Под-спринт 3: делегирует в handlers.diagnostics."""
+    """0.6.0 Sub-sprint 3: delegates to handlers.diagnostics."""
     from senpy.lsp.handlers.diagnostics import color_presentation as _impl
 
     return _impl(ls, params)
@@ -736,12 +735,12 @@ def color_presentation(
 # =============================================================================
 # textDocument/formatting + rangeFormatting — Shift+Alt+F / Ctrl+K Ctrl+F
 # =============================================================================
-# Integrates senpy.formatter (from Под-спринт 1) into VS Code.
+# Integrates senpy.formatter (from Sub-sprint 1) into VS Code.
 # Shift+Alt+F → formatting() — formats whole document
 # Ctrl+K Ctrl+F → range_formatting() — formats selected range
 @server.feature(lsp.TEXT_DOCUMENT_FORMATTING)
 def formatting(ls: LanguageServer, params: lsp.DocumentFormattingParams) -> list[lsp.TextEdit]:
-    """0.6.0 Под-спринт 3: делегирует в handlers.diagnostics."""
+    """0.6.0 Sub-sprint 3: delegates to handlers.diagnostics."""
     from senpy.lsp.handlers.diagnostics import formatting as _impl
 
     return _impl(ls, params)
@@ -751,7 +750,7 @@ def formatting(ls: LanguageServer, params: lsp.DocumentFormattingParams) -> list
 def range_formatting(
     ls: LanguageServer, params: lsp.DocumentRangeFormattingParams
 ) -> list[lsp.TextEdit]:
-    """0.6.0 Под-спринт 3: делегирует в handlers.diagnostics."""
+    """0.6.0 Sub-sprint 3: delegates to handlers.diagnostics."""
     from senpy.lsp.handlers.diagnostics import range_formatting as _impl
 
     return _impl(ls, params)
@@ -765,7 +764,7 @@ def range_formatting(
 @server.feature(lsp.TEXT_DOCUMENT_SIGNATURE_HELP)
 @_with_analysis_lock
 def signature_help(ls: LanguageServer, params: lsp.SignatureHelpParams) -> lsp.SignatureHelp | None:
-    """0.6.0 Под-спринт 3b: делегирует в handlers.completion."""
+    """0.6.0 Sub-sprint 3b: delegates to handlers.completion."""
     from senpy.lsp.handlers.completion import signature_help as _impl
 
     return _impl(ls, params)
@@ -781,7 +780,7 @@ def signature_help(ls: LanguageServer, params: lsp.SignatureHelpParams) -> lsp.S
 def prepare_call_hierarchy(
     ls: LanguageServer, params: lsp.CallHierarchyPrepareParams
 ) -> list[lsp.CallHierarchyItem]:
-    """0.6.0 Под-спринт 3b: делегирует в handlers.navigation."""
+    """0.6.0 Sub-sprint 3b: delegates to handlers.navigation."""
     from senpy.lsp.handlers.navigation import prepare_call_hierarchy as _impl
 
     return _impl(ls, params)
@@ -792,7 +791,7 @@ def prepare_call_hierarchy(
 def incoming_calls(
     ls: LanguageServer, params: lsp.CallHierarchyIncomingCallsParams
 ) -> list[lsp.CallHierarchyIncomingCall]:
-    """0.6.0 Под-спринт 3b: делегирует в handlers.navigation."""
+    """0.6.0 Sub-sprint 3b: delegates to handlers.navigation."""
     from senpy.lsp.handlers.navigation import incoming_calls as _impl
 
     return _impl(ls, params)
@@ -803,7 +802,7 @@ def incoming_calls(
 def outgoing_calls(
     ls: LanguageServer, params: lsp.CallHierarchyOutgoingCallsParams
 ) -> list[lsp.CallHierarchyOutgoingCall]:
-    """0.6.0 Под-спринт 3b: делегирует в handlers.navigation."""
+    """0.6.0 Sub-sprint 3b: delegates to handlers.navigation."""
     from senpy.lsp.handlers.navigation import outgoing_calls as _impl
 
     return _impl(ls, params)

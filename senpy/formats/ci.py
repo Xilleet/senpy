@@ -45,7 +45,7 @@ jobs:
 
 
 def find_repo_root(start_path: str) -> str:
-    """Определяет корень репозитория по наличию .git или расположению папки game/."""
+    """Determines the repository root by the presence of .git or the location of the game/ folder."""
     abs_path = os.path.abspath(start_path)
     curr = abs_path
     while curr and os.path.dirname(curr) != curr:
@@ -60,8 +60,8 @@ def find_repo_root(start_path: str) -> str:
 
 def init_ci_workflow(target_path: str) -> tuple[str, bool]:
     """
-    Создаёт файл .github/workflows/senpy.yml.
-    Возвращает (путь_к_файлу, был_ли_создан).
+    Creates the .github/workflows/senpy.yml file.
+    Returns (file_path, was_created).
     """
     repo_root = find_repo_root(target_path)
     workflows_dir = os.path.join(repo_root, ".github", "workflows")
@@ -69,7 +69,7 @@ def init_ci_workflow(target_path: str) -> tuple[str, bool]:
 
     workflow_file = os.path.join(workflows_dir, "senpy.yml")
 
-    # Если в корне есть папка game/, сканируем её, иначе корень
+    # If the root has a game/ folder, scan it; otherwise scan the root
     scan_target = "game/" if os.path.isdir(os.path.join(repo_root, "game")) else "."
     content = WORKFLOW_TEMPLATE.format(scan_target=scan_target)
 

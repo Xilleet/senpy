@@ -1,4 +1,4 @@
-"""base — extracted from checkers.py (Фаза 2, 0.5.4)."""
+"""base — extracted from checkers.py (Phase 2, 0.5.4)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from senpy.rules.flow import FlowBranch
 
 
 class IfBlockContext:
-    """Контекст активного блока if/elif/else в анализе потока управления."""
+    """Context of an active if/elif/else block in control flow analysis."""
 
     def __init__(self, indent: int, line: int):
         self.indent = indent
@@ -31,5 +31,5 @@ class BaseChecker:
         noqa_map: dict[int, set[str] | None],
         lines: list[str],
     ) -> tuple[str, bool]:
-        """Возвращает (обновленная_строка, был_ли_модифицирован_файл)."""
+        """Returns (updated_line, whether_file_was_modified)."""
         return raw_line, False

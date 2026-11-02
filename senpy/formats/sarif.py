@@ -8,7 +8,7 @@ from senpy.rules.rules_info import RULES_DATABASE
 
 
 def generate_sarif(diagnostics: list[Diagnostic], project_path: str) -> str:
-    """Генерирует отчёт в формате SARIF v2.1.0 для GitHub Code Scanning и других CI/CD платформ."""
+    """Generates a SARIF v2.1.0 report for GitHub Code Scanning and other CI/CD platforms."""
 
     sarif = {
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
@@ -27,7 +27,7 @@ def generate_sarif(diagnostics: list[Diagnostic], project_path: str) -> str:
         ],
     }
 
-    # 1. Заполняем словарь правил (чтобы GitHub мог показать подробное описание ошибки)
+    # 1. Populate the rules dictionary (so GitHub can show a detailed error description)
     rules_added = set()
     for rule_id, info in RULES_DATABASE.items():
         sarif["runs"][0]["tool"]["driver"]["rules"].append(
@@ -40,19 +40,19 @@ def generate_sarif(diagnostics: list[Diagnostic], project_path: str) -> str:
         )
         rules_added.add(rule_id)
 
-    # Карта маппинга строгости Senpy -> SARIF
+    # Senpy severity -> SARIF mapping
     severity_map = {"ERROR": "error", "WARNING": "warning", "HINT": "note", "INFO": "note"}
 
-    # 2. Заполняем массив найденных проблем
+    # 2. Populate the array of found issues
     for diag in diagnostics:
-        # На всякий случай, если появилось новое правило, которого нет в базе
+        # Just in case a new rule appeared that is not in the database
         if diag.code not in rules_added:
             sarif["runs"][0]["tool"]["driver"]["rules"].append(
                 {"id": diag.code, "shortDescription": {"text": f"Rule {diag.code}"}}
             )
             rules_added.add(diag.code)
 
-        # Пути в SARIF должны быть относительными корня репозитория (project_path)
+        # Paths in SARIF must be relative to the repository root (project_path)
         try:
             rel_path = os.path.relpath(diag.file_path, project_path)
         except ValueError:
@@ -60,7 +60,7 @@ def generate_sarif(diagnostics: list[Diagnostic], project_path: str) -> str:
 
         uri = rel_path.replace("\\", "/")
 
-        # SARIF использует 1-based нумерацию для строк и колонок
+        # SARIF uses 1-based numbering for lines and columns
         start_col = max(1, diag.col + 1)
         end_col = max(1, diag.end_col + 1) if diag.end_col > diag.col else start_col
 

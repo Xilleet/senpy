@@ -26,7 +26,7 @@ from pathlib import Path
 from senpy.core.exceptions import PluginError
 
 # =============================================================================
-# API version (unchanged from Заход 1)
+# API version (unchanged from Stage 1)
 # =============================================================================
 
 PLUGIN_API_VERSION = "1.0"
@@ -56,7 +56,7 @@ class ApiVersionMismatchError(PluginError):
 def check_api_version(plugin_api_version: str, *, raise_on_mismatch: bool = False) -> bool:
     """Check if plugin's api_version is compatible with Senpy's.
 
-    See module docstring in Заход 1 for compatibility rules.
+    See module docstring in Stage 1 for compatibility rules.
     """
     if not _RE_API_VERSION.match(plugin_api_version):
         if raise_on_mismatch:

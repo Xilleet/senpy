@@ -12,16 +12,17 @@ from senpy.core.logging import get_logger
 
 _logger = get_logger("cache")
 
-# CachedFileEntry и CacheManifest определены ЗДЕСЬ (в cache.py), а не в
-# отдельном cache_manifest.py. Причина: Python 3.14 изменил dataclasses._is_type(),
-# который лезет в sys.modules при декорации @dataclass. Если dataclass'ы
-# в отдельном модуле, который импортируется во время загрузки __init__.py,
-# Python 3.14 падает с AttributeError: 'NoneType' object has no attribute '__dict__'.
-# Инлайнинг в cache.py решает проблему — нет отдельного модуля для импорта.
+# CachedFileEntry and CacheManifest are defined HERE (in cache.py), not in a
+# separate cache_manifest.py. Reason: Python 3.14 changed dataclasses._is_type(),
+# which reaches into sys.modules while decorating a @dataclass. If the dataclasses
+# are in a separate module imported during __init__.py loading, Python 3.14
+# crashes with AttributeError: 'NoneType' object has no attribute '__dict__'.
+# Inlining into cache.py solves the problem — there is no separate module to import.
 #
-# Phase 1.6 (0.5.3) разорвала цикл analyzer ↔ cache через вынесение dataclass'ов.
-# В 0.6.1 мы возвращаем их обратно, т.к. цикл уже разорван через DiagnosticSink
-# Protocol (Phase 1.3) и TYPE_CHECKING guard. Вынесение больше не нужно.
+# Phase 1.6 (0.5.3) broke the analyzer ↔ cache cycle by extracting the dataclasses.
+# In 0.6.1 we put them back, because the cycle is already broken via the
+# DiagnosticSink Protocol (Phase 1.3) and a TYPE_CHECKING guard. The extraction is
+# no longer needed.
 
 if TYPE_CHECKING:
     from senpy.core.analyzer import SenpyAnalyzer
@@ -30,7 +31,7 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class CachedFileEntry:
-    """Метаданные одного закэшированного файла (для Tier 1 cache)."""
+    """Metadata of a single cached file (for the Tier 1 cache)."""
 
     mtime: float
     size: int
@@ -44,7 +45,7 @@ class CachedFileEntry:
 
 @dataclass(slots=True)
 class CacheManifest:
-    """Полный манифест кэша: версия Senpy + global symbol hash + все файлы."""
+    """Full cache manifest: Senpy version + global symbol hash + all files."""
 
     version: str
     global_symbol_hash: str
@@ -52,7 +53,7 @@ class CacheManifest:
 
 
 def compute_file_hash(file_path: str) -> str:
-    """Вычисляет быстрый MD5-хэш содержимого файла для защиты кэша от коллизий."""
+    """Computes a fast MD5 hash of the file contents to protect the cache from collisions."""
     try:
         with open(file_path, "rb") as f:
             return hashlib.md5(f.read()).hexdigest()
@@ -61,27 +62,27 @@ def compute_file_hash(file_path: str) -> str:
 
 
 class SafeCacheUnpickler(pickle.Unpickler):
-    """Unpickler с белым списком модулей: cache.pkl приходит из недоверенного источника.
+    """Unpickler with a module allowlist: cache.pkl comes from an untrusted source.
 
-    Папка .senpy_cache лежит ВНУТРИ проекта Ren'Py и переезжает вместе с ним
-    (шаринг проекта, скачивание, чужие моды), поэтому plain pickle.load = RCE
-    через __reduce__ в подложенном файле. Легитимное содержимое кэша — только
-    наши dataclasses и примитивы, любого find_class вне списка достаточно,
-    чтобы отвергнуть файл. Сломанный кэш = None = штатная пересборка.
+    The .senpy_cache folder lives INSIDE the Ren'Py project and travels with it
+    (project sharing, downloads, third-party mods), so a plain pickle.load = RCE
+    via __reduce__ in a planted file. Legitimate cache contents are only our
+    dataclasses and primitives — any find_class outside the allowlist is enough
+    to reject the file. A broken cache = None = a regular rebuild.
     """
 
     ALLOWED_MODULES = frozenset(
         {
             "senpy.cache",  # backward compat
             "senpy.cache_manifest",  # backward compat
-            "senpy.core.cache",  # Фаза 2: новый путь
-            "senpy.core.cache_manifest",  # Фаза 2: новый путь
+            "senpy.core.cache",  # Phase 2: new path
+            "senpy.core.cache_manifest",  # Phase 2: new path
             "senpy.models",  # backward compat
-            "senpy.core.models",  # Фаза 2: новый путь
+            "senpy.core.models",  # Phase 2: new path
             "senpy.symbols",  # backward compat
-            "senpy.core.symbols",  # Фаза 2: новый путь
+            "senpy.core.symbols",  # Phase 2: new path
             "senpy.signature",  # backward compat
-            "senpy.core.signature",  # Фаза 2: новый путь
+            "senpy.core.signature",  # Phase 2: new path
         }
     )
 
@@ -116,14 +117,14 @@ class CacheManager:
         self.manifest: CacheManifest | None = None
 
     def clear(self) -> bool:
-        """Полная очистка папки кэша."""
+        """Full cleanup of the cache folder."""
         if os.path.exists(self.cache_dir):
             shutil.rmtree(self.cache_dir, ignore_errors=True)
             return True
         return False
 
     def ensure_cache_dir(self) -> None:
-        """Создаёт директорию кэша и защитный .gitignore."""
+        """Creates the cache directory and a protective .gitignore."""
         if not self.enabled:
             return
         os.makedirs(self.cache_dir, exist_ok=True)
@@ -133,7 +134,7 @@ class CacheManager:
                 f.write("*\n")
 
     def load_manifest(self) -> CacheManifest | None:
-        """Загружает манифест из кэша с проверкой версии."""
+        """Loads the manifest from the cache with a version check."""
         if not self.enabled or not os.path.exists(self.manifest_path):
             return None
         try:
@@ -153,7 +154,7 @@ class CacheManager:
         return None
 
     def save_manifest(self, manifest: CacheManifest) -> None:
-        """Атомарно сохраняет манифест в бинарный pickle."""
+        """Atomically saves the manifest to a binary pickle."""
         if not self.enabled:
             return
         try:
@@ -173,7 +174,7 @@ class CacheManager:
 
     @staticmethod
     def compute_global_hash(analyzer: SenpyAnalyzer) -> str:
-        """Вычисляет хэш глобального состояния проекта (метки, экраны, сигнатуры, переменные)."""
+        """Computes a hash of the project global state (labels, screens, signatures, variables)."""
         hasher = hashlib.md5()
         for lbl_name in sorted(analyzer.labels.keys()):
             hasher.update(lbl_name.encode("utf-8"))

@@ -1,28 +1,28 @@
 """Domain exception hierarchy for Senpy.
 
-Все доменные исключения наследуются от `SenpyError` (НЕ от ValueError/TypeError).
-Это позволяет caller'у написать `except SenpyError:` и поймать только Senpy-
-доменные ошибки, не случайные ValueError из stdlib.
+All domain exceptions inherit from `SenpyError` (NOT from ValueError/TypeError).
+This lets a caller write `except SenpyError:` and catch only Senpy domain errors,
+not accidental ValueError from stdlib.
 
-Иерархия:
+Hierarchy:
 
     SenpyError (root)
-    ├── ConfigError              — битый TOML, неверная схема, unknown rule
-    ├── AnalysisError            — ошибки анализа (parent)
-    │   ├── ParseError           — .rpy/.rpyc парсинг упал
-    │   └── SymbolResolutionError — обращение к несуществующему символу
+    ├── ConfigError              — broken TOML, invalid schema, unknown rule
+    ├── AnalysisError            — analysis errors (parent)
+    │   ├── ParseError           — .rpy/.rpyc parsing failed
+    │   └── SymbolResolutionError — reference to a non-existent symbol
     ├── CacheError               — corrupt pickle, version mismatch
-    ├── PluginError              — плагин упал, API mismatch
-    │   └── ApiVersionMismatchError (в plugins/security.py — backward compat)
+    ├── PluginError              — plugin crashed, API mismatch
+    │   └── ApiVersionMismatchError (in plugins/security.py — backward compat)
     ├── SecurityError            — URI scheme violation, path traversal, unsafe pickle
-    └── DecompilationError       — unrpyc не смог декомпилировать .rpyc
+    └── DecompilationError       — unrpyc failed to decompile .rpyc
 
-Дизайн-принципы:
-  - Не наследоваться от ValueError/TypeError. Цель: caller ловит
-    Senpy-исключения отдельно от stdlib.
-  - Каждое исключение принимает (message: str, cause: Exception | None = None).
-    Если cause передан — он устанавливается как __cause__ (Python chaining).
-  - Никаких кастомных __str__ — Exception.__str__ достаточно.
+Design principles:
+  - Do not inherit from ValueError/TypeError. Goal: the caller catches Senpy
+    exceptions separately from stdlib.
+  - Each exception accepts (message: str, cause: Exception | None = None).
+    If cause is passed — it is set as __cause__ (Python chaining).
+  - No custom __str__ — Exception.__str__ is enough.
 
 Usage:
     from senpy.core.exceptions import SenpyError, ConfigError
@@ -36,7 +36,7 @@ Usage:
     try:
         risky_operation()
     except SenpyError:
-        # любая доменная ошибка Senpy
+        # any Senpy domain error
         handle_senpy_failure()
 """
 

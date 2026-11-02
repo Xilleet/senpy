@@ -1,4 +1,4 @@
-"""Senpy rules/checkers subpackage — 5 чекеров, split из checkers.py."""
+"""Senpy rules/checkers subpackage — 5 checkers, split from checkers.py."""
 
 from senpy.rules.base import BaseChecker
 from senpy.rules.checkers.asset import AssetChecker

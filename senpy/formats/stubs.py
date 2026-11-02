@@ -46,17 +46,17 @@ random: _Random
 
 
 def generate_stubs(analyzer: SenpyAnalyzer, out_dir: str = "typings") -> tuple[str, int]:
-    """Генерирует файлы заглушек .pyi для Pylance/MyPy на основе собранных символов."""
+    """Generates .pyi stub files for Pylance/MyPy based on the collected symbols."""
     project_root = analyzer.project_path
     target_dir = os.path.join(project_root, out_dir)
     os.makedirs(target_dir, exist_ok=True)
 
-    # 1. Генерируем renpy.pyi
+    # 1. Generate renpy.pyi
     renpy_pyi = os.path.join(target_dir, "renpy.pyi")
     with open(renpy_pyi, "w", encoding="utf-8", newline="\n") as f:
         f.write(RENPY_PYI_TEMPLATE)
 
-    # 2. Генерируем store.pyi с типами переменных проекта
+    # 2. Generate store.pyi with the project variable types
     type_map = {
         "int": "int",
         "float": "float",
@@ -85,7 +85,7 @@ def generate_stubs(analyzer: SenpyAnalyzer, out_dir: str = "typings") -> tuple[s
     for var in sorted(analyzer.declared_symbols):
         if var.startswith("_") or var in ("renpy", "config", "persistent", "gui", "style", "store"):
             continue
-        # Пропускаем имена встроенных модулей python
+        # Skip built-in Python module names
         if var in ("True", "False", "None"):
             continue
 
@@ -99,7 +99,7 @@ def generate_stubs(analyzer: SenpyAnalyzer, out_dir: str = "typings") -> tuple[s
     with open(store_pyi, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(store_lines) + "\n")
 
-    # 3. Настраиваем .vscode/settings.json, если он есть
+    # 3. Configure .vscode/settings.json if it exists
     vscode_dir = os.path.join(project_root, ".vscode")
     settings_json = os.path.join(vscode_dir, "settings.json")
     if os.path.isdir(vscode_dir):

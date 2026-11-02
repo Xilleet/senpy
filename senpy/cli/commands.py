@@ -1,9 +1,9 @@
-"""CLI command handlers — обработчики команд senpy.
+"""CLI command handlers — senpy command handlers.
 
-Вынесено из cli.py
-Каждая функция принимает args (+ контекст) и возвращает:
-  - None: команда не активна (args.xxx = False)
-  - int: exit code (0 = успех, 1 = ошибка)
+Extracted from cli.py
+Each function takes args (+ context) and returns:
+  - None: command is not active (args.xxx = False)
+  - int: exit code (0 = success, 1 = error)
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from senpy.formats.traceback import find_latest_traceback, parse_traceback_file
 
 
 def handle_traceback(args, console: Console, is_tsundere: bool) -> int | None:
-    """--traceback: анализ краш-лога."""
+    """--traceback: crash log analysis."""
     if not args.traceback:
         return None
 
@@ -63,7 +63,7 @@ def handle_traceback(args, console: Console, is_tsundere: bool) -> int | None:
 
 
 def handle_init_ci(args, console: Console, is_tsundere: bool) -> int | None:
-    """--init-ci: создание GitHub Actions workflow."""
+    """--init-ci: create a GitHub Actions workflow."""
     if not args.init_ci:
         return None
 
@@ -84,7 +84,7 @@ def handle_init_ci(args, console: Console, is_tsundere: bool) -> int | None:
 
 
 def handle_coverage(args, console: Console, is_tsundere: bool) -> int | None:
-    """--coverage: метрики локализации."""
+    """--coverage: localization metrics."""
     if not args.coverage:
         return None
 
@@ -121,7 +121,7 @@ def handle_coverage(args, console: Console, is_tsundere: bool) -> int | None:
 
 
 def handle_clear_cache(args, console: Console) -> int | None:
-    """--clear-cache: очистка кэша."""
+    """--clear-cache: clear the cache."""
     if not args.clear_cache:
         return None
 
@@ -136,7 +136,7 @@ def handle_clear_cache(args, console: Console) -> int | None:
 
 
 def handle_stats(args, analyzer, console: Console, is_tsundere: bool) -> int | None:
-    """--stats: статистика по диалогам и персонажам."""
+    """--stats: dialogue and character statistics."""
     if not args.stats:
         return None
 
@@ -172,7 +172,7 @@ def handle_stats(args, analyzer, console: Console, is_tsundere: bool) -> int | N
             print(json_str)
         return 0
 
-    # Вывод дашборда в терминал
+    # Render the dashboard to the terminal
     summary_panel = Panel(
         Text.from_markup(
             f"[bold cyan]Total Dialogue Lines:[/bold cyan] [bold white]{stats.total_dialogue_lines:,}[/bold white]   "
@@ -219,7 +219,7 @@ def handle_stats(args, analyzer, console: Console, is_tsundere: bool) -> int | N
 
 
 def handle_export_wiki(args, analyzer, console: Console, is_tsundere: bool) -> int | None:
-    """--export-wiki: генерация документации проекта."""
+    """--export-wiki: project documentation generation."""
     if not args.export_wiki:
         return None
 
@@ -243,7 +243,7 @@ def handle_export_wiki(args, analyzer, console: Console, is_tsundere: bool) -> i
 def handle_export_html(
     args, result, analyzer, console: Console, is_tsundere: bool, ignored_codes: set
 ) -> int | None:
-    """--export-html: автономный HTML отчёт."""
+    """--export-html: standalone HTML report."""
     if not args.export_html:
         return None
 
@@ -276,7 +276,7 @@ def handle_export_html(
 
 
 def handle_graph(args, analyzer, console: Console, is_tsundere: bool) -> int | None:
-    """--graph / --graph-file: граф сюжета в Mermaid."""
+    """--graph / --graph-file: story graph in Mermaid."""
     if not (args.graph or args.graph_file):
         return None
 
@@ -298,7 +298,7 @@ def handle_graph(args, analyzer, console: Console, is_tsundere: bool) -> int | N
 
 
 def handle_defaults(args, analyzer, console: Console, is_tsundere: bool) -> int | None:
-    """--defaults: генерация senpy_defaults.rpy."""
+    """--defaults: generate senpy_defaults.rpy."""
     if not args.defaults:
         return None
 
@@ -320,7 +320,7 @@ def handle_defaults(args, analyzer, console: Console, is_tsundere: bool) -> int 
 
 
 def handle_stubs(args, analyzer, console: Console, is_tsundere: bool) -> int | None:
-    """--stubs: генерация Python type stubs."""
+    """--stubs: generate Python type stubs."""
     if not args.stubs:
         return None
 

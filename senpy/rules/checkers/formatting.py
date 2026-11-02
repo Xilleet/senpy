@@ -1,4 +1,4 @@
-"""formatting — extracted from checkers.py (Фаза 2, 0.5.4)."""
+"""formatting — extracted from checkers.py (Phase 2, 0.5.4)."""
 
 from __future__ import annotations
 
@@ -25,11 +25,11 @@ class FormattingChecker(BaseChecker):
         new_raw_line = raw_line
         stripped = clean_line.strip()
 
-        # RPY107: Проверка устаревшего API Ren'Py
+        # RPY107: Check for deprecated Ren'Py API
         for d in self.analyzer.deprecated.check_line(new_raw_line, idx + 1, file_path):
             self.analyzer._add_diagnostic(d, noqa_map)
 
-        # RPY001: Проверка табуляции в отступах
+        # RPY001: Check for tabs in indentation
         leading_ws = new_raw_line[: len(new_raw_line) - len(new_raw_line.lstrip())]
         if "\t" in leading_ws:
             self.analyzer.fixable_count += 1
@@ -58,7 +58,7 @@ class FormattingChecker(BaseChecker):
                     noqa_map,
                 )
 
-        # RPY002: Фигурные/типографские кавычки в коде
+        # RPY002: Curly/typographic quotes in code
         if any(q in clean_line for q in SMART_QUOTES) and (
             stripped.startswith(("$", "if ", "elif ", "default ", "define "))
             or (
