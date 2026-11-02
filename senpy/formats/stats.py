@@ -81,82 +81,142 @@ def collect_story_stats(analyzer: SenpyAnalyzer) -> StoryStats:
     """
     char_names = extract_character_names(analyzer)
     char_stats: dict[str, CharacterStats] = {}
-
-    total_lines = 0
-    total_words = 0
-    total_chars = 0
+    counters = _StatCounters()
 
     main_rpy, _ = analyzer._get_rpy_files()
-    all_files = main_rpy + analyzer.extra_files
+    for file_path in main_rpy + analyzer.extra_files:
+        lines = _read_stats_lines(file_path, analyzer)
+        if lines is None:
+            continue
+        _process_stats_for_file(
+            lines=lines, char_names=char_names, char_stats=char_stats, counters=counters
+        )
 
-    for file_path in all_files:
-        norm_path = os.path.normcase(os.path.abspath(file_path))
-        if norm_path in analyzer.in_memory_files:
-            lines = analyzer.in_memory_files[norm_path].splitlines(keepends=True)
-        else:
-            try:
-                with open(file_path, encoding="utf-8", newline="") as f:
-                    lines = f.readlines()
-            except (OSError, UnicodeDecodeError):
-                continue
+    return _build_story_stats(char_stats, counters.lines, counters.words, counters.chars)
 
-        idx = 0
-        in_label = False
-        last_speaker = "narrator"
 
-        while idx < len(lines):
-            next_idx, raw_line, clean = _get_logical_line(lines, idx)
-            stripped = clean.strip()
-            line_indent = len(raw_line) - len(raw_line.lstrip(" "))
+@dataclass(slots=True)
+class _StatCounters:
+    """Mutable counters shared across the file/line processing helpers."""
 
-            if not stripped:
-                idx = next_idx
-                continue
+    lines: int = 0
+    words: int = 0
+    chars: int = 0
 
-            # Track label context — dialogue only exists inside labels
-            if line_indent == 0:
-                if stripped.startswith("label ") and stripped.endswith(":"):
-                    in_label = True
-                elif stripped.startswith(
-                    ("screen ", "style ", "init ", "transform ", "image ", "layeredimage ")
-                ):
-                    in_label = False
 
-            if not in_label:
-                idx = next_idx
-                continue
+@dataclass(slots=True)
+class _LineContext:
+    """Per-line state for the dialogue-line loop (label scope + last speaker)."""
 
-            # Handle extend "..." continuation
-            if stripped.startswith(("extend ", "extend\t")):
-                w_count, c_count = _count_extend_words(stripped)
-                if w_count > 0 and last_speaker in char_stats:
-                    char_stats[last_speaker].words_count += w_count
-                    char_stats[last_speaker].chars_count += c_count
-                    total_words += w_count
-                    total_chars += c_count
-                idx = next_idx
-                continue
+    in_label: bool = False
+    last_speaker: str = "narrator"
 
-            first_word = stripped.split()[0] if stripped.split() else ""
-            if first_word in NON_DIALOGUE_STATEMENTS:
-                idx = next_idx
-                continue
 
-            # Match dialogue line
-            m = RE_DIALOGUE_LINE.match(stripped)
-            if m:
-                speaker_tag, word_count, char_count = _parse_dialogue_line(
-                    m, char_names, char_stats
-                )
-                if word_count > 0:
-                    last_speaker = speaker_tag
-                    total_lines += 1
-                    total_words += word_count
-                    total_chars += char_count
+def _read_stats_lines(file_path: str, analyzer: SenpyAnalyzer) -> list[str] | None:
+    """Return the file's lines (from in-memory cache or disk).
 
-            idx = next_idx
+    Returns None if the file is not readable (e.g. missing, UTF-8 decode
+    error) — caller should skip the file silently.
+    """
+    norm_path = os.path.normcase(os.path.abspath(file_path))
+    if norm_path in analyzer.in_memory_files:
+        return analyzer.in_memory_files[norm_path].splitlines(keepends=True)
+    try:
+        with open(file_path, encoding="utf-8", newline="") as f:
+            return f.readlines()
+    except (OSError, UnicodeDecodeError):
+        return None
 
-    return _build_story_stats(char_stats, total_lines, total_words, total_chars)
+
+def _process_stats_for_file(
+    *,
+    lines: list[str],
+    char_names: dict[str, str],
+    char_stats: dict[str, CharacterStats],
+    counters: _StatCounters,
+) -> None:
+    """Walk every logical line in `lines`, accumulating dialogue stats into
+    `char_stats` (per-character) and `counters` (totals).
+    """
+    ctx = _LineContext()
+    idx = 0
+    while idx < len(lines):
+        next_idx, raw_line, clean = _get_logical_line(lines, idx)
+        idx = _process_stats_line(
+            next_idx=next_idx,
+            raw_line=raw_line,
+            clean=clean,
+            ctx=ctx,
+            char_names=char_names,
+            char_stats=char_stats,
+            counters=counters,
+        )
+
+
+def _process_stats_line(
+    *,
+    next_idx: int,
+    raw_line: str,
+    clean: str,
+    ctx: _LineContext,
+    char_names: dict[str, str],
+    char_stats: dict[str, CharacterStats],
+    counters: _StatCounters,
+) -> int:
+    """Process one logical line, return the next line index to resume from.
+
+    Mutates `ctx` (label scope + last speaker), `char_stats` (per-character
+    dialogue counts), and `counters` (totals).
+    """
+    stripped = clean.strip()
+    if not stripped:
+        return next_idx
+
+    line_indent = len(raw_line) - len(raw_line.lstrip(" "))
+    _update_label_scope(line_indent=line_indent, stripped=stripped, ctx=ctx)
+    if not ctx.in_label:
+        return next_idx
+
+    # extend "..." continuation: attribute words to the previous speaker
+    if stripped.startswith(("extend ", "extend\t")):
+        w_count, c_count = _count_extend_words(stripped)
+        if w_count > 0 and ctx.last_speaker in char_stats:
+            char_stats[ctx.last_speaker].words_count += w_count
+            char_stats[ctx.last_speaker].chars_count += c_count
+            counters.words += w_count
+            counters.chars += c_count
+        return next_idx
+
+    first_word = stripped.split()[0] if stripped.split() else ""
+    if first_word in NON_DIALOGUE_STATEMENTS:
+        return next_idx
+
+    m = RE_DIALOGUE_LINE.match(stripped)
+    if m:
+        speaker_tag, word_count, char_count = _parse_dialogue_line(m, char_names, char_stats)
+        if word_count > 0:
+            ctx.last_speaker = speaker_tag
+            counters.lines += 1
+            counters.words += word_count
+            counters.chars += char_count
+
+    return next_idx
+
+
+def _update_label_scope(*, line_indent: int, stripped: str, ctx: _LineContext) -> None:
+    """Toggle `ctx.in_label` based on top-level block headers.
+
+    A `label X:` at indent 0 → enter label scope. A `screen`/`style`/`init`/
+    `transform`/`image`/`layeredimage` at indent 0 → leave label scope.
+    Lines inside label blocks (indent > 0) don't change the scope.
+    """
+    if line_indent != 0:
+        return
+    if stripped.startswith("label ") and stripped.endswith(":"):
+        ctx.in_label = True
+        return
+    if stripped.startswith(("screen ", "style ", "init ", "transform ", "image ", "layeredimage ")):
+        ctx.in_label = False
 
 
 def _count_extend_words(stripped: str) -> tuple[int, int]:
