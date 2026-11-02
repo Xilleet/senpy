@@ -103,17 +103,17 @@ def test_discover_files_rpyc_orphan_with_decompile_flag(tmp_path: Path, monkeypa
     args = _make_args(path=str(tmp_path), decompile=True)
     config = {"decompile": True}
 
-    # Mock unrpyc functions in cli.main module (where they're imported by name)
-    import sys
+    # Mock unrpyc functions in cli.discover module (where discover_files
+    # actually calls them after the 0.7.4 extraction).
+    import senpy.cli.discover as cli_discover_mod
 
-    cli_main_mod = sys.modules["senpy.cli.main"]
     monkeypatch.setattr(
-        cli_main_mod,
+        cli_discover_mod,
         "decompile_to_sandbox",
         lambda orphans, cmd, sandbox: [],
     )
     monkeypatch.setattr(
-        cli_main_mod,
+        cli_discover_mod,
         "find_unrpyc_executable",
         lambda *a, **kw: ["python", "-m", "unrpyc"],
     )
@@ -159,12 +159,12 @@ def test_discover_files_rpa_extraction(tmp_path: Path, monkeypatch):
     os.makedirs(os.path.dirname(fake_rpy_path), exist_ok=True)
     Path(fake_rpy_path).write_text("label extracted:\n    return\n", encoding="utf-8")
 
-    # Patch in cli.main module (where the function is imported by name)
-    import sys
+    # Patch in cli.discover module (where discover_files calls the function
+    # after the 0.7.4 extraction).
+    import senpy.cli.discover as cli_discover_mod
 
-    cli_main_mod = sys.modules["senpy.cli.main"]
     monkeypatch.setattr(
-        cli_main_mod,
+        cli_discover_mod,
         "extract_scripts_from_rpa",
         lambda rpa, sandbox: [fake_rpy_path],
     )

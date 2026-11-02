@@ -12,14 +12,13 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from senpy.cli.unrpyc import (
+from senpy.cli.unrpyc import (  # noqa: F401 — re-exported for backward compat with tests
     decompile_to_sandbox,
     extract_scripts_from_rpa,
     find_unrpyc_executable,
 )
 from senpy.core.analyzer import SenpyAnalyzer
 from senpy.core.config import load_config
-from senpy.core.constants import IGNORED_DIRS
 from senpy.domain.tsundere import TSUNDERE_FLAVORS, TSUNDERE_UI
 from senpy.formats.traceback import find_latest_traceback, parse_traceback_file
 from senpy.formatter import FormatConfig, Formatter  # noqa: F401 — re-exported for backward compat
@@ -920,166 +919,16 @@ def render_text(
     return 0 if args.exit_zero else (1 if error_count > 0 else 0)
 
 
-def _find_rpy_files(project_path: str) -> tuple[set[str], set[str]]:
-    """Walk project_path and find all .rpy files.
-
-    Returns:
-        Tuple of (relative_paths, basenames) for deduplication.
-        - relative_paths: set of relative paths (e.g. "game/script.rpy")
-        - basenames: set of just filenames (e.g. "script.rpy")
-    """
-    relative_paths: set[str] = set()
-    basenames: set[str] = set()
-    for root, dirs, files in os.walk(project_path, followlinks=False):
-        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
-        for f in files:
-            if f.endswith(".rpy"):
-                full_path = os.path.join(root, f)
-                try:
-                    rel = os.path.relpath(full_path, project_path)
-                except ValueError:
-                    rel = f
-                relative_paths.add(rel)
-                basenames.add(f)
-    return relative_paths, basenames
-
-
-def _find_orphaned_rpyc(
-    args,
-    raw_orphans: list[str],
-    rpa_sandbox: str,
-    existing_rpy_basenames: set[str],
-) -> tuple[list[str], list[str]]:
-    """Find orphaned .rpyc files + extract scripts from .rpa archives.
-
-    Returns:
-        Tuple of (extra_rpy_files, updated_raw_orphans):
-        - extra_rpy_files: .rpy files extracted from RPA archives
-        - updated_raw_orphans: original raw_orphans + .rpyc from RPA archives
-    """
-    extra_rpy_files: list[str] = []
-    updated_orphans = list(raw_orphans)
-
-    # Find .rpa archives
-    rpa_files: list[str] = []
-    for root, dirs, files in os.walk(args.path, followlinks=False):
-        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
-        for f in files:
-            if f.lower().endswith(".rpa"):
-                rpa_files.append(os.path.join(root, f))
-
-    # Extract scripts from each .rpa
-    for rpa in rpa_files:
-        rpa_base = os.path.splitext(os.path.basename(rpa))[0].lower()
-        # Extract if archive looks like main game archive OR if no orphans yet
-        if (
-            any(term in rpa_base for term in ("script", "archive", "data", "game", "code"))
-            or not raw_orphans
-        ):
-            extracted = extract_scripts_from_rpa(rpa, rpa_sandbox)
-            for item in extracted:
-                base_name = os.path.basename(item)
-                rpy_name = base_name[:-1] if base_name.endswith(".rpyc") else base_name
-                if rpy_name not in existing_rpy_basenames:
-                    if item.endswith(".rpy"):
-                        extra_rpy_files.append(item)
-                    elif item.endswith(".rpyc"):
-                        updated_orphans.append(item)
-
-    return extra_rpy_files, updated_orphans
-
-
-def _decompile_sandbox(
-    orphaned_rpyc: list[str],
-    args,
-    config: dict,
-    decomp_sandbox: str,
-) -> list[str]:
-    """Decompile orphaned .rpyc files into sandbox.
-
-    Prompts user (if interactive) or uses --decompile flag.
-    Returns list of decompiled .rpy file paths.
-    """
-    if not orphaned_rpyc:
-        return []
-
-    should_decompile = config.get("decompile", False) or args.decompile
-    is_interactive = hasattr(sys.stdin, "isatty") and sys.stdin.isatty()
-    if (
-        not should_decompile
-        and is_interactive
-        and not (args.graph or args.graph_file or args.stats)
-    ):
-        console.print(
-            f"[bold yellow]Found {len(orphaned_rpyc)} compiled .rpyc file(s) without source code.[/bold yellow]"
-        )
-        try:
-            answer = input("Decompile them into a sandbox for analysis? [y/N]: ").strip().lower()
-            should_decompile = answer in ("y", "yes")
-        except (EOFError, KeyboardInterrupt):
-            should_decompile = False
-
-    if not should_decompile:
-        return []
-
-    custom_unrpyc = args.unrpyc or config.get("unrpyc_path")
-    unrpyc_cmd = find_unrpyc_executable(custom_unrpyc, args.path, auto_download=is_interactive)
-    if not unrpyc_cmd:
-        return []
-
-    return decompile_to_sandbox(orphaned_rpyc, unrpyc_cmd, decomp_sandbox)
-
-
-def discover_files(args, config: dict, project_path: str) -> list[str]:
-    """Find .rpy files, .rpyc orphans, extract RPA, decompile .rpyc.
-
-    Orchestrates 3 helpers:
-      1. _find_rpy_files — existing .rpy files for dedup
-      2. _find_orphaned_rpyc — .rpyc orphans + RPA extraction
-      3. _decompile_sandbox — decompile orphans into sandbox
-
-    Returns list of extra_rpy_files (paths to .rpy from RPA/decompilation).
-    """
-    decomp_sandbox = os.path.join(os.path.abspath(args.path), ".senpy_cache", "decompiled")
-    rpa_sandbox = os.path.join(os.path.abspath(args.path), ".senpy_cache", "rpa_extracted")
-    os.makedirs(decomp_sandbox, exist_ok=True)
-    os.makedirs(rpa_sandbox, exist_ok=True)
-
-    raw_orphans = list(SenpyAnalyzer.find_orphaned_rpyc(args.path))
-
-    # 1. Find existing .rpy files for dedup
-    _, existing_rpy_basenames = _find_rpy_files(args.path)
-
-    # 2. Find .rpyc orphans + extract RPA scripts
-    extra_rpy_files, raw_orphans = _find_orphaned_rpyc(
-        args, raw_orphans, rpa_sandbox, existing_rpy_basenames
-    )
-
-    # 3. Sync: add extracted .rpy basenames to existing set
-    for f in extra_rpy_files:
-        existing_rpy_basenames.add(os.path.basename(f))
-
-    # 4. Cache check: use cached .rpy if fresh, else queue for decompile
-    orphaned_rpyc: list[str] = []
-    for rpyc in raw_orphans:
-        rpy_name = os.path.basename(rpyc)[:-1]
-        if rpy_name in existing_rpy_basenames:
-            continue
-        cached_rpy = os.path.join(decomp_sandbox, rpy_name)
-        if os.path.exists(cached_rpy) and os.path.getmtime(cached_rpy) >= os.path.getmtime(rpyc):
-            if cached_rpy not in extra_rpy_files:
-                extra_rpy_files.append(cached_rpy)
-        else:
-            if rpyc not in orphaned_rpyc:
-                orphaned_rpyc.append(rpyc)
-
-    # 5. Decompile orphans
-    new_decompiled = _decompile_sandbox(orphaned_rpyc, args, config, decomp_sandbox)
-    for f_rpy in new_decompiled:
-        if f_rpy not in extra_rpy_files:
-            extra_rpy_files.append(f_rpy)
-
-    return extra_rpy_files
+# discover_files + helpers (_find_rpy_files, _find_orphaned_rpyc,
+# _decompile_sandbox) extracted to senpy/cli/discover.py in 0.7.4
+# (WL-506 prep). Re-imported here for backward compat with tests and
+# external code that may have done `from senpy.cli.main import discover_files`.
+from senpy.cli.discover import (  # noqa: E402, F401
+    _decompile_sandbox,
+    _find_orphaned_rpyc,
+    _find_rpy_files,
+    discover_files,
+)
 
 
 def _dispatch_subcommand(argv: list[str]) -> int | None:
@@ -1090,6 +939,10 @@ def _dispatch_subcommand(argv: list[str]) -> int | None:
     # Subcommand registry — extensible for future subcommands (check, lsp, graph, ci, clean)
     if len(argv) > 1 and argv[1] == "format":
         return _dispatch_format(argv[2:])
+    if len(argv) > 1 and argv[1] == "inspect":
+        from senpy.cli.inspect_dispatch import dispatch_inspect
+
+        return dispatch_inspect(argv[2:])
     return None
 
 
