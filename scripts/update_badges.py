@@ -191,23 +191,98 @@ def _build_lsp_badge() -> dict:
 def _build_speed_badge() -> dict:
     """Build speed badge from generative .rpy benchmark.
 
-    Creates a 2000-line synthetic .rpy file, runs SenpyAnalyzer on it
-    twice (cold + warm), reports the warm time.
+    Creates a ~20K-line synthetic .rpy file using realistic patterns
+    sampled from actual Ren'Py visual novel projects (dialogue-heavy,
+    label-based, with show/scene/jump/menu/audio commands). The
+    distribution mirrors real VN projects — NOT thousands of transforms
+    or defines in a single file.
+
+    Runs SenpyAnalyzer twice:
+      1. Cold run (no cache exists, cache IS written).
+      2. Warm run (cache from step 1 exists).
     """
+    import random
     import tempfile
 
-    # Generate a 2000-line .rpy file
+    random.seed(42)  # deterministic output
+
+    chars = ["natsuki", "sayori", "monika", "yuri", "mc", "mom"]
+    emotions = ["1a", "2b", "3c", "1d", "2e", "3f", "1g", "2h", "3i", "1j"]
+    positions = ["t11", "t21", "t22", "t31", "t32", "t33", "t41", "t42", "t43", "t44"]
+    bgs = [
+        "bedroom",
+        "kitchen",
+        "club_day",
+        "class_day",
+        "residential_day",
+        "house_entrance",
+        "cafe",
+        "town_winter",
+        "school_gray",
+        "corridor",
+    ]
+    transitions = ["dissolve", "wipeleft", "fade", "dissolve_scene_full", "eye_open"]
+    music = ["t8", "t3", "t5", "t9", "nathappy", "family_bonds", "free_time", "the_call"]
+
     lines = []
-    lines.append("label start:")
-    for i in range(1, 500):
-        lines.append(f'    "Dialogue line {i} with [player_name]!"')
-    for i in range(1, 250):
+
+    for c in chars:
+        lines.append(f'define {c} = Character("{c.capitalize()}")')
+    lines.append("")
+    for i in range(1, 11):
+        lines.append(f"default var_{i} = 0")
+    lines.append("")
+
+    # ~200 labels, each ~100 lines = ~20K total
+    num_labels = 200
+    for i in range(1, num_labels + 1):
         lines.append(f"label scene_{i}:")
-        lines.append(f'    "Scene {i} dialogue"')
-        lines.append("    return")
-    for i in range(1, 250):
-        lines.append(f"transform trans_{i}:")
-        lines.append("    ease 1.0 xoffset 100")
+        lines.append("    stop music fadeout 1")
+        lines.append(f"    scene bg {random.choice(bgs)}")
+        lines.append(f"    with {random.choice(transitions)}")
+        lines.append(f"    play music {random.choice(music)}")
+        lines.append(f'    "Narration: scene {i} begins."')
+
+        for j in range(1, 51):
+            char = random.choice(chars)
+            if j % 10 == 0:
+                lines.append(
+                    f"    show {char} {random.choice(emotions)} zorder 2 at {random.choice(positions)}"
+                )
+            elif j % 10 == 5 and i > 1:
+                lines.append(f"    show {char} zorder 1 at thide")
+                lines.append(f"    hide {char}")
+            if j % 3 == 0:
+                lines.append(f'    "Narration: scene {i}, line {j}."')
+            else:
+                lines.append(f'    {char} "Dialogue: scene {i}, line {j}."')
+            if j % 20 == 0:
+                lines.append(f"    $ var_{random.randint(1, 10)} += 1")
+            if j % 30 == 0:
+                lines.append("    if var_1 > 0:")
+                lines.append(f'        "Condition met in scene {i}."')
+                lines.append("    else:")
+                lines.append(f'        "Condition not met in scene {i}."')
+
+        if i < num_labels:
+            if random.random() < 0.7:
+                lines.append(f"    jump scene_{i + 1}")
+            else:
+                lines.append(f"    jump scene_{random.randint(1, i)}")
+        else:
+            lines.append("    return")
+        lines.append("")
+
+    # A few menus
+    for i in range(1, 7):
+        lines.append(f"label menu_{i}:")
+        lines.append(f'    "Choose your path in menu {i}."')
+        lines.append("    menu:")
+        for j in range(1, 4):
+            lines.append(f'        "Option {j}":')
+            lines.append(f"            jump scene_{random.randint(1, num_labels)}")
+        lines.append("")
+
     rpy_content = "\n".join(lines) + "\n"
 
     with tempfile.TemporaryDirectory(prefix="senpy_bench_") as tmp:
@@ -219,25 +294,24 @@ def _build_speed_badge() -> dict:
 
         from senpy.core.analyzer import SenpyAnalyzer
 
-        # Cold run (no cache)
-        analyzer = SenpyAnalyzer(tmp, no_cache=True)
+        analyzer = SenpyAnalyzer(tmp)
         t0 = time.perf_counter()
         analyzer.run(quiet=True)
         cold = time.perf_counter() - t0
 
-        # Warm run (with cache from cold run)
         analyzer2 = SenpyAnalyzer(tmp)
         t0 = time.perf_counter()
         analyzer2.run(quiet=True)
         warm = time.perf_counter() - t0
 
+    line_count = rpy_content.count("\n")
     if warm < 0.1:
         color = "brightgreen"
     elif warm < 1.0:
         color = "green"
     else:
         color = "yellow"
-    return _badge("speed", f"{warm:.3f}s warm ({cold:.1f}s cold)", color)
+    return _badge("speed", f"{warm:.3f}s warm ({cold:.1f}s cold, {line_count} lines)", color)
 
 
 # =============================================================================
@@ -256,25 +330,19 @@ def main() -> int:
     do_run = args.run or args.check
     badges: dict[str, dict] = {}
 
-    # Tests badge
     badges["tests"] = _build_tests_badge(run=do_run)
-
-    # Static badges (always cheap, no pytest needed)
     badges["rules"] = _build_rules_badge()
     badges["lsp"] = _build_lsp_badge()
 
-    # Coverage badge (only in --run mode, requires pytest --cov)
     if do_run:
         badges["coverage"] = _build_coverage_badge()
         badges["speed"] = _build_speed_badge()
     else:
-        # In collect-only mode, keep existing coverage/speed badges
         for name in ("coverage", "speed"):
             path = BADGES_DIR / f"{name}.json"
             if path.exists():
                 badges[name] = json.loads(path.read_text())
 
-    # Write badges
     changed = False
     for name, data in badges.items():
         if args.check:
