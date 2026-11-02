@@ -42,8 +42,8 @@ def _get_server_mod():
 
 
 def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location | None:
-    server_mod = _get_server_mod()
     """Нативный переход по F12 к меткам, экранам, переменным, спрайтам и файлам ассетов."""
+    server_mod = _get_server_mod()
     if server_mod._active_analyzer is None or not server_mod._is_initialized:
         return None
 
@@ -59,139 +59,161 @@ def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location
     col = params.position.character
     stripped = line.strip()
 
-    # 1. Проверяем клик внутри кавычек (путь к аудио или графическому файлу на диске)
-    for qm in re.finditer(r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')', line):
-        if qm.start() <= col <= qm.end():
-            raw_path = qm.group(0)[1:-1].strip()
-            norm_q = raw_path.replace("\\", "/").lower()
-            norm_q = re.sub(r"^<[^>]+>\s*", "", norm_q)
-            base_q = os.path.basename(norm_q)
+    # Phase 1: click inside a quoted string → resolve as a media file path.
+    quoted_loc = _resolve_quoted_path(line=line, col=col, server_mod=server_mod)
+    if quoted_loc is not None:
+        return quoted_loc
 
-            for rel_path, full_path in server_mod._active_analyzer.media_disk_files.items():
-                clean_rel = rel_path.removeprefix("game/")
-                if (
-                    rel_path == norm_q
-                    or clean_rel == norm_q
-                    or os.path.basename(rel_path) == base_q
-                ):
-                    return lsp.Location(
-                        uri=server_mod._path_to_uri(full_path),
-                        range=lsp.Range(start=lsp.Position(0, 0), end=lsp.Position(0, 0)),
-                    )
-
-    # 2. Проверяем клик по спрайтам/фонам в строках show, scene, hide
+    # Phase 2: click on a sprite/bg token in show/scene/hide lines.
     if stripped.startswith(("show ", "scene ", "hide ")):
-        parts = stripped.split()[1:]
-        img_tokens = []
-        for p in parts:
-            clean_p = p.rstrip(":")
-            if clean_p in CLAUSE_KEYWORDS:
-                break
-            img_tokens.append(clean_p)
-            if p.endswith(":"):
-                break
+        scene_loc = _resolve_show_scene_token(
+            line=line, col=col, stripped=stripped, server_mod=server_mod
+        )
+        if scene_loc is not None:
+            return scene_loc
 
-        if img_tokens:
-            full_tag = " ".join(img_tokens)
-            base_tag = img_tokens[0]
-            tag_start = line.find(base_tag)
-            tag_end = tag_start + len(full_tag) if tag_start != -1 else -1
-
-            if tag_start != -1 and tag_start <= col <= tag_end:
-                for candidate in (full_tag, base_tag):
-                    if candidate in server_mod._active_analyzer.images:
-                        img = server_mod._active_analyzer.images[candidate]
-                        return lsp.Location(
-                            uri=server_mod._path_to_uri(img.file_path),
-                            range=lsp.Range(
-                                start=lsp.Position(line=max(0, img.line_number - 1), character=0),
-                                end=lsp.Position(
-                                    line=max(0, img.line_number - 1), character=len(candidate)
-                                ),
-                            ),
-                        )
-
-                for candidate in (full_tag, base_tag):
-                    cand_norm = candidate.lower()
-                    for rel_path, full_path in server_mod._active_analyzer.media_disk_files.items():
-                        clean_rel = rel_path.removeprefix("game/")
-                        clean_no_ext = os.path.splitext(clean_rel)[0]
-                        tokenized = (
-                            clean_no_ext.removeprefix("images/").replace("/", " ").replace("_", " ")
-                        )
-                        if tokenized == cand_norm or os.path.basename(clean_no_ext) == cand_norm:
-                            return lsp.Location(
-                                uri=server_mod._path_to_uri(full_path),
-                                range=lsp.Range(start=lsp.Position(0, 0), end=lsp.Position(0, 0)),
-                            )
-
-    # 3. Извлекаем идентификатор под курсором
-    word = None
-    for m in re.finditer(r"[^\W\d][\w\.]*", line):
-        if m.start() <= col <= m.end():
-            word = m.group(0)
-            break
-
-    if not word:
+    # Phase 3: identifier lookup — label, screen, variable, image, transform.
+    word = _word_at_position(line, col)
+    if word is None:
         return None
 
-    # 3.1. Метка сюжета (jump/call)
-    if word in server_mod._active_analyzer.labels:
-        lbl = server_mod._active_analyzer.labels[word]
-        return lsp.Location(
-            uri=server_mod._path_to_uri(lbl.file_path),
-            range=lsp.Range(
-                start=lsp.Position(line=max(0, lbl.line_number - 1), character=0),
-                end=lsp.Position(line=max(0, lbl.line_number - 1), character=len(word)),
-            ),
-        )
+    return _resolve_symbol(word=word, server_mod=server_mod)
 
-    # 3.2. Экран (screen)
-    if word in server_mod._active_analyzer.screens:
-        scr = server_mod._active_analyzer.screens[word]
-        return lsp.Location(
-            uri=server_mod._path_to_uri(scr.file_path),
-            range=lsp.Range(
-                start=lsp.Position(line=max(0, scr.line_number - 1), character=0),
-                end=lsp.Position(line=max(0, scr.line_number - 1), character=len(word)),
-            ),
-        )
 
-    # 3.3. Переменная или константа
-    target_var = word if word in server_mod._active_analyzer.variables else word.split(".")[-1]
-    if target_var in server_mod._active_analyzer.variables:
-        var = server_mod._active_analyzer.variables[target_var]
-        return lsp.Location(
-            uri=server_mod._path_to_uri(var.file_path),
-            range=lsp.Range(
-                start=lsp.Position(line=max(0, var.line_number - 1), character=0),
-                end=lsp.Position(line=max(0, var.line_number - 1), character=len(target_var)),
-            ),
-        )
+def _word_at_position(line: str, col: int) -> str | None:
+    r"""Return the dotted-identifier at the given column (regex `[^\W\d][\w\.]*`)."""
+    for m in re.finditer(r"[^\W\d][\w\.]*", line):
+        if m.start() <= col <= m.end():
+            return m.group(0)
+    return None
 
-    # 3.4. Имя изображения (image) вне строк show/scene
-    if word in server_mod._active_analyzer.images:
-        img = server_mod._active_analyzer.images[word]
-        return lsp.Location(
-            uri=server_mod._path_to_uri(img.file_path),
-            range=lsp.Range(
-                start=lsp.Position(line=max(0, img.line_number - 1), character=0),
-                end=lsp.Position(line=max(0, img.line_number - 1), character=len(word)),
-            ),
-        )
 
-    # 3.5. ATL трансформация (transform)
-    if word in server_mod._active_analyzer.transforms:
-        trans = server_mod._active_analyzer.transforms[word]
-        return lsp.Location(
-            uri=server_mod._path_to_uri(trans.file_path),
-            range=lsp.Range(
-                start=lsp.Position(line=max(0, trans.line_number - 1), character=0),
-                end=lsp.Position(line=max(0, trans.line_number - 1), character=len(word)),
-            ),
-        )
+def _resolve_quoted_path(*, line: str, col: int, server_mod) -> lsp.Location | None:
+    """Phase 1: if the cursor is inside a quoted string, try to resolve it
+    as a media-file path (relative to `game/` or as a basename match).
+    """
+    for qm in re.finditer(r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')', line):
+        if not (qm.start() <= col <= qm.end()):
+            continue
+        raw_path = qm.group(0)[1:-1].strip()
+        norm_q = raw_path.replace("\\", "/").lower()
+        norm_q = re.sub(r"^<[^>]+>\s*", "", norm_q)
+        base_q = os.path.basename(norm_q)
+
+        for rel_path, full_path in server_mod._active_analyzer.media_disk_files.items():
+            clean_rel = rel_path.removeprefix("game/")
+            if rel_path == norm_q or clean_rel == norm_q or os.path.basename(rel_path) == base_q:
+                return lsp.Location(
+                    uri=server_mod._path_to_uri(full_path),
+                    range=lsp.Range(start=lsp.Position(0, 0), end=lsp.Position(0, 0)),
+                )
+    return None
+
+
+def _resolve_show_scene_token(
+    *, line: str, col: int, stripped: str, server_mod
+) -> lsp.Location | None:
+    """Phase 2: click on a sprite/bg token inside `show X` / `scene X` / `hide X`.
+
+    First try to resolve the full image tag (e.g. `sayori happy`) as a
+    declared `image`. If not found, try the base tag (e.g. `sayori`).
+    If neither is a declared image, fall back to a media-file path match
+    (e.g. `images/sayori/happy.png` tokenized as `sayori happy`).
+    """
+    parts = stripped.split()[1:]
+    img_tokens: list[str] = []
+    for p in parts:
+        clean_p = p.rstrip(":")
+        if clean_p in CLAUSE_KEYWORDS:
+            break
+        img_tokens.append(clean_p)
+        if p.endswith(":"):
+            break
+
+    if not img_tokens:
+        return None
+
+    full_tag = " ".join(img_tokens)
+    base_tag = img_tokens[0]
+    tag_start = line.find(base_tag)
+    tag_end = tag_start + len(full_tag) if tag_start != -1 else -1
+
+    if tag_start == -1 or not (tag_start <= col <= tag_end):
+        return None
+
+    # Try declared images first (full_tag, then base_tag).
+    for candidate in (full_tag, base_tag):
+        if candidate in server_mod._active_analyzer.images:
+            img = server_mod._active_analyzer.images[candidate]
+            return _location_at_symbol_line(server_mod, img, len(candidate))
+
+    # Fall back to media-file path matching (auto-discovered images).
+    for candidate in (full_tag, base_tag):
+        cand_norm = candidate.lower()
+        for rel_path, full_path in server_mod._active_analyzer.media_disk_files.items():
+            clean_rel = rel_path.removeprefix("game/")
+            clean_no_ext = os.path.splitext(clean_rel)[0]
+            tokenized = clean_no_ext.removeprefix("images/").replace("/", " ").replace("_", " ")
+            if tokenized == cand_norm or os.path.basename(clean_no_ext) == cand_norm:
+                return lsp.Location(
+                    uri=server_mod._path_to_uri(full_path),
+                    range=lsp.Range(start=lsp.Position(0, 0), end=lsp.Position(0, 0)),
+                )
 
     return None
+
+
+def _resolve_symbol(*, word: str, server_mod) -> lsp.Location | None:
+    """Phase 3: identifier lookup across label / screen / variable /
+    image / transform registries.
+
+    Returns the first matching `lsp.Location`, or `None` if the word is
+    not a declared symbol of any kind.
+    """
+    analyzer = server_mod._active_analyzer
+
+    if word in analyzer.labels:
+        lbl = analyzer.labels[word]
+        return _location_at_symbol_line(server_mod, lbl, len(word))
+
+    if word in analyzer.screens:
+        scr = analyzer.screens[word]
+        return _location_at_symbol_line(server_mod, scr, len(word))
+
+    # Variables support dotted access: `player.name` → look up `name`.
+    target_var = word if word in analyzer.variables else word.split(".")[-1]
+    if target_var in analyzer.variables:
+        var = analyzer.variables[target_var]
+        return _location_at_symbol_line(server_mod, var, len(target_var))
+
+    if word in analyzer.images:
+        img = analyzer.images[word]
+        return _location_at_symbol_line(server_mod, img, len(word))
+
+    if word in analyzer.transforms:
+        trans = analyzer.transforms[word]
+        return _location_at_symbol_line(server_mod, trans, len(word))
+
+    return None
+
+
+def _location_at_symbol_line(server_mod, sym, name_length: int) -> lsp.Location:
+    """Build a `lsp.Location` for a symbol declaration at its line + column 0.
+
+    `name_length` is the length of the identifier to highlight (used as
+    the end character of the range — start is always column 0).
+
+    The line number is 1-based in the symbol table, 0-based in LSP —
+    we subtract 1, clamping to 0 to avoid negative positions.
+    """
+    decl_line = max(0, sym.line_number - 1)
+    return lsp.Location(
+        uri=server_mod._path_to_uri(sym.file_path),
+        range=lsp.Range(
+            start=lsp.Position(line=decl_line, character=0),
+            end=lsp.Position(line=decl_line, character=name_length),
+        ),
+    )
 
 
 def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | None:
