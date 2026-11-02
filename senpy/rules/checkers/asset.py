@@ -17,6 +17,39 @@ from senpy.core.models import Diagnostic
 from senpy.core.scope import ScopeStack
 from senpy.rules.base import BaseChecker
 
+# Regex to match individual audio targets inside a playlist `[a, b, c]` or a
+# single-file statement `play music "file.ogg"`. Matches quoted strings or
+# bare tokens up to whitespace/commas.
+_RE_AUDIO_TARGET = re.compile(
+    r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\'|[^\s,]+)'
+)
+
+
+def _parse_audio_targets(rest: str) -> list[str]:
+    """Parse audio file targets from the `rest` part of a play/queue statement.
+
+    Handles both:
+        - Playlists: `[track1, "track2.ogg", track3]` → 3 targets
+        - Single files: `"bgm.ogg"` or `audio.bgm_calm` → 1 target
+    """
+    clean_rest = rest.strip()
+    if not clean_rest:
+        return []
+
+    targets: list[str] = []
+    if clean_rest.startswith("["):
+        b_end = clean_rest.find("]")
+        sub_content = clean_rest[1:b_end] if b_end != -1 else clean_rest[1:]
+        for m_item in _RE_AUDIO_TARGET.finditer(sub_content):
+            t = m_item.group(1).strip()
+            if t and t not in (",", "[", "]"):
+                targets.append(t)
+    else:
+        m_target = _RE_AUDIO_TARGET.match(clean_rest)
+        if m_target:
+            targets.append(m_target.group(1).strip())
+    return targets
+
 
 class AssetChecker(BaseChecker):
     def _validate_transition_expr(
@@ -258,172 +291,316 @@ class AssetChecker(BaseChecker):
         stripped: str,
         noqa_map: dict,
     ) -> None:
-        """RPY501/RPY505: Проверка play / queue / stop (каналы и файлы).
+        """RPY501/RPY505: Проверка play / queue / stop (каналы и файлы)."""
+        if stripped.startswith("stop "):
+            self._check_stop_audio(
+                file_path=file_path,
+                idx=idx,
+                raw_line=raw_line,
+                stripped=stripped,
+                noqa_map=noqa_map,
+            )
+            return
 
-        Вынесено из check_line в Phase 4 Step 1 (0.5.7).
-        """
-        # RPY505: Проверка stop <channel>
-        m_stop = RE_STOP_STATEMENT.match(stripped) if stripped.startswith("stop ") else None
-        if m_stop:
-            stop_channel = m_stop.group(1).lower()
-            if stop_channel not in self.analyzer.registered_audio_channels and stop_channel not in {
-                k.lower() for k in self.analyzer.defined_audio_map
-            }:
-                start_c, end_c = self.analyzer._get_utf16_range(raw_line, m_stop.group(1))
-                self.analyzer._add_diagnostic(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        line_content=stripped,
-                        code="RPY505",
-                        message=(
-                            f"Audio channel '{stop_channel}' is not a built-in channel (music, sound, voice, audio) "
-                            "and has not been registered via 'renpy.music.register_channel()'. Causes runtime Exception."
-                        ),
-                        severity="WARNING",
-                        col=start_c,
-                        end_col=end_c,
-                    ),
-                    noqa_map,
-                )
+        if stripped.startswith(("play ", "queue ")):
+            self._check_play_queue_audio(
+                file_path=file_path,
+                idx=idx,
+                raw_line=raw_line,
+                stripped=stripped,
+                noqa_map=noqa_map,
+            )
 
-        # RPY501 & RPY505: Проверка play / queue (каналы и файлы)
-        m_audio = (
-            RE_AUDIO_STATEMENT.match(stripped) if stripped.startswith(("play ", "queue ")) else None
+    def _check_stop_audio(
+        self,
+        *,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        stripped: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY505: Verify `stop <channel>` references a valid audio channel."""
+        m_stop = RE_STOP_STATEMENT.match(stripped)
+        if not m_stop:
+            return
+        stop_channel = m_stop.group(1).lower()
+        if stop_channel in self.analyzer.registered_audio_channels:
+            return
+        if stop_channel in {k.lower() for k in self.analyzer.defined_audio_map}:
+            return
+        start_c, end_c = self.analyzer._get_utf16_range(raw_line, m_stop.group(1))
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=idx + 1,
+                line_content=stripped,
+                code="RPY505",
+                message=(
+                    f"Audio channel '{stop_channel}' is not a built-in channel (music, sound, voice, audio) "
+                    "and has not been registered via 'renpy.music.register_channel()'. Causes runtime Exception."
+                ),
+                severity="WARNING",
+                col=start_c,
+                end_col=end_c,
+            ),
+            noqa_map,
         )
-        if m_audio:
-            channel = m_audio.group(2).lower()
-            rest = (m_audio.group(3) or "").strip()
 
-            # 1. RPY505: Проверка валидности канала
-            if channel not in self.analyzer.registered_audio_channels and channel not in {
-                k.lower() for k in self.analyzer.defined_audio_map
-            }:
-                start_c, end_c = self.analyzer._get_utf16_range(raw_line, m_audio.group(2))
-                self.analyzer._add_diagnostic(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        line_content=stripped,
-                        code="RPY505",
-                        message=(
-                            f"Audio channel '{channel}' is not a built-in channel (music, sound, voice, audio) "
-                            "and has not been registered via 'renpy.music.register_channel()' or defined via 'define audio.<channel>'. Causes runtime Exception."
-                        ),
-                        severity="WARNING",
-                        col=start_c,
-                        end_col=end_c,
+    def _check_play_queue_audio(
+        self,
+        *,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        stripped: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY501/RPY505: Validate play/queue channel + audio file existence."""
+        m_audio = RE_AUDIO_STATEMENT.match(stripped)
+        if not m_audio:
+            return
+
+        channel = m_audio.group(2).lower()
+        rest = (m_audio.group(3) or "").strip()
+
+        self._validate_audio_channel(
+            channel=channel,
+            raw_channel=m_audio.group(2),
+            file_path=file_path,
+            idx=idx,
+            raw_line=raw_line,
+            stripped=stripped,
+            noqa_map=noqa_map,
+        )
+        self._check_voice_loop(
+            channel=channel,
+            rest=rest,
+            raw_line=raw_line,
+            file_path=file_path,
+            idx=idx,
+            stripped=stripped,
+            noqa_map=noqa_map,
+        )
+        self._check_audio_file_targets(
+            channel=channel,
+            rest=rest,
+            m_audio=m_audio,
+            file_path=file_path,
+            idx=idx,
+            raw_line=raw_line,
+            stripped=stripped,
+            noqa_map=noqa_map,
+        )
+
+    def _validate_audio_channel(
+        self,
+        *,
+        channel: str,
+        raw_channel: str,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        stripped: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY505: Validate the channel name in a play/queue statement."""
+        if channel in self.analyzer.registered_audio_channels:
+            return
+        if channel in {k.lower() for k in self.analyzer.defined_audio_map}:
+            return
+        start_c, end_c = self.analyzer._get_utf16_range(raw_line, raw_channel)
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=idx + 1,
+                line_content=stripped,
+                code="RPY505",
+                message=(
+                    f"Audio channel '{channel}' is not a built-in channel (music, sound, voice, audio) "
+                    "and has not been registered via 'renpy.music.register_channel()' or defined via "
+                    "'define audio.<channel>'. Causes runtime Exception."
+                ),
+                severity="WARNING",
+                col=start_c,
+                end_col=end_c,
+            ),
+            noqa_map,
+        )
+
+    def _check_voice_loop(
+        self,
+        *,
+        channel: str,
+        rest: str,
+        raw_line: str,
+        file_path: str,
+        idx: int,
+        stripped: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY505: Warn about `loop` on the `voice` channel (causes audio glitches)."""
+        if channel != "voice" or not re.search(r"\bloop\b", rest, re.IGNORECASE):
+            return
+        start_c, end_c = self.analyzer._get_utf16_range(raw_line, "loop")
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=idx + 1,
+                line_content=stripped,
+                code="RPY505",
+                message=(
+                    "Using 'loop' on the 'voice' audio channel. Voice playback is cut off "
+                    "on dialogue advance; looping voice causes audio glitches."
+                ),
+                severity="WARNING",
+                col=start_c,
+                end_col=end_c,
+            ),
+            noqa_map,
+        )
+
+    def _check_audio_file_targets(
+        self,
+        *,
+        channel: str,
+        rest: str,
+        m_audio,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        stripped: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY501: Verify audio files exist (with playlist + define audio alias support)."""
+        # No file specified → check define audio.<channel> map.
+        if not rest:
+            self._check_audio_no_file(
+                channel=channel,
+                raw_channel=m_audio.group(2),
+                file_path=file_path,
+                idx=idx,
+                raw_line=raw_line,
+                stripped=stripped,
+                noqa_map=noqa_map,
+            )
+            return
+
+        # Parse audio targets from rest (handles both playlists and single files).
+        audio_targets = _parse_audio_targets(rest)
+        for raw_audio_target in audio_targets:
+            self._validate_one_audio_target(
+                raw_audio_target=raw_audio_target,
+                file_path=file_path,
+                idx=idx,
+                raw_line=raw_line,
+                stripped=stripped,
+                noqa_map=noqa_map,
+            )
+
+    def _check_audio_no_file(
+        self,
+        *,
+        channel: str,
+        raw_channel: str,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        stripped: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY501: play/queue without a file — look it up in define audio.<channel>."""
+        defined_file = next(
+            (f for k, f in self.analyzer.defined_audio_map.items() if k.lower() == channel),
+            None,
+        )
+        if defined_file is not None:
+            self.analyzer._mark_asset_used(defined_file)
+            return
+        if channel not in self.analyzer.registered_audio_channels:
+            return  # channel already flagged by _validate_audio_channel
+        start_c, end_c = self.analyzer._get_utf16_range(raw_line, raw_channel)
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=idx + 1,
+                line_content=stripped,
+                code="RPY501",
+                message=(
+                    f"'{raw_channel}' without a file: the file is taken from "
+                    f"'define audio.{raw_channel}', but no such definition was found. "
+                    "Add 'define audio.<channel> = \"file.ogg\"' or specify the file explicitly."
+                ),
+                severity="ERROR",
+                col=start_c,
+                end_col=end_c,
+            ),
+            noqa_map,
+        )
+
+    def _validate_one_audio_target(
+        self,
+        *,
+        raw_audio_target: str,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        stripped: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY501: Check a single audio target (quoted path, identifier, or alias)."""
+        audio_found = False
+        if raw_audio_target.startswith(('"', "'")) and raw_audio_target.endswith(('"', "'")):
+            audio_found = self._resolve_quoted_audio(raw_audio_target)
+        else:
+            audio_found = self._resolve_identifier_audio(raw_audio_target)
+
+        if not audio_found and raw_audio_target not in ("fadein", "fadeout", "volume"):
+            start_c, end_c = self.analyzer._get_utf16_range(raw_line, raw_audio_target)
+            self.analyzer._add_diagnostic(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=idx + 1,
+                    line_content=stripped,
+                    code="RPY501",
+                    message=(
+                        f"Audio asset '{raw_audio_target}' not found in project, "
+                        "'audio/' directory, or RPA archives."
                     ),
-                    noqa_map,
-                )
+                    col=start_c,
+                    end_col=end_c,
+                ),
+                noqa_map,
+            )
 
-            # 2. RPY505: Зацикливание голоса на канале voice
-            if channel == "voice" and re.search(r"\bloop\b", rest, re.IGNORECASE):
-                start_c, end_c = self.analyzer._get_utf16_range(raw_line, "loop")
-                self.analyzer._add_diagnostic(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        line_content=stripped,
-                        code="RPY505",
-                        message="Using 'loop' on the 'voice' audio channel. Voice playback is cut off on dialogue advance; looping voice causes audio glitches.",
-                        severity="WARNING",
-                        col=start_c,
-                        end_col=end_c,
-                    ),
-                    noqa_map,
-                )
-            # 2a. RPY501: play/queue без файла — файл берётся из 'define audio.<канал>'
-            if not rest:
-                defined_file = next(
-                    (f for k, f in self.analyzer.defined_audio_map.items() if k.lower() == channel),
-                    None,
-                )
-                if defined_file is not None:
-                    self.analyzer._mark_asset_used(defined_file)
-                elif channel in self.analyzer.registered_audio_channels:
-                    start_c, end_c = self.analyzer._get_utf16_range(raw_line, m_audio.group(2))
-                    self.analyzer._add_diagnostic(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=idx + 1,
-                            line_content=stripped,
-                            code="RPY501",
-                            message=(
-                                f"'{m_audio.group(2)}' without a file: the file is taken from "
-                                f"'define audio.{m_audio.group(2)}', but no such definition was found. "
-                                "Add 'define audio.<channel> = \"file.ogg\"' or specify the file explicitly."
-                            ),
-                            severity="ERROR",
-                            col=start_c,
-                            end_col=end_c,
-                        ),
-                        noqa_map,
-                    )
-            # 3. RPY501: Проверка существования аудиофайла (с поддержкой плейлистов [track1, track2])
-            audio_targets = []
-            clean_rest = rest.strip()
-            if clean_rest.startswith("["):
-                b_end = clean_rest.find("]")
-                sub_content = clean_rest[1:b_end] if b_end != -1 else clean_rest[1:]
-                for m_item in re.finditer(
-                    r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\'|[^\s,]+)',
-                    sub_content,
-                ):
-                    t = m_item.group(1).strip()
-                    if t and t not in (",", "[", "]"):
-                        audio_targets.append(t)
-            else:
-                m_target = re.match(
-                    r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\'|[^\s]+)',
-                    clean_rest,
-                )
-                if m_target:
-                    audio_targets.append(m_target.group(1).strip())
+    def _resolve_quoted_audio(self, raw_audio_target: str) -> bool:
+        """Resolve a quoted audio path (e.g. "music/bgm.ogg") against known assets."""
+        clean_audio_path = raw_audio_target[1:-1].strip()
+        clean_audio_path = re.sub(r"^<[^>]+>\s*", "", clean_audio_path)
+        clean_audio_path = clean_audio_path.replace("\\", "/").lower()
+        audio_file = os.path.basename(clean_audio_path)
+        if (
+            clean_audio_path in self.analyzer.known_assets
+            or audio_file in self.analyzer.known_assets
+        ):
+            self.analyzer._mark_asset_used(clean_audio_path)
+            self.analyzer._mark_asset_used(audio_file)
+            return True
+        return False
 
-            for raw_audio_target in audio_targets:
-                audio_found = False
-
-                if raw_audio_target.startswith(('"', "'")) and raw_audio_target.endswith(
-                    ('"', "'")
-                ):
-                    clean_audio_path = raw_audio_target[1:-1].strip()
-                    clean_audio_path = re.sub(r"^<[^>]+>\s*", "", clean_audio_path)
-                    clean_audio_path = clean_audio_path.replace("\\", "/").lower()
-                    audio_file = os.path.basename(clean_audio_path)
-                    if (
-                        clean_audio_path in self.analyzer.known_assets
-                        or audio_file in self.analyzer.known_assets
-                    ):
-                        audio_found = True
-                        self.analyzer._mark_asset_used(clean_audio_path)
-                        self.analyzer._mark_asset_used(audio_file)
-                else:
-                    identifier = raw_audio_target.removeprefix("audio.")
-                    if identifier in self.analyzer.defined_audio_map:
-                        audio_found = True
-                        self.analyzer._mark_asset_used(self.analyzer.defined_audio_map[identifier])
-                    elif identifier in self.analyzer.audio_dir_files:
-                        audio_found = True
-                        self.analyzer._mark_asset_used(self.analyzer.audio_dir_files[identifier])
-                    elif identifier in self.analyzer.known_assets:
-                        audio_found = True
-                        self.analyzer._mark_asset_used(identifier)
-
-                if not audio_found and raw_audio_target not in ("fadein", "fadeout", "volume"):
-                    start_c, end_c = self.analyzer._get_utf16_range(raw_line, raw_audio_target)
-                    self.analyzer._add_diagnostic(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=idx + 1,
-                            line_content=stripped,
-                            code="RPY501",
-                            message=f"Audio asset '{raw_audio_target}' not found in project, 'audio/' directory, or RPA archives.",
-                            col=start_c,
-                            end_col=end_c,
-                        ),
-                        noqa_map,
-                    )
+    def _resolve_identifier_audio(self, raw_audio_target: str) -> bool:
+        """Resolve an identifier audio reference (e.g. `audio.bgm_calm` or bare name)."""
+        identifier = raw_audio_target.removeprefix("audio.")
+        if identifier in self.analyzer.defined_audio_map:
+            self.analyzer._mark_asset_used(self.analyzer.defined_audio_map[identifier])
+            return True
+        if identifier in self.analyzer.audio_dir_files:
+            self.analyzer._mark_asset_used(self.analyzer.audio_dir_files[identifier])
+            return True
+        if identifier in self.analyzer.known_assets:
+            self.analyzer._mark_asset_used(identifier)
+            return True
+        return False
 
     def check_line(
         self,
