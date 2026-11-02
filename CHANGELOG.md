@@ -5,6 +5,107 @@ All notable changes to Senpy are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased/0.7.4] — Introspection tool (`senpy inspect`)
+
+### New subcommand — `senpy inspect`
+
+Dumps all symbols Senpy sees in a project as JSON. Built for debugging
+hover/asset resolution issues, plugin authoring, and regression
+testing. A parallel mini-CLI (like `senpy format`): shares only
+`SenpyAnalyzer` + cache with the main CLI, has its own arg parser and
+render path.
+
+```bash
+senpy inspect [PATH]                # full JSON to stdout
+senpy inspect game/ --summary       # only stats section (quick overview)
+senpy inspect game/ --unresolved    # only broken jumps / missing screens / etc.
+senpy inspect game/ --label start   # details of one label (auto --with-source)
+senpy inspect game/ --screen shop
+senpy inspect game/ --transform fade
+senpy inspect game/ --no-cache      # cold run for fresh-state debugging
+senpy inspect game/ --with-source   # include code_line/body for all symbols
+senpy inspect game/ --decompile     # opt-in .rpyc/.rpa extraction
+senpy inspect game/ -o dump.json    # write to file instead of stdout
+```
+
+JSON structure: `labels`, `screens`, `variables`, `transforms`,
+`images`, `jump_sources` (reverse index of jump targets),
+`used_assets`, `diagnostics`, `unresolved` (broken_jumps,
+missing_screens, unreferenced_labels, unused_assets), `stats`
+(per-section counters for quick overview without jq).
+
+The 4 shortcut flags (`--summary`, `--unresolved`, `--label`,
+`--screen`) cover the common debugging queries without requiring jq
+on Windows. `--label`/`--screen`/`--transform` single-lookups
+auto-enable `--with-source` (if you're looking at one symbol, you
+want to see its source).
+
+### Architecture — `discover_files` extracted to `senpy/cli/discover.py`
+
+The 4 file-discovery functions (`discover_files` + 3 helpers:
+`_find_rpy_files`, `_find_orphaned_rpyc`, `_decompile_sandbox`) were
+moved from `senpy/cli/main.py` (~160 lines) into a new
+`senpy/cli/discover.py` module. This lets `senpy inspect` reuse the
+full pipeline (existing `.rpy` files + `.rpyc` orphans + `.rpa`
+extraction + decompilation) without coupling to the main CLI's
+argparse Namespace.
+
+The only behavioral change: `_decompile_sandbox` (and `discover_files`
+through it) gained an `interactive: bool = True` parameter. When
+`interactive=False` (used by `senpy inspect`), the "Decompile them
+into a sandbox? [y/N]" prompt is suppressed — only explicit
+`--decompile` or `config['decompile']` triggers decompilation. The
+main CLI passes `interactive=True`, preserving existing behavior.
+All 8 existing characterization tests for `discover_files` continue
+to pass without modification (mock-targets updated to point at the
+new module).
+
+### Determinism — `senpy inspect` ignores `config['decompile']`
+
+`senpy inspect` is deterministic by design: the same `senpy inspect
+PATH` command must produce the same JSON regardless of any
+`senpy.toml` settings that happen to live in PATH or its ancestors.
+The main CLI honors `config['decompile']` because the user explicitly
+invoked lint and likely wants the project analyzed as fully as
+possible. Inspect, however, must not silently start decompiling
+`.rpyc` files just because a `senpy.toml` somewhere up the directory
+tree says `decompile = true` — that would pollute the JSON output
+with unrpyc's `[Preparing]`/`[Decompiling]` progress lines.
+
+Decompile is opt-in for inspect: pass `--decompile` explicitly.
+`--unrpyc` still honors `config['unrpyc_path']` (it's a pure
+configuration: which unrpyc to use, not a behavior toggle).
+
+This was caught during user testing on Windows: a project with
+`decompile = true` in its `senpy.toml` triggered unrpyc decompilation
+silently when running `senpy inspect PATH`. The test
+`test_inspect_ignores_config_decompile_setting` now mocks
+`find_unrpyc_executable` to return a fake command, so the regression
+is caught on any platform (Linux CI runners don't have unrpyc
+installed, so the bug was hidden before).
+
+### Tests
+
+* **1089 tests pass** (up from 1036 in 0.7.3). 53 new:
+  - `tests/test_inspect.py` (27): assertion-based + size invariants
+    on the JSON structure. Verifies `stats.labels ==
+    len(data.labels)`, every broken-jump target is NOT in labels,
+    every unreferenced label IS in labels, JSON is serializable (no
+    sets, no tuples).
+  - `tests/test_inspect_cli.py` (18): subcommand parsing, all 4
+    shortcut flags, `--no-cache`, `--with-source`, `--output-file`,
+    `--decompile`, dispatch routing, plus regression tests for the
+    `config['decompile']` and `interactive=False` determinism.
+  - `tests/test_discover.py` (8): `interactive=False` suppresses
+    prompt on TTY, `interactive=True` preserves prompt behavior,
+    explicit `--decompile` and `config['decompile']` still honored
+    when `interactive=False`, module importable without circular
+    dependency.
+* Ruff check clean. 0 import cycles across 82 modules
+  (+2 new: `senpy/cli/discover.py`, `senpy/cli/inspect_dispatch.py`;
+  +1 new: `senpy/formats/inspect.py`).
+* Coverage stable.
+
 ## [0.7.3] — Plugin trust UX, English-only codebase, expanded badges
 
 Patch release: three independent threads. Plugin trust management
