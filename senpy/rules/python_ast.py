@@ -388,6 +388,27 @@ def _get_root_name(node: ast.AST | None) -> str | None:
     return None
 
 
+def _extract_assign_target_name(node: ast.Assign | ast.AugAssign) -> tuple[str, bool]:
+    """Extract the target name from an Assign/AugAssign node.
+
+    Returns `(name, is_attr)`:
+        - `name` is the variable name (for `Name`) or the dotted attribute
+          (e.g. `obj.prop`, for `Attribute`).
+        - `is_attr` is True when the target is an attribute access (not a
+          plain variable). The caller uses this to skip `style.*` mutations.
+    """
+    target_node = (
+        node.target
+        if isinstance(node, ast.AugAssign)
+        else (node.targets[0] if node.targets else None)
+    )
+    if isinstance(target_node, ast.Name):
+        return target_node.id, False
+    if isinstance(target_node, ast.Attribute):
+        return ast.unparse(target_node), True
+    return "variable", False
+
+
 def extract_assigned_names(py_code: str) -> set[str]:
     """Извлекает имена переменных, которым присваивается значение в строке Python."""
     assigned = set()
@@ -532,109 +553,189 @@ class PythonAstChecker:
         noqa_map: dict,
         lines: list[str] | None = None,
     ) -> None:
-        """RPY201, RPY205: Проверка императивных циклов и мутаций внутри screen."""
+        """RPY201, RPY205, RPY208: Проверка императивных циклов и мутаций внутри screen."""
         try:
             tree = ast.parse(py_code)
-            for node in ast.walk(tree):
-                if isinstance(node, (ast.For, ast.While)):
-                    loop_type = type(node).__name__.lower()
-                    real_line = line_idx + getattr(node, "lineno", 1) - 1
-                    target_line = (
-                        lines[real_line - 1]
-                        if lines and 0 <= real_line - 1 < len(lines)
-                        else f"{loop_type} ..."
-                    )
-                    start_c, end_c = get_utf16_range(target_line, loop_type)
-                    self.analyzer._add_diagnostic(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=real_line,
-                            line_content=(
-                                lines[real_line - 1].strip()
-                                if lines and 0 <= real_line - 1 < len(lines)
-                                else f"{loop_type} ...:"
-                            ),
-                            code="RPY205",
-                            message=(
-                                f"Imperative '{loop_type}' loop inside screen '{screen_name}'. "
-                                "Python loops inside screens hurt UI prediction performance. "
-                                "Use screen-level declarative 'for' loops instead."
-                            ),
-                            col=start_c,
-                            end_col=end_c,
-                        ),
-                        noqa_map,
-                    )
-                    break
-
-                if isinstance(node, (ast.Assign, ast.AugAssign)):
-                    target_name = "variable"
-                    target_node = (
-                        node.target
-                        if isinstance(node, ast.AugAssign)
-                        else (node.targets[0] if node.targets else None)
-                    )
-                    is_attr = False
-                    if isinstance(target_node, ast.Name):
-                        target_name = target_node.id
-                    elif isinstance(target_node, ast.Attribute):
-                        target_name = ast.unparse(target_node)
-                        is_attr = True
-
-                    if is_attr and target_name.startswith("style."):
-                        continue
-                    if target_name in SCREEN_LOCAL_IGNORE:
-                        continue
-
-                    raw_l = (
-                        lines[line_idx - 1]
-                        if lines and 0 <= line_idx - 1 < len(lines)
-                        else line_content
-                    )
-                    start_c, end_c = get_utf16_range(raw_l, target_name)
-
-                    # RPY208: Прямая мутация локальной переменной экрана через Python ($ var = ...)
-                    if target_name in screen_local_symbols:
-                        self.analyzer._add_diagnostic(
-                            Diagnostic(
-                                file_path=file_path,
-                                line_number=line_idx,
-                                line_content=raw_l.strip(),
-                                code="RPY208",
-                                message=(
-                                    f"Direct state mutation of screen-local variable '{target_name}' inside screen '{screen_name}'. "
-                                    "Python statements in screens execute in the global store and cannot modify screen-local variables! "
-                                    f"Use screen action SetScreenVariable('{target_name}', ...) instead."
-                                ),
-                                severity="ERROR",
-                                col=start_c,
-                                end_col=end_c,
-                            ),
-                            noqa_map,
-                        )
-                        break
-
-                    # RPY201: Прямая мутация глобального состояния
-                    self.analyzer._add_diagnostic(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=line_idx,
-                            line_content=raw_l.strip(),
-                            code="RPY201",
-                            message=(
-                                f"Direct state mutation '{target_name}' inside screen '{screen_name}'. "
-                                "Screens are evaluated predictively. Use screen Actions instead."
-                            ),
-                            col=start_c,
-                            end_col=end_c,
-                        ),
-                        noqa_map,
-                    )
-                    break
-
         except SyntaxError as e:
-            # log debug instead of silent suppress.
             _logger.debug("check_screen_mutation: ast.parse failed: %s", e)
+            return
+
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.For, ast.While)):
+                self._check_loop_in_screen(
+                    node=node,
+                    file_path=file_path,
+                    line_idx=line_idx,
+                    screen_name=screen_name,
+                    lines=lines,
+                    noqa_map=noqa_map,
+                )
+                return  # only one diagnostic per walk (matches original behavior)
+
+            if isinstance(node, (ast.Assign, ast.AugAssign)):
+                self._check_mutation_in_screen(
+                    node=node,
+                    file_path=file_path,
+                    line_idx=line_idx,
+                    screen_name=screen_name,
+                    screen_local_symbols=screen_local_symbols,
+                    line_content=line_content,
+                    lines=lines,
+                    noqa_map=noqa_map,
+                )
+                return
+
+    def _check_loop_in_screen(
+        self,
+        *,
+        node: ast.For | ast.While,
+        file_path: str,
+        line_idx: int,
+        screen_name: str,
+        lines: list[str] | None,
+        noqa_map: dict,
+    ) -> None:
+        """RPY205: Imperative for/while loop inside a screen definition.
+
+        Python loops inside screens hurt UI prediction performance.
+        Ren'Py screen language should use declarative `for` instead.
+        """
+        loop_type = type(node).__name__.lower()
+        real_line = line_idx + getattr(node, "lineno", 1) - 1
+        target_line = (
+            lines[real_line - 1]
+            if lines and 0 <= real_line - 1 < len(lines)
+            else f"{loop_type} ..."
+        )
+        start_c, end_c = get_utf16_range(target_line, loop_type)
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=real_line,
+                line_content=(
+                    lines[real_line - 1].strip()
+                    if lines and 0 <= real_line - 1 < len(lines)
+                    else f"{loop_type} ...:"
+                ),
+                code="RPY205",
+                message=(
+                    f"Imperative '{loop_type}' loop inside screen '{screen_name}'. "
+                    "Python loops inside screens hurt UI prediction performance. "
+                    "Use screen-level declarative 'for' loops instead."
+                ),
+                col=start_c,
+                end_col=end_c,
+            ),
+            noqa_map,
+        )
+
+    def _check_mutation_in_screen(
+        self,
+        *,
+        node: ast.Assign | ast.AugAssign,
+        file_path: str,
+        line_idx: int,
+        screen_name: str,
+        screen_local_symbols: set[str],
+        line_content: str,
+        lines: list[str] | None,
+        noqa_map: dict,
+    ) -> None:
+        """RPY208 (screen-local var mutation) and RPY201 (global state mutation)."""
+        target_name, is_attr = _extract_assign_target_name(node)
+        if is_attr and target_name.startswith("style."):
+            return
+        if target_name in SCREEN_LOCAL_IGNORE:
+            return
+
+        raw_l = lines[line_idx - 1] if lines and 0 <= line_idx - 1 < len(lines) else line_content
+        start_c, end_c = get_utf16_range(raw_l, target_name)
+
+        if target_name in screen_local_symbols:
+            self._emit_rpy208(
+                target_name=target_name,
+                screen_name=screen_name,
+                file_path=file_path,
+                line_idx=line_idx,
+                raw_l=raw_l,
+                start_c=start_c,
+                end_c=end_c,
+                noqa_map=noqa_map,
+            )
+            return
+
+        self._emit_rpy201(
+            target_name=target_name,
+            screen_name=screen_name,
+            file_path=file_path,
+            line_idx=line_idx,
+            raw_l=raw_l,
+            start_c=start_c,
+            end_c=end_c,
+            noqa_map=noqa_map,
+        )
+
+    def _emit_rpy208(
+        self,
+        *,
+        target_name: str,
+        screen_name: str,
+        file_path: str,
+        line_idx: int,
+        raw_l: str,
+        start_c: int,
+        end_c: int,
+        noqa_map: dict,
+    ) -> None:
+        """RPY208: Direct mutation of screen-local variable via Python ($ var = ...)."""
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=line_idx,
+                line_content=raw_l.strip(),
+                code="RPY208",
+                message=(
+                    f"Direct state mutation of screen-local variable '{target_name}' "
+                    f"inside screen '{screen_name}'. "
+                    "Python statements in screens execute in the global store and "
+                    "cannot modify screen-local variables! "
+                    f"Use screen action SetScreenVariable('{target_name}', ...) instead."
+                ),
+                severity="ERROR",
+                col=start_c,
+                end_col=end_c,
+            ),
+            noqa_map,
+        )
+
+    def _emit_rpy201(
+        self,
+        *,
+        target_name: str,
+        screen_name: str,
+        file_path: str,
+        line_idx: int,
+        raw_l: str,
+        start_c: int,
+        end_c: int,
+        noqa_map: dict,
+    ) -> None:
+        """RPY201: Direct mutation of global state inside screen."""
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=line_idx,
+                line_content=raw_l.strip(),
+                code="RPY201",
+                message=(
+                    f"Direct state mutation '{target_name}' inside screen '{screen_name}'. "
+                    "Screens are evaluated predictively. Use screen Actions instead."
+                ),
+                col=start_c,
+                end_col=end_c,
+            ),
+            noqa_map,
+        )
 
     def check_python_ast(
         self,
