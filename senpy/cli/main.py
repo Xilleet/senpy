@@ -158,6 +158,23 @@ def _add_general_args(parser: argparse.ArgumentParser) -> None:
         default=".",
         help="Path to the Ren'Py project or 'game' directory (default: current dir)",
     )
+    parser.add_argument(
+        "--respect-gitignore",
+        action="store_true",
+        help="Skip files matching patterns in .gitignore (reduces noise in large repos).",
+    )
+    parser.add_argument(
+        "--config",
+        metavar="FILE",
+        help="Path to a custom senpy.toml config file (default: senpy.toml in the project root). "
+        "Can also be set via SENPY_CONFIG environment variable.",
+    )
+    parser.add_argument(
+        "--show-settings",
+        action="store_true",
+        help="Print the resolved configuration (from senpy.toml + CLI flags) and exit. "
+        "Useful for debugging which rules are enabled/ignored.",
+    )
 
 
 def _add_rules_args(parser: argparse.ArgumentParser) -> None:
@@ -273,6 +290,23 @@ def _add_lint_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Show detailed list of fixes applied by --fix (file:line: rule — message). "
         "Without --fix, shows '0 fixes applied'. Useful for CI logs and audit.",
+    )
+    g.add_argument(
+        "--statistics",
+        action="store_true",
+        help="Print a summary table of diagnostics by rule code (count per rule, sorted by frequency).",
+    )
+    g.add_argument(
+        "--add-noqa",
+        action="store_true",
+        help="Automatically add '# noqa' suppression comments to all fixable diagnostics. "
+        "Useful for suppressing known false positives without editing senpy.toml.",
+    )
+    g.add_argument(
+        "--cache-dir",
+        metavar="DIR",
+        help="Custom cache directory (default: .senpy_cache in the project root). "
+        "Useful for CI with shared cache between runs.",
     )
 
 
@@ -1113,7 +1147,7 @@ def _handle_early_exits(args, console, is_tsundere: bool) -> int | None:
         _trust(args.trust_plugin)
         console.print(f"[green]Plugin '{args.trust_plugin}' added to trust store.[/green]")
         console.print(
-            "[dim]The plugin will be loaded automatically on next Senpy run" "(CLI or LSP).[/dim]"
+            "[dim]The plugin will be loaded automatically on next Senpy run " "(CLI or LSP).[/dim]"
         )
         sys.exit(0)
 
@@ -1129,6 +1163,18 @@ def _handle_early_exits(args, console, is_tsundere: bool) -> int | None:
             console.print(
                 f"[yellow]Plugin '{args.untrust_plugin}' was not in the trust store.[/yellow]"
             )
+        sys.exit(0)
+
+    # --show-settings: print resolved config and exit
+    if getattr(args, "show_settings", False):
+        from senpy.core.config import load_config
+
+        project_path = args.path if args.path else "."
+        config = load_config(project_path)
+        console.print("[bold]Resolved Senpy configuration:[/bold]")
+        console.print(f"  project_path: {project_path}")
+        for key, val in sorted(config.items()):
+            console.print(f"  {key}: {val}")
         sys.exit(0)
 
     return None
