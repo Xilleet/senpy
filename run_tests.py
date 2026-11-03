@@ -1,8 +1,8 @@
 """
-Скрипт быстрого запуска тестов Senpy с интерактивным меню и прогрессом.
-Запуск:
-    python run_tests.py                     # Меню или автозапуск
-    python run_tests.py --update-snapshots  # Прямой запуск с флагом (для CI)
+Senpy test runner with an interactive menu and progress display.
+Usage:
+    python run_tests.py                     # Menu or auto-run
+    python run_tests.py --update-snapshots  # Direct run with a flag (for CI)
 """
 
 from __future__ import annotations
@@ -19,45 +19,47 @@ console = Console()
 
 
 def run_pytest_with_timer(args: list[str]) -> int:
-    """Запускает pytest с переданными аргументами и замеряет время."""
-    console.print(f"\n[bold cyan]⚡ Запуск pytest с аргументами: {args}[/bold cyan]\n")
+    """Run pytest with the given arguments and time the execution."""
+    console.print(f"\n[bold cyan]⚡ Running pytest with args: {args}[/bold cyan]\n")
 
     start_time = time.perf_counter()
     exit_code = pytest.main(args)
     elapsed = time.perf_counter() - start_time
 
-    # Если pytest завершился с кодом 5, это значит "No tests were collected" (пустой выбор по -k)
+    # Exit code 5 means "No tests were collected" (empty -k filter result).
     if exit_code == 0:
-        console.print(f"\n[bold green]✔ Всё успешно пройдено за {elapsed:.2f}с![/bold green]\n")
+        console.print(
+            f"\n[bold green]✔ Everything was successfully completed in {elapsed:.2f}с![/bold green]\n"
+        )
     elif exit_code == 5:
         console.print(
-            "\n[bold yellow]⚠ Тесты по данному фильтру не найдены (возможно, фикстура для этого правила ещё не создана).[/bold yellow]\n"
+            "\n[bold yellow]⚠ No tests found for this filter (it is possible that a fixture for this rule has not yet been created).[/bold yellow]\n"
         )
         exit_code = 0
     else:
         console.print(
-            f"\n[bold red]✖ Обнаружены ошибки / падения тестов ({elapsed:.2f}с).[/bold red]\n"
+            f"\n[bold red]✖ Errors / test failures detected ({elapsed:.2f}с).[/bold red]\n"
         )
 
     return exit_code
 
 
 def interactive_menu() -> list[str]:
-    """Интерактивное консольное меню выбора режима тестирования."""
+    """Interactive console menu for choosing the test mode."""
     console.print("[bold magenta]========================================[/bold magenta]")
     console.print("[bold white]          SENPY TEST RUNNER MENU          [/bold white]")
     console.print("[bold magenta]========================================[/bold magenta]")
-    console.print("  [1] Прогон с обновлением снимков (--update-snapshots)")
-    console.print("  [2] Обычный прогон всех тестов (быстрый)")
-    console.print("  [3] Запуск тестов по конкретному правилу (фильтр -k)")
-    console.print("  [q] Выход")
+    console.print("  [1] Run with snapshot updates (--update-snapshots)")
+    console.print("  [2] A standard run of all tests (быстрый)")
+    console.print("  [3] Running tests for a specific rule (using the -k filter)")
+    console.print("  [q] Exit")
     console.print("[bold magenta]----------------------------------------[/bold magenta]")
 
-    choice = Prompt.ask("[?] Выберите вариант", choices=["1", "2", "3", "q", "quit"], default="2")
+    choice = Prompt.ask("[?] Select an option", choices=["1", "2", "3", "q", "quit"], default="2")
     choice = choice.strip().lower()
 
     if choice in ("q", "quit"):
-        console.print("[yellow][*] Выход из тестов.[/yellow]")
+        console.print("[yellow][*] Exiting tests.[/yellow]")
         sys.exit(0)
     elif choice == "1":
         return ["tests", "--update-snapshots"]
@@ -65,25 +67,25 @@ def interactive_menu() -> list[str]:
         return ["tests"]
     elif choice == "3":
         rule_input = (
-            Prompt.ask("[?] Введите номер правила (например, 108 или rpy108)").strip().lower()
+            Prompt.ask("[?] Enter the rule number (for example, 108 or rpy108)").strip().lower()
         )
         if not rule_input:
             return ["tests"]
-        # Нормализуем ввод: если ввели "108", превращаем в "rpy108"
+        # Normalize input: if the user typed "108", convert it to "rpy108".
         rule_filter = rule_input if rule_input.startswith("rpy") else f"rpy{rule_input}"
-        console.print(f"[dim][*] Фильтр тестов по шаблону: -k {rule_filter}[/dim]")
+        console.print(f"[dim][*] Test filter pattern: -k {rule_filter}[/dim]")
         return ["tests", "-k", rule_filter]
 
     return ["tests"]
 
 
 def main():
-    # Если аргументы переданы через консоль/CI (например, run_tests.py --update-snapshots),
-    # меню пропускаем и выполняем их напрямую.
+    # If arguments were passed via CLI/CI (e.g. run_tests.py --update-snapshots),
+    # skip the menu and run them directly.
     if len(sys.argv) > 1:
         pytest_args = sys.argv[1:]
     else:
-        # Иначе запускаем интерактивное меню
+        # Otherwise launch the interactive menu.
         pytest_args = interactive_menu()
 
     return run_pytest_with_timer(pytest_args)
@@ -94,15 +96,15 @@ if __name__ == "__main__":
     try:
         exit_code = main()
     except KeyboardInterrupt:
-        console.print("\n[yellow][*] Тестирование прервано пользователем (Ctrl+C).[/yellow]")
+        console.print("\n[yellow][*] Testing interrupted by the user (Ctrl+C).[/yellow]")
         exit_code = 130
     except SystemExit as se:
         exit_code = se.code if isinstance(se.code, int) else 1
     except BaseException:
-        console.print("\n[bold red][!] Критическая ошибка скрипта:[/bold red]")
+        console.print("\n[bold red][!] Critical script error:[/bold red]")
         traceback.print_exc()
         exit_code = 1
     finally:
         console.print()
-        input("Нажмите Enter, чтобы закрыть окно...")
+        input("Press Enter to close the window...")
         sys.exit(exit_code)

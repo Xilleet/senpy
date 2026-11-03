@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""bump_version.py — апдейт версии Senpy.
+"""bump_version.py — Senpy version bumper.
 
-версия хранится в единственном месте — senpy/__version__.py.
-Все остальные файлы (constants.py, server.py, pyproject.toml) импортируют
-или читают её динамически. Только package.json (для VS Code marketplace)
-по-прежнему требует явную версию — её мы обновляем здесь.
+The version is stored in a single place: senpy/__version__.py.
+All other files (constants.py, server.py, pyproject.toml) import or
+read it dynamically. Only package.json (for the VS Code marketplace)
+still requires an explicit version — we update it here.
 
-Использование:
-    python bump_version.py             # интерактивное меню
+Usage:
+    python bump_version.py             # interactive menu
     python bump_version.py patch       # 0.4.7 -> 0.4.8
     python bump_version.py minor       # 0.4.7 -> 0.5.0
     python bump_version.py major       # 0.4.7 -> 1.0.0
-    python bump_version.py 1.2.3       # явная версия
+    python bump_version.py 1.2.3       # explicit version
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ def select_target_version(major: int, minor: int, patch: int) -> str | None:
     minor_ver = f"{major}.{minor + 1}.0"
     major_ver = f"{major + 1}.0.0"
 
-    # Если передан аргумент командной строки (python bump_version.py minor)
+    # If a command-line argument was passed (e.g. `python bump_version.py minor`)
     if len(sys.argv) > 1:
         arg = sys.argv[1].strip().lower()
         if arg in ("patch", "p", "1"):
@@ -41,29 +41,27 @@ def select_target_version(major: int, minor: int, patch: int) -> str | None:
             return major_ver
         if re.match(r"^\d+\.\d+\.\d+$", arg):
             return arg
-        print(
-            f"[!] Неизвестный аргумент: '{arg}'. Используйте: patch, minor, major или версию X.Y.Z"
-        )
+        print(f"[!] Unknown argument: '{arg}'. Use: patch, minor, major, or version X.Y.Z")
         return None
 
-    # Интерактивное меню
+    # Interactive menu
     print("=" * 50)
-    print(f"[*] Текущая версия: {major}.{minor}.{patch}")
+    print(f"[*] Current version: {major}.{minor}.{patch}")
     print("=" * 50)
     print(
-        f"  [1] Patch: {patch_ver}  (предназначается для багфиксов, хотфиксов и мелких правок регулярок без изменения архитектуры и без добавления крупных фич)"
+        f"  [1] Patch: {patch_ver}  (intended for bugfixes, hotfixes, and small regex tweaks without architecture changes or major features)"
     )
     print(
-        f"  [2] Minor: {minor_ver}  (выпускается, когда проект получает новые крупные возможности, расширение семантики или переход на новый уровень качества)"
+        f"  [2] Minor: {minor_ver}  (released when the project gains significant new capabilities, semantic extensions, or a new quality level)"
     )
     print(
-        f"  [3] Major: {major_ver}  (статус первого стабильного релизного билда (Production Ready), когда API стабилизирован и протестирован на десятках реальных новелл)"
+        f"  [3] Major: {major_ver}  (first stable production-ready build, when the API is stabilized and tested on dozens of real visual novels)"
     )
-    print("  [c] Ввести свою версию вручную")
-    print("  [q] Отмена")
+    print("  [c] Enter a custom version manually")
+    print("  [q] Cancel")
     print("=" * 50)
 
-    choice = input("[?] Выберите вариант [1/2/3/c/q] (по умолчанию 2): ").strip().lower()
+    choice = input("[?] Choose [1/2/3/c/q] (default 2): ").strip().lower()
 
     if choice in ("q", "quit", "exit"):
         return None
@@ -74,54 +72,54 @@ def select_target_version(major: int, minor: int, patch: int) -> str | None:
     if choice in ("3", "major"):
         return major_ver
     if choice in ("c", "custom"):
-        custom = input("[?] Введите версию (например, 0.3.0): ").strip()
+        custom = input("[?] Enter version (e.g. 0.3.0): ").strip()
         if re.match(r"^\d+\.\d+\.\d+$", custom):
             return custom
-        print("[!] Некорректный формат версии.")
+        print("[!] Invalid version format.")
         return None
 
     return minor_ver
 
 
 def read_current_version() -> tuple[int, int, int]:
-    """Читает текущую версию из senpy/__version__.py."""
+    """Read the current version from senpy/__version__.py."""
     if not os.path.exists(VERSION_PY_PATH):
-        print(f"[ERROR] {VERSION_PY_PATH} не найден!")
+        print(f"[ERROR] {VERSION_PY_PATH} not found!")
         sys.exit(1)
 
     with open(VERSION_PY_PATH, encoding="utf-8") as f:
         content = f.read()
 
-    # Ищем __version__ = "X.Y.Z"
+    # Look for __version__ = "X.Y.Z"
     match = re.search(r'__version__\s*=\s*["\'](\d+)\.(\d+)\.(\d+)["\']', content)
     if not match:
-        print("[!] Строка __version__ не найдена в senpy/__version__.py.")
+        print("[!] __version__ line not found in senpy/__version__.py.")
         sys.exit(1)
 
     return int(match.group(1)), int(match.group(2)), int(match.group(3))
 
 
 def write_version_to_pyfile(next_ver: str) -> None:
-    """Обновляет senpy/__version__.py с новой версией + MAJOR/MINOR/PATCH."""
+    """Update senpy/__version__.py with the new version + MAJOR/MINOR/PATCH."""
     major, minor, patch = (int(x) for x in next_ver.split("."))
-    new_content = f'''"""Single source of truth для версии Senpy.
+    new_content = f'''"""Single source of truth for the Senpy version.
 
-Все остальные места (pyproject.toml, constants.SENPY_VERSION, server.py,
-senpy-vscode/package.json) должны синхронизироваться с этим файлом через
+All other locations (pyproject.toml, constants.SENPY_VERSION, server.py,
+senpy-vscode/package.json) must be synchronized with this file via
 `python bump_version.py`.
 
-Изменять версию только здесь (или через `bump_version.py`, который сам
-проставит её сюда и во все остальные места).
+Change the version only here (or via `bump_version.py`, which will
+update it here and everywhere else automatically).
 """
 from __future__ import annotations
 
 __version__ = "{next_ver}"
 
-# Удобные алиасы для использования в разных местах кода
-# (например, в LSP-сервере часто нужен "v0.4.7" с префиксом).
+# Convenient aliases for use in different parts of the codebase
+# (e.g. the LSP server often needs "v0.4.7" with the prefix).
 VERSION_WITH_PREFIX = f"v{{__version__}}"
 
-# Semver-разбор для сложных проверок (например, cache invalidation по major.minor)
+# Semver parsing for complex checks (e.g. cache invalidation by major.minor)
 MAJOR: int = {major}
 MINOR: int = {minor}
 PATCH: int = {patch}
@@ -130,13 +128,13 @@ __all__ = ["__version__", "VERSION_WITH_PREFIX", "MAJOR", "MINOR", "PATCH"]
 '''
     with open(VERSION_PY_PATH, "w", encoding="utf-8") as f:
         f.write(new_content)
-    print(f"[✔] senpy/__version__.py: -> {next_ver}")
+    print(f"[+] senpy/__version__.py: -> {next_ver}")
 
 
 def write_version_to_package_json(next_ver: str) -> None:
-    """Обновляет senpy-vscode/package.json — VS Code marketplace требует явную версию."""
+    """Update senpy-vscode/package.json — the VS Code marketplace requires an explicit version."""
     if not os.path.exists(PACKAGE_JSON_PATH):
-        print(f"[!] Warning: {PACKAGE_JSON_PATH} не найден, пропуск.")
+        print(f"[!] Warning: {PACKAGE_JSON_PATH} not found, skipping.")
         return
     try:
         with open(PACKAGE_JSON_PATH, encoding="utf-8") as f:
@@ -146,9 +144,9 @@ def write_version_to_package_json(next_ver: str) -> None:
         with open(PACKAGE_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(pkg_data, f, indent=2, ensure_ascii=False)
             f.write("\n")
-        print(f"[✔] senpy-vscode/package.json: {old_ver} -> {next_ver}")
+        print(f"[+] senpy-vscode/package.json: {old_ver} -> {next_ver}")
     except (OSError, json.JSONDecodeError, KeyError) as e:
-        print(f"[!] Warning: не удалось синхронизировать package.json: {e}")
+        print(f"[!] Warning: failed to sync package.json: {e}")
 
 
 def bump_version():
@@ -157,21 +155,21 @@ def bump_version():
 
     next_ver = select_target_version(maj_n, min_n, pat_n)
     if not next_ver:
-        print(f"[*] Версия {current_ver} остаётся без изменений.\n")
+        print(f"[*] Version {current_ver} remains unchanged.\n")
         return
 
-    print(f"\n[+] Обновление версии: {current_ver} -> {next_ver}\n")
+    print(f"\n[+] Bumping version: {current_ver} -> {next_ver}\n")
 
-    # 1. Обновляем senpy/__version__.py — единственный источник правды
+    # 1. Update senpy/__version__.py — the single source of truth
     write_version_to_pyfile(next_ver)
 
-    # 2. Обновляем senpy-vscode/package.json (marketplace требует явную версию)
+    # 2. Update senpy-vscode/package.json (marketplace requires explicit version)
     write_version_to_package_json(next_ver)
 
-    # 3. Готово. constants.py, server.py, pyproject.toml подхватят версию
-    # автоматически через import / dynamic = ["version"].
-    print(f"\n[★] Успешно! Проект обновлён до версии {next_ver}.")
-    print("    constants.py / server.py / pyproject.toml подхватят автоматически.\n")
+    # 3. Done. constants.py, server.py, pyproject.toml will pick up the version
+    # automatically via import / dynamic = ["version"].
+    print(f"\n[*] Success! Project updated to version {next_ver}.")
+    print("    constants.py / server.py / pyproject.toml will pick it up automatically.\n")
 
 
 if __name__ == "__main__":

@@ -38,6 +38,67 @@ SENPY_OWN_FILES: frozenset[str] = frozenset(
     }
 )
 
+# File extensions that are NEVER game assets. Files with these
+# extensions are auto-excluded from `unused_assets` even without a
+# `.senpy-ignore` file.
+#
+# Rationale: when running `senpy inspect` on a real mod (e.g. DDLC:
+# Blue Skies), ~90% of the ~500 "unused assets" were .rpyc/.rpa/.md/
+# .txt/.psd files — build artifacts, documentation, archives, and
+# Photoshop source files. Including them as "unused assets" is
+# confusing noise that drowns out the real signal (~50 actually
+# unused sprites/audio).
+#
+# Ren'Py loads assets from `game/` by extension: .png/.jpg/.webp/.ogg/
+# .wav/.mp3/.mp4/.webm. Everything else is either a build artifact
+# (.rpyc bytecode, .rpa archive), a source file (.rpy), documentation
+# (.md/.txt), a binary (.exe/.sh/.app), or a design source (.psd).
+# None of these are "unused game assets" in the RPY503 sense.
+#
+# If a user has a legitimate game file with one of these extensions
+# (very unlikely — Ren'Py wouldn't load it), they can still reference
+# it in code and it will be tracked via `used_asset_keys`.
+NON_ASSET_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        # Ren'Py build artifacts (auto-generated, not user-authored assets)
+        ".rpyc",  # Compiled Ren'Py bytecode
+        ".rpyb",  # Compiled Ren'Py bytecode (older format)
+        ".rpymc",  # Compiled Ren'Py module bytecode
+        ".rpa",  # Ren'Py archive (Ren'Py loads contents at runtime), but this is temporary, until the WL-508.
+        ".rpy",  # Ren'Py source (not an asset, it's code)
+        ".rpym",  # Ren'Py module source
+        # Documentation and notes
+        ".md",  # Markdown documentation
+        ".txt",  # Plain text notes
+        ".rst",  # reStructuredText documentation
+        # Archives (Ren'Py doesn't load these directly; mods unpack them)
+        ".zip",  # ZIP archive (mods may unpack at first run)
+        ".7z",  # 7-Zip archive
+        ".tar",  # Tar archive
+        ".gz",  # Gzip archive
+        # Binaries and launchers
+        ".exe",  # Windows executable
+        ".sh",  # Shell script
+        ".dll",  # shared libraries
+        ".so",  # shared libraries
+        ".dylib",  # shared libraries
+        ".bat",  # Windows batch script
+        ".cmd",  # Windows command script
+        # Design sources
+        ".psd",  # Photoshop source
+        ".xcf",  # GIMP source
+        ".ai",  # Illustrator source
+        # Senpy / Python
+        ".py",  # Python source
+        ".pyc",  # Python bytecode
+        ".toml",  # TOML config
+        ".json",  # JSON (config or output)
+        ".yaml",  # YAML config
+        ".yml",  # YAML config
+        ".spec",  # PyInstaller spec
+    }
+)
+
 
 def find_orphaned_rpyc(project_path: str) -> list[str]:
     """Finds compiled .rpyc files that have no corresponding .rpy source."""
@@ -99,6 +160,14 @@ class AssetManager:
                 # them in `unused_assets` produces confusing false positives
                 # (e.g. "senpy.toml is an unused asset" on every project).
                 if f.lower() in SENPY_OWN_FILES:
+                    continue
+                # Skip files with non-asset extensions (.rpyc, .rpa, .md,
+                # .txt, .psd, .exe, .sh, .zip, etc.). These are build
+                # artifacts, documentation, archives, or design sources —
+                # NOT game assets. See NON_ASSET_EXTENSIONS docstring for
+                # the full rationale.
+                _, ext = os.path.splitext(f.lower())
+                if ext in NON_ASSET_EXTENSIONS:
                     continue
                 full_path = os.path.join(root, f)
                 rel_path = os.path.relpath(full_path, self.project_path).replace("\\", "/").lower()

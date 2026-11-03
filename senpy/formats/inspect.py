@@ -40,6 +40,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from senpy.core.constants import SYSTEM_LABELS
+
 if TYPE_CHECKING:
     from senpy.core.analyzer import SenpyAnalyzer
     from senpy.core.signature import SignatureInfo
@@ -312,13 +314,20 @@ def _collect_missing_screens(analyzer: SenpyAnalyzer) -> list:
 def _collect_unreferenced_labels(analyzer: SenpyAnalyzer) -> list:
     """Labels declared but never referenced via jump/call/statically.
 
-    `start` is special — it's the Ren'Py entry point, never flagged.
+    Ren'Py lifecycle hooks (`start`, `splashscreen`, `after_load`,
+    `before_main_menu`, `quit`, `main_menu`, `after_warp`,
+    `hide_windows`, `warningscreen`) are excluded — they are called
+    by the Ren'Py runtime automatically and never need an explicit
+    `jump`/`call`. The set is defined in `senpy.core.constants.SYSTEM_LABELS`
+    and shared with `senpy/rules/flow.py` (RPY303) to keep the two
+    collectors in sync.
+
     Each entry: {"name": label, "file_path": str, "line_number": int}.
     """
     out: list = []
     referenced = set(analyzer.referenced_labels)
     for name, sym in analyzer.labels.items():
-        if name == "start":
+        if name.lower() in SYSTEM_LABELS:
             continue
         if name not in referenced:
             out.append(

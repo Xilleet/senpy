@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from senpy.domain.assets import AssetManager
 
 
@@ -110,3 +112,95 @@ class TestSenpyCacheDirExcluded:
         # The cached .rpy file must not be classified as a game asset.
         assert ".senpy_cache/decompiled/fake.rpy" not in unused
         assert "decompiled/fake.rpy" not in unused
+
+
+class TestNonAssetExtensionsExcluded:
+    """Files with non-asset extensions (.exe, .sh, .md, .txt, .zip, .psd,
+    .rpa, .rpyc, .spec) must NOT appear in `unused_assets`.
+
+    These are not game assets — they are build artifacts, documentation,
+    archives, or Photoshop source files. Including them in
+    `unused_assets` produces hundreds of false positives on real mods
+    (e.g. DDLC: Blue Skies had ~500 "unused assets", of which ~90%
+    were .rpyc/.rpa/.md/.txt/.psd files).
+    """
+
+    @pytest.fixture
+    def project_with_non_asset_files(self, tmp_path: Path) -> Path:
+        """Project with one real asset + several non-asset files."""
+        project = tmp_path / "proj"
+        project.mkdir()
+        game = project / "game"
+        game.mkdir()
+
+        # One real unused asset (should appear in unused_assets).
+        (game / "images").mkdir()
+        (game / "images" / "bg_real.png").write_bytes(b"\x89PNG\r\n\x1a\n fake")
+
+        # Non-asset files that should be auto-excluded.
+        (game / "script.rpyc").write_bytes(b"\x00\x01\x02 rpyc bytecode")
+        (game / "audio.rpa").write_bytes(b"RPA-3.0 archive")
+        (project / "README.md").write_text("# My Mod\n", encoding="utf-8")
+        (project / "notes.txt").write_text("todo\n", encoding="utf-8")
+        (project / "sprites.zip").write_bytes(b"PK zip archive")
+        (project / "art.psd").write_bytes(b"8BPS photoshop")
+        (project / "build.sh").write_text("#!/bin/sh\necho build\n", encoding="utf-8")
+        (project / "launcher.exe").write_bytes(b"MZ exe header")
+        return project
+
+    def test_rpyc_excluded(self, project_with_non_asset_files):
+        am = AssetManager(str(project_with_non_asset_files))
+        am.index()
+        unused = set(am.known_assets)
+        assert "script.rpyc" not in unused
+        assert "game/script.rpyc" not in unused
+
+    def test_rpa_excluded(self, project_with_non_asset_files):
+        am = AssetManager(str(project_with_non_asset_files))
+        am.index()
+        unused = set(am.known_assets)
+        assert "audio.rpa" not in unused
+        assert "game/audio.rpa" not in unused
+
+    def test_md_excluded(self, project_with_non_asset_files):
+        am = AssetManager(str(project_with_non_asset_files))
+        am.index()
+        unused = set(am.known_assets)
+        assert "readme.md" not in unused
+
+    def test_txt_excluded(self, project_with_non_asset_files):
+        am = AssetManager(str(project_with_non_asset_files))
+        am.index()
+        unused = set(am.known_assets)
+        assert "notes.txt" not in unused
+
+    def test_zip_excluded(self, project_with_non_asset_files):
+        am = AssetManager(str(project_with_non_asset_files))
+        am.index()
+        unused = set(am.known_assets)
+        assert "sprites.zip" not in unused
+
+    def test_psd_excluded(self, project_with_non_asset_files):
+        am = AssetManager(str(project_with_non_asset_files))
+        am.index()
+        unused = set(am.known_assets)
+        assert "art.psd" not in unused
+
+    def test_sh_excluded(self, project_with_non_asset_files):
+        am = AssetManager(str(project_with_non_asset_files))
+        am.index()
+        unused = set(am.known_assets)
+        assert "build.sh" not in unused
+
+    def test_exe_excluded(self, project_with_non_asset_files):
+        am = AssetManager(str(project_with_non_asset_files))
+        am.index()
+        unused = set(am.known_assets)
+        assert "launcher.exe" not in unused
+
+    def test_real_asset_still_listed(self, project_with_non_asset_files):
+        """Sanity: real game assets (PNG) are still in the list."""
+        am = AssetManager(str(project_with_non_asset_files))
+        am.index()
+        unused = set(am.known_assets)
+        assert "images/bg_real.png" in unused or "game/images/bg_real.png" in unused

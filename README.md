@@ -415,6 +415,22 @@ RPY308 = "INFO"    # Demote fallthrough to info
 $ dynamic_var = 1             # noqa: RPY104
 ```
 
+### Project-level Suppression (`.senpy-ignore`)
+
+For bulk rule exclusions, create a `.senpy-ignore` file in the project
+root (next to `senpy.toml`). Each line is a rule code to suppress:
+
+```text
+# .senpy-ignore — one rule code per line
+RPY101  # typo in dialogue variable
+RPY104
+# RPY105  # commented out — rule will fire
+RPY301
+```
+
+Lines starting with `#` are comments. Inline comments (after the rule
+code) are allowed. Codes are case-insensitive (normalized to uppercase).
+
 ---
 
 ## GitHub Actions Integration
@@ -448,6 +464,27 @@ jobs:
         with:
           sarif_file: senpy.sarif
 ```
+
+---
+
+## Pre-commit Integration
+
+Senpy ships a [pre-commit](https://pre-commit.com) hook that runs
+`senpy --check` on every commit. Add this to your `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/Xilleet/senpy
+    rev: v0.7.5   # use the latest tag
+    hooks:
+      - id: senpy
+```
+
+The hook is **non-mutating** — it only reports issues, never auto-fixes
+them. This is deliberate: an auto-fixing hook combined with git's
+`autocrlf` on Windows creates an infinite loop (the formatter
+normalizes line endings, git converts them back, the formatter runs
+again). Run `senpy --fix` manually if you want auto-fixes.
 
 ---
 

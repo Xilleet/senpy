@@ -1,48 +1,48 @@
 #!/usr/bin/env python3
-"""check_cycles.py — статический детектор циклических зависимостей в senpy/.
+"""check_cycles.py — static detector of circular imports in senpy/.
 
-Фаза 1.7 (0.5.3): финальная проверка что все 5 циклов из аудита v0.5.1
-разорваны, и что новые циклы не появляются.
+Phase 1.7 (0.5.3): final verification that all 5 cycles from the
+v0.5.1 audit are broken, and that no new cycles appear.
 
-Принцип:
-    1. Парсит все .py файлы в senpy/ (без vendor/) через ast.
-    2. Строит граф импортов: edge A → B если A импортирует B (через
-       `from senpy.B import ...` или `import senpy.B`).
-    3. Ищет циклы через DFS с цветовой маркировкой (white/gray/black).
-    4. Если цикл найден — печатает его и выходит с code 1.
+Algorithm:
+    1. Parse every .py file in senpy/ (excluding vendor/) via ast.
+    2. Build an import graph: edge A -> B if A imports B (via
+       `from senpy.B import ...` or `import senpy.B`).
+    3. Find cycles via DFS with white/gray/black coloring.
+    4. If a cycle is found, print it and exit with code 1.
 
-Запуск:
-    python scripts/check_cycles.py            # проверить, exit 0/1
-    python scripts/check_cycles.py --verbose  # показать граф целиком
+Usage:
+    python scripts/check_cycles.py            # check, exit 0/1
+    python scripts/check_cycles.py --verbose  # print the full graph
 
-CI интеграция:
-    В .github/workflows/ci.yml добавить шаг:
+CI integration:
+    Add a step to .github/workflows/ci.yml:
         - name: Check for circular imports
           run: python scripts/check_cycles.py
 
-Ложные срабатывания:
-    Скрипт учитывает что `if TYPE_CHECKING:` блоки НЕ создают runtime
-    циклов (это только type hints, не выполняются при import). Поэтому
-    такие блоки игнорируются при построении графа.
+False positives:
+    The script is aware that `if TYPE_CHECKING:` blocks do NOT create
+    runtime cycles (they are type hints only, not executed at import
+    time). Such blocks are ignored when building the graph.
 
-    Например, это НЕ цикл:
+    For example, this is NOT a cycle:
         # cache.py
         if TYPE_CHECKING:
             from senpy.analyzer import SenpyAnalyzer  # type hint only
 
-    А это цикл:
+    But this IS a cycle:
         # cache.py
-        from senpy.analyzer import SenpyAnalyzer  # runtime import — цикл!
+        from senpy.analyzer import SenpyAnalyzer  # runtime import — cycle!
 
-История:
-    В аудите v0.5.1 (2026-10-28) найдено 5 циклов через analyzer.py:
-        analyzer ↔ cli
-        analyzer ↔ checkers
-        analyzer ↔ python_ast
-        analyzer ↔ flow
-        analyzer ↔ cache
-    Все разорваны в Фазах 1.2-1.6 (0.5.3). Этот скрипт — safety net
-    чтобы они не вернулись.
+History:
+    The v0.5.1 audit (2026-10-28) found 5 cycles through analyzer.py:
+        analyzer <-> cli
+        analyzer <-> checkers
+        analyzer <-> python_ast
+        analyzer <-> flow
+        analyzer <-> cache
+    All broken in Phases 1.2-1.6 (0.5.3). This script is a safety net
+    to make sure they don't come back.
 """
 
 from __future__ import annotations
@@ -54,24 +54,24 @@ from collections import defaultdict
 from pathlib import Path
 
 # =============================================================================
-# 1. Парсинг: извлечение импортов из .py файла
+# 1. Parsing: extract imports from a .py file
 # =============================================================================
 
 
 class ImportVisitor(ast.NodeVisitor):
-    """Собирает все `from senpy.X import Y` и `import senpy.X` из модуля.
+    """Collect all `from senpy.X import Y` and `import senpy.X` from a module.
 
-    Игнорирует импорты внутри `if TYPE_CHECKING:` блоков — они не создают
-    runtime циклов (это только type hints).
+    Ignores imports inside `if TYPE_CHECKING:` blocks — they don't
+    create runtime cycles (type hints only).
     """
 
     def __init__(self, current_module: str):
         self.current_module = current_module
         self.imports: set[str] = set()
-        self._in_type_checking = False  # глубина вложенности TYPE_CHECKING
+        self._in_type_checking = False  # TYPE_CHECKING nesting depth
 
     def _is_type_checking_test(self, test: ast.AST) -> bool:
-        """Проверяет, является ли условие if TYPE_CHECKING."""
+        """Check whether the condition is `if TYPE_CHECKING`."""
         # if TYPE_CHECKING:
         if isinstance(test, ast.Name) and test.id == "TYPE_CHECKING":
             return True
@@ -79,80 +79,81 @@ class ImportVisitor(ast.NodeVisitor):
         return bool(isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING")
 
     def visit_If(self, node: ast.If) -> None:
-        """Перехватываем if TYPE_CHECKING: — игнорируем его содержимое."""
+        """Intercept `if TYPE_CHECKING:` — ignore its body."""
         if self._is_type_checking_test(node.test):
-            # Не заходим в тело — там только type hints
+            # Don't descend into the body — it only contains type hints.
             return
-        # Обычный if — заходим в обе ветки
+        # Regular `if` — descend into both branches.
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        """from senpy.X import Y → edge: current → senpy.X
+        """from senpy.X import Y -> edge: current -> senpy.X
 
-        Используем ПОЛНОЕ имя модуля (senpy.cli, не cli), чтобы ключи в графе
-        совпадали с именами модулей из extract_imports.
+        We use the FULL module name (senpy.cli, not cli) so that graph
+        keys match the module names produced by extract_imports.
         """
         if node.module and node.module.startswith("senpy."):
-            target = node.module  # полное имя: senpy.cli, senpy.formatter.core, ...
+            target = node.module  # full name: senpy.cli, senpy.formatter.core, ...
             if target != self.current_module:
                 self.imports.add(target)
         self.generic_visit(node)
 
     def visit_Import(self, node: ast.Import) -> None:
-        """import senpy.X → edge: current → senpy.X"""
+        """import senpy.X -> edge: current -> senpy.X"""
         for alias in node.names:
             if alias.name.startswith("senpy."):
-                target = alias.name  # полное имя
+                target = alias.name  # full name
                 if target != self.current_module:
                     self.imports.add(target)
         self.generic_visit(node)
 
 
 def extract_imports(file_path: Path, package_root: Path) -> tuple[str, set[str]]:
-    """Парсит .py файл, возвращает (имя_модуля, set_импортов).
+    """Parse a .py file, return (module_name, set_of_imports).
 
     Args:
-        file_path: Путь к .py файлу.
-        package_root: Корень пакета (где __init__.py).
+        file_path: Path to the .py file.
+        package_root: Package root (where __init__.py lives).
 
     Returns:
-        Кортеж (module_name, {imported_module_names}).
+        Tuple (module_name, {imported_module_names}).
     """
     try:
         tree = ast.parse(file_path.read_text(encoding="utf-8"))
     except SyntaxError as e:
-        print(f"  ⚠ SyntaxError in {file_path}: {e}", file=sys.stderr)
+        print(f"  Warning: SyntaxError in {file_path}: {e}", file=sys.stderr)
         return "", set()
 
-    # Имя модуля: senpy/foo/bar.py → senpy.foo.bar
+    # Module name: senpy/foo/bar.py -> senpy.foo.bar
     rel = file_path.relative_to(package_root.parent)
     module_name = str(rel).replace("/", ".").replace("\\", ".").removesuffix(".py")
-    # __init__.py → имя пакета
+    # __init__.py -> package name
     if module_name.endswith(".__init__"):
         module_name = module_name[:-9]
 
-    # Для подпакетов (senpy.formatter.rules) берём только top-level: senpy.formatter
-    # Нет — нам нужны все уровни для точного графа. Оставляем полное имя.
+    # For subpackages (senpy.formatter.rules) we could take only the
+    # top-level (senpy.formatter) — but we keep the full name for a
+    # precise graph.
 
     visitor = ImportVisitor(module_name)
     visitor.visit(tree)
 
-    # Нормализуем импорты к top-level пакету (senpy.formatter.rules → senpy.formatter)
-    # Нет — оставляем полные имена для точного анализа.
-    # НО: current_module тоже должен быть полным.
+    # We could normalize imports to the top-level package
+    # (senpy.formatter.rules -> senpy.formatter) — but we keep full
+    # names for precise analysis. current_module must also be full.
     return module_name, visitor.imports
 
 
 # =============================================================================
-# 2. Построение графа и поиск циклов
+# 2. Build the graph and find cycles
 # =============================================================================
 
 
 def build_import_graph(package_root: Path) -> dict[str, set[str]]:
-    """Строит граф импортов: {module: {imported_modules}}."""
+    """Build the import graph: {module: {imported_modules}}."""
     graph: dict[str, set[str]] = defaultdict(set)
 
-    # Все .py файлы в пакете (без __pycache__, vendor)
+    # All .py files in the package (excluding __pycache__, vendor)
     py_files = sorted(
         f
         for f in package_root.rglob("*.py")
@@ -170,11 +171,11 @@ def build_import_graph(package_root: Path) -> dict[str, set[str]]:
 
 
 def find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
-    """Находит все циклы в графе через DFS с цветовой маркировкой.
+    """Find all cycles in the graph via DFS with white/gray/black coloring.
 
     Returns:
-        List of cycles, каждый цикл — список имён модулей.
-        Например: [['senpy.analyzer', 'senpy.cli', 'senpy.analyzer']]
+        List of cycles, each cycle is a list of module names.
+        Example: [['senpy.analyzer', 'senpy.cli', 'senpy.analyzer']]
     """
     WHITE, GRAY, BLACK = 0, 1, 2
     color: dict[str, int] = defaultdict(lambda: WHITE)
@@ -187,7 +188,7 @@ def find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
 
         for neighbor in graph.get(node, set()):
             if color[neighbor] == GRAY:
-                # Нашли цикл — извлекаем его из path
+                # Found a cycle — extract it from the path.
                 cycle_start = path.index(neighbor)
                 cycle = path[cycle_start:] + [neighbor]
                 cycles.append(cycle)
@@ -197,7 +198,7 @@ def find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
         path.pop()
         color[node] = BLACK
 
-    # Запускаем DFS из каждой вершины (граф может быть несвязным)
+    # Run DFS from every node (the graph may be disconnected).
     for node in graph:
         if color[node] == WHITE:
             dfs(node)
@@ -206,60 +207,58 @@ def find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
 
 
 # =============================================================================
-# 3. Фильтрация и дедупликация циклов
+# 3. Cycle filtering and deduplication
 # =============================================================================
 
 
 def normalize_cycle(cycle: list[str]) -> tuple[str, ...]:
-    """Нормализует цикл для дедупликации: начинает с наименьшего элемента.
+    """Normalize a cycle for deduplication: start from the smallest element.
 
-    Например: [B, C, A, B] и [C, A, B, C] → оба становятся (A, B, C).
+    Example: [B, C, A, B] and [C, A, B, C] both become (A, B, C).
     """
-    # Убираем последний элемент (он = первому, это замыкание цикла)
+    # Drop the last element (it equals the first — this closes the cycle).
     core = cycle[:-1]
     if not core:
         return tuple(cycle)
-    # Находим индекс наименьшего элемента
+    # Find the index of the smallest element.
     min_idx = core.index(min(core))
-    # Ротируем так, чтобы наименьший был первым
+    # Rotate so that the smallest element is first.
     rotated = core[min_idx:] + core[:min_idx]
     return tuple(rotated)
 
 
 def deduplicate_cycles(cycles: list[list[str]]) -> list[list[str]]:
-    """Убирает дубликаты циклов (один и тот же цикл может быть найден с разных стартов)."""
+    """Remove duplicate cycles (the same cycle can be found from different starts)."""
     seen: set[tuple[str, ...]] = set()
     unique: list[list[str]] = []
     for cycle in cycles:
         norm = normalize_cycle(cycle)
         if norm not in seen:
             seen.add(norm)
-            unique.append(list(norm) + [norm[0]])  # замыкаем цикл
+            unique.append(list(norm) + [norm[0]])  # close the cycle
     return unique
 
 
 # =============================================================================
-# 4. Главная функция
+# 4. Main function
 # =============================================================================
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Статический детектор циклических зависимостей в senpy/."
-    )
+    parser = argparse.ArgumentParser(description="Static detector of circular imports in senpy/.")
     parser.add_argument(
         "--package",
         default="senpy",
-        help="Имя пакета для проверки (по умолчанию: senpy)",
+        help="Package name to check (default: senpy)",
     )
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Показать весь граф импортов",
+        help="Print the full import graph",
     )
     args = parser.parse_args()
 
-    # Находим корень пакета
+    # Find the package root.
     script_dir = Path(__file__).resolve().parent
     project_root = script_dir.parent
     package_root = project_root / args.package
@@ -276,7 +275,7 @@ def main() -> int:
         for module in sorted(graph):
             imports = sorted(graph[module])
             if imports:
-                print(f"  {module} → {', '.join(imports)}")
+                print(f"  {module} -> {', '.join(imports)}")
             else:
                 print(f"  {module} (no imports)")
         print()
@@ -291,7 +290,7 @@ def main() -> int:
 
     print(f"\n[FAIL] Found {len(unique_cycles)} circular import(s):\n", file=sys.stderr)
     for cycle in unique_cycles:
-        print(f"  {' → '.join(cycle)}", file=sys.stderr)
+        print(f"  {' -> '.join(cycle)}", file=sys.stderr)
     print(file=sys.stderr)
     print("Circular imports can cause:", file=sys.stderr)
     print("  - ImportError on module loading", file=sys.stderr)

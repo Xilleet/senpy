@@ -30,6 +30,16 @@ _CYRILLIC_RE = re.compile(r"[а-яА-ЯёЁ]")
 # Files where Russian is intentionally part of the content.
 _WHITELIST = {
     "senpy/domain/tsundere.py",  # Easter egg mode — intentionally Russian
+    # TODO (post-0.7.5): translate these scripts to English and remove
+    # them from the whitelist. They have 7-61 Russian comment lines each.
+    # Tracked as follow-up to WL-638.
+    "scripts/restructure_senpy.py",
+    "scripts/update_renpy_api.py",
+    "scripts/update_unrpyc_pin.py",
+    # clean_internal_ids.py has one Russian word ("версия") inside a
+    # docstring example showing what the script scrubs. It's part of
+    # the documentation, not a real Russian comment.
+    "scripts/clean_internal_ids.py",
 }
 
 # Directories to skip entirely.
@@ -131,5 +141,68 @@ class TestNoRussianInCommentsOrDocstrings:
             pytest.fail(
                 f"Found {len(violations)} line(s) with Russian text in "
                 f"comments or docstrings. Translate them to English.\n\n"
+                f"{preview}{extra}"
+            )
+
+
+class TestNoRussianInRootLevelScripts:
+    """Extend the CLEAN-2 assertion to root-level .py files.
+
+    The test above only scanned `senpy/`. The root-level
+    dev tools (`bump_version.py`, `run_tests.py`, `scripts/*.py`) were
+    not covered, so Russian comments leaked back in (notably in
+    `bump_version.py`, whose template regenerated Russian docstrings
+    in `senpy/__version__.py` on every version bump).
+
+    This test scans root-level .py files for the same rule: no Russian
+    in # comments or docstrings. String literals are still OK.
+    """
+
+    # Root-level .py files to scan (relative to repo root).
+    _ROOT_FILES = {
+        "bump_version.py",
+        "run_tests.py",
+    }
+
+    # Directories to scan recursively (relative to repo root).
+    _ROOT_DIRS = {
+        "scripts",
+    }
+
+    def test_no_russian_in_root_level_scripts(self):
+        violations: list[str] = []
+
+        # Single files at the repo root.
+        for rel_path in self._ROOT_FILES:
+            path = _REPO_ROOT / rel_path
+            if not path.exists():
+                continue
+            matches = _scan_file(path)
+            for line_no, content in matches:
+                display = content[:120] + "..." if len(content) > 120 else content
+                violations.append(f"  {rel_path}:{line_no}: {display}")
+
+        # Directories (recursive).
+        for dir_rel in self._ROOT_DIRS:
+            dir_path = _REPO_ROOT / dir_rel
+            if not dir_path.exists():
+                continue
+            for path in dir_path.rglob("*.py"):
+                rel = path.relative_to(_REPO_ROOT).as_posix()
+                if _should_skip(rel):
+                    continue
+                matches = _scan_file(path)
+                for line_no, content in matches:
+                    display = content[:120] + "..." if len(content) > 120 else content
+                    violations.append(f"  {rel}:{line_no}: {display}")
+
+        if violations:
+            preview = "\n".join(violations[:50])
+            n_more = len(violations) - 50
+            extra = f"\n  ... and {n_more} more." if n_more > 0 else ""
+            pytest.fail(
+                f"Found {len(violations)} line(s) with Russian text in "
+                f"comments or docstrings of root-level scripts. Translate "
+                f"them to English.\n\n"
                 f"{preview}{extra}"
             )

@@ -312,3 +312,102 @@ def _extract_target(entry) -> str:
         # Last element is conventionally the target name.
         return entry[-1]
     raise AssertionError(f"Cannot extract target from {type(entry)}: {entry}")
+
+
+# =============================================================================
+# 7. SYSTEM_LABELS excluded from unreferenced_labels
+# =============================================================================
+
+
+class TestSystemLabelsExcluded:
+    """Ren'Py lifecycle hooks (splashscreen, after_load, before_main_menu,
+    quit, etc.) are called by the Ren'Py runtime automatically — no
+    `jump`/`call` is needed. They must NOT appear in
+    `unresolved.unreferenced_labels`.
+
+    Before the fix, only `start` was excluded (hardcoded). Now the full
+    SYSTEM_LABELS set from senpy.core.constants is used.
+    """
+
+    @pytest.fixture
+    def project_with_lifecycle_labels(self, tmp_path) -> SenpyAnalyzer:
+        """Project with all 9 SYSTEM_LABELS declared but unreferenced."""
+        project = tmp_path / "proj"
+        project.mkdir()
+        game = project / "game"
+        game.mkdir()
+        (game / "script.rpy").write_text(
+            "label start:\n"
+            '    "Hello"\n'
+            "    return\n"
+            "label splashscreen:\n"
+            "    return\n"
+            "label after_load:\n"
+            "    return\n"
+            "label before_main_menu:\n"
+            "    return\n"
+            "label quit:\n"
+            "    return\n"
+            "label main_menu:\n"
+            "    return\n"
+            "label after_warp:\n"
+            "    return\n"
+            "label hide_windows:\n"
+            "    return\n"
+            "label warningscreen:\n"
+            "    return\n",
+            encoding="utf-8",
+        )
+        a = SenpyAnalyzer(str(project), no_cache=True)
+        a.run(quiet=True)
+        return a
+
+    def test_splashscreen_not_in_unreferenced(self, project_with_lifecycle_labels):
+        d = dump_symbols(project_with_lifecycle_labels)
+        names = {e["name"] for e in d["unresolved"]["unreferenced_labels"]}
+        assert (
+            "splashscreen" not in names
+        ), f"splashscreen is a Ren'Py lifecycle hook, should be excluded; got {names}"
+
+    def test_after_load_not_in_unreferenced(self, project_with_lifecycle_labels):
+        d = dump_symbols(project_with_lifecycle_labels)
+        names = {e["name"] for e in d["unresolved"]["unreferenced_labels"]}
+        assert "after_load" not in names
+
+    def test_before_main_menu_not_in_unreferenced(self, project_with_lifecycle_labels):
+        d = dump_symbols(project_with_lifecycle_labels)
+        names = {e["name"] for e in d["unresolved"]["unreferenced_labels"]}
+        assert "before_main_menu" not in names
+
+    def test_quit_not_in_unreferenced(self, project_with_lifecycle_labels):
+        d = dump_symbols(project_with_lifecycle_labels)
+        names = {e["name"] for e in d["unresolved"]["unreferenced_labels"]}
+        assert "quit" not in names
+
+    def test_all_system_labels_excluded(self, project_with_lifecycle_labels):
+        """All 9 SYSTEM_LABELS must be excluded from unreferenced."""
+        from senpy.core.constants import SYSTEM_LABELS
+
+        d = dump_symbols(project_with_lifecycle_labels)
+        names = {e["name"] for e in d["unresolved"]["unreferenced_labels"]}
+        for sys_label in SYSTEM_LABELS:
+            assert (
+                sys_label not in names
+            ), f"{sys_label!r} is in SYSTEM_LABELS and should be excluded; got {names}"
+
+    def test_non_system_label_still_in_unreferenced(self, project_with_lifecycle_labels):
+        """Sanity: a regular unreferenced label must still appear."""
+        from pathlib import Path
+
+        project = Path(project_with_lifecycle_labels.project_path)
+        # Add a regular label that IS unreferenced.
+        game = project / "game"
+        (game / "extra.rpy").write_text(
+            "label my_unused_label:\n" "    return\n",
+            encoding="utf-8",
+        )
+        a = SenpyAnalyzer(str(project), no_cache=True)
+        a.run(quiet=True)
+        d = dump_symbols(a)
+        names = {e["name"] for e in d["unresolved"]["unreferenced_labels"]}
+        assert "my_unused_label" in names, "regular unreferenced label should still be in the list"

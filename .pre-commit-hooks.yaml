@@ -1,7 +1,32 @@
-- id: senpy
-  name: senpy
-  description: Fast semantic linter and control-flow analyzer for Ren'Py
-  entry: senpy
-  language: python
-  files: \.(rpy|rpym)$
-  pass_filenames: false
+# Senpy pre-commit hook (non-mutating).
+#
+# Registers `senpy --check` as a pre-commit hook so that any project
+# using https://pre-commit.com can lint their Ren'Py scripts with a
+# one-line config:
+#
+#     repos:
+#       - repo: https://github.com/Xilleet/senpy
+#         rev: v0.7.5   # Use the latest tag
+#         hooks:
+#           - id: senpy
+#
+# Design note: we deliberately expose ONLY `--check` (non-mutating)
+# here. A `senpy --fix` auto-fixing hook would create an infinite
+# loop on Windows when combined with ruff-format (CRLF <-> LF
+# conversion via git's autocrlf). See Senpy worklog §4 "Ruff-format
+# hook" for the full story. Users who want auto-fix can run
+# `senpy --fix` manually or wire up a local hook with their own
+# line-ending strategy.
+#
+# `additional_dependencies` is empty — Senpy's runtime deps are
+# declared in pyproject.toml and pre-commit installs the package
+# via `pip install -e .` automatically.
+---
+id: senpy
+name: senpy
+description: Semantic linter for Ren'Py visual novels
+entry: senpy --check
+language: python
+types: [file]
+files: \.(rpy|rpym|_ren\.py)$
+pass_filenames: true
