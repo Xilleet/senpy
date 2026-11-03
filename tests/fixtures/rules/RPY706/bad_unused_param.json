@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY706",
+    "severity": "HINT",
+    "line": 1,
+    "message_fragment": "Transform 'slide_in' declares parameter 'unused_speed' but never uses it in the body. Consider remov"
+  }
+]

@@ -12,7 +12,7 @@ Comprehensive guide to all semantic and static rules implemented in the **Senpy*
 - **Branching & Conditions (RPY4xx)**: [RPY401](#rpy401) | [RPY402](#rpy402) | [RPY403](#rpy403) | [RPY404](#rpy404)
 - **Assets & Media (RPY5xx)**: [RPY501](#rpy501) | [RPY502](#rpy502) | [RPY503](#rpy503) | [RPY504](#rpy504) | [RPY505](#rpy505)
 - **Translations & Localization (RPY6xx)**: [RPY601](#rpy601) | [RPY602](#rpy602) | [RPY603](#rpy603)
-- **Dead Code*: (RPY7xx): [RPY701](#rpy701) | [RPY702](#rpy702) | [RPY703](#rpy703)
+- **Dead Code*: (RPY7xx): [RPY701](#rpy701) | [RPY702](#rpy702) | [RPY703](#rpy703) | [RPY704](#rpy704) | [RPY705](#rpy705) | [RPY706](#rpy706) | [RPY707](#rpy707)
 
 ---
 
@@ -851,4 +851,82 @@ screen debug_overlay():
     text "Debug info"
 
 # Used: `show screen debug_overlay` (or `call screen debug_overlay`, or `use debug_overlay`)
+```
+
+---
+
+<a id="rpy704"></a>
+### RPY704: Unused default variable
+- **Severity**: HINT
+- **Why**: A `default` variable is declared but never referenced anywhere in the project. Unlike `define` constants (RPY701), `default` variables persist across saves — an unused one wastes save-file space and increases cognitive load. Note: variables referenced in dialogue interpolation (`[var]`) count as used.
+
+```renpy
+# Bad
+default unused_setting = "never referenced"
+default debug_counter = 0
+label start:
+    return
+
+# Good
+default player_gold = 100
+label start:
+    $ player_gold -= 10
+    return
+```
+
+---
+
+<a id="rpy705"></a>
+### RPY705: Unused screen parameter
+- **Severity**: HINT
+- **Why**: A parameter declared in `screen name(unused_param):` but never referenced in the screen body is dead code. It clutters the signature and suggests a forgotten refactor. Prefix with `_` (e.g. `_unused`) to suppress intentionally-unused params.
+
+```renpy
+# Bad
+screen shop(unused_currency, gold):
+    text "Gold: [gold]"
+
+# Good
+screen shop(currency, gold):
+    text "Currency: [currency], Gold: [gold]"
+```
+
+---
+
+<a id="rpy706"></a>
+### RPY706: Unused transform parameter
+- **Severity**: HINT
+- **Why**: A parameter declared in `transform slide(unused_speed):` but never referenced in the transform body is dead code. Same rationale as RPY705 — cluttered signature, forgotten refactor. Prefix with `_` to suppress.
+
+```renpy
+# Bad
+transform slide_in(unused_speed):
+    easein 0.5 xoffset 0
+
+# Good
+transform slide_in(speed):
+    easein speed xoffset 0
+```
+
+---
+
+<a id="rpy707"></a>
+### RPY707: Unused audio channel registration
+- **Severity**: HINT
+- **Why**: A channel registered via `renpy.music.register_channel("name", ...)` but never used in any `play`/`queue`/`stop` statement is dead code. The registration runs at init time and has no effect if nothing plays on the channel. Remove the registration or use the channel.
+
+```renpy
+# Bad
+init python:
+    renpy.music.register_channel("ambient", mixer="sfx", loop=True)
+label start:
+    "No audio played on ambient channel."
+    return
+
+# Good
+init python:
+    renpy.music.register_channel("ambient", mixer="sfx", loop=True)
+label start:
+    play ambient "rain.ogg"
+    return
 ```

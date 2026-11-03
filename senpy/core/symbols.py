@@ -64,9 +64,16 @@ class ImageSymbol:
 
 @dataclass(slots=True)
 class TransformSymbol:
-    """Represents an ATL transform (transform)."""
+    """Represents an ATL transform (transform).
+
+    The signature field (parameters declared in `transform name(a, b):`)
+    was added in 0.7.6 to support RPY706 (unused transform parameter).
+    Older code that constructs TransformSymbol without signature continues
+    to work — the default is None, which means "no params declared".
+    """
 
     name: str
     file_path: str
     line_number: int
     code_line: str
+    signature: SignatureInfo | None = None

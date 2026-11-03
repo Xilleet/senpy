@@ -113,4 +113,8 @@ RULE_SEVERITY: dict[str, str] = {
     "RPY701": "HINT",  # Unused define constant (dead code)
     "RPY702": "HINT",  # Unused transform (dead code)
     "RPY703": "HINT",  # Unused screen (dead code)
+    "RPY704": "HINT",  # Unused default variable (dead code)
+    "RPY705": "HINT",  # Unused screen parameter (dead code)
+    "RPY706": "HINT",  # Unused transform parameter (dead code)
+    "RPY707": "HINT",  # Unused audio channel registration (dead code)
 }

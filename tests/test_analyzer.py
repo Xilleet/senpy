@@ -199,6 +199,15 @@ def test_mega_broken_script_catches_all_rules(tmp_path: Path):
         # Покрываются отдельными тестами в test_rules_rpy7xx.py.
         "RPY701",
         "RPY702",
+        # RPY705-706 — нужны screen/transform с unused параметром.
+        # MEGA_TEST_SCRIPT не имеет screen/transform с параметрами.
+        # Покрываются отдельными fixture-тестами (tests/fixtures/rules/RPY705, RPY706).
+        "RPY705",
+        "RPY706",
+        # RPY707 — нужен renpy.music.register_channel + не-played.
+        # MEGA_TEST_SCRIPT не регистрирует кастомные каналы.
+        # Покрывается отдельным fixture-тестом (tests/fixtures/rules/RPY707).
+        "RPY707",
     }
 
     # Все правила, которые MEGA_TEST_SCRIPT ДОЛЖЕН покрывать
@@ -831,12 +840,12 @@ def test_cache_invalidates_on_same_size_same_mtime_content_change(tmp_path: Path
     analyzer_2.run(quiet=True)
 
     # На старом коде этот ассерт обязан упасть, так как кэш выдаст устаревший hero_gold!
-    assert "hero_mana" in analyzer_2.declared_symbols, (
-        "Cache served stale scope: new variable 'hero_mana' was missed!"
-    )
-    assert "hero_gold" not in analyzer_2.declared_symbols, (
-        "Cache served stale scope: old variable 'hero_gold' retained!"
-    )
+    assert (
+        "hero_mana" in analyzer_2.declared_symbols
+    ), "Cache served stale scope: new variable 'hero_mana' was missed!"
+    assert (
+        "hero_gold" not in analyzer_2.declared_symbols
+    ), "Cache served stale scope: old variable 'hero_gold' retained!"
 
 
 def test_per_rule_severity_override(tmp_path: Path):

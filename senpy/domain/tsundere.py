@@ -158,6 +158,18 @@ TSUNDERE_FLAVORS = {
     "RPY703": "(︶︿︶) «Этот экран нигде не вызывается! Зачем ты его написал?»"
     if IS_RU
     else "(︶︿︶) «This screen is never called! Why did you write it, baka?»",
+    "RPY704": "(︶︿︶) «Эта переменная нигде не используется! Зачем ты её объявил через default?»"
+    if IS_RU
+    else "(︶︿︶) «This variable is never used! Why did you default it, baka?»",
+    "RPY705": "(︶︿︶) «Параметр экрана нигде не используется! Зачем ты его объявил?»"
+    if IS_RU
+    else "(︶︿︶) «This screen parameter is never used! Why did you declare it, baka?»",
+    "RPY706": "(︶︿︶) «Параметр трансформа нигде не используется! Мёртвый аргумент — это грязно!»"
+    if IS_RU
+    else "(︶︿︶) «This transform parameter is never used! Dead argument is dirty, baka!»",
+    "RPY707": "(︶︿︶) «Этот аудиоканал зарегистрирован, но нигде не играет! Зачем ты его создал?»"
+    if IS_RU
+    else "(︶︿︶) «This audio channel is registered but never plays! Why did you create it, baka?»",
     "RPY100": "(╯°□°)╯︵ ┻━┻ «Этот файл вообще не в UTF-8! Он молча выпал из проверки — ищи кракозябры в игре, бака!»"
     if IS_RU
     else "(╯°□°)╯︵ ┻━┻ «This file isn't even UTF-8! It silently dropped out of the check — enjoy the mojibake in-game, baka!»",

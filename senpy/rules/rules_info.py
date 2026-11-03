@@ -376,6 +376,38 @@ RULES_DATABASE = {
         "bad": 'screen unused_screen():\n    textbutton "Do nothing" action NullAction()\nlabel start:\n    return',
         "good": 'screen my_screen():\n    textbutton "Start" action Start()\nlabel start:\n    call screen my_screen\n    return',
     },
+    "RPY704": {
+        "title": "Unused default variable",
+        "severity": "HINT",
+        "tags": ["dead-code", "variables"],
+        "why": "A 'default' variable that is never referenced anywhere in the project is dead code. Unlike 'define' constants (RPY701), 'default' variables persist across saves — an unused one wastes save-file space and increases cognitive load.",
+        "bad": "default unused_var = 0\nlabel start:\n    return",
+        "good": "default player_gold = 100\nlabel start:\n    $ player_gold -= 10\n    return",
+    },
+    "RPY705": {
+        "title": "Unused screen parameter",
+        "severity": "HINT",
+        "tags": ["dead-code", "screen"],
+        "why": "A parameter declared in `screen name(unused_param):` but never referenced in the screen body is dead code. It clutters the signature and suggests a forgotten refactor (parameter was once used, then the code was removed). Prefix with '_' (e.g. `_unused`) to suppress intentionally-unused params.",
+        "bad": 'screen shop(unused_currency):\n    text "Welcome"',
+        "good": 'screen shop(currency):\n    text "Gold: [currency]"',
+    },
+    "RPY706": {
+        "title": "Unused transform parameter",
+        "severity": "HINT",
+        "tags": ["dead-code", "transforms"],
+        "why": "A parameter declared in `transform slide(unused_speed):` but never referenced in the transform body is dead code. Same rationale as RPY705 — cluttered signature, forgotten refactor. Prefix with '_' to suppress.",
+        "bad": "transform slide_in(unused_speed):\n    easein 0.5 xoffset 0",
+        "good": "transform slide_in(speed):\n    easein speed xoffset 0",
+    },
+    "RPY707": {
+        "title": "Unused audio channel registration",
+        "severity": "HINT",
+        "tags": ["dead-code", "audio"],
+        "why": 'A channel registered via `renpy.music.register_channel("name", ...)` but never used in any `play`/`queue`/`stop` statement is dead code. The registration runs at init time and has no effect if nothing plays on the channel. Remove the registration or use the channel.',
+        "bad": 'init python:\n    renpy.music.register_channel("ambient", mixer="sfx", loop=True)\nlabel start:\n    "No audio played on ambient channel."\n    return',
+        "good": 'init python:\n    renpy.music.register_channel("ambient", mixer="sfx", loop=True)\nlabel start:\n    play ambient "rain.ogg"\n    return',
+    },
 }
 
 

@@ -881,11 +881,14 @@ class SenpyAnalyzer:
 
         if m_trans:
             trans_name = m_trans.group(1)
+            trans_params = m_trans.group(2)  # None if no params declared
+            trans_sig = parse_signature(trans_params) if trans_params else None
             trans_sym = TransformSymbol(
                 name=trans_name,
                 file_path=file_path,
                 line_number=idx + 1,
                 code_line=clean,
+                signature=trans_sig,
             )
             scope.transforms[trans_name] = trans_sym
             self.transforms[trans_name] = trans_sym
