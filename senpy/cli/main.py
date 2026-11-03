@@ -6,6 +6,7 @@ import os
 import sys
 import time
 from collections import Counter
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -107,7 +108,7 @@ def _make_file_console(args) -> Console:
     out_dir = os.path.dirname(os.path.abspath(args.output_file))
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
-    # type: ignore[arg-type] — file expects IO[str], a file object fits
+    # file expects IO[str], a file object fits
     return Console(
         file=open(args.output_file, "w", encoding="utf-8"),
         force_terminal=False,
@@ -1286,7 +1287,7 @@ def _print_scan_banner(args, console, is_tsundere: bool) -> None:
             console.print()
 
 
-def _setup_diff_interception(args) -> tuple[dict[str, str], object]:
+def _setup_diff_interception(args) -> tuple[dict[str, str], Any]:
     """Set up builtins.open monkey-patch for --diff mode.
 
     TODO(0.6.6): Move this into analyzer.run() via dry-run callback.

@@ -3,13 +3,15 @@ from __future__ import annotations
 import ast
 import difflib
 import textwrap
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from senpy.core.constants import BUILTIN_SYMBOLS, SCREEN_LOCAL_IGNORE
 from senpy.core.logging import get_logger
 from senpy.core.models import Diagnostic
-from senpy.core.sink import DiagnosticSink  # Phase 1.4: Protocol instead of SenpyAnalyzer
 from senpy.domain.text_tags import get_utf16_range, suggest_similar_symbol
+
+if TYPE_CHECKING:
+    from senpy.core.analyzer import SenpyAnalyzer
 
 _logger = get_logger("rules.python_ast")
 
@@ -488,7 +490,7 @@ def extract_assigned_names(py_code: str) -> set[str]:
 class PythonAstChecker:
     """Checks embedded Python code via AST for compliance with Ren'Py rules."""
 
-    def __init__(self, analyzer: DiagnosticSink):
+    def __init__(self, analyzer: SenpyAnalyzer):
         self.analyzer = analyzer
 
     def collect_from_python_block(self, code_lines: list[str]) -> tuple[dict[str, int], set[str]]:

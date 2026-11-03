@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import textwrap
+from typing import TYPE_CHECKING
 
 from senpy.core.constants import (
     RE_CONDITION,
@@ -11,7 +12,9 @@ from senpy.core.constants import (
     RE_PYTHON_BLOCK_START,
 )
 from senpy.core.scope import ScopeStack
-from senpy.core.sink import DiagnosticSink
+
+if TYPE_CHECKING:
+    from senpy.core.analyzer import SenpyAnalyzer
 from senpy.rules.base import BaseChecker, IfBlockContext
 from senpy.rules.flow import FlowBranch, merge_flow_branches
 from senpy.rules.python_ast import extract_assigned_names
@@ -20,7 +23,7 @@ from senpy.rules.python_ast import extract_assigned_names
 class StateChecker(BaseChecker):
     """RPY1xx, RPY4xx — Check variables, types, conditions, mutations, and menu forks."""
 
-    def __init__(self, analyzer: DiagnosticSink):
+    def __init__(self, analyzer: SenpyAnalyzer):
         super().__init__(analyzer)
         self.branch_uninitialized: dict[str, tuple[str, ...]] = {}
         self.guaranteed_vars: set[str] = set()

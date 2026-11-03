@@ -4,8 +4,8 @@ import json
 import re
 from collections import deque
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-# from typing import TYPE_CHECKING  # Phase 1.5: no longer needed
 from senpy.core.constants import (
     BUILTIN_SCREENS,
     RE_MENU_CHOICE,
@@ -13,9 +13,11 @@ from senpy.core.constants import (
     SYSTEM_LABELS,
 )
 from senpy.core.models import Diagnostic
-from senpy.core.sink import DiagnosticSink  # Phase 1.5: Protocol instead of SenpyAnalyzer
 from senpy.domain.text_tags import get_utf16_range
 from senpy.rules.python_ast import extract_assigned_names
+
+if TYPE_CHECKING:
+    from senpy.core.analyzer import SenpyAnalyzer
 
 _MERMAID_RESERVED_IDS = {"end"}
 
@@ -121,7 +123,7 @@ def merge_flow_branches(
 class StoryFlowAnalyzer:
     """Analyzes the transition graph, menu forks, and generates Mermaid diagrams of the plot."""
 
-    def __init__(self, analyzer: DiagnosticSink):
+    def __init__(self, analyzer: SenpyAnalyzer):
         self.analyzer = analyzer
 
     def can_reach_return(self, label_name: str, visited: set[str] | None = None) -> bool:
@@ -538,7 +540,7 @@ class MermaidBuilder:
     Extracted from StoryFlowAnalyzer.generate_mermaid_graph in Phase 4 Step 3 (0.5.7).
     """
 
-    def __init__(self, analyzer):
+    def __init__(self, analyzer: SenpyAnalyzer):
         self.analyzer = analyzer
 
     def build(self) -> str:
@@ -565,7 +567,7 @@ class MermaidBuilder:
 class _GraphContext:
     """Pre-computed data shared across the build helpers."""
 
-    analyzer: object
+    analyzer: SenpyAnalyzer
     labels: dict = field(default_factory=dict)
     screens_registry: dict = field(default_factory=dict)
     graph_screens: list = field(default_factory=list)

@@ -180,6 +180,7 @@ exclude = [
     "test_game/",
     "build/",
     "dist/",
+    "senpy/vendor/",  # vendored unrpyc
 ]
 
 # Базовые проверки
@@ -198,6 +199,11 @@ check_untyped_defs = true
 [[tool.mypy.overrides]]
 module = ["pygls.*", "lsprotocol.*"]
 ignore_missing_imports = true
+
+# Vendored unrpyc — полностью исключаем из проверки.
+[[tool.mypy.overrides]]
+module = ["senpy.vendor.*"]
+ignore_errors = true
 
 # =============================================================================
 # coverage — опциональная статистика покрытия тестов

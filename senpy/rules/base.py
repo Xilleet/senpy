@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from senpy.core.scope import ScopeStack
-from senpy.core.sink import DiagnosticSink
 from senpy.rules.flow import FlowBranch
+
+if TYPE_CHECKING:
+    from senpy.core.analyzer import SenpyAnalyzer
 
 
 class IfBlockContext:
@@ -18,7 +22,7 @@ class IfBlockContext:
 
 
 class BaseChecker:
-    def __init__(self, analyzer: DiagnosticSink):
+    def __init__(self, analyzer: SenpyAnalyzer):
         self.analyzer = analyzer
 
     def check_line(
