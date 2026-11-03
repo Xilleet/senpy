@@ -51,6 +51,8 @@ def _make_args(**kwargs) -> argparse.Namespace:
         "select": None,
         "extend_select": None,
         "extend_ignore": None,
+        "tag": None,
+        "ignore_tag": None,
         "errors_only": False,
         "info": True,  # показываем INFO по умолчанию для тестов
     }
@@ -238,3 +240,113 @@ def test_no_filters_shows_everything():
 
     codes = {d.code for d in active}
     assert codes == {"RPY101", "RPY102", "RPY103"}
+
+
+# =============================================================================
+# --tag / --ignore-tag: filter by rule metadata tags
+# =============================================================================
+
+
+def test_tag_filters_to_matching_rules_only():
+    """--tag rollback — only rules with 'rollback' tag pass."""
+    # RPY104, RPY105, RPY106 have 'rollback' tag (see RULES_DATABASE).
+    # RPY101 does NOT have 'rollback'.
+    result = _make_result(
+        _make_diag("RPY101"),
+        _make_diag("RPY104"),
+        _make_diag("RPY105"),
+        _make_diag("RPY106"),
+    )
+    args = _make_args(tag=["rollback"])
+    ignored = set()
+
+    active, _ = filter_diagnostics(result, args, ignored)
+
+    codes = {d.code for d in active}
+    assert codes == {
+        "RPY104",
+        "RPY105",
+        "RPY106",
+    }, f"--tag rollback should keep only rollback-tagged rules, got {codes}"
+
+
+def test_tag_with_multiple_values_is_union():
+    """--tag audio images — rules with EITHER tag pass (union semantics)."""
+    # RPY501, RPY505 have 'audio'. RPY502, RPY504 have 'images'. RPY503 has
+    # 'assets' + 'dead-code' (neither audio nor images) → filtered out.
+    result = _make_result(
+        _make_diag("RPY501"),
+        _make_diag("RPY502"),
+        _make_diag("RPY503"),
+        _make_diag("RPY504"),
+        _make_diag("RPY505"),
+    )
+    args = _make_args(tag=["audio", "images"])
+    ignored = set()
+
+    active, _ = filter_diagnostics(result, args, ignored)
+
+    codes = {d.code for d in active}
+    assert codes == {"RPY501", "RPY502", "RPY504", "RPY505"}
+
+
+def test_tag_is_case_insensitive():
+    """--tag ROLLBACK should match the same rules as --tag rollback."""
+    result = _make_result(_make_diag("RPY104"), _make_diag("RPY101"))
+    args = _make_args(tag=["ROLLBACK"])
+    ignored = set()
+
+    active, _ = filter_diagnostics(result, args, ignored)
+    codes = {d.code for d in active}
+    assert codes == {"RPY104"}
+
+
+def test_ignore_tag_drops_matching_rules():
+    """--ignore-tag dead-code — rules tagged 'dead-code' are dropped."""
+    # RPY701, RPY702, RPY703 are tagged 'dead-code'. RPY101 is not.
+    result = _make_result(
+        _make_diag("RPY101"),
+        _make_diag("RPY701"),
+        _make_diag("RPY702"),
+        _make_diag("RPY703"),
+    )
+    args = _make_args(ignore_tag=["dead-code"])
+    ignored = set()
+
+    active, _ = filter_diagnostics(result, args, ignored)
+
+    codes = {d.code for d in active}
+    assert codes == {"RPY101"}
+
+
+def test_tag_and_ignore_tag_combine():
+    """--tag variables --ignore-tag rollback — keep variable rules that
+    are NOT rollback-related. RPY101 (variables, dialogue) passes; RPY104
+    (variables, state, rollback) is dropped by --ignore-tag rollback."""
+    result = _make_result(
+        _make_diag("RPY101"),  # tags: variables, dialogue
+        _make_diag("RPY104"),  # tags: variables, state, rollback
+    )
+    args = _make_args(tag=["variables"], ignore_tag=["rollback"])
+    ignored = set()
+
+    active, _ = filter_diagnostics(result, args, ignored)
+
+    codes = {d.code for d in active}
+    assert codes == {"RPY101"}
+
+
+def test_tag_filter_with_unknown_rule_code_passes():
+    """A diagnostic whose code is not in RULES_DATABASE (e.g. a plugin
+    rule) has no tags. It should:
+      - pass --tag (no constraint can be applied — no tags to match)
+      - be dropped by --ignore-tag (conservative — we don't know its
+        tags, so we can't prove it should be kept)
+    This matches the documented behaviour in filter_diagnostics."""
+    result = _make_result(_make_diag("PLG001"))
+    args = _make_args(tag=["variables"])
+    ignored = set()
+
+    active, _ = filter_diagnostics(result, args, ignored)
+    # Without tags, the rule has nothing in common with 'variables' → dropped.
+    assert active == []

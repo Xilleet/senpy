@@ -260,3 +260,163 @@ class TestRenderJson:
         data = json.loads(captured.out)
         assert data["diagnostics"] == []
         assert exit_code == 0
+
+
+# =============================================================================
+# render_rdjson() — Reviewdog NDJSON
+# =============================================================================
+
+
+class TestRenderRdjson:
+    """Tests for render_rdjson() — the CLI-level wrapper around
+    senpy.formats.rdjson.generate_rdjson.
+
+    Contract: returns int exit code, prints NDJSON to stdout (or writes
+    to args.output_file), exit 1 if any ERROR diagnostic is present.
+    """
+
+    def test_render_rdjson_exists(self):
+        from senpy.cli.main import render_rdjson
+
+        assert callable(render_rdjson)
+
+    def test_returns_int_exit_code(self):
+        from rich.console import Console
+
+        from senpy.cli.main import render_rdjson
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="rdjson")
+        exit_code = render_rdjson(diags, args, console)
+        assert isinstance(exit_code, int)
+
+    def test_exit_1_when_errors_present(self):
+        from rich.console import Console
+
+        from senpy.cli.main import render_rdjson
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="rdjson")
+        assert render_rdjson(diags, args, console) == 1
+
+    def test_exit_0_when_no_errors(self, capsys):
+        from rich.console import Console
+
+        from senpy.cli.main import render_rdjson
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY104", severity="WARNING")]
+        args = _make_args(output_format="rdjson")
+        exit_code = render_rdjson(diags, args, console)
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        # Output is one NDJSON line per diagnostic.
+        lines = [ln for ln in captured.out.splitlines() if ln.strip()]
+        assert len(lines) == 1
+        record = json.loads(lines[0])
+        assert record["code"]["value"] == "RPY104"
+
+    def test_writes_to_output_file_when_set(self, tmp_path, capsys):
+        from rich.console import Console
+
+        from senpy.cli.main import render_rdjson
+
+        out_file = tmp_path / "report.rdjson"
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY104", severity="WARNING")]
+        args = _make_args(output_format="rdjson", output_file=str(out_file))
+        exit_code = render_rdjson(diags, args, console)
+        assert exit_code == 0
+        # File contents are the NDJSON, not stdout.
+        captured = capsys.readouterr()
+        assert "saved to" in captured.out
+        text = out_file.read_text(encoding="utf-8")
+        assert "RPY104" in text
+
+
+# =============================================================================
+# render_gitlab() — GitLab Code Quality JSON
+# =============================================================================
+
+
+class TestRenderGitlab:
+    """Tests for render_gitlab() — the CLI-level wrapper around
+    senpy.formats.gitlab.generate_gitlab_json.
+
+    Contract: returns int exit code, prints a JSON array to stdout
+    (or writes to args.output_file), exit 1 if any ERROR diagnostic
+    is present.
+    """
+
+    def test_render_gitlab_exists(self):
+        from senpy.cli.main import render_gitlab
+
+        assert callable(render_gitlab)
+
+    def test_returns_int_exit_code(self):
+        from rich.console import Console
+
+        from senpy.cli.main import render_gitlab
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="gitlab")
+        exit_code = render_gitlab(diags, args, console)
+        assert isinstance(exit_code, int)
+
+    def test_exit_1_when_errors_present(self):
+        from rich.console import Console
+
+        from senpy.cli.main import render_gitlab
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="gitlab")
+        assert render_gitlab(diags, args, console) == 1
+
+    def test_exit_0_and_emits_json_array(self, capsys):
+        from rich.console import Console
+
+        from senpy.cli.main import render_gitlab
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY104", severity="WARNING")]
+        args = _make_args(output_format="gitlab")
+        exit_code = render_gitlab(diags, args, console)
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        data = json.loads(captured.out)
+        assert isinstance(data, list)
+        assert len(data) == 1
+        assert data[0]["check_name"] == "RPY104"
+        assert data[0]["severity"] == "minor"
+
+    def test_empty_diagnostics_emits_empty_array(self, capsys):
+        from rich.console import Console
+
+        from senpy.cli.main import render_gitlab
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        args = _make_args(output_format="gitlab")
+        exit_code = render_gitlab([], args, console)
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert json.loads(captured.out) == []
+
+    def test_writes_to_output_file_when_set(self, tmp_path, capsys):
+        from rich.console import Console
+
+        from senpy.cli.main import render_gitlab
+
+        out_file = tmp_path / "gl.json"
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY104", severity="WARNING")]
+        args = _make_args(output_format="gitlab", output_file=str(out_file))
+        exit_code = render_gitlab(diags, args, console)
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "saved to" in captured.out
+        data = json.loads(out_file.read_text(encoding="utf-8"))
+        assert data[0]["check_name"] == "RPY104"

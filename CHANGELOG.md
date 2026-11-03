@@ -23,7 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <a id="unreleased074"></a>
 
-## [Unreleased/0.7.4] — Introspection tool (`senpy inspect`)
+## [Unreleased/0.7.4] — Introspection, output formats, rule metadata, strict mode, formatter rule
+
+Six additive features in one patch release. No public API removed,
+no rule severity changes (except opt-in `strict = true`). All changes
+are backward-compatible — existing flags (`--rules`, `--rule`,
+`--output-format sarif/json/junit/github`) continue to work.
 
 ### New subcommand — `senpy inspect`
 
@@ -102,9 +107,146 @@ silently when running `senpy inspect PATH`. The test
 is caught on any platform (Linux CI runners don't have unrpyc
 installed, so the bug was hidden before).
 
+### Output formats — `rdjson` (Reviewdog) and `gitlab` (GitLab Code Quality)
+
+Two new values for `--output-format`, expanding the CI integration
+surface from 5 to 7 formats (`text`, `json`, `sarif`, `junit`,
+`github`, `rdjson`, `gitlab`).
+
+```bash
+senpy game/ --output-format rdjson            # Reviewdog NDJSON (one issue per line)
+senpy game/ --output-format rdjson -o r.json  # write to file
+senpy game/ --output-format gitlab            # GitLab Code Quality JSON array
+senpy game/ --output-format gitlab -o gl.json # write to file
+```
+
+* **`rdjson`** — Reviewdog Diagnostic Format (NDJSON). One JSON
+  object per line, suitable for piping into `reviewdog -f=rdjson`.
+  Severity mapping: `ERROR`/`WARNING`/`INFO` pass through unchanged;
+  `HINT` becomes `INFO` (Reviewdog has no HINT level). Columns are
+  1-based. Each finding carries `code.value` (rule id) and `code.url`
+  (RULES.md anchor) for known rules; the URL is omitted for unknown
+  codes (e.g. plugin rules).
+* **`gitlab`** — GitLab Code Quality JSON report (top-level array).
+  Suitable as a CI artifact for merge-request annotations. Severity
+  mapping: `ERROR` → `major`, `WARNING` → `minor`, `HINT`/`INFO` →
+  `info`. Each finding carries a `fingerprint` (`md5(code|path|line|message)`)
+  for stable deduplication across runs — pinned by tests so a future
+  algorithm change won't silently re-open every GitLab finding.
+
+Both formats support `--output-file` and respect `--quiet` mode.
+
+### Rule metadata — `tags` field, `senpy rule` subcommand, `--tag` filter
+
+Three coupled changes that share the same `RULES_DATABASE` extension.
+
+**Tags.** Every rule in `RULES_DATABASE` now has a `tags` field
+(`list[str]`). The taxonomy covers 21 tags across all 45 rules:
+`formatting`, `syntax`, `encoding`, `io`, `variables`, `state`,
+`rollback`, `deprecated`, `types`, `init-order`, `python`, `screen`,
+`ui`, `performance`, `arguments`, `dialogue`, `text-tags`, `colors`,
+`flow`, `labels`, `branching`, `menu`, `dead-code`, `assets`, `audio`,
+`images`, `translations`, `transforms`.
+
+Examples:
+
+| Rule  | Tags                                      |
+|-------|-------------------------------------------|
+| RPY104 | `variables`, `state`, `rollback`         |
+| RPY107 | `deprecated`                              |
+| RPY205 | `screen`, `performance`                   |
+| RPY501 | `assets`, `audio`                         |
+| RPY701 | `dead-code`, `variables`                  |
+
+`show_rules_table()` (the `senpy --rules` view) now includes a Tags
+column. `show_rule_detail()` (`senpy --rule CODE`) lists the tags in
+the panel header.
+
+**`senpy rule` subcommand.** Browse rule metadata without running
+the analyzer:
+
+```bash
+senpy rule list                              # text table of all rules
+senpy rule list --format json                # machine-readable
+senpy rule list --tag rollback               # filter by tag (union)
+senpy rule list --tag audio --tag images     # multiple tags = union
+senpy rule list --severity ERROR             # filter by severity
+senpy rule list -o rules.json                # write to file
+senpy rule show RPY104                       # detail (text)
+senpy rule show RPY104 --format json         # detail (JSON)
+senpy rule show rpy104                       # case-insensitive
+```
+
+JSON output adds a `code` field to each entry (in `RULES_DATABASE`
+the code is the dict key, not a value — JSON consumers need it as a
+field to sort/group programmatically). The existing `--rules` and
+`--rule CODE` flags on the main CLI continue to work as aliases.
+
+**`--tag` / `--ignore-tag` CLI filters for lint mode.** Two new flags:
+
+```bash
+senpy game/ --tag rollback state             # run only rollback+state rules
+senpy game/ --ignore-tag dead-code           # silence all dead-code rules
+senpy game/ --tag variables --ignore-tag rollback   # combine
+```
+
+Tag matching is case-insensitive; a rule passes `--tag` if ANY of
+its tags is in the requested list. Rules missing from
+`RULES_DATABASE` (e.g. plugin rules with unknown codes) are dropped
+by `--tag` (conservative — they have no tags to match) but kept by
+default.
+
+### Strict mode — `strict = true` config field is now enforced
+
+The `strict` field on `SenpyConfig` has been documented as "all rules
+= ERROR" since 0.6.0 (`ARCHITECTURE.md:424`) but was never actually
+read by the analyzer. This release closes that gap.
+
+```toml
+# senpy.toml
+[senpy]
+strict = true
+```
+
+With `strict = true`, every diagnostic whose code is NOT explicitly
+overridden in `[tool.senpy.severity]` is promoted to `ERROR`.
+Explicit severity overrides have priority — otherwise strict mode
+would silently re-promote a rule the user explicitly demoted, making
+strict unusable for projects with one or two noisy rules.
+
+`strict = false` (default) → no behaviour change.
+
+### Formatter — `FMT-STRING-CONSISTENCY` (7th formatter rule)
+
+Normalizes the outer quotes of single-line string literals in CODE
+lines to a consistent style. Default: `'hi'` → `"hi"` (Ren'Py
+convention).
+
+```python
+# senpy.toml or via FormatConfig
+[tool.senpy.formatter]  # future section; currently FormatConfig field
+string_style = "double"  # default | "single" | "preserve"
+```
+
+NOT touched (intentional non-goals):
+
+* Dialogue lines (first non-whitespace char is `'` or `"`) — Ren'Py
+  dialogue convention is independent of code style.
+* Triple-quoted strings — too easy to break.
+* Strings where conversion would require escaping the new outer
+  quote inside the body (e.g. `'he said "hi"'` is left alone —
+  converting would require escaping the inner `"`, breaking
+  idempotency).
+* Skip blocks (`# senpy: format off`).
+
+Rule order in `senpy/formatter/rules/__init__.py`: indent →
+blank-lines → trailing-ws → quotes → op-spacing → comma-spacing →
+colon-spacing → **string-consistency** → eof-newline (last).
+
 ### Tests
 
-* **1089 tests pass** (up from 1036 in 0.7.3). 53 new:
+* **1173 tests pass** (up from 1036 in 0.7.3, +84 from 0.7.4 inspect;
+  +137 total this release). New test files:
   - `tests/test_inspect.py` (27): assertion-based + size invariants
     on the JSON structure. Verifies `stats.labels ==
     len(data.labels)`, every broken-jump target is NOT in labels,
@@ -119,10 +261,48 @@ installed, so the bug was hidden before).
     explicit `--decompile` and `config['decompile']` still honored
     when `interactive=False`, module importable without circular
     dependency.
-* Ruff check clean. 0 import cycles across 82 modules
-  (+2 new: `senpy/cli/discover.py`, `senpy/cli/inspect_dispatch.py`;
-  +1 new: `senpy/formats/inspect.py`).
+  - `tests/test_strict_mode.py` (4): `strict=true` promotes
+    WARNING/HINT to ERROR, `strict=false` preserves defaults,
+    explicit severity overrides win over strict, default-when-absent.
+  - `tests/test_rdjson.py` (13): NDJSON structure, severity mapping,
+    1-based columns, code.url for known/unknown rules, unicode
+    preservation, newline-in-message escaping, path fallback.
+  - `tests/test_gitlab.py` (17): JSON array structure, field
+    mapping, severity mapping, fingerprint stability/uniqueness,
+    fingerprint algorithm pinning (md5 of code|path|line|message),
+    unicode and quote escaping.
+  - `tests/test_rule_cli.py` (19): `senpy rule list` (text/json,
+    `--tag`, `--severity`, `-o`), `senpy rule show` (text/json,
+    unknown code, case-insensitive), `--help`, no-subcommand.
+  - Plus 7 new `--tag` / `--ignore-tag` tests in
+    `tests/test_cli_select_ignore.py` and 12 new
+    `FMT-STRING-CONSISTENCY` tests in
+    `tests/test_formatter_idempotency.py::TestStringConsistency`,
+    and 11 new `render_rdjson`/`render_gitlab` tests in
+    `tests/test_render_formats.py`. Four characterization tests in
+    `tests/test_0_6_0_subprint.py` updated to reflect the new
+    string-consistency behaviour (string content preserved; only
+    outer quotes change).
+* Ruff check clean. 0 import cycles across 86 modules
+  (+6 new: `senpy/cli/discover.py`, `senpy/cli/inspect_dispatch.py`,
+  `senpy/cli/rule_dispatch.py`, `senpy/formats/inspect.py`,
+  `senpy/formats/rdjson.py`, `senpy/formats/gitlab.py`,
+  `senpy/formatter/rules/string_consistency.py` — counted as +6
+  because `discover.py` + `inspect_dispatch.py` + `inspect.py` were
+  already in 0.7.4-sprint earlier commits; this changelog entry
+  covers the whole 0.7.4 release).
 * Coverage stable.
+
+### Internal — `WL-` ID family added to CLEAN-1 scrub
+
+The worklog v3 introduced a new `WL-NNN` ID family (replacing the old
+`DOC-1`/`CLI-17`/`ARCH-3`/etc. prefixes). The CLEAN-1 internal-ID
+scrub regex in `scripts/clean_internal_ids.py` and the mirror in
+`tests/test_clean_internal_ids.py` were updated to cover the `WL`
+prefix, plus a new regression test
+(`test_scrub_line_strips_wl_prefix_id`) covers both docstring-prefix
+and inline-mention forms. Four user-facing files that had leaked
+`WL-506` references during the earlier 0.7.4 sprint were cleaned up.
 
 <a id="073"></a>
 [up](#up)

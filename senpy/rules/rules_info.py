@@ -12,6 +12,7 @@ RULES_DATABASE = {
     "RPY001": {
         "title": "Tab character in indentation",
         "severity": "ERROR",
+        "tags": ["formatting", "syntax"],
         "why": "Ren'Py requires 4 spaces per indentation level. Tab characters ('\\t') cause indentation mismatches and SyntaxError across different editors and operating systems.",
         "bad": 'label start:\n\t"Tab character used here!"',
         "good": 'label start:\n    "Standard 4 spaces used here."',
@@ -19,6 +20,7 @@ RULES_DATABASE = {
     "RPY002": {
         "title": "Smart/curly quotes in code statement",
         "severity": "ERROR",
+        "tags": ["formatting", "syntax"],
         "why": "Typographic smart quotes (“ ” ‘ ’ « ») copied from text editors like MS Word into Python code statements cause a fatal SyntaxError.",
         "bad": "$ status = “active”\nif item == «key»: ...",
         "good": '$ status = "active"\nif item == "key": ...',
@@ -27,6 +29,7 @@ RULES_DATABASE = {
     "RPY100": {
         "title": "File is not valid UTF-8",
         "severity": "ERROR",
+        "tags": ["encoding", "io"],
         "why": "Ren'Py reads all .rpy scripts as UTF-8. A file saved in another encoding (e.g. Windows-1251) crashes the game on load. Senpy skips such files, so they must be re-saved as UTF-8.",
         "bad": "script.rpy saved in Windows-1251: bytes b'\\xcf\\xf0\\xe8\\xe2\\xe5\\xf2' instead of text",
         "good": "Re-save the file with UTF-8 encoding (VS Code: bottom-right status bar -> Save with Encoding -> UTF-8).",
@@ -34,6 +37,7 @@ RULES_DATABASE = {
     "RPY101": {
         "title": "Unresolved variable in dialogue interpolation",
         "severity": "ERROR",
+        "tags": ["variables", "dialogue"],
         "why": "Using [variable] in dialogue when it is not declared via 'default' or 'define' will crash the game with KeyError during text rendering.",
         "bad": '"Hello, [player_namme]!"  # Typo in variable name',
         "good": 'default player_name = "Eileen"\n"Hello, [player_name]!"',
@@ -41,6 +45,7 @@ RULES_DATABASE = {
     "RPY102": {
         "title": "Augmented assignment before 'default' declaration",
         "severity": "ERROR",
+        "tags": ["variables", "state"],
         "why": "Doing +=, -=, etc. to a variable before it has been initialized causes an immediate runtime NameError when entering the scene.",
         "bad": "label start:\n    $ score += 10  # score does not exist yet!",
         "good": "default score = 0\nlabel start:\n    $ score += 10",
@@ -48,6 +53,7 @@ RULES_DATABASE = {
     "RPY103": {
         "title": "Undeclared variable in condition",
         "severity": "ERROR",
+        "tags": ["variables", "state"],
         "why": "Evaluating 'if var:' or 'elif var:' crashes the engine with NameError if the variable was never declared.",
         "bad": "if has_key:\n    jump secret_room",
         "good": "default has_key = False\nlabel start:\n    if has_key:\n        jump secret_room",
@@ -55,6 +61,7 @@ RULES_DATABASE = {
     "RPY104": {
         "title": "Dynamic assignment without top-level 'default'",
         "severity": "WARNING",
+        "tags": ["variables", "state", "rollback"],
         "why": "Assigning variables on the fly ($ var = 1) without a top-level 'default' will corrupt save files upon game updates and cause NameError on other story branches.",
         "bad": "label chapter_2:\n    $ affection = 5  # No top-level default!",
         "good": "default affection = 0\nlabel chapter_2:\n    $ affection = 5",
@@ -62,6 +69,7 @@ RULES_DATABASE = {
     "RPY105": {
         "title": "Direct mutation of 'define' constant",
         "severity": "ERROR",
+        "tags": ["variables", "state", "rollback"],
         "why": "Variables declared with 'define' are static constants (characters, configurations). Modifying them breaks Ren'Py rollback and save persistence.",
         "bad": "define karma = 0\nlabel start:\n    $ karma += 1",
         "good": "default karma = 0  # Use default for mutable state!\nlabel start:\n    $ karma += 1",
@@ -69,6 +77,7 @@ RULES_DATABASE = {
     "RPY106": {
         "title": "Usage of non-revertable Python types (random / mutable set)",
         "severity": "WARNING",
+        "tags": ["variables", "rollback"],
         "why": "Standard Python 'import random' and mutable 'set()' are not tracked by Ren'Py's rollback engine. Players rolling back will experience save desynchronization.",
         "bad": "import random\n$ inventory = set()",
         "good": "from renpy import random\n$ inventory = []  # or renpy.revertable_set()",
@@ -76,6 +85,7 @@ RULES_DATABASE = {
     "RPY107": {
         "title": "Usage of deprecated / obsolete Ren'Py API",
         "severity": "WARNING",
+        "tags": ["deprecated"],
         "why": "Calling obsolete Ren'Py functions (LiveComposite, DynamicCharacter, im.*, ui.*) harms rendering performance (CPU vs GPU) or breaks on Ren'Py 7/8.",
         "bad": 'image natsuki = LiveComposite((960, 960), (0, 0), "base.png")\ndefine c = DynamicCharacter("char_name")',
         "good": 'image natsuki = Composite((960, 960), (0, 0), "base.png")\ndefine c = Character("[char_name]")',
@@ -83,6 +93,7 @@ RULES_DATABASE = {
     "RPY108": {
         "title": "Type taint conflict or incompatible augmented assignment",
         "severity": "ERROR",
+        "tags": ["variables", "types"],
         "why": "Assigning incompatible types (e.g. str to int) or performing operations like 'str += int' causes fatal runtime TypeErrors.",
         "bad": 'default player_name = "Eileen"\ndefault score = 0\nlabel start:\n    $ player_name += 1\n    $ score = "High"',
         "good": 'default player_name = "Eileen"\ndefault score = 0\nlabel start:\n    $ player_name += "!"\n    $ score = 100',
@@ -90,6 +101,7 @@ RULES_DATABASE = {
     "RPY109": {
         "title": "Init phase dependency graph violation",
         "severity": "ERROR",
+        "tags": ["init-order", "python"],
         "why": "Ren'Py loads files in alphabetical order. If 'a_file.rpy' calls a function in 'init python' that is defined in 'z_file.rpy', the game will crash on startup because 'z_file' hasn't loaded yet.",
         "bad": "# a_setup.rpy\ninit python:\n    setup_gui()  # Crashes!\n\n# z_helpers.rpy\ninit python:\n    def setup_gui(): ...",
         "good": "# a_helpers.rpy\ninit python:\n    def setup_gui(): ...\n\n# z_setup.rpy\ninit python:\n    setup_gui()",
@@ -98,6 +110,7 @@ RULES_DATABASE = {
     "RPY201": {
         "title": "Direct state mutation inside screen",
         "severity": "WARNING",
+        "tags": ["screen", "state", "rollback"],
         "why": "Screens are evaluated continuously and predictively by the UI loop. Direct state mutations run repeatedly every frame and break rollback.",
         "bad": "screen shop():\n    $ player_gold -= 10  # Runs repeatedly during prediction!",
         "good": "screen shop():\n    textbutton 'Buy' action SetVariable('player_gold', player_gold - 10)",
@@ -105,6 +118,7 @@ RULES_DATABASE = {
     "RPY202": {
         "title": "Screen accesses variable without 'default'",
         "severity": "WARNING",
+        "tags": ["screen", "variables"],
         "why": "Screens can be evaluated before story start (e.g. in the main menu or prediction loop). Reading undeclared variables crashes the game.",
         "bad": "screen hud():\n    if show_quest_tracker: ...",
         "good": "default show_quest_tracker = False\nscreen hud():\n    if show_quest_tracker: ...",
@@ -112,6 +126,7 @@ RULES_DATABASE = {
     "RPY203": {
         "title": "Button without 'action' argument",
         "severity": "WARNING",
+        "tags": ["screen", "ui"],
         "why": "Buttons (textbutton, imagebutton) without an 'action' property are non-interactive dead UI elements.",
         "bad": 'textbutton "Confirm"  # Cannot be clicked!',
         "good": 'textbutton "Confirm" action Return()',
@@ -119,6 +134,7 @@ RULES_DATABASE = {
     "RPY204": {
         "title": "Call/Show to non-existent screen",
         "severity": "ERROR",
+        "tags": ["screen", "flow"],
         "why": "Calling or showing a screen that does not exist crashes the game with 'Exception: Screen is not known'.",
         "bad": "call screen inventory_menuu  # Typo!",
         "good": "call screen inventory_menu",
@@ -126,6 +142,7 @@ RULES_DATABASE = {
     "RPY205": {
         "title": "Imperative Python loop inside screen",
         "severity": "WARNING",
+        "tags": ["screen", "performance"],
         "why": "Writing imperative for/while loops in Python blocks inside screens severely hurts UI prediction and causes frame drops.",
         "bad": "screen inv():\n    python:\n        for item in items: ...",
         "good": "screen inv():\n    for item in items:\n        text item",
@@ -133,6 +150,7 @@ RULES_DATABASE = {
     "RPY206": {
         "title": "Direct function call in button action",
         "severity": "ERROR",
+        "tags": ["screen", "ui"],
         "why": "Directly calling a function with parentheses in action executes it immediately during screen render, not upon user click.",
         "bad": "textbutton 'Heal' action heal_player()  # Executes on screen show!",
         "good": "textbutton 'Heal' action Function(heal_player)  # Executes on click",
@@ -140,6 +158,7 @@ RULES_DATABASE = {
     "RPY207": {
         "title": "Invalid arguments when showing or using a screen",
         "severity": "ERROR",
+        "tags": ["screen", "arguments"],
         "why": "Calling or using a screen with missing required parameters or unknown arguments causes a fatal runtime Exception.",
         "bad": "screen inv(sort_by):\n    ...\nuse inv()  # Missing required argument 'sort_by'!",
         "good": "screen inv(sort_by='name'):\n    ...\nuse inv()",
@@ -147,6 +166,7 @@ RULES_DATABASE = {
     "RPY208": {
         "title": "Screen-local variable modified via global action or store mutation",
         "severity": "ERROR",
+        "tags": ["screen", "state"],
         "why": "Variables declared with 'default' inside a screen or screen parameters are screen-local. Using 'SetVariable' or '$ var = ...' modifies the global store instead of the screen variable, causing UI desynchronization and broken button interactions.",
         "bad": 'screen shop():\n    default selected_item = None\n    textbutton "Sword" action SetVariable("selected_item", "Sword")',
         "good": 'screen shop():\n    default selected_item = None\n    textbutton "Sword" action SetScreenVariable("selected_item", "Sword")',
@@ -155,6 +175,7 @@ RULES_DATABASE = {
     "RPY301": {
         "title": "Unclosed or mismatched text tag in dialogue",
         "severity": "ERROR",
+        "tags": ["dialogue", "text-tags"],
         "why": "Unclosed tags like {b} will bleed styles into all subsequent dialogues across the entire game.",
         "bad": '"Danger: {b}Hazardous area!"',
         "good": '"Danger: {b}Hazardous area!{/b}"',
@@ -162,6 +183,7 @@ RULES_DATABASE = {
     "RPY302": {
         "title": "Jump or Call to non-existent label",
         "severity": "ERROR",
+        "tags": ["flow", "labels"],
         "why": "Jumping to a label that does not exist immediately terminates the novel with ScriptError.",
         "bad": "jump bad_edd  # Typo",
         "good": "jump bad_end",
@@ -169,6 +191,7 @@ RULES_DATABASE = {
     "RPY303": {
         "title": "Unreferenced / Dead label",
         "severity": "INFO",
+        "tags": ["dead-code", "labels"],
         "why": "Label is declared but never called or jumped to anywhere in the project. It might be dead code or a forgotten draft.",
         "bad": "label forgotten_draft:\n    'Old scene never reached...'",
         "good": "# Connect to story flow with jump/call or remove dead script",
@@ -176,6 +199,7 @@ RULES_DATABASE = {
     "RPY304": {
         "title": "Malformed color in {color} tag",
         "severity": "ERROR",
+        "tags": ["dialogue", "text-tags", "colors"],
         "why": "Typo in hex code (e.g. #12345) or unknown color name causes the Ren'Py text renderer to crash.",
         "bad": '"{color=#12345}Text{/color}"',
         "good": '"{color=#123456}Text{/color}"',
@@ -183,6 +207,7 @@ RULES_DATABASE = {
     "RPY305": {
         "title": "Unescaped quotes inside dialogue string",
         "severity": "ERROR",
+        "tags": ["dialogue", "syntax"],
         "why": 'Quotes inside a dialogue string without escaping (\\") break the string literal parser at startup.',
         "bad": '"She said "Hello" and smiled."',
         "good": '"She said \\"Hello\\" and smiled."',
@@ -190,6 +215,7 @@ RULES_DATABASE = {
     "RPY306": {
         "title": "Called label without 'return' statement",
         "severity": "WARNING",
+        "tags": ["flow", "labels"],
         "why": "Invoking a label via 'call' expects a 'return'. Without it, control flow accidentally bleeds into unrelated scenes.",
         "bad": "label sub_scene:\n    'Dialogue...'\n    # Missing return!",
         "good": "label sub_scene:\n    'Dialogue...'\n    return",
@@ -197,6 +223,7 @@ RULES_DATABASE = {
     "RPY307": {
         "title": "Duplicate label declaration",
         "severity": "ERROR",
+        "tags": ["labels", "syntax"],
         "why": "Declaring two labels with the same name across any project script causes a fatal ScriptError on startup.",
         "bad": "label chapter_1:\n    ...\nlabel chapter_1:  # Duplicate!\n    ...",
         "good": "label chapter_1:\n    ...\nlabel chapter_2:\n    ...",
@@ -204,6 +231,7 @@ RULES_DATABASE = {
     "RPY308": {
         "title": "Label preceded by regular statements (Fallthrough hazard)",
         "severity": "WARNING",
+        "tags": ["flow", "labels"],
         "why": "Ending a scene without 'jump' or 'return' before the next label causes control flow to unintentionally fall right through into the next scene.",
         "bad": 'label scene_a:\n    "End of scene A."\nlabel scene_b:\n    "Scene B starts immediately!"',
         "good": 'label scene_a:\n    "End of scene A."\n    return\nlabel scene_b:\n    "Scene B starts!"',
@@ -211,6 +239,7 @@ RULES_DATABASE = {
     "RPY309": {
         "title": "Story island / isolated subgraph unreachable from 'start'",
         "severity": "WARNING",
+        "tags": ["flow", "dead-code"],
         "why": "A group of scenes references each other in a loop, but no entry point exists from 'start', 'splashscreen', or main menus. This represents unreachable dead content or orphaned story routes.",
         "bad": "label route_a:\n    jump route_b\nlabel route_b:\n    jump route_a",
         "good": "# Connect route to story flow via jump or call from start",
@@ -218,6 +247,7 @@ RULES_DATABASE = {
     "RPY310": {
         "title": "Invalid argument count or keyword in 'call' statement",
         "severity": "ERROR",
+        "tags": ["flow", "arguments"],
         "why": "Calling a label with too few, too many, or unknown keyword arguments crashes the game with an immediate TypeError.",
         "bad": "label forest(time, weather):\n    ...\ncall forest('day')  # Missing 'weather' argument!",
         "good": "label forest(time, weather='sunny'):\n    ...\ncall forest('day')",
@@ -226,6 +256,7 @@ RULES_DATABASE = {
     "RPY401": {
         "title": "Variable defined in one menu choice but missing in another",
         "severity": "WARNING",
+        "tags": ["flow", "variables", "branching"],
         "why": "If Choice A defines a variable but Choice B does not, choosing Choice B and later reading the variable causes a fatal NameError.",
         "bad": 'menu:\n    "Take torch":\n        $ torch = True\n    "Walk in dark":\n        pass\nif torch: ...  # Crashes if dark was chosen!',
         "good": 'default torch = False\nmenu:\n    "Take torch":\n        $ torch = True\n    "Walk in dark":\n        pass',
@@ -233,6 +264,7 @@ RULES_DATABASE = {
     "RPY402": {
         "title": "Empty menu choice",
         "severity": "WARNING",
+        "tags": ["flow", "menu", "branching"],
         "why": "A menu choice was defined without any body statements, causing the story to immediately fall through.",
         "bad": 'menu:\n    "Give up":\n    "Fight":\n        "Battle!"',
         "good": 'menu:\n    "Give up":\n        return\n    "Fight":\n        "Battle!"',
@@ -240,6 +272,7 @@ RULES_DATABASE = {
     "RPY403": {
         "title": "Always-false or contradictory condition",
         "severity": "WARNING",
+        "tags": ["flow", "dead-code", "branching"],
         "why": "Conditions like 'if False:' or 'if x and not x:' can never be true. The code block will never execute.",
         "bad": "if False:\n    'This story branch is dead.'",
         "good": "if has_secret_item:\n    'Secret branch!'",
@@ -247,6 +280,7 @@ RULES_DATABASE = {
     "RPY404": {
         "title": "Variable in MAYBE_SET state evaluated after menu branch",
         "severity": "WARNING",
+        "tags": ["flow", "variables", "branching"],
         "why": "If a variable is only defined in one choice of a menu, choosing an alternate path and subsequently evaluating the variable or interpolating it will crash with NameError or KeyError.",
         "bad": 'menu:\n    "Take torch":\n        $ torch = True\n    "Wait":\n        pass\nif torch: ...',
         "good": 'default torch = False\nmenu:\n    "Take torch":\n        $ torch = True\n    "Wait":\n        pass\nif torch: ...',
@@ -255,6 +289,7 @@ RULES_DATABASE = {
     "RPY501": {
         "title": "Missing audio file",
         "severity": "ERROR",
+        "tags": ["assets", "audio"],
         "why": "Audio file referenced in play/queue music/sound/voice does not exist on disk, in 'audio/', or inside .rpa archives.",
         "bad": 'play music "bgm/missing_track.ogg"',
         "good": 'play music "bgm/existing_track.ogg"',
@@ -262,6 +297,7 @@ RULES_DATABASE = {
     "RPY502": {
         "title": "Missing or mistyped sprite / background",
         "severity": "WARNING",
+        "tags": ["assets", "images"],
         "why": "Sprite pose or background shown via 'show' or 'scene' is missing from image declarations, layered images, and asset folders.",
         "bad": "show sayori 99z_crazy_pose",
         "good": "show sayori 1a",
@@ -269,6 +305,7 @@ RULES_DATABASE = {
     "RPY503": {
         "title": "Unused media asset on disk",
         "severity": "WARNING",
+        "tags": ["assets", "dead-code"],
         "why": "Image or audio files located in the project directory are never referenced in any script. Increases build distribution size.",
         "bad": "# File 'game/images/unused_background.png' exists on disk but is never shown",
         "good": "# Show the asset in script or remove unused file from project",
@@ -276,6 +313,7 @@ RULES_DATABASE = {
     "RPY504": {
         "title": "Duplicate / overridden image declaration",
         "severity": "WARNING",
+        "tags": ["assets", "images"],
         "why": "Declaring the same image tag twice (via 'image name = ...' or 'image name:') silently overrides the previous definition.",
         "bad": 'image bg room = "day.png"\nimage bg room = "night.png"  # Silently overrides daytime room!',
         "good": 'image bg room_day = "day.png"\nimage bg room_night = "night.png"',
@@ -283,6 +321,7 @@ RULES_DATABASE = {
     "RPY505": {
         "title": "Unregistered audio channel or voice loop",
         "severity": "WARNING",
+        "tags": ["assets", "audio"],
         "why": "Playing audio on a channel not registered via renpy.music.register_channel() causes a runtime Exception. Looping the voice channel causes audio overlap glitches.",
         "bad": 'play ambient "rain.ogg"\nplay voice "clip.ogg" loop',
         "good": 'init python:\n    renpy.music.register_channel("ambient", mixer="sfx", loop=True)\nplay ambient "rain.ogg"',
@@ -291,6 +330,7 @@ RULES_DATABASE = {
     "RPY601": {
         "title": "Variable mismatch in translation string",
         "severity": "ERROR",
+        "tags": ["translations", "variables"],
         "why": "If a translated string alters or misspells a dialogue variable ([var]), rendering the translation causes a fatal KeyError at runtime.",
         "bad": 'old "Hello, [player_name]!"\nnew "Привет, [player]!"  # Typo in variable name!',
         "good": 'old "Hello, [player_name]!"\nnew "Привет, [player_name]!"',
@@ -298,6 +338,7 @@ RULES_DATABASE = {
     "RPY602": {
         "title": "Formatting tag mismatch in translation string",
         "severity": "WARNING",
+        "tags": ["translations", "text-tags"],
         "why": "Missing or altered formatting tags ({b}, {color}, {i}) in translation strings cause unclosed text tags and visual glitches.",
         "bad": 'old "Danger: {b}Hazard!{/b}"\nnew "Опасно: {b}Угроза!"  # Missing closing tag {/b}',
         "good": 'old "Danger: {b}Hazard!{/b}"\nnew "Опасно: {b}Угроза!{/b}"',
@@ -305,6 +346,7 @@ RULES_DATABASE = {
     "RPY603": {
         "title": "Empty translation string ('new \"\"')",
         "severity": "WARNING",
+        "tags": ["translations"],
         "why": "Leaving 'new \"\"' empty for a non-empty original line will display an empty, blank dialogue window to players in that language.",
         "bad": 'old "Do you want to exit?"\nnew ""  # Player sees empty dialogue box!',
         "good": 'old "Do you want to exit?"\nnew "Вы хотите выйти?"',
@@ -313,6 +355,7 @@ RULES_DATABASE = {
     "RPY701": {
         "title": "Unused define constant",
         "severity": "HINT",
+        "tags": ["dead-code", "variables"],
         "why": "A 'define' constant that is never referenced anywhere in the project is dead code. It increases cognitive load and should be removed.",
         "bad": "define unused_const = 100\nlabel start:\n    return",
         "good": "define used_const = 100\nlabel start:\n    $ x = used_const\n    return",
@@ -320,6 +363,7 @@ RULES_DATABASE = {
     "RPY702": {
         "title": "Unused transform",
         "severity": "HINT",
+        "tags": ["dead-code", "transforms"],
         "why": "A 'transform' that is never used in 'show/scene at' is dead code. It may indicate a forgotten animation or leftover from refactoring.",
         "bad": "transform unused_slide:\n    easein 0.5 xoffset 0\nlabel start:\n    return",
         "good": "transform slide_in:\n    easein 0.5 xoffset 0\nlabel start:\n    show bg at slide_in\n    return",
@@ -327,6 +371,7 @@ RULES_DATABASE = {
     "RPY703": {
         "title": "Unused screen",
         "severity": "HINT",
+        "tags": ["dead-code", "screen"],
         "why": "A 'screen' that is never called via 'call screen', 'use', or 'Show' action is dead code. It may indicate a forgotten UI element or leftover from refactoring.",
         "bad": 'screen unused_screen():\n    textbutton "Do nothing" action NullAction()\nlabel start:\n    return',
         "good": 'screen my_screen():\n    textbutton "Start" action Start()\nlabel start:\n    call screen my_screen\n    return',
@@ -345,6 +390,7 @@ def show_rules_table():
     )
     table.add_column("Rule", style="bold cyan")
     table.add_column("Severity", justify="center")
+    table.add_column("Tags", style="dim")
     table.add_column("Description", style="bright_white")
 
     for code, info in sorted(RULES_DATABASE.items()):
@@ -355,7 +401,13 @@ def show_rules_table():
             if info["severity"] == "WARNING"
             else "bold blue"
         )
-        table.add_row(code, f"[{sev_style}]{info['severity']}[/{sev_style}]", info["title"])
+        tags_str = ", ".join(info.get("tags", []))
+        table.add_row(
+            code,
+            f"[{sev_style}]{info['severity']}[/{sev_style}]",
+            tags_str,
+            info["title"],
+        )
 
     console.print(table)
     console.print(
@@ -381,7 +433,12 @@ def show_rule_detail(code: str):
 
     text = Text()
     text.append(f"{code}: {info['title']}\n", style="bold cyan")
-    text.append(f"Severity: {info['severity']}\n\n", style=sev_style)
+    text.append(f"Severity: {info['severity']}\n", style=sev_style)
+    tags = info.get("tags", [])
+    if tags:
+        text.append(f"Tags: {', '.join(tags)}\n\n", style="dim")
+    else:
+        text.append("\n", style="dim")
     text.append(f"{info['why']}\n\n", style="bright_white")
 
     text.append("❌ BAD PRACTICE:\n", style="bold red")

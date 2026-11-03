@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     pass  # for future type imports
@@ -67,6 +67,16 @@ class FormatConfig:
     indent_size: int = 4
     max_blank_lines: int = 2
     skip_directive: str = "# senpy: format"
+    # FMT-STRING-CONSISTENCY: which quote style to normalize single-line
+    # string literals to in CODE lines (dialogue lines are never touched).
+    #   "double"    (default) — 'x' becomes "x" (Ren'Py convention)
+    #   "single"    — "x" becomes 'x'
+    #   "preserve"  — no conversion
+    # Conversion is skipped for strings where it would require escaping
+    # (e.g. a single-quoted string containing an unescaped double quote
+    # is not converted to double-quoted — the inner quotes would need
+    # backslash escapes, breaking idempotency).
+    string_style: Literal["double", "single", "preserve"] = "double"
 
 
 # =============================================================================

@@ -3,7 +3,7 @@
 
 The Senpy worklog uses internal IDs (DOC-1, CLI-17, LSP-19, QUA-12,
 ARCH-3, EXT-12, SEC-6, RULE-15, FMT-2, FIX-1, TEST-6, IDEA-9, PERF-3,
-SEO-13, CLEAN-1, AUD-001, ECO-9, SSA-1, STUDIO-1, etc.) as task
+SEO-13, CLEAN-1, AUD-001, ECO-9, SSA-1, STUDIO-1, WL-506, etc.) as task
 identifiers — that is fine INSIDE the worklog file itself. But during
 0.6.2-0.6.3 these IDs leaked into code comments, docstrings, the
 CHANGELOG, README, CONTRIBUTING, and other user-facing artifacts.
@@ -55,7 +55,7 @@ _ID_PATTERN = re.compile(
     r"(?P<pre>-?)"
     r"\b("
     r"DOC|CLI|LSP|QUA|ARCH|EXT|SEC|RULE|FMT|FIX|TEST|IDEA|PERF|SEO|CLEAN|"
-    r"AUD|SSA|ECO|STUDIO"
+    r"AUD|SSA|ECO|STUDIO|WL"
     r")-\d+[a-z]?\b"
 )
 

@@ -150,7 +150,8 @@ class TestFmtQuotes:
         assert '"active"' in result
 
     def test_smart_single_quotes_in_code(self):
-        """$ x = ‘value’ → $ x = 'value'."""
+        """$ x = ‘value’ → $ x = "value" (smart quotes straightened, then
+        normalized to double-quoted code style by FMT-STRING-CONSISTENCY)."""
         from senpy.formatter import FormatConfig, Formatter
 
         fmt = Formatter(FormatConfig())
@@ -158,7 +159,7 @@ class TestFmtQuotes:
         result = fmt.format_code(code)
         assert "\u2018" not in result
         assert "\u2019" not in result
-        assert "'value'" in result
+        assert '"value"' in result
 
     def test_dialogue_smart_quotes_preserved(self):
         """Smart quotes in dialogue (line starts with ") must be PRESERVED."""
@@ -235,13 +236,15 @@ class TestFmtOpSpacing:
         assert "- 5" not in result, f"Unary minus should NOT be spaced: {result!r}"
 
     def test_string_content_preserved(self):
-        """Strings: $ x = 'a=b' → unchanged (no space added inside string)."""
+        """Strings: $ x = 'a=b' → $ x = "a=b" (content unchanged, outer
+        quotes normalized to double by FMT-STRING-CONSISTENCY)."""
         from senpy.formatter import FormatConfig, Formatter
 
         fmt = Formatter(FormatConfig())
         code = "$ x = 'a=b'\n"
         result = fmt.format_code(code)
-        assert "'a=b'" in result, f"String content should be preserved: {result!r}"
+        assert '"a=b"' in result, f"String content should be preserved: {result!r}"
+        assert "'a=b'" not in result
         assert "'a = b'" not in result
 
     def test_idempotent(self):
@@ -309,14 +312,15 @@ class TestFmtCommaSpacing:
         assert "f(a, b, c)" in result
 
     def test_string_content_preserved(self):
-        """$ x = 'a,b,c' → unchanged."""
+        """$ x = 'a,b,c' → $ x = "a,b,c" (content unchanged, quotes normalized)."""
         from senpy.formatter import FormatConfig, Formatter
 
         fmt = Formatter(FormatConfig())
         code = "$ x = 'a,b,c'\n"
         result = fmt.format_code(code)
-        assert "'a,b,c'" in result
-        assert "'a, b, c'" not in result
+        assert '"a,b,c"' in result
+        assert "'a,b,c'" not in result
+        assert '"a, b, c"' not in result
 
     def test_idempotent(self):
         """FMT-COMMA-SPACING: format(format(x)) == format(x)."""
@@ -403,14 +407,15 @@ class TestFmtColonSpacing:
         assert "a[1:2]" in result, f"Slice should be preserved: {result!r}"
 
     def test_string_content_preserved(self):
-        """Strings: $ x = 'a:b' → unchanged."""
+        """Strings: $ x = 'a:b' → $ x = "a:b" (content unchanged, quotes normalized)."""
         from senpy.formatter import FormatConfig, Formatter
 
         fmt = Formatter(FormatConfig())
         code = "$ x = 'a:b'\n"
         result = fmt.format_code(code)
-        assert "'a:b'" in result
-        assert "'a : b'" not in result
+        assert '"a:b"' in result
+        assert "'a:b'" not in result
+        assert '"a : b"' not in result
 
     def test_idempotent(self):
         """FMT-COLON-SPACING: format(format(x)) == format(x)."""

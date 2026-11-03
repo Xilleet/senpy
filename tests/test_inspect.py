@@ -1,8 +1,7 @@
 """Tests for `senpy/formats/inspect.py` — the `dump_symbols()` function.
 
-WL-506: `senpy inspect` subcommand. The `dump_symbols(analyzer)`
-function serializes all symbols collected by `SenpyAnalyzer` into a
-JSON-serializable dict for CLI output.
+The `dump_symbols(analyzer)` function serializes all symbols collected
+by `SenpyAnalyzer` into a JSON-serializable dict for CLI output.
 
 Test strategy (per the 0.7.4 plan): assertion-based + size invariants.
 Snapshot tests are explicitly NOT used (brittle during active development).

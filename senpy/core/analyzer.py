@@ -250,11 +250,19 @@ class SenpyAnalyzer:
             self.severity_overrides = {
                 k.strip().upper(): v.strip().upper() for k, v in severity_overrides.items()
             }
+            # When severity_overrides is passed explicitly, we don't load
+            # the rest of the config — assume strict=False (caller manages
+            # the full severity policy themselves).
+            self.strict = False
         else:
             cfg = load_config(self.project_path)
             self.severity_overrides = {
                 k.strip().upper(): v.strip().upper() for k, v in cfg.get("severity", {}).items()
             }
+            # strict=True promotes every diagnostic to ERROR (after the
+            # explicit severity_overrides have been applied, so overrides
+            # still win — see _apply_severity).
+            self.strict = bool(cfg.get("strict", False))
 
         # Base sets
         self.user_symbols: set[str] = set()
@@ -521,6 +529,15 @@ class SenpyAnalyzer:
             for d in self.diagnostics:
                 if d.code in self.severity_overrides:
                     d.severity = self.severity_overrides[d.code]
+
+        # strict=True: promote every remaining diagnostic to ERROR.
+        # Runs AFTER severity_overrides so an explicit demote (e.g.
+        # RPY104=INFO) still wins — see _apply_severity for the same
+        # policy on the hot path.
+        if self.strict:
+            for d in self.diagnostics:
+                if d.code not in self.severity_overrides:
+                    d.severity = "ERROR"
 
         if not self.fix and new_cached_entries:
             new_manifest = CacheManifest(
@@ -1311,11 +1328,23 @@ class SenpyAnalyzer:
                         self._mark_asset_used(os.path.basename(val_clean))
 
     def _apply_severity(self, diag: Diagnostic) -> None:
-        """Applies severity overrides from the config or default levels."""
+        """Applies severity overrides from the config or default levels.
+
+        Resolution order (first match wins):
+        1. Explicit ``[tool.senpy.severity]`` override for this rule code.
+        2. The diagnostic's own severity (set by the checker).
+        3. ``RULE_SEVERITY`` default for this code, falling back to WARNING.
+        4. If ``strict`` is True and steps 1-3 did not produce ERROR,
+           promote to ERROR. Step 1 (explicit override) still wins over
+           strict — otherwise strict mode would silently re-promote a
+           rule the user explicitly demoted.
+        """
         if self.severity_overrides and diag.code in self.severity_overrides:
             diag.severity = self.severity_overrides[diag.code]
         elif not diag.severity:
             diag.severity = RULE_SEVERITY.get(diag.code, "WARNING")
+        if self.strict and diag.code not in self.severity_overrides:
+            diag.severity = "ERROR"
 
     def _add_diagnostic(self, diag: Diagnostic, noqa_map: dict[int, set[str] | None]):
         if diag.line_number in noqa_map:

@@ -253,6 +253,29 @@ def _add_lint_args(parser: argparse.ArgumentParser) -> None:
         help="Add these rules to --ignore (extends the blacklist).",
     )
     g.add_argument(
+        "--tag",
+        nargs="+",
+        metavar="TAG",
+        default=None,
+        help=(
+            "Run ONLY rules with these tags (e.g. --tag rollback state). "
+            "Tag matching is case-insensitive and a rule passes if ANY "
+            "of its tags is in the list. See `senpy rule list` for the "
+            "full tag taxonomy."
+        ),
+    )
+    g.add_argument(
+        "--ignore-tag",
+        nargs="+",
+        metavar="TAG",
+        default=None,
+        help=(
+            "Skip rules with these tags (e.g. --ignore-tag dead-code). "
+            "Useful to silence a whole category without enumerating "
+            "individual rule codes."
+        ),
+    )
+    g.add_argument(
         "--max-errors",
         type=int,
         metavar="NUM",
@@ -338,10 +361,11 @@ def _add_export_args(parser: argparse.ArgumentParser) -> None:
         "--output-format",
         "--format",
         dest="output_format",
-        choices=["text", "json", "sarif", "junit", "github"],
+        choices=["text", "json", "sarif", "junit", "github", "rdjson", "gitlab"],
         default="text",
         help="Output format: 'text' (default), 'json' for VS Code, 'sarif' for "
-        "GitHub Actions, 'junit' for CI (XML), 'github' for PR annotations",
+        "GitHub Actions, 'junit' for CI (XML), 'github' for PR annotations, "
+        "'rdjson' for Reviewdog (NDJSON), 'gitlab' for GitLab Code Quality",
     )
     g.add_argument(
         "--output-file",
@@ -481,18 +505,21 @@ def filter_diagnostics(
     args,
     ignored_codes: set[str],
 ) -> tuple[list, int]:
-    """Filters diagnostics by --ignore, --select, --errors-only, --info.
+    """Filters diagnostics by --ignore, --select, --tag, --ignore-tag, --errors-only, --info.
 
     Filtering logic:
       1. start with all rules enabled
       2. if args.select is non-empty: disable all, enable only args.select + args.extend_select
       3. else: extend_select is ignored (select is empty — everything is enabled)
       4. remove ignored_codes (includes --ignore + --extend-ignore, collected in main())
-      5. apply --errors-only, --info (existing logic)
+      5. apply --tag (whitelist) and --ignore-tag (blacklist) by looking up
+         each diagnostic's rule code in RULES_DATABASE.tags
+      6. apply --errors-only, --info (existing logic)
 
     Args:
         result: AnalysisResult with a .diagnostics list.
-        args: Namespace with .ignore, .select, .extend_select, .errors_only, .info.
+        args: Namespace with .ignore, .select, .extend_select, .tag,
+            .ignore_tag, .errors_only, .info.
         ignored_codes: Set of rule codes to ignore (includes --ignore,
             --extend-ignore, collected in main()).
 
@@ -515,12 +542,33 @@ def filter_diagnostics(
     if getattr(args, "extend_ignore", None):
         full_ignored.update(c.strip().upper() for c in args.extend_ignore)
 
+    # Tag-based filters. Tags are looked up via RULES_DATABASE; rules
+    # missing from the database (e.g. plugin rules with unknown codes)
+    # are treated as having no tags — they pass --tag (no constraint)
+    # but are always dropped by --ignore-tag (conservative).
+    from senpy.rules.rules_info import RULES_DATABASE
+
+    wanted_tags: set[str] | None = None
+    if getattr(args, "tag", None):
+        wanted_tags = {t.lower() for t in args.tag}
+    ignored_tags: set[str] = set()
+    if getattr(args, "ignore_tag", None):
+        ignored_tags = {t.lower() for t in args.ignore_tag}
+
+    def _passes_tag_filters(code: str) -> bool:
+        info = RULES_DATABASE.get(code)
+        rule_tags = {t.lower() for t in info.get("tags", [])} if info else set()
+        if wanted_tags is not None and not (rule_tags & wanted_tags):
+            return False
+        return not (ignored_tags and (rule_tags & ignored_tags))
+
     hidden_info_count = sum(
         1
         for e in result.diagnostics
         if e.severity == "INFO"
         and e.code not in full_ignored
         and (not select_codes or e.code in select_codes)
+        and _passes_tag_filters(e.code)
         and not args.info
     )
     active_diagnostics = [
@@ -528,6 +576,7 @@ def filter_diagnostics(
         for e in result.diagnostics
         if e.code not in full_ignored
         and (not select_codes or e.code in select_codes)
+        and _passes_tag_filters(e.code)
         and (not args.errors_only or e.severity == "ERROR")
         and (args.info or e.severity != "INFO")
     ]
@@ -548,6 +597,46 @@ def render_sarif(active_diagnostics, args, console) -> int:
         console.print(f"[bold green]✔ SARIF report saved to {args.output_file}[/bold green]")
     else:
         print(sarif_str)
+    error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
+    return 1 if error_count > 0 else 0
+
+
+def render_rdjson(active_diagnostics, args, console) -> int:
+    """Render diagnostics as Reviewdog RDJSON (NDJSON).
+
+    One diagnostic per line; suitable for piping into ``reviewdog -f=rdjson``.
+    """
+    from senpy.formats.rdjson import generate_rdjson
+
+    out_str = generate_rdjson(active_diagnostics, args.path)
+    if args.output_file:
+        with open(args.output_file, "w", encoding="utf-8") as f:
+            f.write(out_str)
+        console.print(f"[bold green]✔ RDJSON report saved to {args.output_file}[/bold green]")
+    else:
+        # NDJSON: print without an extra trailing newline (generate_rdjson
+        # already ends with '\n' when non-empty).
+        if out_str:
+            print(out_str, end="")
+        else:
+            print()
+    error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
+    return 1 if error_count > 0 else 0
+
+
+def render_gitlab(active_diagnostics, args, console) -> int:
+    """Render diagnostics as a GitLab Code Quality JSON report (array)."""
+    from senpy.formats.gitlab import generate_gitlab_json
+
+    out_str = generate_gitlab_json(active_diagnostics, args.path)
+    if args.output_file:
+        with open(args.output_file, "w", encoding="utf-8") as f:
+            f.write(out_str)
+        console.print(
+            f"[bold green]✔ GitLab Code Quality report saved to {args.output_file}[/bold green]"
+        )
+    else:
+        print(out_str)
     error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
     return 1 if error_count > 0 else 0
 
@@ -921,8 +1010,9 @@ def render_text(
 
 # discover_files + helpers (_find_rpy_files, _find_orphaned_rpyc,
 # _decompile_sandbox) extracted to senpy/cli/discover.py in 0.7.4
-# (WL-506 prep). Re-imported here for backward compat with tests and
-# external code that may have done `from senpy.cli.main import discover_files`.
+# alongside the `senpy inspect` subcommand. Re-imported here for
+# backward compat with tests and external code that may have done
+# `from senpy.cli.main import discover_files`.
 from senpy.cli.discover import (  # noqa: E402, F401
     _decompile_sandbox,
     _find_orphaned_rpyc,
@@ -943,6 +1033,10 @@ def _dispatch_subcommand(argv: list[str]) -> int | None:
         from senpy.cli.inspect_dispatch import dispatch_inspect
 
         return dispatch_inspect(argv[2:])
+    if len(argv) > 1 and argv[1] == "rule":
+        from senpy.cli.rule_dispatch import dispatch_rule
+
+        return dispatch_rule(argv[2:])
     return None
 
 
@@ -1202,7 +1296,7 @@ def _handle_post_analysis(args, analyzer, result, console, is_tsundere, ignored_
 
 
 def _handle_output_format(args, active_diagnostics, result, elapsed, console, ignored_codes):
-    """Dispatch output by format: sarif/json/junit/github exit directly,
+    """Dispatch output by format: sarif/json/junit/github/rdjson/gitlab exit directly,
     text format returns control to caller for further processing."""
     if args.output_format == "sarif":
         sys.exit(render_sarif(active_diagnostics, args, console))
@@ -1212,6 +1306,10 @@ def _handle_output_format(args, active_diagnostics, result, elapsed, console, ig
         sys.exit(render_junit(active_diagnostics, args, console))
     elif args.output_format == "github":
         sys.exit(render_github(active_diagnostics, args, console))
+    elif args.output_format == "rdjson":
+        sys.exit(render_rdjson(active_diagnostics, args, console))
+    elif args.output_format == "gitlab":
+        sys.exit(render_gitlab(active_diagnostics, args, console))
     # text format — caller handles output_redirect + render_text
 
 
@@ -1300,7 +1398,7 @@ def main():
         args.graph
         or args.graph_file
         or args.stats
-        or args.output_format in ("json", "sarif", "junit", "github")
+        or args.output_format in ("json", "sarif", "junit", "github", "rdjson", "gitlab")
     )
 
     if not is_quiet_mode:

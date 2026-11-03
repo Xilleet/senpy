@@ -1,6 +1,6 @@
 """CLI tests for `senpy inspect` subcommand.
 
-WL-506: tests for `senpy/cli/inspect_dispatch.py`. The dispatch
+Tests for `senpy/cli/inspect_dispatch.py`. The dispatch
 function `dispatch_inspect(argv)` parses argv, runs the analyzer, and
 emits JSON. Tests cover subcommand parsing, the 4 shortcut flags
 (`--summary`, `--unresolved`, `--label`, `--screen`), `--no-cache`,

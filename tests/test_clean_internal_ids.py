@@ -3,7 +3,7 @@
 After running ``scripts/clean_internal_ids.py --apply``, no internal task
 IDs (DOC-1, CLI-17, LSP-19, QUA-12, ARCH-3, EXT-12, SEC-6, RULE-15, FMT-2,
 FIX-1, TEST-6, IDEA-9, PERF-3, SEO-13, CLEAN-1, AUD-001, ECO-9, SSA-1,
-STUDIO-1, etc.) should appear in any user-facing file.
+STUDIO-1, WL-506, etc.) should appear in any user-facing file.
 
 Whitelisted files (where IDs are legitimately part of the content):
   - CHANGELOG.md (historical changelog entries — IDs are part of the
@@ -40,7 +40,7 @@ import pytest
 _ID_PATTERN = re.compile(
     r"\b("
     r"DOC|CLI|LSP|QUA|ARCH|EXT|SEC|RULE|FMT|FIX|TEST|IDEA|PERF|SEO|CLEAN|"
-    r"AUD|SSA|ECO|STUDIO"
+    r"AUD|SSA|ECO|STUDIO|WL"
     r")-\d+[a-z]?\b"
 )
 
@@ -307,6 +307,31 @@ class TestCleanInternalIdsScript:
         assert n == 1
         assert "ECO-9" not in new
         assert "версия берётся" in new
+
+    def test_scrub_line_strips_wl_prefix_id(self):
+        """The WL-NNN family (worklog IDs) is also scrubbed. Regression
+        test for the 0.7.4 leak where ``WL-506`` was left in four
+        user-facing files because the regex did not cover the prefix."""
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "clean_internal_ids",
+            _REPO_ROOT / "scripts" / "clean_internal_ids.py",
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        # Docstring prefix.
+        new, n = mod._scrub_line('"""WL-506: senpy inspect subcommand."""')
+        assert n == 1
+        assert "WL-506" not in new
+        assert "senpy inspect subcommand" in new
+
+        # Inline mention.
+        new, n = mod._scrub_line("# Re-imported for back-compat (WL-506 prep).")
+        assert n == 1
+        assert "WL-506" not in new
+        assert "Re-imported for back-compat" in new
 
     def test_scrub_line_strips_inline_id(self):
         """Inline ID mention is stripped, leaving the surrounding text."""

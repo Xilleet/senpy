@@ -1,6 +1,6 @@
 """Introspection format — `senpy inspect` JSON output.
 
-WL-506: serialize all symbols collected by `SenpyAnalyzer` into a
+Serializes all symbols collected by `SenpyAnalyzer` into a
 JSON-serializable dict for the `senpy inspect` CLI subcommand.
 
 The function `dump_symbols(analyzer, *, with_source=False)` reads

@@ -1,4 +1,4 @@
-"""`senpy inspect` subcommand — WL-506.
+"""`senpy inspect` subcommand.
 
 Parallel mini-CLI (like `senpy format`) that shares only the
 `SenpyAnalyzer` engine with the main lint CLI. Does NOT share the
