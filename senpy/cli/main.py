@@ -1094,7 +1094,7 @@ def _handle_early_exits(args, console, is_tsundere: bool) -> int | None:
         _trust(args.trust_plugin)
         console.print(f"[green]Plugin '{args.trust_plugin}' added to trust store.[/green]")
         console.print(
-            "[dim]The plugin will be loaded automatically on next Senpy run " "(CLI or LSP).[/dim]"
+            "[dim]The plugin will be loaded automatically on next Senpy run (CLI or LSP).[/dim]"
         )
         sys.exit(0)
 
@@ -1123,6 +1123,102 @@ def _handle_early_exits(args, console, is_tsundere: bool) -> int | None:
         for key, val in sorted(config.items()):
             console.print(f"  {key}: {val}")
         sys.exit(0)
+
+    return None
+
+
+def _validate_flag_combinations(args, console: Console) -> int | None:
+    """Validate CLI flag combinations after parse_args, before any work starts.
+
+    Catches user mistakes that would otherwise produce confusing output or
+    silently incorrect behavior. Errors print a clear message to stderr and
+    return exit code 2 (usage error, matches argparse convention). Warnings
+    print to stderr but allow the run to continue.
+
+    Errors (return 2):
+      - --fix + --check     — can't apply fixes AND dry-run simultaneously
+      - --fix + --diff      — can't apply fixes AND only-show-diff simultaneously
+      - --check + --diff    — two dry-run modes at once is ambiguous
+      - --select without codes — argparse rejects via `nargs='+'`, but
+        defensive check for None/empty (e.g. via senpy.toml config injection)
+
+    Warnings (continue, return None):
+      - --extend-select without --select — has no effect; user probably
+        meant --select. Print a warning so they notice.
+      - --extend-ignore without --ignore AND no config.ignore — has no
+        effect; user probably meant --ignore.
+      - --add-noqa + --fix — --add-noqa suppresses fixable diagnostics,
+        but --fix applies fixes to them. The two flags fight each other.
+        We let the run proceed (the user may have a reason), but warn.
+
+    Returns:
+        None if validation passed (possibly with warnings printed).
+        int exit code (2) if a hard error was found — caller should return
+        this from main().
+    """
+    # Hard errors: combinations that contradict each other.
+    if args.fix and args.check:
+        console.print(
+            "[bold red]Error:[/bold red] --fix and --check cannot be used together. "
+            "--fix writes changes; --check only reports what would be fixed (dry-run). "
+            "Use one or the other."
+        )
+        return 2
+
+    if args.fix and args.diff:
+        console.print(
+            "[bold red]Error:[/bold red] --fix and --diff cannot be used together. "
+            "--fix writes changes; --diff only shows what would change (dry-run). "
+            "Use --diff to preview, then --fix to apply."
+        )
+        return 2
+
+    if args.check and args.diff:
+        console.print(
+            "[bold red]Error:[/bold red] --check and --diff cannot be used together. "
+            "Both are dry-run modes for --fix. --check reports a fixable count "
+            "(CI-friendly exit code); --diff prints a unified diff. Pick one."
+        )
+        return 2
+
+    # --select must come with at least one code. argparse `nargs='+'`
+    # rejects `--select` with no values, but a config-injected empty
+    # list could slip through. Be defensive.
+    if args.select is not None and len(args.select) == 0:
+        console.print(
+            "[bold red]Error:[/bold red] --select requires at least one rule code. "
+            "Example: --select RPY101 RPY102. "
+            "Run 'senpy rule list' to see all available rules."
+        )
+        return 2
+
+    # Warnings: combinations that have no effect or fight each other,
+    # but don't make the run incorrect. Print and continue.
+    if args.extend_select and not args.select:
+        console.print(
+            "[yellow]Warning:[/yellow] --extend-select has no effect without --select. "
+            "--extend-select adds rules to the --select list; without --select, "
+            "all rules run by default. Did you mean --select?"
+        )
+
+    if args.extend_ignore and not args.ignore and not args.select:
+        # --extend-ignore extends the --ignore blacklist. Without any
+        # --ignore base (CLI or config), it's a no-op extension.
+        # Note: --select + --extend-ignore is fine (select defines a
+        # whitelist, extend-ignore removes from it).
+        console.print(
+            "[yellow]Warning:[/yellow] --extend-ignore has no effect without --ignore "
+            "(or config.ignore). --extend-ignore adds rules to the ignore list; "
+            "without a base ignore list, nothing changes. Did you mean --ignore?"
+        )
+
+    if args.add_noqa and args.fix:
+        console.print(
+            "[yellow]Warning:[/yellow] --add-noqa and --fix both target fixable "
+            "diagnostics. --add-noqa suppresses them with # noqa comments; "
+            "--fix applies code changes. --fix will win (applied first), "
+            "leaving nothing for --add-noqa to suppress. Did you mean one or the other?"
+        )
 
     return None
 
@@ -1396,6 +1492,20 @@ def main():
     early_exit = _handle_early_exits(args, console, is_tsundere)
     if early_exit is not None:
         return early_exit
+
+    # Validate flag combinations (--fix + --check → error, etc.)
+    # Done after early exits (so --version / --rules skip validation) but
+    # before any analysis work (so we don't waste time on an invalid run).
+    #
+    # We use sys.exit() rather than `return validation_error` because the
+    # `senpy` console_script wrapper in some Python versions does not
+    # propagate the int return value of main() to the OS exit code —
+    # SystemExit is the only reliable way to set a non-zero exit code from
+    # a console_scripts entry point. Other early-exits in `_handle_early_exits`
+    # follow the same pattern (sys.exit(0), sys.exit(_ec)).
+    validation_error = _validate_flag_combinations(args, console)
+    if validation_error is not None:
+        sys.exit(validation_error)
 
     # Set up rule filtering (ignored_codes + max_errors)
     ignored_codes, max_errors = _setup_rule_filters(args, config)

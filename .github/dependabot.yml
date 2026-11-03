@@ -1,0 +1,69 @@
+# Dependabot configuration for Senpy.
+#
+# Keeps Python dependencies and GitHub Actions up to date by opening
+# PRs automatically when new versions are published. PRs use the standard
+# Dependabot commit convention (`deps: bump X from A to B`) so they
+# integrate cleanly with our conventional-commits history.
+#
+# Schedule: weekly (Monday). Offsets from the weekend so a Monday morning
+# review catches everything before the week's feature work starts.
+#
+# Groups: related updates are batched into a single PR to avoid PR spam.
+#   - "python deps" — all pyproject.toml dependencies in one PR
+#   - "github-actions" — all action versions (checkout, setup-python, etc.)
+#     in one PR
+#
+# Limits: 10 open PRs max per ecosystem. Beyond that, Dependabot pauses
+# until existing PRs are merged/closed. Prevents a backlog from hiding
+# critical security updates.
+# -----------------------------------------------------------------------------
+version: 2
+
+updates:
+  # Python dependencies (pyproject.toml)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Moscow"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      python-deps:
+        patterns:
+          - "*"
+    # Dev/test-only deps that we don't want auto-bumped (they rarely matter
+    # and create noise). Comment out the ignore list to enable everything.
+    ignore:
+      # Pre-release versions (alphas, betas, rc) are not auto-merged.
+      # We test pre-releases manually before adopting them.
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+
+  # GitHub Actions versions (workflow files in .github/workflows/)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Moscow"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"

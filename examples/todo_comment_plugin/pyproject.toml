@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "todo-comment-plugin"
+version = "0.1.0"
+description = "Example Senpy plugin: flags TODO/FIXME/XXX/HACK comments in .rpy files (RPY902)"
+readme = "TODO_COMMENT_PLUGIN_README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Senpy Example" }]
+dependencies = [
+    "senpy-linter>=0.7.5",
+]
+
+# This is how Senpy discovers the plugin.
+# Key = logical name (used in trust store, e.g. "todo-comment-plugin" = package name)
+# Value = "module.path:ClassName" — Rule subclass to load
+[project.entry-points."senpy.plugins"]
+todo-comment-plugin = "todo_comment_plugin.rules:TodoCommentRule"
+
+[tool.setuptools.packages.find]
+include = ["todo_comment_plugin*"]
