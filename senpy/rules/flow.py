@@ -458,6 +458,11 @@ class StoryFlowAnalyzer:
 
                 if missing_b and defined_b and file_path:
                     start_c, end_c = get_utf16_range(missing_b.raw, missing_b.name)
+                    # Improvement (0.7.6): suggest a concrete fix — add the
+                    # variable assignment to the missing branch. This is
+                    # more actionable than just "it's missing".
+                    suggested_value = "0"  # safe default for int/bool types
+                    fix_title = f"Add '{var} = {suggested_value}' to this branch"
                     self.analyzer._add_diagnostic(
                         Diagnostic(
                             file_path=file_path,
@@ -467,10 +472,15 @@ class StoryFlowAnalyzer:
                             message=(
                                 f"Menu branch asymmetry: variable '{var}' is assigned in choice "
                                 f"'{defined_b.name}' (line {defined_b.line}), "
-                                f"but missing in '{missing_b.name}'."
+                                f"but missing in '{missing_b.name}'. "
+                                f"Add '$ {var} = {suggested_value}' to this branch or use 'default {var}' at top level."
                             ),
                             col=start_c,
                             end_col=end_c,
+                            fix_title=fix_title,
+                            fix_replacement=f"$ {var} = {suggested_value}",
+                            fix_start_col=start_c,
+                            fix_end_col=end_c,
                         ),
                         noqa_map,
                     )

@@ -146,6 +146,66 @@ def _infer_binop(node: ast.BinOp, known_vars: dict | None, depth: int) -> str | 
     return None
 
 
+def _check_binop_incompatible(
+    node: ast.BinOp,
+    known_vars: dict[str, Any] | None = None,
+) -> tuple[str, str, str] | None:
+    """Check if a BinOp has incompatible operand types.
+
+    Returns (left_type, right_type, op_name) if incompatible, None if OK or unknown.
+
+    Improvement (0.7.6): catches runtime TypeError before it happens.
+    Examples:
+      "text" + 5   → ("str", "int", "+")  — TypeError: can only concatenate str to str
+      [1,2] - 3     → ("list", "int", "-") — TypeError: unsupported operand type(s) for -: 'list' and 'int'
+      "text" * "x" → ("str", "str", "*")  — TypeError: can't multiply sequence by non-int
+    """
+    lt = infer_ast_type(node.left, known_vars)
+    rt = infer_ast_type(node.right, known_vars)
+    if not lt or not rt:
+        return None  # unknown types — can't determine
+
+    # int and float are compatible with each other in all arithmetic
+    if {lt, rt} <= {"int", "float"}:
+        return None
+
+    op = node.op
+
+    # Add (+): str+str OK, list+list OK, int+float OK (already handled above)
+    if isinstance(op, ast.Add):
+        compatible = (lt == "str" and rt == "str") or (lt == "list" and rt == "list")
+        if not compatible:
+            return (lt, rt, "+")
+
+    # Sub (-): only numeric types (int/float already handled above)
+    if isinstance(op, ast.Sub):
+        return (lt, rt, "-")
+
+    # Mult (*): str*int OK, int*str OK, list*int OK, int*list OK
+    if isinstance(op, ast.Mult):
+        compatible = (
+            (lt == "str" and rt == "int")
+            or (lt == "int" and rt == "str")
+            or (lt == "list" and rt == "int")
+            or (lt == "int" and rt == "list")
+        )
+        if not compatible:
+            return (lt, rt, "*")
+
+    # Mod (%): str % any OK (string formatting), numeric % numeric OK
+    if isinstance(op, ast.Mod):
+        if lt == "str":
+            return None  # string formatting, OK
+        # numeric mod — already handled by int/float check above
+        return None
+
+    # Floor div (//), Pow (**): numeric only
+    if isinstance(op, (ast.FloorDiv, ast.Pow)):
+        return (lt, rt, "//" if isinstance(op, ast.FloorDiv) else "**")
+
+    return None
+
+
 def _infer_ifexp(node: ast.IfExp, known_vars: dict | None, depth: int) -> str | None:
     """Infer type from ternary expression (a if cond else b)."""
     t_body = infer_ast_type(node.body, known_vars, depth + 1)
@@ -756,6 +816,36 @@ class PythonAstChecker:
                 lines,
                 local_scope=set(),
             )
+
+            # RPY108 (improvement 0.7.6): Check for incompatible BinOp
+            # in the entire tree. This catches `$ result = "text" + 5`
+            # or `$ x = [1,2] - 3` where the type conflict is inside an
+            # expression, not at the assignment level.
+            for node in ast.walk(tree):
+                if isinstance(node, ast.BinOp):
+                    result = _check_binop_incompatible(node, self.analyzer.variables)
+                    if result is not None:
+                        lt, rt, op_name = result
+                        real_line = start_line + getattr(node, "lineno", 1) - 1
+                        raw_l = (
+                            lines[real_line - 1]
+                            if lines and 0 <= real_line - 1 < len(lines)
+                            else ""
+                        )
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=real_line,
+                                line_content=raw_l.strip(),
+                                code="RPY108",
+                                message=(
+                                    f"Incompatible binary operation: '{lt}' {op_name} '{rt}'. "
+                                    f"This will raise TypeError at runtime."
+                                ),
+                                severity="ERROR",
+                            ),
+                            noqa_map,
+                        )
 
         except SyntaxError as e:
             # log debug instead of silent suppress.
@@ -1471,6 +1561,9 @@ class PythonAstChecker:
         """RPY403, RPY202, RPY103: Checks if/elif conditions via AST."""
         try:
             cond_tree = ast.parse(expr, mode="eval")
+
+            # RPY403: Always-False conditions (dead code).
+            # Catches: `if False:`, `if 0:`, `if "":`, `if []:`, `if None:`
             if isinstance(cond_tree.body, ast.Constant) and not bool(cond_tree.body.value):
                 self.analyzer._add_diagnostic(
                     Diagnostic(
@@ -1482,6 +1575,30 @@ class PythonAstChecker:
                     ),
                     noqa_map,
                 )
+            # RPY403 (improvement 0.7.6): Always-True conditions (dead else branch).
+            # Catches: `if True:`, `if 1:`, `if "non-empty":`, `if [1,2]:`
+            # These are not crashes, but the else branch is dead code and
+            # the condition itself is pointless (always executes).
+            elif (
+                isinstance(cond_tree.body, ast.Constant)
+                and bool(cond_tree.body.value)
+                and not isinstance(cond_tree.body.value, type(None))
+            ):
+                # Skip if it's just `True` with no else — common pattern for
+                # "always run this block" (e.g. debug blocks). Only flag if
+                # the expression is more complex than a bare True literal.
+                if expr.strip() not in ("True", "1"):
+                    self.analyzer._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=line_idx,
+                            line_content=line_content,
+                            code="RPY403",
+                            message=f"Condition '{expr}' is always True. The condition is redundant — remove it or simplify the logic.",
+                        ),
+                        noqa_map,
+                    )
+            # RPY403: Contradiction in AND — `if x and not x:` (always False)
             elif isinstance(cond_tree.body, ast.BoolOp) and isinstance(cond_tree.body.op, ast.And):
                 names = {n.id for n in cond_tree.body.values if isinstance(n, ast.Name)}
                 not_names = {
@@ -1504,6 +1621,31 @@ class PythonAstChecker:
                         ),
                         noqa_map,
                     )
+            # RPY403 (improvement 0.7.6): Tautology in OR — `if x or not x:` (always True)
+            # This is the dual of the contradiction check above.
+            elif isinstance(cond_tree.body, ast.BoolOp) and isinstance(cond_tree.body.op, ast.Or):
+                names = {n.id for n in cond_tree.body.values if isinstance(n, ast.Name)}
+                not_names = {
+                    n.operand.id
+                    for n in cond_tree.body.values
+                    if isinstance(n, ast.UnaryOp)
+                    and isinstance(n.op, ast.Not)
+                    and isinstance(n.operand, ast.Name)
+                }
+                tautologies = names.intersection(not_names)
+                if tautologies:
+                    var_t = next(iter(tautologies))
+                    self.analyzer._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=line_idx,
+                            line_content=line_content,
+                            code="RPY403",
+                            message=f"Condition contains tautology: '{var_t} or not {var_t}'. Always evaluates to True.",
+                        ),
+                        noqa_map,
+                    )
+
             for node in ast.walk(cond_tree):
                 if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                     var_name = node.id

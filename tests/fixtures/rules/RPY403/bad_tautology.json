@@ -1,0 +1,14 @@
+[
+  {
+    "code": "RPY403",
+    "severity": "WARNING",
+    "line": 4,
+    "message_fragment": "Condition contains tautology: 'x or not x'. Always evaluates to True."
+  },
+  {
+    "code": "RPY403",
+    "severity": "WARNING",
+    "line": 6,
+    "message_fragment": "Condition '\"non-empty\"' is always True. The condition is redundant — remove it or simplify the logic"
+  }
+]

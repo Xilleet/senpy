@@ -245,7 +245,12 @@ class AssetChecker(BaseChecker):
         stripped: str,
         noqa_map: dict,
     ) -> None:
-        """RPY502: Validate attributes of a known base tag (e.g. `sayori happy` → check `happy`)."""
+        """RPY502: Validate attributes of a known base tag (e.g. `sayori happy` → check `happy`).
+
+        Improvement (0.7.6): case-insensitive attribute matching. If the user
+        writes `show sayori Happy` but the attribute is `happy`, suggest the
+        correctly-cased attribute. Falls back to difflib fuzzy match.
+        """
         valid_attrs = self.analyzer._get_tag_known_attributes(base_tag, all_valid)
         provided_attrs = img_tokens[1:]
         invalid_attrs = []
@@ -258,8 +263,22 @@ class AssetChecker(BaseChecker):
             return  # all provided attributes are valid
 
         err_attr = invalid_attrs[0] if invalid_attrs else full_img_tag
-        matches = difflib.get_close_matches(err_attr, list(valid_attrs), n=1, cutoff=0.6)
-        hint = f" (did you mean attribute '{matches[0]}' ?)" if matches else ""
+
+        # Case-insensitive exact match for attributes: "Happy" → suggest "happy"
+        case_match = None
+        for attr in valid_attrs:
+            if attr.lower() == err_attr.lower():
+                case_match = attr
+                break
+
+        if case_match:
+            hint = f" (case mismatch: did you mean '{case_match}' ?)"
+            fix_attr = case_match
+        else:
+            # Standard difflib fuzzy match (case-sensitive, 0.6 cutoff)
+            matches = difflib.get_close_matches(err_attr, list(valid_attrs), n=1, cutoff=0.6)
+            hint = f" (did you mean attribute '{matches[0]}' ?)" if matches else ""
+            fix_attr = matches[0] if matches else None
         start_c, end_c = self.analyzer._get_utf16_range(raw_line, err_attr)
         self.analyzer._add_diagnostic(
             Diagnostic(
@@ -270,8 +289,8 @@ class AssetChecker(BaseChecker):
                 message=f"Attribute '{err_attr}' is not defined for character '{base_tag}'{hint}.",
                 col=start_c,
                 end_col=end_c,
-                fix_title=f"Change to '{matches[0]}'" if matches else None,
-                fix_replacement=matches[0] if matches else None,
+                fix_title=f"Change to '{fix_attr}'" if fix_attr else None,
+                fix_replacement=fix_attr,
             ),
             noqa_map,
         )
@@ -287,12 +306,34 @@ class AssetChecker(BaseChecker):
         stripped: str,
         noqa_map: dict,
     ) -> None:
-        """RPY502: Emit 'sprite not found' diagnostic with closest-match suggestion."""
+        """RPY502: Emit 'sprite not found' diagnostic with closest-match suggestion.
+
+        Improvement (0.7.6): case-insensitive matching. If the user writes
+        `show Sayori` but the image is defined as `sayori`, the standard
+        difflib.get_close_matches (case-sensitive) returns no match.
+        We now check for case-insensitive exact matches first, and if
+        found, suggest the correctly-cased tag as a fix.
+        """
         all_tags = {img.split()[0] for img in all_valid}.union(
             k for k, v in self.analyzer.images.items() if v.is_layered
         )
-        matched_tags = difflib.get_close_matches(base_tag, list(all_tags), n=1, cutoff=0.7)
-        hint = f" (did you mean base tag '{matched_tags[0]}' ?)" if matched_tags else ""
+
+        # Case-insensitive exact match: "Sayori" → suggest "sayori"
+        case_match = None
+        for tag in all_tags:
+            if tag.lower() == base_tag.lower():
+                case_match = tag
+                break
+
+        if case_match:
+            hint = f" (case mismatch: did you mean '{case_match}' ?)"
+            fix_tag = case_match
+        else:
+            # Standard difflib fuzzy match (case-sensitive, 0.7 cutoff)
+            matched_tags = difflib.get_close_matches(base_tag, list(all_tags), n=1, cutoff=0.7)
+            hint = f" (did you mean base tag '{matched_tags[0]}' ?)" if matched_tags else ""
+            fix_tag = matched_tags[0] if matched_tags else None
+
         start_c, end_c = self.analyzer._get_utf16_range(raw_line, base_tag)
         self.analyzer._add_diagnostic(
             Diagnostic(
@@ -303,8 +344,8 @@ class AssetChecker(BaseChecker):
                 message=f"Sprite or background '{base_tag}' not found in assets or 'image' definitions{hint}.",
                 col=start_c,
                 end_col=end_c,
-                fix_title=f"Change to '{matched_tags[0]}'" if matched_tags else None,
-                fix_replacement=matched_tags[0] if matched_tags else None,
+                fix_title=f"Change to '{fix_tag}'" if fix_tag else None,
+                fix_replacement=fix_tag,
             ),
             noqa_map,
         )
