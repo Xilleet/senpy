@@ -64,7 +64,7 @@ NON_ASSET_EXTENSIONS: frozenset[str] = frozenset(
         ".rpyc",  # Compiled Ren'Py bytecode
         ".rpyb",  # Compiled Ren'Py bytecode (older format)
         ".rpymc",  # Compiled Ren'Py module bytecode
-        ".rpa",  # Ren'Py archive (Ren'Py loads contents at runtime), but this is temporary, until the WL-508.
+        ".rpa",  # Ren'Py archive (Ren'Py loads contents at runtime), but this is temporary.
         ".rpy",  # Ren'Py source (not an asset, it's code)
         ".rpym",  # Ren'Py module source
         # Documentation and notes
