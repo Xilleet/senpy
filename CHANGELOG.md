@@ -11,13 +11,237 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.7.x)**: [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
+- **Current (0.7.x)**: [0.7.5](#075) | [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
 
 - **0.6.x**: [0.6.6](#066) | [0.6.5](#065) | [0.6.4](#064) | [0.6.3](#063) | [0.6.2](#062) | [0.6.1](#061) | [0.6.0](#060)
 
 - **0.5.x**: [0.5.8](#058) | [0.5.7](#057) | [0.5.6](#056) | [0.5.5](#055) | [0.5.4 ⚠️](#054) | [0.5.3](#053) | [0.5.2](#052) | [0.5.1](#051) | [0.5.0](#050)
 
 - **0.4.x**: [0.4.8](#048) | [0.4.7](#047)
+
+---
+
+<a id="075"></a>
+
+## [0.7.5] — Plugin autoload, CI hardening, BLAKE2b hash, doc-sync
+
+Patch release: four independent threads — closes the CI plugin-smoke
+regression from 0.7.4's pre-commit commit, hardens the cache hash, expands
+the CI matrix to macOS, and refreshes stale documentation across the project.
+No new rules, no new LSP handlers, no public API changes. All 1218 tests
+pass, ruff check clean, 0 import cycles across 87 modules.
+
+### Plugins — autoload installed trusted plugins in CLI entrypoints
+
+The 0.6.0 plugin system shipped with a loader pipeline (`discover_plugins`
+→ `load_plugin` → `load_all_plugins` → `register_loaded_plugins`) that
+was correct in isolation — and never called from production code. The
+plugin-smoke CI job added in commit `39d71f6` ("feat: macOS CI matrix,
+Python 3.14 beta, RWLock timeout, plugin smoke test") caught the gap by
+asserting that `senpy rule list --format json` includes `RPY901` after
+`pip install -e examples/my_senpy_plugin`. The assertion failed in CI
+because no code path invoked the loader, so plugin rules stayed in the
+`_REGISTERED_LINT_RULES` registry empty.
+
+This release closes that gap with a new `senpy/plugins/autoload.py`
+module that wraps the loader pipeline in an idempotent one-shot function:
+
+```python
+from senpy.plugins.autoload import autoload_plugins
+
+autoload_plugins()  # called once per process, from cli/main.py:main()
+                    # and from cli/rule_dispatch.py:dispatch_rule()
+```
+
+Design:
+
+* **Idempotent.** Module-level `_PLUGINS_LOADED` flag short-circuits
+  subsequent calls. Tests that need a fresh load can call
+  `reset_autoload_state()` (or pass `force=True`).
+* **Safe.** A broken plugin (import error, missing `meta`, bad
+  `PLUGIN_API_VERSION`) is skipped with a `_logger.warning` — the
+  linter never crashes. Isolation was already in `load_all_plugins`;
+  autoload extends it to the entry-point wrapper.
+* **Trust-on-first-use preserved.** Production callers pass
+  `trust_callback=None`, which falls back to the existing
+  `_default_trust_callback` (TTY prompt, trust store, LSP-mode decline).
+  Tests inject `trust_callback=lambda name: True` to bypass trust
+  without writing to `~/.senpy/trusted_plugins.json`.
+
+After autoload, plugin rules are visible in `senpy rule list/show`
+and in `senpy inspect` output. The `cli/rule_dispatch.py` `_filter_rules`
+function now merges built-in `RULES_DATABASE` with rules from
+`get_registered_lint_rules()`. On code collision (plugin ships
+`code="RPY001"`), the built-in wins — the canonical source for
+`code/severity/docs/why/bad/good` must always point at the built-in
+definition. Plugin rule dicts have `why/bad/good` set to placeholder
+strings because `RuleMeta` only carries `docs`.
+
+Plugin rules are NOT yet wired into the analyzer's per-file check loop
+(`SenpyAnalyzer._analyze_file` runs `BaseChecker` line-by-line, not
+`Rule.check(ctx)`). That wiring is a separate task tracked for 0.8.0,
+after the `SenpyAnalyzer` split (god-class refactoring) makes the
+analyzer extensible without risking the existing checkers.
+
+### Pre-commit hook — `.pre-commit-hooks.yaml` (non-mutating only)
+
+Senpy is now usable as a [pre-commit](https://pre-commit.com) hook in
+any project, with a 4-line config:
+
+```yaml
+repos:
+  - repo: https://github.com/Xilleet/senpy
+    rev: v0.7.5   # Use the latest tag
+    hooks:
+      - id: senpy
+```
+
+Only `senpy --check` (non-mutating) is exposed as a hook. A `senpy --fix`
+auto-fixing hook would create an infinite loop on Windows when combined
+with `ruff-format` (CRLF ↔ LF conversion via git's `autocrlf`). This
+was the lesson from the 0.7.1 `ruff-format` hook rollback —
+documented in the worklog and in the hook file's own comment block.
+Users who want auto-fix can run `senpy --fix` manually or wire up a
+local hook with their own line-ending strategy.
+
+The README (both `README.md` and `README_ru.md`) gained a
+"Pre-commit Integration" section showing the config.
+
+### Cache — BLAKE2b file hash
+
+`senpy/core/cache.py:compute_file_hash` switched from MD5 to BLAKE2b.
+MD5 was not security-critical (used only for cache invalidation, not
+authentication), but BLAKE2b is faster on modern CPUs and carries no
+crypto-analytic baggage.
+
+Old `.senpy_cache/cache.pkl` files invalid silently: the stored MD5
+hash no longer matches the freshly-computed BLAKE2b, so the cache
+manager treats the entry as a cache miss and recomputes. No crash, no
+user-visible warning. The next cache write uses BLAKE2b.
+
+Tests: `tests/test_cache_hash.py` (113 lines, ~10 cases) covers both
+the algorithm pin and the cross-version invalidation path.
+
+### LSP — `_RWLock` gains `acquire_read(timeout=...)` / `acquire_write(timeout=...)`
+
+The hand-rolled `_RWLock` in `senpy/lsp/server.py:117` previously had
+no timeout — a stuck client could hold the read or write lock
+indefinitely, hanging the entire LSP server. This release adds
+`acquire_read(timeout: float | None = None)` and
+`acquire_write(timeout: float | None = None)`, implemented via
+`threading.Condition.wait(timeout=remaining)` with a
+`time.monotonic()` deadline. Returns `True` on acquired, `False` on
+timeout.
+
+Full migration to the `readerwriterlock` PyPI library (which provides
+reentrant locks, debug-assertions, and timeout out of the box) is
+**deferred to post-1.0** as a documented tradeoff. The hand-rolled
+lock is small (~80 LOC), well-tested (`tests/test_lsp_rwlock.py`),
+and the migration would add a new runtime dependency for marginal
+benefit. The comment block at `_RWLock` (added in this release)
+records the rationale.
+
+### CI — macOS matrix, Python 3.14 beta
+
+The `test` matrix grew from 6 jobs (Ubuntu + Windows × 3.11/3.12/3.13)
+to 14:
+
+* Ubuntu × {3.11, 3.12, 3.13} — 3 jobs
+* Windows × {3.11, 3.12, 3.13} — 3 jobs
+* macOS × {3.11, 3.12, 3.13} — 3 jobs (NEW — VN developers often use macOS)
+* Ubuntu × 3.14-beta — 1 job (`continue-on-error: true`, experimental)
+* Windows × 3.14-beta — 1 job (`continue-on-error: true`, experimental)
+
+Python 3.14 is in beta until October 2026. Dependencies (`pydantic`
+C extensions, `pygls`) may not fully support it yet. The
+`continue-on-error` flag means a 3.14 failure does not block PRs.
+When 3.14 goes stable, the flag is removed in a separate patch.
+
+`pyproject.toml` classifiers include `Programming Language :: Python :: 3.14`
+so PyPI shows the experimental support.
+
+### `senpy inspect` — `SYSTEM_LABELS`
+
+`senpy/formats/inspect.py` and `senpy/core/constants.py` gained a
+`SYSTEM_LABELS` set: `start`, `splash_window`, `after_load`,
+`main_menu`, `before_main_menu`, `quit`, `after_load`, etc. These are
+labels Ren'Py calls automatically based on `config.start_callback`,
+`config.after_load_callback`, and the splash-window protocol. `senpy
+inspect` no longer reports them in the `unresolved.unreferenced_labels`
+list — they are referenced by Ren'Py itself, not by user code.
+
+### `senpy/domain/assets.py` — `NON_ASSET_EXTENSIONS`
+
+A new `NON_ASSET_EXTENSIONS: frozenset[str]` declares file extensions
+that are part of the Ren'Py project structure but are NOT game assets:
+`.rpy` (source code), `.rpym` (module source), `.rpyc` (compiled
+bytecode), `.rpyb` (older bytecode), `.rpymc` (compiled module), `.rpa`
+(Ren'Py archive — Ren'Py loads its contents at runtime). The asset
+checker skips these in unused-asset detection, so RPY503 no longer
+flags `script.rpy` as an "unused media file".
+
+The `.rpa` entry is marked "temporary, until the .rpa-aware asset
+checker lands" — currently `.rpa` files are scanned for their
+contents (which may include assets) but not flagged as assets
+themselves.
+
+### Codebase hygiene — English-only scripts
+
+`scripts/check_cycles.py`, `run_tests.py`, and `bump_version.py` were
+translated from Russian comments to English. The
+`tests/test_no_russian_comments.py` guard was extended to scan
+`scripts/` in addition to `senpy/`. The guard's state machine tracks
+triple-quote nesting so Russian text inside string literals (e.g. in
+test fixtures) is not flagged — only `#` comments and `"""…"""`
+docstrings.
+
+### Documentation — doc-sync across the project
+
+Stale documentation caught by the pre-release doc-sync checklist
+(worklog §2.5):
+
+* `SECURITY.md`: "currently 0.6.x" → "currently 0.7.x"; supported
+  versions table updated (0.7.x active, 0.6.x critical-only, <0.6
+  unsupported).
+* `README.md` / `README_ru.md`: "What's New" section now covers all
+  five 0.7.x patch releases (0.7.1 through 0.7.5), each with a
+  feature table. Previously only 0.7.0 and 0.6.0 were listed.
+* `ARCHITECTURE.md`: Package Structure tree updated to include all
+  modules added since 0.7.0 (`cli/discover.py`, `cli/inspect_dispatch.py`,
+  `cli/rule_dispatch.py`, `formats/inspect.py`, `formats/rdjson.py`,
+  `formats/gitlab.py`, `lsp/handlers/asset_hover.py`,
+  `formatter/rules/string_consistency.py`, `plugins/autoload.py`,
+  `core/paths.py`, `core/progress.py`, `domain/image_size.py`,
+  `domain/renpy_api_generated.py`). Formatter table extended with
+  `FMT-STRING-CONSISTENCY` (was missing since 0.7.4). Plugin loading
+  pipeline documented with the new autoload step.
+* `RULES.md`: Missing `RPY100` (File is not valid UTF-8) added between
+  `RPY002` and `RPY101`. Navigation updated. Total documented rules:
+  45 (was 44 — closes the `DOC-9a` gap from the v2 audit).
+* `pyproject.toml`: `Programming Language :: Python :: 3.14` classifier
+  was already added in commit `39d71f6` (macOS matrix commit); this
+  release just confirms it ships in the tagged 0.7.5.
+
+### Tests
+
+* **1218 tests pass** (up from 1203 in 0.7.4; +15 from
+  `tests/test_plugin_autoload.py`). All 15 new tests cover the
+  autoload pipeline: idempotency, force-reruns-discovery,
+  broken-plugin isolation, registry integration, dispatch_rule
+  integration (rule list/show with plugin codes),
+  collision-resolution (built-in wins on code conflict),
+  tag/severity filters respect plugin rules, idempotency across
+  multiple dispatch_rule calls.
+* Ruff check clean. 0 import cycles across 87 modules (+1 new:
+  `senpy/plugins/autoload.py`).
+* Coverage stable at 81.74% (no regression — the new module is
+  fully covered by the new test file).
+* mypy: 263 errors total (169 outside vendor) — same baseline as
+  0.7.4. The new module is fully typed; no new mypy regressions.
+
+### Internal
+
+The plugin system is now actually usable end-to-end from a user perspective (install + trust + `senpy rule list` shows the plugin rule) — the only remaining gap is wiring plugin `Rule.check(ctx)` into the analyzer's lint loop, which is tracked for 0.8.0 (after the `SenpyAnalyzer` god-class split makes the analyzer extensible without risking the existing `BaseChecker` line-by-line checkers).
 
 ---
 

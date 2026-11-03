@@ -6,7 +6,7 @@ Comprehensive guide to all semantic and static rules implemented in the **Senpy*
 
 ### Navigation
 - **Indentation & Code (RPY0xx)**: [RPY001](#rpy001) | [RPY002](#rpy002)
-- **Variables & State (RPY1xx)**: [RPY101](#rpy101) | [RPY102](#rpy102) | [RPY103](#rpy103) | [RPY104](#rpy104) | [RPY105](#rpy105) | [RPY106](#rpy106) | [RPY107](#rpy107) | [RPY108](#rpy108) | [RPY109](#rpy109)
+- **Variables & State (RPY1xx)**: [RPY100](#rpy100) | [RPY101](#rpy101) | [RPY102](#rpy102) | [RPY103](#rpy103) | [RPY104](#rpy104) | [RPY105](#rpy105) | [RPY106](#rpy106) | [RPY107](#rpy107) | [RPY108](#rpy108) | [RPY109](#rpy109)
 - **Screens & UI (RPY2xx)**: [RPY201](#rpy201) | [RPY202](#rpy202) | [RPY203](#rpy203) | [RPY204](#rpy204) | [RPY205](#rpy205) | [RPY206](#rpy206) | [RPY207](#rpy207) | [RPY208](#rpy208)
 - **Story Flow & Dialogue (RPY3xx)**: [RPY301](#rpy301) | [RPY302](#rpy302) | [RPY303](#rpy303) | [RPY304](#rpy304) | [RPY305](#rpy305) | [RPY306](#rpy306) | [RPY307](#rpy307) | [RPY308](#rpy308) | [RPY309](#rpy309) | [RPY310](#rpy310)
 - **Branching & Conditions (RPY4xx)**: [RPY401](#rpy401) | [RPY402](#rpy402) | [RPY403](#rpy403) | [RPY404](#rpy404)
@@ -27,7 +27,7 @@ Comprehensive guide to all semantic and static rules implemented in the **Senpy*
 ```renpy
 # Bad
 label start:
-	"Tab character used here!"
+        "Tab character used here!"
 
 # Good
 label start:
@@ -50,6 +50,23 @@ if item == «key»: ...
 # Good
 $ status = "active"
 if item == "key": ...
+```
+
+---
+
+<a id="rpy100"></a>
+### RPY100: File is not valid UTF-8
+- **Severity**: `ERROR`
+- **Why**: Ren'Py reads all `.rpy` scripts as UTF-8. A file saved in another encoding (e.g. Windows-1251) crashes the game on load. Senpy skips such files, so they must be re-saved as UTF-8.
+- **Tip**: Not auto-fixable. Re-save the file with UTF-8 encoding in your editor (VS Code: bottom-right status bar → Save with Encoding → UTF-8).
+
+```renpy
+# Bad — file saved as Windows-1251
+# bytes: b'\xcf\xf0\xe8\xe2\xe5\xf2' (not valid UTF-8)
+# Senpy shows: RPY100 File is not valid UTF-8
+
+# Good — same file re-saved as UTF-8
+"Hello, world!"
 ```
 
 ---

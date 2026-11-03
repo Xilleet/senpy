@@ -26,34 +26,44 @@ senpy/
 │   ├── __main__.py          # Entry point (calls main())
 │   ├── main.py              # CLI orchestration: parse_args, run, render output
 │   ├── format_dispatch.py   # `senpy format` subcommand handler
+│   ├── inspect_dispatch.py  # `senpy inspect` subcommand handler (0.7.4+)
+│   ├── rule_dispatch.py     # `senpy rule list/show` subcommand (0.7.4+)
+│   ├── discover.py          # `discover_files()` — shared file discovery (0.7.4+)
 │   ├── commands.py          # Per-flag handlers (--traceback, --coverage, --stats, etc.)
 │   └── unrpyc.py            # .rpyc decompilation, .rpa extraction, unrpyc download
 │
 ├── core/                    # Analysis engine
 │   ├── analyzer.py          # SenpyAnalyzer — the heart of the project
-│   ├── cache.py             # Two-tier disk cache (SafeCacheUnpickler, CacheManager)
+│   ├── cache.py             # Two-tier disk cache (SafeCacheUnpickler, CacheManager, BLAKE2b)
 │   ├── cache_manifest.py    # Backward-compat re-export for cache_manifest
 │   ├── config.py            # load_config() + pydantic SenpyConfig validation
-│   ├── constants.py         # BUILTIN_SYMBOLS, BUILTIN_SCREENS, IGNORED_DIRS, etc.
+│   ├── constants.py         # BUILTIN_SYMBOLS, BUILTIN_SCREENS, RENPY_BUILTIN_COLOR_KEYWORDS, SYSTEM_LABELS
 │   ├── coverage.py          # Translation coverage metrics
 │   ├── exceptions.py        # SenpyError hierarchy (8 domain exceptions)
 │   ├── logging.py           # setup_logging(), get_logger() — library-style
 │   ├── models.py            # Diagnostic, AnalysisResult, FileScope, RULE_SEVERITY
+│   ├── paths.py             # Shared path helpers (normalize_path, 0.7.2+)
+│   ├── progress.py          # progress_print helper (0.7.2+)
 │   ├── scope.py             # ScopeStack, ScopeType (LABEL, SCREEN, etc.)
 │   ├── signature.py         # parse_signature(), validate_call_arguments()
 │   ├── sink.py              # DiagnosticSink Protocol (decouples checkers from analyzer)
 │   └── symbols.py           # VariableSymbol, LabelSymbol, ScreenSymbol, etc.
 │
 ├── domain/                  # Ren'Py domain knowledge
-│   ├── assets.py            # AssetManager — image/audio file discovery, .rpa scanning
-│   ├── renpy_api.py         # 220+ Ren'Py built-in API definitions (for hover/completion)
+│   ├── assets.py            # AssetManager — image/audio file discovery, .rpa scanning, NON_ASSET_EXTENSIONS
+│   ├── image_size.py        # PNG/JPEG/WEBP/GIF/BMP header parser for hover previews
+│   ├── renpy_api.py         # 220+ Ren'Py built-in API definitions (curated, for hover/completion)
+│   ├── renpy_api_generated.py # 754 auto-generated entries from Ren'Py 8.5.3 RST (4.4× boost)
 │   ├── rpa.py               # RPA archive reading (safe_load_rpa_index)
 │   ├── text_tags.py         # {b}, {color}, [var] parser — RPY101/301/304 checks
 │   └── tsundere.py          # Easter egg UI mode (Russian/English flavor text)
 │
-├── formats/                 # Output formats
+├── formats/                 # Output formats (7 supported)
 │   ├── ci.py                # JUnit XML, GitHub Actions annotations
+│   ├── gitlab.py            # GitLab Code Quality JSON (0.7.4+)
 │   ├── html_report.py       # Standalone HTML report with Mermaid graph (CSP-protected)
+│   ├── inspect.py           # `senpy inspect` JSON symbol dump (0.7.4+)
+│   ├── rdjson.py            # Reviewdog Diagnostic Format NDJSON (0.7.4+)
 │   ├── sarif.py             # SARIF 2.1.0 for GitHub Code Scanning
 │   ├── stats.py             # Story analytics (word count, character stats, reading time)
 │   ├── stubs.py             # Python type stubs (.pyi) generation for Pylance
@@ -62,28 +72,30 @@ senpy/
 │
 ├── formatter/               # Code formatter (Black-style for Ren'Py)
 │   ├── core.py              # Formatter class, FormatConfig, @register_rule decorator
-│   └── rules/               # 8 formatter rules (indent, whitespace, quotes, spacing)
+│   └── rules/               # 8 formatter rules (indent, whitespace, quotes, spacing, string-consistency)
 │
 ├── lsp/                     # Language Server Protocol implementation
-│   ├── server.py            # pygls LanguageServer setup, _RWLock, symbol snapshot
+│   ├── server.py            # pygls LanguageServer setup, _RWLock (with timeout), symbol snapshot
 │   └── handlers/            # Per-LSP-method handlers
 │       ├── completion.py    # textDocument/completion
 │       ├── diagnostics.py   # textDocument/publishDiagnostics
-│       ├── hover.py         # textDocument/hover (Ren'Py API docs + jump targets)
+│       ├── hover.py         # textDocument/hover (Ren'Py API docs + jump targets, asset hover)
 │       ├── navigation.py    # definition, references, rename, document_symbols
+│       ├── asset_hover.py   # Image/audio/video hover previews (0.7.0+)
 │       ├── text_document.py # didOpen, didChange, didSave, didClose
 │       └── workspace.py     # workspace/symbol, executeCommand
 │
 ├── plugins/                 # Plugin system
+│   ├── autoload.py          # Idempotent one-shot loader — called by CLI entrypoints (0.7.5+)
 │   ├── base.py              # Rule base class, RuleMeta, RuleContext
 │   ├── loader.py            # entry_points discovery, trust-on-first-use
 │   ├── registry.py          # @register_rule decorator, _REGISTERED_LINT_RULES
 │   └── security.py          # PLUGIN_API_VERSION, check_api_version, trust store
 │
-├── rules/                   # Lint rules (45+ rules across 6 domains)
+├── rules/                   # Lint rules (45 built-in rules across 7 domains + plugin rules)
 │   ├── base.py              # BaseChecker — abstract base for all checkers
 │   ├── checkers/            # Per-domain checker modules
-│   │   ├── formatting.py    # RPY0xx (tabs, smart quotes)
+│   │   ├── formatting.py    # RPY0xx (tabs, smart quotes, RPY100 encoding check)
 │   │   ├── state.py         # RPY1xx (variables, default/define, init order)
 │   │   ├── screen.py        # RPY2xx (screen actions, UI prediction)
 │   │   ├── dialogue.py      # RPY3xx (labels, jumps, text tags, fallthrough)
@@ -93,7 +105,7 @@ senpy/
 │   ├── deprecated.py        # RPY107 (deprecated Ren'Py API)
 │   ├── flow.py              # RPY4xx (branch dataflow, Mermaid graph builder)
 │   ├── python_ast.py        # Python AST checker ($-statements, init python blocks)
-│   └── rules_info.py        # RULES_DATABASE, dynamic rule count, --rules output
+│   └── rules_info.py        # RULES_DATABASE (45 rules + 28 tags), --rules output
 │
 ├── vendor/                  # Vendored dependencies (do not modify)
 │   └── unrpyc/              # .rpyc decompiler (pinned commit, SHA256-verified)
@@ -102,7 +114,7 @@ senpy/
 │   ├── src/extension.ts     # Extension entry point, commands, crash watcher
 │   ├── package.json         # Extension manifest, LSP configuration
 │   └── language-configuration.json
-├── tests                    # all tests
+├── tests                    # all tests (1218+ as of 0.7.5)
 └── examples                 # examples and your plugins with new rules
 ```
 
@@ -308,16 +320,24 @@ my_rule = "my_senpy_plugin.rules:MyRule"
 
 ### Loading Pipeline
 
-1. `discover_plugins()` — finds entry points via `importlib.metadata`.
-2. `load_plugin()` — loads each plugin with isolation (failed plugin
+1. `autoload_plugins()` (0.7.5+) — idempotent one-shot loader called once per
+   process from `cli/main.py:main()` and `cli/rule_dispatch.py:dispatch_rule()`.
+   Wraps the discovery+load+register pipeline below; safe (catches all
+   exceptions) and idempotent (subsequent calls are no-ops).
+2. `discover_plugins()` — finds entry points via `importlib.metadata`.
+3. `load_plugin()` — loads each plugin with isolation (failed plugin
    skipped, others continue).
-3. API version check — plugin declares `PLUGIN_API_VERSION`, Senpy
+4. API version check — plugin declares `PLUGIN_API_VERSION`, Senpy
    verifies compatibility (same major required).
-4. Trust check — trust-on-first-use: first load in TTY prompts `[y/N]`,
+5. Trust check — trust-on-first-use: first load in TTY prompts `[y/N]`,
    choice persisted to `~/.senpy/trusted_plugins.json`. Non-interactive
-   (CI) skips untrusted plugins (fail-safe).
-5. `register_loaded_plugins()` — registers Rule subclasses in
+   (CI, LSP mode) skips untrusted plugins (fail-safe).
+6. `register_loaded_plugins()` — registers Rule subclasses in
    `_REGISTERED_LINT_RULES`.
+
+After autoload, plugin rules are VISIBLE in `senpy rule list/show` output.
+Wiring plugin rules into the analyzer's per-file check loop is
+tracked as a separate task (planned for 0.8.0, after the analyzer split).
 
 ### Rule Base Class
 
@@ -349,16 +369,19 @@ already-formatted code produces zero changes):
 | Rule | Description |
 |------|-------------|
 | FMT-INDENT | 4-space indentation (tabs → spaces) |
-| FMT-TRAILING-WS | Remove trailing whitespace |
-| FMT-EOF-NEWLINE | Ensure single newline at end of file |
 | FMT-BLANK-LINES | Collapse multiple blank lines (max 2) |
+| FMT-TRAILING-WS | Remove trailing whitespace |
 | FMT-QUOTES | Smart/curly quotes → straight (in code, not dialogue) |
 | FMT-OP-SPACING | Single space around binary operators |
 | FMT-COMMA-SPACING | Space after comma, no space before |
 | FMT-COLON-SPACING | No space before block-opening colon |
+| FMT-STRING-CONSISTENCY | Normalize outer quotes of string literals (default: double). 0.7.4+. |
 
 Skip mechanism: `# senpy: format off` / `# senpy: format on` /
 `# senpy: format skip` comments disable formatting for specific blocks.
+
+Style guide: see [`FORMAT STYLE GUIDE`](docs/FORMAT_STYLE_GUIDE.md) for the
+canonical reference of each rule with examples.
 
 ## Security
 

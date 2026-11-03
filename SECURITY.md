@@ -2,14 +2,14 @@
 
 ## Supported Versions
 
-Senpy is in active development (currently 0.6.x). Security fixes are applied
+Senpy is in active development (currently 0.7.x). Security fixes are applied
 to the latest released minor version only.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.6.x   | ✅ Active support  |
-| 0.5.x   | ⚠️ Critical fixes only |
-| < 0.5   | ❌ Not supported   |
+| 0.7.x   | ✅ Active support  |
+| 0.6.x   | ⚠️ Critical fixes only |
+| < 0.6   | ❌ Not supported   |
 
 ## Reporting a Vulnerability
 

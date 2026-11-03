@@ -42,6 +42,58 @@ pip install senpy-linter
 
 ## Что нового
 
+### 0.7.5 — Plugin autoload, CI hardening, BLAKE2b hash
+
+| Функция | Описание |
+|---|---|
+| **Plugin autoload** | Установленные и доверенные плагины теперь загружаются автоматически при запуске `senpy`, `senpy rule list/show` или `senpy inspect`. Раньше пайплайн загрузки существовал, но не вызывался из CLI entrypoints — правила плагинов были невидимы. Теперь `senpy rule list` после `pip install -e examples/my_senpy_plugin` показывает `RPY901`. |
+| **Pre-commit hook** | `.pre-commit-hooks.yaml` лежит в корне репо. Добавьте Senpy в любой проект на [pre-commit](https://pre-commit.com) 4-строчным конфигом (см. [Pre-commit Integration](#pre-commit-integration) ниже). Экспонируется только `--check` (non-mutating) — `--fix` зацикливался бы на Windows CRLF. |
+| **BLAKE2b cache hash** | Ключи кэша файлов теперь используют BLAKE2b вместо MD5. Быстрее, без security-baggage. Старый `.senpy_cache/cache.pkl` инвалидится тихо (hash mismatch → cache miss → recompute, без crash). |
+| **`_RWLock` timeout** | Read/write lock в LSP-сервере получил `acquire_read(timeout=...)` / `acquire_write(timeout=...)` — зависший клиент больше не вешает LSP навсегда. Полный мигрейт на библиотеку `readerwriterlock` отложен на post-1.0 (зафиксированный tradeoff). |
+| **macOS Python matrix** | CI теперь прогоняет Ubuntu × Windows × macOS на Python 3.11/3.12/3.13 (9 jobs) + Python 3.14 beta на Ubuntu и Windows (experimental, `continue-on-error`). |
+| **`SYSTEM_LABELS` в inspect** | `senpy inspect` больше не считает `start`, `splash_window`, `after_load`, `main_menu` и др. «unreferenced» — это системные лейблы, которые Ren'Py вызывает сам. |
+| **`NON_ASSET_EXTENSIONS`** | `.rpy`, `.rpym`, `.rpyc`, `.rpa` больше не считаются «unused assets» по RPY503 — это код, не медиа. |
+| **English-only codebase** | Все комментарии и докстринги в `senpy/` теперь на английском (pass Russian→English завершён в 0.7.3; 0.7.5 расширяет guard на `scripts/`). Тест `test_no_russian_comments.py` теперь сканирует и `scripts/`. |
+
+### 0.7.4 — Introspection, форматы вывода, метаданные правил, strict mode, formatter rule
+
+| Функция | Описание |
+|---|---|
+| **`senpy inspect` subcommand** | Дампит все символы, которые Senpy видит в проекте, как JSON: labels, screens, variables, transforms, images, jump_sources (reverse index), used_assets, diagnostics, unresolved (broken jumps / missing screens / unreferenced labels / unused assets), per-section stats. Заточен под дебаг hover/asset resolution и авторинг плагинов. Сокращения: `--summary`, `--unresolved`, `--label X`, `--screen X`, `--transform X`. |
+| **Форматы вывода: rdjson + gitlab** | `--output-format rdjson` (Reviewdog NDJSON — по JSON-объекту на строку, пайпится в `reviewdog -f=rdjson`) и `--output-format gitlab` (GitLab Code Quality JSON array — fingerprint-stable для аннотаций в MR). Всего форматов: 7 (`text`, `json`, `sarif`, `junit`, `github`, `rdjson`, `gitlab`). |
+| **`senpy rule` subcommand** | Просмотр метаданных правил без запуска анализатора: `senpy rule list [--format json] [--tag T] [--severity S]`, `senpy rule show CODE`. Флаги `--rules` и `--rule CODE` в основном CLI работают как alias'ы. |
+| **Теги у правил** | У каждого правила в `RULES_DATABASE` теперь поле `tags` (28 тегов на 45 правил: `formatting`, `variables`, `state`, `rollback`, `deprecated`, `screen`, `assets`, `audio`, `translations`, `dead-code`, и т.д.). `senpy rule list --tag rollback` фильтрует по тегу (union-семантика). |
+| **`--tag` / `--ignore-tag` фильтры** | Lint-режим принимает `--tag rollback state` (только эти правила) и `--ignore-tag dead-code` (заглушить эти правила). Сопоставление тегов case-insensitive; правило проходит `--tag`, если ЛЮБОЙ из его тегов совпал. |
+| **`strict = true` config** | Поле `strict` в `SenpyConfig` теперь соблюдается (было задокументировано с 0.6.0, но не использовалось). С `strict = true` каждый диагностик, чей код НЕявно не переопределён в `[tool.senpy.severity]`, повышается до `ERROR`. Явные severity-override'ы выигрывают над strict. |
+| **FMT-STRING-CONSISTENCY** | 8-е правило форматтера (7-е в коде, 8-е по ID). Нормализует внешние кавычки однострочных строковых литералов в CODE-строках к единому стилю. По умолчанию: `'hi'` → `"hi"` (конвенция Ren'Py). Настраивается через `string_style = "double" | "single" | "preserve"`. Диалоги и triple-quoted строки намеренно не трогаются. |
+| **Format Style Guide (stub)** | `docs/FORMAT_STYLE_GUIDE.md` описывает 6 оригинальных правил форматтера. Полная версия (8 правил) — в 0.7.6. |
+
+### 0.7.3 — Plugin trust UX, English-only codebase, динамические бейджи
+
+| Функция | Описание |
+|---|---|
+| **Non-interactive plugin trust** | `--trust-plugin NAME` / `--untrust-plugin NAME` CLI-флаги пишут в `~/.senpy/trusted_plugins.json` и `sys.exit(0)` без запуска анализатора. Управление доверием теперь полностью scriptable. Default trust callback определяет LSP-режим (`--lsp` в argv) и decline'ит недоверенные плагины без prompting (нет `input()` hang в LSP). |
+| **English-only codebase (pass Russian→English)** | Все русские комментарии и докстринги в `senpy/` переведены на английский одним механическим проходом: 52 файла, ~1057 строк изменено (additions = removals, без logic changes). `senpy/domain/tsundere.py` (намеренный Russian easter-egg) и `senpy/vendor/` whitelisted'ны. `tests/test_no_russian_comments.py` гарантирует инвариант. |
+| **Динамические бейджи** | Пять бейджей автообновляются CI на каждый push в `main`: tests, rules (45), LSP handlers, coverage, speed. `scripts/update_badges.py` читает метрики и пишет JSON-файлы; README-бейджи — shields.io `endpoint?url=...` на raw JSON из `main`. |
+| **6 новых CLI-флагов** | `--statistics`, `--add-noqa`, `--respect-gitignore`, `--config FILE` (с env-переменной `SENPY_CONFIG`), `--show-settings`, `--cache-dir`. |
+
+### 0.7.2 — God-function splitting, DRY cleanup
+
+| Функция | Описание |
+|---|---|
+| **God-function refactoring** | 12 длинных функций разбиты на focused helpers (≤60 строк, ≤80 для dispatch tables). Заметные: `_check_show_scene` (188 → 30 строк), `_check_audio_statement` (174 → 21 строка), `MermaidBuilder.build` (132 → 18 строк), `process_quoted_strings` (187 → 58 строк). Все public API без изменений; characterization-тесты прошли. |
+| **DRY helpers** | Новые `senpy/core/paths.py` (28 LOC) и `senpy/core/progress.py` (24 LOC) централизуют `normalize_path` и `progress_print` — раньше копипастились между модулями. |
+| **Первый динамический бейдж** | Бейдж `tests` автообновляется на `main` через `scripts/update_badges.py`. Ещё 4 бейджа приходят в 0.7.3. |
+
+### 0.7.1 — Stabilization, dynamic badges, CONTRIBUTING refresh
+
+| Функция | Описание |
+|---|---|
+| **Stale API cleanup** | Все вызовы `LanguageServer.show_message_log` (pygls 2.x удалил этот API) заменены на `_logger.debug/warning`. Stale `build_exe.bat` и `build_vsix_dev.bat` удалены. |
+| **Doc-sync** | README «What's New» обновлён с 0.6.0 до 0.7.0; plugin-пример в README синхронизирован с `examples/my_senpy_plugin/`; битые ссылки в SECURITY.md починены. |
+| **Internal-ID scrub hook** | `scripts/clean_internal_ids.py` (pre-commit hook) вычищает любые утёкшие внутренние task ID из комментариев, CHANGELOG, commit messages, докстрингов. `tests/test_clean_internal_ids.py` фиксирует контракт. |
+| **Удаление `warnings.filterwarnings`** | Module-level global filterwarnings удалён из `core/analyzer.py` и `lsp/server.py`. Тесты запускаются с `-W error::SyntaxWarning`, чтобы ловить silent regressions. |
+
 ### 0.7.0 — Image/Audio/Video hover + автосгенерированные API docs
 
 | Функция | Описание |
@@ -52,20 +104,6 @@ pip install senpy-linter
 | **Автосгенерированные API docs Ren'Py** | 754 записи автоматически собраны из RST-источников Ren'Py 8.5.3. Вместе с 221 курируемыми записями `RENPY_API_DOCS_ALL` содержит **975 символов** — рост в 4,4×. |
 | **TextMate-грамматика для `.rpy`/`.rpym`** | 270-строчная грамматика со scope `source.renpy`, скопированная дословно из [renpy-magic](https://github.com/adiffx/renpy-magic) (MIT). Покрывает комментарии, строки, Ren'Py text-tag `{…}` и interpolation `[…]`, `python`/`init python` блоки, `$`-prefixed python-строки, labels, screens, transforms, image definitions, say statements, numbers, operators. |
 | **Детектор потерянных видео** | `MEDIA_EXTENSIONS` расширена `.mp4`/`.avi`/`.mkv` — RPY503 (проверка неиспользуемых ассетов) теперь также флагует потерянные видеофайлы. |
-
-### 0.6.0 — Система плагинов + LSP killer-features
-
-| Функция | Описание |
-|---|---|
-| **Система плагинов** | Пишите свои правила линтера как pip-пакеты. Senpy находит их автоматически через `entry_points`. [Гайд по плагинам →](https://github.com/Xilleet/senpy/blob/main/examples/my_senpy_plugin/MY_SENPY_PLUGIN_README.md) |
-| **Безопасность плагинов** | Модель доверия при первом запуске. Первый запуск спросит `[y/N]`, сохранит в `~/.senpy/trusted_plugins.json`. В CI недоверенные плагины пропускаются (fail-safe). |
-| **Цветовые свотчи** | `textDocument/documentColor` — hex-цвета (`#ff0000`) отображаются как кликабельные квадратики с палитрой в VS Code. |
-| **Форматирование** | `textDocument/formatting` — Shift+Alt+F в VS Code запускает форматтер Senpy (8 правил: отступы, кавычки, пробелы вокруг операторов/запятых/двоеточий, trailing-WS, EOF, пустые строки). |
-| **Подсказки параметров** | `textDocument/signatureHelp` — параметры для `call label(...)` и `use screen(...)`. |
-| **Иерархия вызовов** | `textDocument/prepareCallHierarchy` — ПКМ на метке → «Найти вызывающих» / «Найти ссылки» по всему проекту. |
-| **Публичный API** | Модуль `senpy.api` — стабильный контракт для разработчиков плагинов: `analyze_code(code) → list[Diagnostic]`. |
-| **Новые форматы вывода** | `--output-format junit` (XML для CI), `--output-format github` (аннотации для PR). |
-| **`--show-fixes`** | Детальный отчёт о том, что `--fix` исправил (файл:строка: правило — описание). |
 
 Полный changelog: [CHANGELOG.md](https://github.com/Xilleet/senpy/blob/main/CHANGELOG.md)
 
