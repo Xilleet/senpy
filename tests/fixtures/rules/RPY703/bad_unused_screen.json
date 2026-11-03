@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY703",
+    "severity": "HINT",
+    "line": 4,
+    "message_fragment": "Screen 'unused_settings' is defined but never called or shown. Consider removing this dead code."
+  }
+]

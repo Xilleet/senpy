@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY307",
+    "severity": "ERROR",
+    "line": 5,
+    "message_fragment": "Duplicate label 'chapter_1'. Previously declared at bad_duplicate_label.rpy:1. Causes fatal ScriptEr"
+  }
+]

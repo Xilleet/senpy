@@ -41,11 +41,20 @@ def test_rule_fixture(rpy_file: Path, update_snapshots: bool, tmp_path: Path):
     rule_id = rpy_file.parent.name  # Ожидаем структуру: fixtures/rules/RPYxxx/bad_1.rpy
     is_bad = rpy_file.name.startswith("bad_")
 
-    # Изолируем запуск, копируя тестируемый файл во временную директорию
+    # Изолируем запуск, копируя тестируемый файл во временную директорию.
+    # Большинство fixtures — обычный UTF-8 текст. Но RPY100 (file not valid
+    # UTF-8) специально хранит bytes в cp1251 — `read_text(encoding="utf-8")`
+    # падает. Для этого случая читаем bytes и пишем bytes напрямую.
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True, exist_ok=True)
     test_file = game_dir / rpy_file.name
-    test_file.write_text(rpy_file.read_text(encoding="utf-8"), encoding="utf-8")
+    try:
+        content = rpy_file.read_text(encoding="utf-8")
+        test_file.write_text(content, encoding="utf-8")
+    except UnicodeDecodeError:
+        # RPY100 fixture: write raw bytes (the file is intentionally
+        # not valid UTF-8 — the analyzer will detect this and emit RPY100).
+        test_file.write_bytes(rpy_file.read_bytes())
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     result = analyzer.run(quiet=True)
@@ -55,9 +64,9 @@ def test_rule_fixture(rpy_file: Path, update_snapshots: bool, tmp_path: Path):
 
     if not is_bad:
         # Для позитивных тестов мы ожидаем ровно 0 ошибок по этому правилу
-        assert len(target_diags) == 0, (
-            f"Expected 0 '{rule_id}' diagnostics for positive test {rpy_file.name}, but got: {target_diags}"
-        )
+        assert (
+            len(target_diags) == 0
+        ), f"Expected 0 '{rule_id}' diagnostics for positive test {rpy_file.name}, but got: {target_diags}"
     else:
         # Для негативных тестов сверяем снимок
         snapshot_file = rpy_file.with_suffix(".json")
@@ -71,10 +80,10 @@ def test_rule_fixture(rpy_file: Path, update_snapshots: bool, tmp_path: Path):
             pytest.skip(f"Snapshot updated for {rpy_file.name}")
         else:
             # Обычный режим: сравниваем результат с диском
-            assert snapshot_file.exists(), (
-                f"Snapshot is missing: {snapshot_file}. Run pytest with '--update-snapshots'."
-            )
+            assert (
+                snapshot_file.exists()
+            ), f"Snapshot is missing: {snapshot_file}. Run pytest with '--update-snapshots'."
             expected_json = json.loads(snapshot_file.read_text(encoding="utf-8"))
-            assert actual_json == expected_json, (
-                f"Snapshot mismatch for {rpy_file.name}. Run with '--update-snapshots' if the change was intentional."
-            )
+            assert (
+                actual_json == expected_json
+            ), f"Snapshot mismatch for {rpy_file.name}. Run with '--update-snapshots' if the change was intentional."

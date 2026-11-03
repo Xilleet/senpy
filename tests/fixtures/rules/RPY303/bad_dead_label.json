@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY303",
+    "severity": "INFO",
+    "line": 9,
+    "message_fragment": "No static references found to label 'forgotten_draft'. Verify if it is dead code or invoked dynamica"
+  }
+]

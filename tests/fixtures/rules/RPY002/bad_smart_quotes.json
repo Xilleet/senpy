@@ -1,0 +1,14 @@
+[
+  {
+    "code": "RPY002",
+    "severity": "ERROR",
+    "line": 2,
+    "message_fragment": "Smart/curly quotes (“ ” ‘ ’ « ») detected in code statement. Will cause Python SyntaxError."
+  },
+  {
+    "code": "RPY002",
+    "severity": "ERROR",
+    "line": 3,
+    "message_fragment": "Smart/curly quotes (“ ” ‘ ’ « ») detected in code statement. Will cause Python SyntaxError."
+  }
+]

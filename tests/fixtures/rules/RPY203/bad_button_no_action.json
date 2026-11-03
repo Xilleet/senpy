@@ -1,0 +1,14 @@
+[
+  {
+    "code": "RPY203",
+    "severity": "WARNING",
+    "line": 2,
+    "message_fragment": "Textbutton is missing an 'action' argument and will not respond to clicks."
+  },
+  {
+    "code": "RPY203",
+    "severity": "WARNING",
+    "line": 3,
+    "message_fragment": "Imagebutton is missing an 'action' argument and will not respond to clicks."
+  }
+]

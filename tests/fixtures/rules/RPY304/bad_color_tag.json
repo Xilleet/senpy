@@ -1,0 +1,20 @@
+[
+  {
+    "code": "RPY304",
+    "severity": "ERROR",
+    "line": 2,
+    "message_fragment": "Malformed hex color '#12345' in {color} tag."
+  },
+  {
+    "code": "RPY304",
+    "severity": "ERROR",
+    "line": 3,
+    "message_fragment": "Unknown color name 'notacolor' in {color} tag."
+  },
+  {
+    "code": "RPY304",
+    "severity": "ERROR",
+    "line": 4,
+    "message_fragment": "Malformed hex color '#gggggg' in {color} tag."
+  }
+]
