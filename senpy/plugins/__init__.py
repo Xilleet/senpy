@@ -13,7 +13,16 @@ Architecture:
     senpy/plugins/
     ├── base.py        — Rule, RuleMeta, RuleContext
     ├── registry.py    — @register_rule decorator
-    └── security.py    — PLUGIN_API_VERSION, check_api_version (SEC-P1)
+    ├── security.py    — PLUGIN_API_VERSION, check_api_version (SEC-P1)
+    ├── loader.py      — discover/load/register pipeline (entry-point driven)
+    └── autoload.py    — idempotent one-shot loader for CLI entry points
+
+Plugin autoloading (since 0.7.5):
+    CLI entry points (`senpy.cli.main:main()`, `senpy.cli.rule_dispatch:dispatch_rule`,
+    `senpy.cli.inspect_dispatch:dispatch_inspect`) call `autoload_plugins()` once
+    per process. This makes installed-and-trusted plugin rules visible in
+    `senpy rule list/show` output, in `senpy inspect` symbols, and (future) in
+    the analyzer's lint loop.
 
 Plugin contract (STABLE — see senpy.api for the full public contract):
     1. Subclass Rule
@@ -53,7 +62,14 @@ Example:
 from __future__ import annotations
 
 # Re-exports for convenience — see senpy.api for the canonical public API.
+from senpy.plugins.autoload import autoload_plugins, is_autoload_done
 from senpy.plugins.base import Rule, RuleContext, RuleMeta
+from senpy.plugins.loader import (
+    discover_plugins,
+    load_all_plugins,
+    load_plugin,
+    register_loaded_plugins,
+)
 from senpy.plugins.registry import get_registered_lint_rules, register_rule
 from senpy.plugins.security import (
     PLUGIN_API_VERSION,
@@ -73,6 +89,14 @@ __all__ = [
     # Registration
     "register_rule",
     "get_registered_lint_rules",
+    # Autoloader (production entry points call this once per process)
+    "autoload_plugins",
+    "is_autoload_done",
+    # Loader (lower-level — used by autoload, available for advanced callers)
+    "discover_plugins",
+    "load_plugin",
+    "load_all_plugins",
+    "register_loaded_plugins",
     # SEC-P1: API version
     "PLUGIN_API_VERSION",
     "check_api_version",

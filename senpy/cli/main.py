@@ -1373,6 +1373,15 @@ def main():
     """CLI entry point. Orchestrates subcommand dispatch, early exits,
     config loading, file discovery, analysis, and output rendering.
     """
+    # Load installed-and-trusted plugins once per process. Done before
+    # subcommand dispatch so plugin rules are visible to `senpy rule list`,
+    # `senpy inspect`, and the main lint loop alike. Idempotent: subsequent
+    # calls inside subcommand dispatch are no-ops. Safe: a broken plugin is
+    # skipped with a warning, never crashes the linter.
+    from senpy.plugins.autoload import autoload_plugins
+
+    autoload_plugins()
+
     # Subcommand dispatch (e.g. `senpy format ...`)
     sub_exit = _dispatch_subcommand(sys.argv)
     if sub_exit is not None:

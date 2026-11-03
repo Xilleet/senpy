@@ -50,7 +50,9 @@ class TestRuleListJson:
         assert rc == 0
         data = json.loads(out)
         assert isinstance(data, list)
-        assert len(data) == len(RULES_DATABASE)
+        # `>=` instead of `==`: autoloaded plugins may add extra rules
+        # (e.g. RPY901 from examples/my_senpy_plugin if installed in dev env).
+        assert len(data) >= len(RULES_DATABASE)
 
     def test_list_json_each_entry_has_required_fields(self, capsys):
         rc, out, _ = _run(["list", "--format", "json"], capsys)
@@ -62,11 +64,17 @@ class TestRuleListJson:
 
     def test_list_json_includes_code_field(self, capsys):
         """JSON output must include the rule code as a field (not just as
-        the dict key) — otherwise consumers can't sort/group programmatically."""
+        the dict key) — otherwise consumers can't sort/group programmatically.
+
+        Note: we check `issubset`, not equality, because plugins registered
+        via `autoload_plugins()` may add extra codes (e.g. RPY901 from the
+        example plugin if it's installed in the dev environment). Built-in
+        codes must always be present; plugin codes are a bonus.
+        """
         rc, out, _ = _run(["list", "--format", "json"], capsys)
         data = json.loads(out)
         codes = {entry["code"] for entry in data}
-        assert codes == set(RULES_DATABASE.keys())
+        assert set(RULES_DATABASE.keys()).issubset(codes)
 
     def test_list_json_includes_tags_array(self, capsys):
         rc, out, _ = _run(["list", "--format", "json"], capsys)
@@ -203,7 +211,8 @@ class TestRuleListOutputFile:
         rc = dispatch_rule(["list", "--format", "json", "-o", str(out_file)])
         assert rc == 0
         data = json.loads(out_file.read_text(encoding="utf-8"))
-        assert len(data) == len(RULES_DATABASE)
+        # `>=` instead of `==`: autoloaded plugins may add extra rules.
+        assert len(data) >= len(RULES_DATABASE)
 
     def test_list_text_writes_to_output_file(self, tmp_path, capsys):
         out_file = tmp_path / "rules.txt"

@@ -46,6 +46,13 @@ def _filter_rules(
 
     `tags` is a union filter: a rule passes if ANY of its tags is in the
     requested list. `severity` is an exact match (case-insensitive).
+
+    Sources are merged: built-in `RULES_DATABASE` first, then plugin rules
+    discovered via `senpy.plugins.registry.get_registered_lint_rules()`. If a
+    plugin registers a code that collides with a built-in (e.g. someone ships
+    a plugin with `code="RPY001"`), the built-in wins — plugin is skipped
+    with a warning. This prevents user confusion: the docs URL and `why/bad/good`
+    for built-in rules must always point at the canonical built-in definition.
     """
     if tags:
         wanted_tags = {t.lower() for t in tags}
@@ -57,6 +64,9 @@ def _filter_rules(
         wanted_sev = None
 
     out: list[dict[str, Any]] = []
+    seen_codes: set[str] = set()
+
+    # 1. Built-in rules (canonical source — wins on code collisions).
     for code, info in sorted(RULES_DATABASE.items()):
         if wanted_tags is not None:
             rule_tags = {t.lower() for t in info.get("tags", [])}
@@ -65,6 +75,26 @@ def _filter_rules(
         if wanted_sev is not None and info["severity"].upper() != wanted_sev:
             continue
         out.append(_rule_to_dict(code, info))
+        seen_codes.add(code)
+
+    # 2. Plugin rules (only codes not already provided by built-ins).
+    for plugin_dict in _plugin_rules():
+        code = plugin_dict["code"]
+        if code in seen_codes:
+            # Plugin is shadowing a built-in code. Skip — built-in is the
+            # canonical source for code/severity/docs/why/bad/good.
+            continue
+        if wanted_tags is not None:
+            rule_tags = {t.lower() for t in plugin_dict.get("tags", [])}
+            if not (rule_tags & wanted_tags):
+                continue
+        if wanted_sev is not None and plugin_dict["severity"].upper() != wanted_sev:
+            continue
+        out.append(plugin_dict)
+        seen_codes.add(code)
+
+    # Sort the merged result by rule code for stable output.
+    out.sort(key=lambda r: r["code"])
     return out
 
 
@@ -83,6 +113,106 @@ def _rule_to_dict(code: str, info: dict[str, Any]) -> dict[str, Any]:
         "bad": info["bad"],
         "good": info["good"],
     }
+
+
+def _plugin_rule_dict(code: str, rule_cls: type) -> dict[str, Any] | None:
+    """Convert a plugin Rule subclass to a JSON-serializable dict.
+
+    Plugin rules use `RuleMeta` (dataclass on `rule_cls.meta`), not the
+    `RULES_DATABASE` dict. We adapt the meta into the same shape as built-in
+    rule dicts so downstream renderers (text table, JSON output) can treat
+    them uniformly.
+
+    Returns None if the plugin rule is malformed (no meta, or meta missing
+    required fields). Such rules are skipped silently — a broken plugin
+    should not crash `senpy rule list`.
+
+    Plugin rule dicts have `why`/`bad`/`good` set to placeholder strings
+    (RuleMeta only carries `docs`, not full BAD/GOOD examples). The text
+    renderer tolerates this; JSON consumers see `"why": "<plugin rule: see plugin docs>"`
+    so they can disambiguate from built-in entries.
+    """
+    meta = getattr(rule_cls, "meta", None)
+    if meta is None:
+        return None
+
+    # Required fields on RuleMeta (validated in __post_init__, but be defensive).
+    meta_code = getattr(meta, "code", None)
+    meta_severity = getattr(meta, "severity", None)
+    if not meta_code or not meta_severity:
+        return None
+
+    docs = getattr(meta, "docs", "") or ""
+    tags = list(getattr(meta, "tags", []) or [])
+
+    return {
+        "code": meta_code,
+        "title": _plugin_title(rule_cls, docs),
+        "severity": meta_severity,
+        "tags": tags,
+        # Plugin rules don't ship with the structured `why/bad/good` triple
+        # that built-in RULES_DATABASE entries carry. Provide stable
+        # placeholder strings so the JSON shape matches built-in entries
+        # (consumers don't have to special-case missing keys).
+        "why": docs or f"Plugin rule {meta_code} (see plugin documentation).",
+        "bad": "(see plugin documentation)",
+        "good": "(see plugin documentation)",
+    }
+
+
+def _plugin_title(rule_cls: type, docs: str) -> str:
+    """Derive a human-readable title for a plugin rule.
+
+    Heuristic: take the first sentence of `meta.docs`. If empty, fall back
+    to the rule class name. This matches the brevity of built-in titles
+    in `RULES_DATABASE` (e.g. "Tab character in indentation" for RPY001).
+    """
+    if docs:
+        # First sentence = up to first '. ' or end of string.
+        first_period = docs.find(". ")
+        if first_period != -1 and first_period < 80:
+            return docs[: first_period + 1]
+        # No sentence break or very long — take first 80 chars.
+        if len(docs) <= 80:
+            return docs
+        return docs[:77] + "..."
+    return f"Plugin rule {rule_cls.__name__}"
+
+
+def _plugin_rules() -> list[dict[str, Any]]:
+    """Return plugin rule dicts currently registered in the lint rule registry.
+
+    Reads `senpy.plugins.registry.get_registered_lint_rules()` and converts
+    each (code, rule_cls) tuple into a JSON-serializable dict via
+    `_plugin_rule_dict()`. Malformed entries are skipped (return None from
+    `_plugin_rule_dict`).
+
+    This function is the bridge between the plugin registry (which stores
+    Rule subclasses) and the rule list/show output (which expects dicts
+    with code/title/severity/tags/why/bad/good keys).
+    """
+    from senpy.plugins.registry import get_registered_lint_rules
+
+    out: list[dict[str, Any]] = []
+    for code, rule_cls in get_registered_lint_rules():
+        rule_dict = _plugin_rule_dict(code, rule_cls)
+        if rule_dict is not None:
+            out.append(rule_dict)
+    return out
+
+
+def _find_plugin_rule(code: str) -> dict[str, Any] | None:
+    """Look up a single plugin rule by code (case-sensitive on meta.code).
+
+    Returns the rule dict (same shape as `_plugin_rule_dict`) or None if no
+    plugin rule with that code is currently registered. Used by
+    `senpy rule show <CODE>` to handle codes that aren't in built-in
+    `RULES_DATABASE` (e.g. RPY901 from the example plugin).
+    """
+    for rule_dict in _plugin_rules():
+        if rule_dict["code"] == code:
+            return rule_dict
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -173,13 +303,20 @@ def _handle_list(args) -> int:
 
 def _handle_show(args) -> int:
     code = args.code.upper()
-    if code not in RULES_DATABASE:
-        sys.stderr.write(
-            f"Unknown rule code: '{args.code}'. "
-            f"Run 'senpy rule list' to see all available rules.\n"
-        )
-        return 1
-    rule = _rule_to_dict(code, RULES_DATABASE[code])
+    # Built-in rules first (canonical source — wins on code collisions).
+    if code in RULES_DATABASE:
+        rule: dict[str, Any] = _rule_to_dict(code, RULES_DATABASE[code])
+    else:
+        # Fall back to plugin rules. Covers `senpy rule show RPY901` when
+        # examples/my_senpy_plugin is installed and autoloaded.
+        plugin_rule = _find_plugin_rule(code)
+        if plugin_rule is None:
+            sys.stderr.write(
+                f"Unknown rule code: '{args.code}'. "
+                f"Run 'senpy rule list' to see all available rules.\n"
+            )
+            return 1
+        rule = plugin_rule
     if args.format == "json":
         return _emit_json(rule, args)
     return _emit(_render_show_text(rule), args)
@@ -283,6 +420,15 @@ def dispatch_rule(argv: list[str]) -> int:
 
     Returns exit code (0 = success, 1 = unknown rule, 2 = usage error).
     """
+    # Make installed-and-trusted plugin rules visible in `senpy rule list/show`.
+    # Idempotent: if `main()` already autoloaded plugins, this is a no-op.
+    # Required here because tests call `dispatch_rule([...])` directly without
+    # going through `main()` — otherwise plugin rules would be invisible
+    # in unit tests, breaking parity with the real CLI.
+    from senpy.plugins.autoload import autoload_plugins
+
+    autoload_plugins()
+
     parser = _build_parser()
     args = parser.parse_args(argv)
 
