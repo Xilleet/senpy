@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.7.x)**: [Unreleased/0.7.4](#unreleased074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
+- **Current (0.7.x)**: [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
 
 - **0.6.x**: [0.6.6](#066) | [0.6.5](#065) | [0.6.4](#064) | [0.6.3](#063) | [0.6.2](#062) | [0.6.1](#061) | [0.6.0](#060)
 
@@ -21,9 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-<a id="unreleased074"></a>
+<a id="074"></a>
 
-## [Unreleased/0.7.4] — Introspection, output formats, rule metadata, strict mode, formatter rule
+## [0.7.4] — Introspection, output formats, rule metadata, strict mode, formatter rule
 
 Six additive features in one patch release. No public API removed,
 no rule severity changes (except opt-in `strict = true`). All changes

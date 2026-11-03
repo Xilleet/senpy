@@ -31,7 +31,18 @@ BUILTIN_SCREENS = {
     "ctc",
 }
 
-BUILTIN_COLORS = {"black", "white", "trueblack", "none"}
+# Ren'Py built-in color-named image keywords. These are valid `show` /
+# `scene` targets that Ren'Py ships with out of the box (solid-color
+# displayables). Used by AssetManager to seed `valid_images` and by
+# RPY502 (missing sprite) to avoid flagging `show black` as a missing
+# asset. NOT the same as RENPY_NAMED_TEXT_COLORS — see below.
+RENPY_BUILTIN_COLOR_KEYWORDS = {"black", "white", "trueblack", "none"}
+
+# Backwards-compatibility alias. Senpy 0.6.x and earlier referenced
+# `BUILTIN_COLORS` in user-facing code paths (plugins, external
+# integrations). Keep the old name until 1.0 to avoid breakage.
+BUILTIN_COLORS = RENPY_BUILTIN_COLOR_KEYWORDS
+
 BUILTIN_AUDIO_CHANNELS = {"music", "sound", "voice", "audio"}
 CLAUSE_KEYWORDS = {"at", "as", "with", "zorder", "behind", "onlayer"}
 
@@ -255,7 +266,17 @@ NON_DIALOGUE_STATEMENTS = {
 SELF_CLOSING_TAGS = {"w", "p", "nw", "fast", "space", "vspace"}
 PAIR_TAGS = {"b", "i", "u", "s", "plain", "color", "size", "font", "alpha", "cps", "k", "a"}
 
-NAMED_COLORS = {
+# Color keywords accepted by the `{color=NAME}` text tag. Ren'Py maps
+# these to RGB triples internally (e.g. `red` → `#FF0000`). Used by
+# RPY304 (malformed color) and the dialogue text-tag checker to
+# distinguish `red` (a valid color keyword) from `reed` (a typo that
+# would crash the text renderer).
+#
+# Note: `black` and `white` appear in BOTH `RENPY_BUILTIN_COLOR_KEYWORDS`
+# (above) and this set. This is intentional — they are valid in both
+# contexts: `show black` (image keyword) and `{color=black}` (text tag
+# color keyword). Ren'Py treats them the same way internally.
+RENPY_NAMED_TEXT_COLORS = {
     "black",
     "white",
     "red",
@@ -273,6 +294,9 @@ NAMED_COLORS = {
     "lime",
     "navy",
 }
+
+# Backwards-compatibility alias (see BUILTIN_COLORS above for rationale).
+NAMED_COLORS = RENPY_NAMED_TEXT_COLORS
 
 MEDIA_EXTENSIONS = {
     ".png",
