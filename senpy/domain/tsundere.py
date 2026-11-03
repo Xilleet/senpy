@@ -170,6 +170,12 @@ TSUNDERE_FLAVORS = {
     "RPY707": "(︶︿︶) «Этот аудиоканал зарегистрирован, но нигде не играет! Зачем ты его создал?»"
     if IS_RU
     else "(︶︿︶) «This audio channel is registered but never plays! Why did you create it, baka?»",
+    "RPY801": "(︶︿︶) «Этот перевод дублируется! Второй перекрывает первый — зря старались, бака!»"
+    if IS_RU
+    else "(︶︿︶) «This translation is duplicated! The second one overrides the first — wasted effort, baka!»",
+    "RPY802": "(︶︿︶) «Один и тот же текст переведён по-разному в разных файлах! Выбери один вариант и будь последовательным!»"
+    if IS_RU
+    else "(︶︿︶) «Same text translated differently in different files! Pick one and be consistent, baka!»",
     "RPY100": "(╯°□°)╯︵ ┻━┻ «Этот файл вообще не в UTF-8! Он молча выпал из проверки — ищи кракозябры в игре, бака!»"
     if IS_RU
     else "(╯°□°)╯︵ ┻━┻ «This file isn't even UTF-8! It silently dropped out of the check — enjoy the mojibake in-game, baka!»",

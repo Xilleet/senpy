@@ -408,6 +408,22 @@ RULES_DATABASE = {
         "bad": 'init python:\n    renpy.music.register_channel("ambient", mixer="sfx", loop=True)\nlabel start:\n    "No audio played on ambient channel."\n    return',
         "good": 'init python:\n    renpy.music.register_channel("ambient", mixer="sfx", loop=True)\nlabel start:\n    play ambient "rain.ogg"\n    return',
     },
+    "RPY801": {
+        "title": "Duplicate translation string",
+        "severity": "WARNING",
+        "tags": ["translations", "dead-code"],
+        "why": "If the same `old` source string appears more than once in a translation file, the second translation silently overrides the first. The first translation is dead code — translators wasted effort, and the override may be unintentional. Common copy-paste error when duplicating translation blocks.",
+        "bad": 'translate russian chapter1_a1b2:\n    old "Hello"\n    new "Privet"\n\ntranslate russian chapter1_c3d4:\n    old "Hello"\n    new "Zdravstvuy"  # overrides "Privet" silently',
+        "good": 'translate russian chapter1_a1b2:\n    old "Hello"\n    new "Privet"\n\ntranslate russian chapter1_c3d4:\n    old "Goodbye"\n    new "Poka"  # different source, no conflict',
+    },
+    "RPY802": {
+        "title": "Inconsistent translation across files in same language",
+        "severity": "WARNING",
+        "tags": ["translations", "io"],
+        "why": "The same source string is translated to DIFFERENT new strings in different files within the SAME language directory. This confuses players (same line shows different text in different scenes) and breaks translation memory tools. Pick one translation and use it consistently.",
+        "bad": 'game/tl/russian/common.rpy:\n    old "Hello"\n    new "Privet"\n\ngame/tl/russian/dialogue.rpy:\n    old "Hello"\n    new "Zdravstvuy"  # inconsistent!',
+        "good": 'game/tl/russian/common.rpy:\n    old "Hello"\n    new "Privet"\n\ngame/tl/russian/dialogue.rpy:\n    old "Hello"\n    new "Privet"  # consistent across files',
+    },
 }
 
 

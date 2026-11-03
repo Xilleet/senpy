@@ -515,7 +515,10 @@ class SenpyAnalyzer:
         current_global_hash: str,
     ) -> None:
         """Run post-analysis checks, TL validation, severity overrides, and save cache."""
-        from senpy.rules.checkers.translation import analyze_tl_file
+        from senpy.rules.checkers.translation import (
+            analyze_tl_file,
+            check_cross_language_consistency,
+        )
         from senpy.rules.dead_code import check_unused_declarations
 
         self._check_unreachable_labels()
@@ -524,6 +527,12 @@ class SenpyAnalyzer:
 
         for tl_file in tl_rpy:
             analyze_tl_file(self, tl_file)
+
+        # RPY802: cross-language consistency — check if the same source
+        # string is translated inconsistently across different files within
+        # the SAME language directory. Catches copy-paste translation errors
+        # where the same source gets two different translations in one lang.
+        check_cross_language_consistency(self, tl_rpy)
 
         if self.severity_overrides:
             for d in self.diagnostics:

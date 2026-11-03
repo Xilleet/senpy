@@ -117,4 +117,7 @@ RULE_SEVERITY: dict[str, str] = {
     "RPY705": "HINT",  # Unused screen parameter (dead code)
     "RPY706": "HINT",  # Unused transform parameter (dead code)
     "RPY707": "HINT",  # Unused audio channel registration (dead code)
+    # 8xx: Translation quality (cross-file / cross-language)
+    "RPY801": "WARNING",  # Duplicate translation string in same file
+    "RPY802": "WARNING",  # Inconsistent translation across files in same language
 }

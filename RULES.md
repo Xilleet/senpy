@@ -12,6 +12,7 @@ Comprehensive guide to all semantic and static rules implemented in the **Senpy*
 - **Branching & Conditions (RPY4xx)**: [RPY401](#rpy401) | [RPY402](#rpy402) | [RPY403](#rpy403) | [RPY404](#rpy404)
 - **Assets & Media (RPY5xx)**: [RPY501](#rpy501) | [RPY502](#rpy502) | [RPY503](#rpy503) | [RPY504](#rpy504) | [RPY505](#rpy505)
 - **Translations & Localization (RPY6xx)**: [RPY601](#rpy601) | [RPY602](#rpy602) | [RPY603](#rpy603)
+- **Translation Quality (RPY8xx)**: [RPY801](#rpy801) | [RPY802](#rpy802)
 - **Dead Code*: (RPY7xx): [RPY701](#rpy701) | [RPY702](#rpy702) | [RPY703](#rpy703) | [RPY704](#rpy704) | [RPY705](#rpy705) | [RPY706](#rpy706) | [RPY707](#rpy707)
 
 ---
@@ -800,6 +801,64 @@ new ""  # Player sees an empty dialogue box!
 # Good
 old "Do you want to exit?"
 new "Вы хотите выйти?"
+```
+
+---
+
+## Translation Quality (RPY8xx)
+
+<a id="rpy801"></a>
+### RPY801: Duplicate translation string
+- **Severity**: WARNING
+- **Why**: If the same `old` source string appears more than once in a translation file, the second translation silently overrides the first. The first translation is dead code — translators wasted effort, and the override may be unintentional. Common copy-paste error when duplicating translation blocks.
+
+```renpy
+# Bad
+translate russian chapter1_a1b2:
+    old "Hello"
+    new "Privet"
+
+translate russian chapter1_c3d4:
+    old "Hello"
+    new "Zdravstvuy"  # overrides "Privet" silently!
+
+# Good
+translate russian chapter1_a1b2:
+    old "Hello"
+    new "Privet"
+
+translate russian chapter1_c3d4:
+    old "Goodbye"
+    new "Poka"  # different source, no conflict
+```
+
+---
+
+<a id="rpy802"></a>
+### RPY802: Inconsistent translation across files in same language
+- **Severity**: WARNING
+- **Why**: The same source string is translated to DIFFERENT new strings in different files within the SAME language directory. This confuses players (same line shows different text in different scenes) and breaks translation memory tools. Pick one translation and use it consistently.
+
+```renpy
+# Bad — game/tl/russian/common.rpy
+translate russian chapter1_a1b2:
+    old "Hello"
+    new "Privet"
+
+# Bad — game/tl/russian/dialogue.rpy (same language, different translation)
+translate russian chapter1_c3d4:
+    old "Hello"
+    new "Zdravstvuy"  # inconsistent!
+
+# Good — game/tl/russian/common.rpy
+translate russian chapter1_a1b2:
+    old "Hello"
+    new "Privet"
+
+# Good — game/tl/russian/dialogue.rpy (consistent)
+translate russian chapter1_c3d4:
+    old "Hello"
+    new "Privet"  # consistent across files
 ```
 
 ---

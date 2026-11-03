@@ -194,6 +194,11 @@ def test_mega_broken_script_catches_all_rules(tmp_path: Path):
         "RPY601",
         "RPY602",
         "RPY603",
+        # RPY801-802 — нужны переводческие файлы в game/tl/ с duplicate/
+        # inconsistent translations. MEGA_TEST_SCRIPT их не создаёт.
+        # Покрываются отдельными fixture-тестами.
+        "RPY801",
+        "RPY802",
         # RPY701-702 — нужны unused define/transform, но MEGA_TEST_SCRIPT
         # использует все свои define/transform. RPY703 ловится (unused screen).
         # Покрываются отдельными тестами в test_rules_rpy7xx.py.
