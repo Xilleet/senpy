@@ -274,9 +274,15 @@ jobs:
   # endpoint?url=... — бейдж всегда показывает актуальное число
   # тестов без ручной правки README.
   #
+  # Запускается ВСЕГДА при push в main — даже если matrix-тесты упали.
+  # Это правильно: если тесты упали, badge должен показать red, а не
+  # оставаться stale-green от прошлого коммита. Используем `always()`
+  # чтобы обойти дефолтный GitHub behavior (не запускать downstream
+  # jobs если upstream failed).
+  #
   # Запускается ТОЛЬКО:
   #   - на push в main (не на PR, не на feature-ветках)
-  #   - после успешного test job (needs: [test])
+  #   - после test job (needs: [test, build-check] — ждёт завершения, но не его успеха)
   #   - не запускается на badge-коммите [skip ci] — иначе цикл
   #
   # Permissions: contents: write на уровне job (глобальный permission
@@ -285,7 +291,7 @@ jobs:
     name: Update dynamic badges
     runs-on: ubuntu-latest
     needs: [test, build-check]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: write
 
