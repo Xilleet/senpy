@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import os
 import threading
+import time
 from urllib.parse import unquote, urlparse
 
 from lsprotocol import types as lsp
@@ -127,6 +128,16 @@ class _RWLock:
     (which is typical for LSP — the client sends hover/completions continuously).
 
     Implemented with a Condition + 2 counters. No external dependencies.
+
+    Note (0.7.5): we considered replacing this with the `readerwriterlock`
+    package, but its API (gen_rlock/gen_wlock context managers) is
+    thread-local — the thread that acquires must be the one that releases.
+    Our call sites use acquire/release in the same thread (LSP handlers),
+    but the unit tests in test_lsp_rwlock.py exercise cross-thread
+    acquire/release to verify writer preference. A full migration would
+    require rewriting both call sites and tests to use context managers
+    everywhere. Deferred to post-1.0 (see worklog for the readerwriterlock
+    migration follow-up).
     """
 
     def __init__(self):
@@ -135,12 +146,21 @@ class _RWLock:
         self._writers_waiting = 0
         self._writer_active = False
 
-    def acquire_read(self) -> None:
+    def acquire_read(self, timeout: float | None = None) -> bool:
+        """Acquire the read lock. Returns True if acquired, False on timeout."""
         with self._cond:
             # Wait while a writer is active OR there is a waiting writer (preference)
+            deadline = None if timeout is None else time.monotonic() + timeout
             while self._writer_active or self._writers_waiting > 0:
-                self._cond.wait()
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return False
+                    self._cond.wait(timeout=remaining)
+                else:
+                    self._cond.wait()
             self._readers += 1
+            return True
 
     def release_read(self) -> None:
         with self._cond:
@@ -148,13 +168,22 @@ class _RWLock:
             if self._readers == 0:
                 self._cond.notify_all()
 
-    def acquire_write(self) -> None:
+    def acquire_write(self, timeout: float | None = None) -> bool:
+        """Acquire the write lock. Returns True if acquired, False on timeout."""
         with self._cond:
             self._writers_waiting += 1
             try:
+                deadline = None if timeout is None else time.monotonic() + timeout
                 while self._writer_active or self._readers > 0:
-                    self._cond.wait()
+                    if deadline is not None:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            return False
+                        self._cond.wait(timeout=remaining)
+                    else:
+                        self._cond.wait()
                 self._writer_active = True
+                return True
             finally:
                 self._writers_waiting -= 1
 
