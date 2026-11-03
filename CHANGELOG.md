@@ -293,17 +293,6 @@ colon-spacing → **string-consistency** → eof-newline (last).
   covers the whole 0.7.4 release).
 * Coverage stable.
 
-### Internal — `WL-` ID family added to CLEAN-1 scrub
-
-The worklog v3 introduced a new `WL-NNN` ID family (replacing the old
-`DOC-1`/`CLI-17`/`ARCH-3`/etc. prefixes). The CLEAN-1 internal-ID
-scrub regex in `scripts/clean_internal_ids.py` and the mirror in
-`tests/test_clean_internal_ids.py` were updated to cover the `WL`
-prefix, plus a new regression test
-(`test_scrub_line_strips_wl_prefix_id`) covers both docstring-prefix
-and inline-mention forms. Four user-facing files that had leaked
-`WL-506` references during the earlier 0.7.4 sprint were cleaned up.
-
 <a id="073"></a>
 [up](#up)
 

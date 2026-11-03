@@ -19,6 +19,25 @@ from senpy.domain.rpa import safe_load_rpa_index
 
 _logger = get_logger("domain.assets")
 
+# Senpy's own configuration / output artifacts. These files are
+# NOT game assets and must not be classified as `unused_assets` (would
+# produce confusing false positives like "senpy.toml is an unused asset"
+# on every project).
+#
+# Lowercased basenames — matched case-insensitively against the file
+# basename in AssetManager.index().
+SENPY_OWN_FILES: frozenset[str] = frozenset(
+    {
+        "senpy.toml",  # Senpy project config
+        ".senpyignore",  # Senpy ignore-list (gitignore-style)
+        ".senpy-cache",  # Legacy name (rare)
+        "report.json",  # senpy inspect / lint output
+        "report.txt",  # senpy inspect / lint output (text)
+        "test_report.json",  # pytest artifact (conftest.py)
+        "test_report.txt",  # pytest artifact (conftest.py)
+    }
+)
+
 
 def find_orphaned_rpyc(project_path: str) -> list[str]:
     """Finds compiled .rpyc files that have no corresponding .rpy source."""
@@ -74,6 +93,13 @@ class AssetManager:
         for root, dirs, filenames in os.walk(self.project_path, followlinks=False):
             dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
             for f in filenames:
+                # Skip Senpy's own configuration / output artifacts.
+                # These are NOT game assets — they are Senpy's own files
+                # (config, ignore-list, test/inspection reports). Including
+                # them in `unused_assets` produces confusing false positives
+                # (e.g. "senpy.toml is an unused asset" on every project).
+                if f.lower() in SENPY_OWN_FILES:
+                    continue
                 full_path = os.path.join(root, f)
                 rel_path = os.path.relpath(full_path, self.project_path).replace("\\", "/").lower()
                 self.known_assets.add(rel_path)
