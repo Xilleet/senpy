@@ -41,6 +41,12 @@ class CachedFileEntry:
     used_assets: set[str] = field(default_factory=set)
     content_hash: str = ""
     collect_diagnostics: list[Diagnostic] = field(default_factory=list)
+    # Per-file fixable/fixed counters. Stored on cache miss (the delta added
+    # by analyzing this file) and restored on Tier 2 cache hit. Without these,
+    # warm runs underreport fixable diagnostics and the CLI drops the
+    # "[*] N fixable with the --fix option" footer.
+    fixable_count: int = 0
+    fixed_count: int = 0
 
 
 @dataclass(slots=True)

@@ -147,6 +147,12 @@ class AnalysisPipeline:
                     a.diagnostics.extend(entry.diagnostics)
                     a.assets.used_asset_keys.update(entry.used_assets)
                     a.total_lines += entry.lines_count
+                    # Restore per-file fixable/fixed counters so warm runs
+                    # report the same totals as cold. Without this the CLI
+                    # silently drops the "[*] N fixable with the --fix option"
+                    # footer on cached runs.
+                    a.fixable_count += getattr(entry, "fixable_count", 0)
+                    a.fixed_count += getattr(entry, "fixed_count", 0)
                     new_cached_entries[norm_path] = entry
                     is_tier2_hit = True
 
@@ -154,12 +160,16 @@ class AnalysisPipeline:
                 diag_start = len(a.diagnostics)
                 lines_start = a.total_lines
                 used_start = set(a.assets.used_asset_keys)
+                fixable_start = a.fixable_count
+                fixed_start = a.fixed_count
 
                 self._analyze_file(file_path)
 
                 new_diags = a.diagnostics[diag_start:]
                 lines_added = a.total_lines - lines_start
                 new_used = a.assets.used_asset_keys - used_start
+                fixable_added = a.fixable_count - fixable_start
+                fixed_added = a.fixed_count - fixed_start
 
                 if norm_path in a.file_scopes and not a.fix:
                     f_hash = file_hashes.get(norm_path) or compute_file_hash(file_path)
@@ -172,6 +182,8 @@ class AnalysisPipeline:
                         used_assets=new_used,
                         content_hash=f_hash,
                         collect_diagnostics=stage1_diags_map.get(norm_path, []),
+                        fixable_count=fixable_added,
+                        fixed_count=fixed_added,
                     )
 
         if not quiet:

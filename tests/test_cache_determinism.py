@@ -57,3 +57,48 @@ image bg town = "images/bg_town.png"
         f"cold-only: {sorted(set(cold_snap) - set(warm_snap))}\n"
         f"warm-only: {sorted(set(warm_snap) - set(cold_snap))}"
     )
+
+
+def test_warm_run_preserves_fixable_count(tmp_path: Path):
+    """Tier 2 cache hit обязан восстанавливать fixable_count и fixed_count.
+
+    Регрессия: при cache hit восстанавливались entry.diagnostics и
+    entry.used_assets, но НЕ счётчики fixable_count / fixed_count.
+    На warm-прогоне число fixable ошибок обнулялось, и CLI не показывал
+    строку "[*] N fixable with the --fix option".
+
+    Воспроизводство: проект с RPY001 (tab в indentation — fixable).
+    Cold должен показать fixable_count > 0; warm должен показать то же число.
+    """
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True)
+
+    # Табы в indentation — это RPY001, fixable правило.
+    (game_dir / "script.rpy").write_text(
+        "label start:\n" '\t"Tab-indented dialogue."\n' "\t$ x = 1\n" "    return\n",
+        encoding="utf-8",
+    )
+
+    cold = SenpyAnalyzer(str(tmp_path)).run(quiet=True)
+    warm = SenpyAnalyzer(str(tmp_path)).run(quiet=True)
+
+    # Sanity: cold действительно нашёл fixable диагностики
+    assert cold.fixable_count > 0, (
+        f"Cold run should detect RPY001 (tab indentation) as fixable, "
+        f"got fixable_count={cold.fixable_count}. Diagnostics: "
+        f"{[(d.code, d.line_number) for d in cold.diagnostics]}"
+    )
+
+    # Регрессия: warm должен показывать то же число fixable, что и cold
+    assert warm.fixable_count == cold.fixable_count, (
+        f"Tier 2 cache hit lost fixable_count: cold={cold.fixable_count}, "
+        f"warm={warm.fixable_count}. The cache entry stores diagnostics but "
+        f"not the fixable counter."
+    )
+    assert warm.fixed_count == cold.fixed_count, (
+        f"Tier 2 cache hit lost fixed_count: cold={cold.fixed_count}, " f"warm={warm.fixed_count}."
+    )
+
+    # Дополнительно: diagnostics тоже должны совпадать (та же регрессия N2,
+    # но проверяем здесь тоже, чтобы тест был самодостаточным)
+    assert _snapshot(cold) == _snapshot(warm), "Diagnostics diverged between cold and warm"
