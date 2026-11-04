@@ -524,82 +524,112 @@ class PythonAstChecker:
         lines: list[str] | None = None,
     ) -> None:
         """RPY109: Checks function calls in init python for alphabetical file order."""
-        import os
-
         try:
             tree = ast.parse(py_code)
-
-            def walk_and_check(root_node: ast.AST):
-                for child in ast.walk(root_node):
-                    # Ignore bodies of functions and classes (they execute lazily)
-                    if (
-                        isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-                        and child is not root_node
-                    ):
-                        continue
-
-                    if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
-                        name = child.id
-                        if name in BUILTIN_SYMBOLS:
-                            continue
-                        if name in self.analyzer.variables:
-                            def_file = self.analyzer.variables[name].file_path
-                            if def_file != file_path:
-                                curr_rel = (
-                                    os.path.relpath(file_path, self.analyzer.project_path)
-                                    .replace("\\", "/")
-                                    .lower()
-                                )
-                                def_rel = (
-                                    os.path.relpath(def_file, self.analyzer.project_path)
-                                    .replace("\\", "/")
-                                    .lower()
-                                )
-
-                                # If the current file loads earlier than the file with the definition
-                                if curr_rel < def_rel:
-                                    real_line = start_line + getattr(child, "lineno", 1) - 1
-                                    raw_l = (
-                                        lines[real_line - 1]
-                                        if lines and 0 <= real_line - 1 < len(lines)
-                                        else ""
-                                    )
-                                    start_c, end_c = get_utf16_range(raw_l, name)
-                                    self.analyzer._add_diagnostic(
-                                        Diagnostic(
-                                            file_path=file_path,
-                                            line_number=real_line,
-                                            line_content=raw_l.strip(),
-                                            code="RPY109",
-                                            message=(
-                                                f"Init phase dependency violation: '{name}' is evaluated here, "
-                                                f"but defined later in '{os.path.basename(def_file)}'. "
-                                                "Due to alphabetical load order, it will crash with NameError."
-                                            ),
-                                            severity="ERROR",
-                                            col=start_c,
-                                            end_col=end_c,
-                                        ),
-                                        noqa_map,
-                                    )
-
-            for stmt in tree.body:
-                if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    # For functions only decorators are evaluated immediately at startup
-                    for dec in stmt.decorator_list:
-                        walk_and_check(dec)
-                elif isinstance(stmt, ast.ClassDef):
-                    # For classes, decorators and base classes are evaluated
-                    for dec in stmt.decorator_list:
-                        walk_and_check(dec)
-                    for base in stmt.bases:
-                        walk_and_check(base)
-                else:
-                    # Other statements (calls, assignments) execute immediately
-                    walk_and_check(stmt)
         except SyntaxError as e:
-            # log debug instead of silent suppress.
             _logger.debug("check_init_dependency: ast.parse failed: %s", e)
+            return
+
+        for stmt in tree.body:
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                # For functions only decorators are evaluated immediately at startup
+                for dec in stmt.decorator_list:
+                    self._check_init_node_order(dec, file_path, start_line, lines, noqa_map)
+            elif isinstance(stmt, ast.ClassDef):
+                # For classes, decorators and base classes are evaluated
+                for dec in stmt.decorator_list:
+                    self._check_init_node_order(dec, file_path, start_line, lines, noqa_map)
+                for base in stmt.bases:
+                    self._check_init_node_order(base, file_path, start_line, lines, noqa_map)
+            else:
+                # Other statements (calls, assignments) execute immediately
+                self._check_init_node_order(stmt, file_path, start_line, lines, noqa_map)
+
+    def _check_init_node_order(
+        self,
+        root_node: ast.AST,
+        file_path: str,
+        start_line: int,
+        lines: list[str] | None,
+        noqa_map: dict,
+    ) -> None:
+        """Walk one init-phase node and emit RPY109 for any name loaded before its file's turn in alphabetical order."""
+        import os
+
+        for child in ast.walk(root_node):
+            # Ignore bodies of functions and classes (they execute lazily)
+            if (
+                isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                and child is not root_node
+            ):
+                continue
+
+            if not (isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load)):
+                continue
+
+            name = child.id
+            if name in BUILTIN_SYMBOLS:
+                continue
+            if name not in self.analyzer.variables:
+                continue
+
+            def_file = self.analyzer.variables[name].file_path
+            if def_file == file_path:
+                continue
+
+            curr_rel = (
+                os.path.relpath(file_path, self.analyzer.project_path).replace("\\", "/").lower()
+            )
+            def_rel = (
+                os.path.relpath(def_file, self.analyzer.project_path).replace("\\", "/").lower()
+            )
+
+            # If the current file loads earlier than the file with the definition
+            if curr_rel < def_rel:
+                self._emit_rpy109(
+                    name=name,
+                    child=child,
+                    file_path=file_path,
+                    def_file=def_file,
+                    start_line=start_line,
+                    lines=lines,
+                    noqa_map=noqa_map,
+                )
+
+    def _emit_rpy109(
+        self,
+        *,
+        name: str,
+        child: ast.AST,
+        file_path: str,
+        def_file: str,
+        start_line: int,
+        lines: list[str] | None,
+        noqa_map: dict,
+    ) -> None:
+        """Build and submit the RPY109 diagnostic for an init-order violation."""
+        import os
+
+        real_line = start_line + getattr(child, "lineno", 1) - 1
+        raw_l = lines[real_line - 1] if lines and 0 <= real_line - 1 < len(lines) else ""
+        start_c, end_c = get_utf16_range(raw_l, name)
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=real_line,
+                line_content=raw_l.strip(),
+                code="RPY109",
+                message=(
+                    f"Init phase dependency violation: '{name}' is evaluated here, "
+                    f"but defined later in '{os.path.basename(def_file)}'. "
+                    "Due to alphabetical load order, it will crash with NameError."
+                ),
+                severity="ERROR",
+                col=start_c,
+                end_col=end_c,
+            ),
+            noqa_map,
+        )
 
     def check_screen_mutation(
         self,
