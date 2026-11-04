@@ -156,56 +156,53 @@ def _check_binop_incompatible(
 
     Returns (left_type, right_type, op_name) if incompatible, None if OK or unknown.
 
-    Improvement (0.7.6): catches runtime TypeError before it happens.
-    Examples:
-      "text" + 5   → ("str", "int", "+")  — TypeError: can only concatenate str to str
-      [1,2] - 3     → ("list", "int", "-") — TypeError: unsupported operand type(s) for -: 'list' and 'int'
-      "text" * "x" → ("str", "str", "*")  — TypeError: can't multiply sequence by non-int
+    Thin dispatcher: delegates to per-op helpers.
     """
     lt = infer_ast_type(node.left, known_vars)
     rt = infer_ast_type(node.right, known_vars)
     if not lt or not rt:
-        return None  # unknown types — can't determine
+        return None
 
-    # int and float are compatible with each other in all arithmetic
     if {lt, rt} <= {"int", "float"}:
         return None
 
     op = node.op
-
-    # Add (+): str+str OK, list+list OK, int+float OK (already handled above)
     if isinstance(op, ast.Add):
-        compatible = (lt == "str" and rt == "str") or (lt == "list" and rt == "list")
-        if not compatible:
-            return (lt, rt, "+")
-
-    # Sub (-): only numeric types (int/float already handled above)
+        return _check_add_compat(lt, rt)
     if isinstance(op, ast.Sub):
-        return (lt, rt, "-")
-
-    # Mult (*): str*int OK, int*str OK, list*int OK, int*list OK
+        return _check_sub_compat(lt, rt)
     if isinstance(op, ast.Mult):
-        compatible = (
-            (lt == "str" and rt == "int")
-            or (lt == "int" and rt == "str")
-            or (lt == "list" and rt == "int")
-            or (lt == "int" and rt == "list")
-        )
-        if not compatible:
-            return (lt, rt, "*")
-
-    # Mod (%): str % any OK (string formatting), numeric % numeric OK
+        return _check_mult_compat(lt, rt)
     if isinstance(op, ast.Mod):
-        if lt == "str":
-            return None  # string formatting, OK
-        # numeric mod — already handled by int/float check above
-        return None
-
-    # Floor div (//), Pow (**): numeric only
+        return None  # str % any OK (formatting), numeric handled above
     if isinstance(op, (ast.FloorDiv, ast.Pow)):
         return (lt, rt, "//" if isinstance(op, ast.FloorDiv) else "**")
-
     return None
+
+
+def _check_add_compat(lt: str, rt: str) -> tuple[str, str, str] | None:
+    """Add (+): str+str OK, list+list OK. All else incompatible."""
+    if (lt == "str" and rt == "str") or (lt == "list" and rt == "list"):
+        return None
+    return (lt, rt, "+")
+
+
+def _check_sub_compat(lt: str, rt: str) -> tuple[str, str, str] | None:
+    """Sub (-): only numeric types (int/float already handled by caller)."""
+    return (lt, rt, "-")
+
+
+def _check_mult_compat(lt: str, rt: str) -> tuple[str, str, str] | None:
+    """Mult (*): str*int OK, int*str OK, list*int OK, int*list OK. All else incompatible."""
+    compatible = (
+        (lt == "str" and rt == "int")
+        or (lt == "int" and rt == "str")
+        or (lt == "list" and rt == "int")
+        or (lt == "int" and rt == "list")
+    )
+    if compatible:
+        return None
+    return (lt, rt, "*")
 
 
 def _infer_ifexp(node: ast.IfExp, known_vars: dict | None, depth: int) -> str | None:
