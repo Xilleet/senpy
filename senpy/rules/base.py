@@ -1,14 +1,20 @@
-"""base — extracted from checkers.py (Phase 2, 0.5.4)."""
+"""base — extracted from checkers.py (Phase 2, 0.5.4).
+
+ISP Protocol split: BaseChecker type-hints analyzer via TYPE_CHECKING
+Protocols. At runtime, SenpyAnalyzer is passed directly — it implements
+all Protocols. The type hints document which Protocols each checker
+actually needs, enabling future mock testing.
+"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from senpy.core.scope import ScopeStack
 from senpy.rules.flow import FlowBranch
 
 if TYPE_CHECKING:
-    from senpy.core.analyzer import SenpyAnalyzer
+    pass
 
 
 class IfBlockContext:
@@ -22,7 +28,15 @@ class IfBlockContext:
 
 
 class BaseChecker:
-    def __init__(self, analyzer: SenpyAnalyzer):
+    """Base class for line-by-line checkers.
+
+    The analyzer parameter is typed as DiagnosticSink & SymbolProvider
+    (intersection) under TYPE_CHECKING. At runtime, SenpyAnalyzer is
+    passed — it implements both Protocols. Subclasses that need
+    AssetProvider or FlowProvider declare that in their own type hints.
+    """
+
+    def __init__(self, analyzer: Any):
         self.analyzer = analyzer
 
     def check_line(
