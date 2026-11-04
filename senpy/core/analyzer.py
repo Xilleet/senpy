@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from senpy.core.cache import CachedFileEntry, CacheManager, CacheManifest, compute_file_hash
 from senpy.core.config import load_config
 from senpy.core.constants import (
-    BUILTIN_AUDIO_CHANNELS,
-    BUILTIN_SYMBOLS,
     IGNORED_DIRS,
     MEDIA_EXTENSIONS,
     RE_DEFAULT,
@@ -36,6 +34,7 @@ from senpy.core.paths import normalize_path
 from senpy.core.progress import progress_print
 from senpy.core.scope import ScopeStack, ScopeType
 from senpy.core.signature import parse_signature
+from senpy.core.symbol_table import SymbolTable
 from senpy.core.symbols import (
     ImageSymbol,
     LabelSymbol,
@@ -264,33 +263,97 @@ class SenpyAnalyzer:
             # still win — see _apply_severity).
             self.strict = bool(cfg.get("strict", False))
 
-        # Base sets
-        self.user_symbols: set[str] = set()
-        self.declared_symbols: set[str] = set(BUILTIN_SYMBOLS)
-        self.referenced_labels: set[str] = set()
-        self.defined_audio_map: dict[str, str] = {}
-        self.registered_audio_channels: set[str] = set(BUILTIN_AUDIO_CHANNELS)
-
-        # --- New object registries (replace 13 old dicts) ---
-        self.variables: dict[str, VariableSymbol] = {}
-        self.labels: dict[str, LabelSymbol] = {}
-        self.screens: dict[str, ScreenSymbol] = {}
-        self.images: dict[str, ImageSymbol] = {}
-        self.transforms: dict[str, TransformSymbol] = {}
+        # Base sets — now managed by SymbolTable
+        self._symbols = SymbolTable()
 
         # Other structures and scan metadata
-        self.jump_sources: dict[str, list[tuple[str, int]]] = {}
-        self.screen_action_jumps: dict[str, set[str]] = {}
-        self.used_screens: set[str] = set()
-        self.screen_uses: dict[str, set[str]] = {}
-        self.has_dynamic_jumps: bool = False
         self.diagnostics: list[Diagnostic] = []
-        self.missing_defaults: dict[str, str] = {}
         self.total_lines: int = 0
         self.fixed_count: int = 0
         self.fixable_count: int = 0
         self.file_scopes: dict[str, FileScope] = {}
         self._stage1_lines: dict[str, list[str]] = {}
+
+    # --- SymbolTable delegation (properties) ---
+    # All symbol attributes are now backed by SymbolTable.
+    # This is transparent to all 17 consumer files — they still access
+    # analyzer.variables, analyzer.labels, etc. as before.
+
+    @property
+    def variables(self) -> dict[str, VariableSymbol]:
+        return self._symbols.variables
+
+    @property
+    def labels(self) -> dict[str, LabelSymbol]:
+        return self._symbols.labels
+
+    @property
+    def screens(self) -> dict[str, ScreenSymbol]:
+        return self._symbols.screens
+
+    @property
+    def images(self) -> dict[str, ImageSymbol]:
+        return self._symbols.images
+
+    @property
+    def transforms(self) -> dict[str, TransformSymbol]:
+        return self._symbols.transforms
+
+    @property
+    def user_symbols(self) -> set[str]:
+        return self._symbols.user_symbols
+
+    @property
+    def declared_symbols(self) -> set[str]:
+        return self._symbols.declared_symbols
+
+    @declared_symbols.setter
+    def declared_symbols(self, value: set[str]) -> None:
+        self._symbols.declared_symbols = value
+
+    @property
+    def referenced_labels(self) -> set[str]:
+        return self._symbols.referenced_labels
+
+    @property
+    def defined_audio_map(self) -> dict[str, str]:
+        return self._symbols.defined_audio_map
+
+    @property
+    def registered_audio_channels(self) -> set[str]:
+        return self._symbols.registered_audio_channels
+
+    @registered_audio_channels.setter
+    def registered_audio_channels(self, value: set[str]) -> None:
+        self._symbols.registered_audio_channels = value
+
+    @property
+    def jump_sources(self) -> dict[str, list[tuple[str, int]]]:
+        return self._symbols.jump_sources
+
+    @property
+    def screen_action_jumps(self) -> dict[str, set[str]]:
+        return self._symbols.screen_action_jumps
+
+    @property
+    def used_screens(self) -> set[str]:
+        return self._symbols.used_screens
+
+    @property
+    def screen_uses(self) -> dict[str, set[str]]:
+        return self._symbols.screen_uses
+
+    @property
+    def has_dynamic_jumps(self) -> bool:
+        return self._symbols.has_dynamic_jumps
+
+    @has_dynamic_jumps.setter
+    def has_dynamic_jumps(self, value: bool) -> None:
+        self._symbols.has_dynamic_jumps = value
+
+    @property
+    def missing_defaults(self) -> dict[str, str]:
+        return self._symbols.missing_defaults
 
     @staticmethod
     def _get_utf16_range(line: str, sub: str | None = None) -> tuple[int, int]:
@@ -364,24 +427,9 @@ class SenpyAnalyzer:
 
     def _run_reset(self) -> None:
         """Reset all analyzer state for a fresh run."""
+        self._symbols.reset()
         self.file_scopes.clear()
-        self.missing_defaults.clear()
         self.diagnostics.clear()
-        self.user_symbols.clear()
-        self.declared_symbols = set(BUILTIN_SYMBOLS)
-        self.defined_audio_map.clear()
-        self.referenced_labels.clear()
-        self.screen_action_jumps.clear()
-        self.used_screens.clear()
-        self.screen_uses.clear()
-        self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
-        self.variables.clear()
-        self.labels.clear()
-        self.screens.clear()
-        self.images.clear()
-        self.transforms.clear()
-        self.jump_sources.clear()
-        self.has_dynamic_jumps = False
         self.total_lines = 0
         self.fixed_count = 0
         self.fixable_count = 0
@@ -557,83 +605,14 @@ class SenpyAnalyzer:
             self.cache_manager.save_manifest(new_manifest)
 
     def _differential_purge_file(self, norm_path: str, file_path: str) -> None:
-        """Differentially removes symbols of only one file from the global structures,
-        without invoking an expensive full rebuild of all project files (_rebuild_aggregates).
-
-        Delegates to 3 helper methods (split in REF-002, was CC=27 → ~3 each):
-          1. _purge_object_registries — fast O(1) pop from dict registries
-          2. _purge_jump_sources — filter jump_sources for this file
-          3. _purge_shared_sets — differential set cleanup (check other scopes)
-        """
+        """Differentially removes symbols of only one file — delegates to SymbolTable."""
         old_scope = self.file_scopes.pop(norm_path, None)
         if not old_scope:
             return
 
-        self._purge_object_registries(old_scope)
-        self._purge_jump_sources(old_scope, file_path)
-        self._purge_shared_sets(old_scope)
-
-    def _purge_object_registries(self, old_scope: FileScope) -> None:
-        """Fast O(1) removal of file's symbols from global dict registries."""
-        for k in old_scope.variables:
-            self.variables.pop(k, None)
-        for k in old_scope.labels:
-            self.labels.pop(k, None)
-        for k in old_scope.screens:
-            self.screens.pop(k, None)
-        for k in old_scope.images:
-            self.images.pop(k, None)
-        for k in old_scope.transforms:
-            self.transforms.pop(k, None)
-        for k in old_scope.defined_audio_map:
-            self.defined_audio_map.pop(k, None)
-
-    def _purge_jump_sources(self, old_scope: FileScope, file_path: str) -> None:
-        """Clear jump_sources entries that originated from the purged file."""
-        for tgt in old_scope.jump_sources:
-            if tgt in self.jump_sources:
-                self.jump_sources[tgt] = [
-                    loc for loc in self.jump_sources[tgt] if loc[0] != file_path
-                ]
-                if not self.jump_sources[tgt]:
-                    self.jump_sources.pop(tgt, None)
-
-    def _purge_shared_sets(self, old_scope: FileScope) -> None:
-        """Differential set cleanup: remove a symbol from the global set only
-        if it is NOT present in any other file scope."""
-        other_scopes = list(self.file_scopes.values())
-
-        for sym in old_scope.user_symbols:
-            if not any(sym in s.user_symbols for s in other_scopes):
-                self.user_symbols.discard(sym)
-
-        for sym in old_scope.declared_symbols:
-            if sym not in BUILTIN_SYMBOLS and not any(
-                sym in s.declared_symbols for s in other_scopes
-            ):
-                self.declared_symbols.discard(sym)
-
-        for sym in old_scope.referenced_labels:
-            if not any(sym in s.referenced_labels for s in other_scopes):
-                self.referenced_labels.discard(sym)
-
-        for scr_name in getattr(old_scope, "used_screens", ()):
-            if not any(scr_name in getattr(s, "used_screens", ()) for s in other_scopes):
-                self.used_screens.discard(scr_name)
-
-        for scr_name in getattr(old_scope, "screen_action_jumps", {}):
-            if not any(scr_name in getattr(s, "screen_action_jumps", {}) for s in other_scopes):
-                self.screen_action_jumps.pop(scr_name, None)
-
-        for src_name in getattr(old_scope, "screen_uses", {}):
-            if not any(src_name in getattr(s, "screen_uses", {}) for s in other_scopes):
-                self.screen_uses.pop(src_name, None)
-
-        for chan in old_scope.registered_audio_channels:
-            if chan not in BUILTIN_AUDIO_CHANNELS and not any(
-                chan in s.registered_audio_channels for s in other_scopes
-            ):
-                self.registered_audio_channels.discard(chan)
+        self._symbols.purge_object_registries(old_scope)
+        self._symbols.purge_jump_sources(old_scope, file_path)
+        self._symbols.purge_shared_sets(old_scope, self.file_scopes)
 
     def _purge_file_symbols(self, norm_path: str) -> None:
         """Full removal of a file's symbols followed by a global rebuild."""
@@ -642,44 +621,8 @@ class SenpyAnalyzer:
             self._rebuild_aggregates()
 
     def _rebuild_aggregates(self) -> None:
-        """Rebuilds global symbol sets based on the scopes of all other files."""
-        self.declared_symbols = set(BUILTIN_SYMBOLS)
-        self.user_symbols.clear()
-        self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
-        self.defined_audio_map.clear()
-        self.referenced_labels.clear()
-
-        self.variables.clear()
-        self.labels.clear()
-        self.screens.clear()
-        self.images.clear()
-        self.jump_sources.clear()
-        self.screen_uses.clear()
-
-        for scope in self.file_scopes.values():
-            self.declared_symbols.update(scope.declared_symbols)
-            self.user_symbols.update(scope.user_symbols)
-            self.registered_audio_channels.update(scope.registered_audio_channels)
-            self.defined_audio_map.update(scope.defined_audio_map)
-            self.referenced_labels.update(scope.referenced_labels)
-            for scr_name, targets in getattr(scope, "screen_action_jumps", {}).items():
-                self.screen_action_jumps.setdefault(scr_name, set()).update(targets)
-            self.used_screens.update(getattr(scope, "used_screens", ()))
-            for src_name, targets in getattr(scope, "screen_uses", {}).items():
-                self.screen_uses.setdefault(src_name, set()).update(targets)
-
-            self.variables.update(scope.variables)
-            self.labels.update(scope.labels)
-            self.screens.update(scope.screens)
-            self.images.update(scope.images)
-            self.transforms.update(scope.transforms)
-
-            for tgt, locs in scope.jump_sources.items():
-                self.jump_sources.setdefault(tgt, []).extend(locs)
-
-        # screen Jump/Call actions — also static references (RPY303, cache-stable)
-        for targets in self.screen_action_jumps.values():
-            self.referenced_labels.update(targets)
+        """Rebuilds global symbol sets — delegates to SymbolTable."""
+        self._symbols.rebuild_from_scopes(self.file_scopes)
 
     def analyze_file_only(self, file_path: str) -> list[Diagnostic]:
         """Fast analysis of only the changed file for LSP without state leakage."""
