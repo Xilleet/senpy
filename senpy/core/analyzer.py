@@ -1,33 +1,17 @@
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
 
 from senpy.core.cache import CachedFileEntry, CacheManager, CacheManifest, compute_file_hash
 from senpy.core.config import load_config
 from senpy.core.constants import (
-    MEDIA_EXTENSIONS,
-    RE_DEFAULT,
-    RE_DEFINE,
-    RE_DEFINE_AUDIO,
-    RE_IMAGE_DEF,
-    RE_INIT_PYTHON_START,
-    RE_JUMP_TARGET,
     RE_LABEL,
-    RE_LAYEREDIMAGE_ATTR,
-    RE_LAYEREDIMAGE_START,
-    RE_QUOTED_IDENTIFIER,
-    RE_RETURN,
-    RE_SCREEN_CALL,
-    RE_SCREEN_JUMP_ACTION,
-    RE_SCREEN_SHOW_ACTION,
     RE_SCREEN_START,
-    RE_STRING_MATCH,
-    RE_TRANSFORM,
     SENPY_VERSION,
 )
 from senpy.core.file_collector import (
+    FileCollector,
     build_noqa_map,
     discover_rpy_files,
     emit_encoding_error,
@@ -37,7 +21,6 @@ from senpy.core.models import RULE_SEVERITY, AnalysisResult, Diagnostic, FileSco
 from senpy.core.paths import normalize_path
 from senpy.core.progress import progress_print
 from senpy.core.scope import ScopeStack, ScopeType
-from senpy.core.signature import parse_signature
 from senpy.core.symbol_table import SymbolTable
 from senpy.core.symbols import (
     ImageSymbol,
@@ -57,158 +40,20 @@ from senpy.rules.checkers import (
 )
 from senpy.rules.deprecated import DeprecationChecker
 from senpy.rules.flow import StoryFlowAnalyzer
-from senpy.rules.python_ast import PythonAstChecker, infer_expr_type
+from senpy.rules.python_ast import PythonAstChecker
 
 # Phase 1.3 (0.5.3): _strip_comment was moved to senpy/text_utils.py to break
 # the circular dependency checkers/flow → analyzer. Re-exported for backward compat.
-from senpy.text_utils import _strip_comment  # noqa: E402, F401
+from senpy.text_utils import (  # noqa: E402, F401
+    _count_bracket_delta,
+    _get_logical_line,
+    _strip_comment,
+)
 
 # Extract the first quoted string literal from a Python expression
 # body. Used for `image name = "path"` and `image name = Transform("path", …)`
 # so ImageSymbol.image_path can be populated at parse time (renpy-magic's
 # extractAssetPath does the same in TS; we cover the common cases here).
-_RE_STRING_LITERAL = re.compile(r"""(["'])(?P<value>(?:\\.|(?!\1).)*)\1""")
-
-
-def _extract_string_literal(expr: str) -> str | None:
-    """Return the first single- or double-quoted string literal in *expr*.
-
-    Returns the literal contents (with backslash escapes preserved as-is;
-    callers can os.path.normpath later if they want). None if no string
-    literal is found (e.g. body is a Python expression without a literal).
-    """
-    if not expr:
-        return None
-    m = _RE_STRING_LITERAL.search(expr)
-    if m is None:
-        return None
-    return m.group("value")
-
-
-def _count_bracket_delta(s: str) -> int:
-    """Counts the bracket balance of (, [, { outside string literals."""
-    if not any(c in s for c in "()[]{}"):
-        return 0
-
-    delta = 0
-    in_quote = None
-    i = 0
-    n = len(s)
-    while i < n:
-        ch = s[i]
-        if ch == "\\":
-            i += 2
-            continue
-        if in_quote in ('"""', "'''"):
-            if s[i : i + 3] == in_quote:
-                in_quote = None
-                i += 3
-                continue
-            i += 1
-            continue
-        if in_quote:
-            if ch == in_quote:
-                in_quote = None
-            i += 1
-            continue
-        if s[i : i + 3] in ('"""', "'''"):
-            in_quote = s[i : i + 3]
-            i += 3
-            continue
-        if ch in ('"', "'"):
-            in_quote = ch
-            i += 1
-            continue
-        if ch in "([{":
-            delta += 1
-        elif ch in ")]}":
-            delta -= 1
-        i += 1
-    return delta
-
-
-def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
-    """
-    Joins multi-line constructs (line continuation via '\\' or unclosed brackets).
-    Returns (next_idx, raw_line, clean_line).
-    Fault-tolerant: prevents cascading file swallowing on unclosed brackets.
-    """
-    first_raw = lines[idx]
-    first_clean = _strip_comment(first_raw)
-    stripped = first_clean.strip()
-
-    bracket_depth = _count_bracket_delta(first_clean)
-    ends_with_backslash = stripped.endswith("\\")
-
-    # The line needs joining ONLY if there is an explicit '\' continuation or an unclosed bracket outside quotes
-    if not ends_with_backslash and bracket_depth <= 0:
-        return idx + 1, first_raw, first_clean
-
-    raw_parts = [first_raw]
-    clean_parts = [first_clean]
-    curr_idx = idx
-
-    max_lookahead = 50  # Protection against infinite line swallowing
-    lookahead_count = 0
-
-    while curr_idx + 1 < len(lines):
-        clean_stripped = clean_parts[-1].rstrip()
-        ends_with_backslash = clean_stripped.endswith("\\")
-        if not ends_with_backslash and bracket_depth <= 0:
-            break
-
-        lookahead_count += 1
-        if lookahead_count > max_lookahead:
-            break
-
-        peek_raw = lines[curr_idx + 1]
-        peek_clean = _strip_comment(peek_raw).strip()
-
-        # Block boundary: if there is no explicit backslash '\', and the next line is
-        # a new top-level keyword construct (label, screen, init, define, default, transform, image, style, layeredimage),
-        # force-stop so we don't swallow another scene on a broken bracket.
-        peek_indent = len(peek_raw) - len(peek_raw.lstrip(" "))
-        if (
-            not ends_with_backslash
-            and peek_indent == 0
-            and peek_clean.startswith(
-                (
-                    "label ",
-                    "screen ",
-                    "init ",
-                    "define ",
-                    "default ",
-                    "transform ",
-                    "image ",
-                    "style ",
-                    "layeredimage ",
-                )
-            )
-        ):
-            break
-
-        curr_idx += 1
-        next_raw = lines[curr_idx]
-        next_clean = _strip_comment(next_raw)
-
-        raw_parts.append(next_raw)
-        clean_parts.append(next_clean)
-        bracket_depth += _count_bracket_delta(next_clean)
-
-    if len(raw_parts) == 1:
-        return idx + 1, first_raw, first_clean
-
-    cleaned_tokens = []
-    for p in clean_parts:
-        c = p.strip()
-        if c.endswith("\\"):
-            c = c[:-1].strip()
-        if c:
-            cleaned_tokens.append(c)
-
-    indent = len(clean_parts[0]) - len(clean_parts[0].lstrip())
-    joined_clean = (" " * indent) + " ".join(cleaned_tokens)
-    return curr_idx + 1, "".join(raw_parts), joined_clean
 
 
 @dataclass(slots=True)
@@ -269,6 +114,7 @@ class SenpyAnalyzer:
 
         # Base sets — now managed by SymbolTable
         self._symbols = SymbolTable()
+        self._collector = FileCollector(self)
 
         # Other structures and scan metadata
         self.diagnostics: list[Diagnostic] = []
@@ -439,53 +285,8 @@ class SenpyAnalyzer:
         self.fixable_count = 0
         self._stage1_lines.clear()
 
-    def _collect_all_symbols(
-        self, rpy_files: list[str], cached_files: dict, quiet: bool
-    ) -> tuple[dict[str, str], dict[str, list]]:
-        """[1/2] Collect symbols from all .rpy files (Tier 1 cache: restore unchanged FileScope).
-
-        Returns (file_hashes, stage1_diags_map).
-        """
-        total_files = len(rpy_files)
-        file_hashes: dict[str, str] = {}
-        stage1_diags_map: dict[str, list] = {}
-
-        for i, file_path in enumerate(rpy_files, 1):
-            fname = os.path.basename(file_path)
-            norm_path = normalize_path(file_path)
-            mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else 0.0
-            size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-
-            if not quiet:
-                msg = f"\r[1/2] Сбор символов: {i}/{total_files} ({fname[:25]})"
-                progress_print(msg)
-
-            is_tier1_hit = False
-            if (
-                norm_path in cached_files
-                and cached_files[norm_path].mtime == mtime
-                and cached_files[norm_path].size == size
-                and norm_path not in self.in_memory_files
-            ):
-                cached_entry = cached_files[norm_path]
-                f_hash = compute_file_hash(file_path)
-                file_hashes[norm_path] = f_hash
-                if cached_entry.content_hash and f_hash == cached_entry.content_hash:
-                    self.file_scopes[norm_path] = cached_entry.scope
-                    is_tier1_hit = True
-                    self.diagnostics.extend(getattr(cached_entry, "collect_diagnostics", ()) or ())
-
-            if not is_tier1_hit:
-                f_hash = file_hashes.get(norm_path) or compute_file_hash(file_path)
-                file_hashes[norm_path] = f_hash
-                diag_start = len(self.diagnostics)
-                self._collect_symbols(file_path)
-                stage1_diags_map[norm_path] = list(self.diagnostics[diag_start:])
-
-        if not quiet:
-            print()
-
-        return file_hashes, stage1_diags_map
+    def _collect_all_symbols(self, *args, **kwargs):
+        return self._collector._collect_all_symbols(*args, **kwargs)
 
     def _analyze_all_files(
         self,
@@ -659,608 +460,46 @@ class SenpyAnalyzer:
     def _emit_encoding_error(self, file_path: str, err: UnicodeDecodeError) -> None:
         emit_encoding_error(file_path, err, self.diagnostics)
 
-    def _collect_default(
-        self,
-        m_def,
-        clean: str,
-        line: str,
-        file_path: str,
-        idx: int,
-        scope: FileScope,
-    ) -> None:
-        """Handle `default var = expr` — RPY105, VariableSymbol."""
-        var = m_def.group(1)
-        if "." in clean.split("=")[0]:
-            return
-        val_str = m_def.group(2)
-        scope.user_symbols.add(var)
-        scope.declared_symbols.add(var)
-        self.user_symbols.add(var)
-        self.declared_symbols.add(var)
+    def _collect_default(self, *args, **kwargs):
+        return self._collector._collect_default(*args, **kwargs)
 
-        prev_var = self.variables.get(var)
-        if prev_var and prev_var.is_constant and not prev_var.is_character:
-            prev_file = os.path.basename(prev_var.file_path)
-            prev_line = prev_var.line_number
-            start_c, end_c = self._get_utf16_range(line, var)
-            self.diagnostics.append(
-                Diagnostic(
-                    file_path=file_path,
-                    line_number=idx + 1,
-                    line_content=clean,
-                    code="RPY105",
-                    message=(
-                        f"Variable '{var}' is declared with both 'define' and 'default'. "
-                        f"Previously declared with 'define' at {prev_file}:{prev_line}. "
-                        "Define is for constants and default is for mutable state; choose one to prevent save and rollback corruption."
-                    ),
-                    severity="ERROR",
-                    col=start_c,
-                    end_col=end_c,
-                )
-            )
+    def _collect_define(self, *args, **kwargs):
+        return self._collector._collect_define(*args, **kwargs)
 
-        inferred_t = infer_expr_type(val_str, known_vars=self.variables)
-        var_sym = VariableSymbol(
-            name=var,
-            file_path=file_path,
-            line_number=idx + 1,
-            code_line=clean,
-            type_name=inferred_t,
-            is_constant=False,
-            is_character=False,
-        )
-        scope.variables[var] = var_sym
-        self.variables[var] = var_sym
+    def _collect_define_audio(self, *args, **kwargs):
+        return self._collector._collect_define_audio(*args, **kwargs)
 
-    def _collect_define(
-        self,
-        m_define,
-        clean: str,
-        line: str,
-        file_path: str,
-        idx: int,
-        scope: FileScope,
-    ) -> None:
-        """Handle `define var = expr` — RPY105, VariableSymbol."""
-        var = m_define.group(1)
-        if "." in clean.split("=")[0]:
-            return
-        val_str = m_define.group(2)
-        scope.user_symbols.add(var)
-        scope.declared_symbols.add(var)
-        self.user_symbols.add(var)
-        self.declared_symbols.add(var)
+    def _collect_screen_transform(self, *args, **kwargs):
+        return self._collector._collect_screen_transform(*args, **kwargs)
 
-        prev_var = self.variables.get(var)
-        if prev_var and not prev_var.is_constant:
-            prev_file = os.path.basename(prev_var.file_path)
-            prev_line = prev_var.line_number
-            start_c, end_c = self._get_utf16_range(line, var)
-            self.diagnostics.append(
-                Diagnostic(
-                    file_path=file_path,
-                    line_number=idx + 1,
-                    line_content=clean,
-                    code="RPY105",
-                    message=(
-                        f"Variable '{var}' is declared with both 'define' and 'default'. "
-                        f"Previously declared with 'default' at {prev_file}:{prev_line}. "
-                        "Define is for constants and default is for mutable state; choose one to prevent save and rollback corruption."
-                    ),
-                    severity="ERROR",
-                    col=start_c,
-                    end_col=end_c,
-                )
-            )
+    def _collect_label(self, *args, **kwargs):
+        return self._collector._collect_label(*args, **kwargs)
 
-        inferred_t = infer_expr_type(val_str, known_vars=self.variables)
-        is_const = "." not in clean.split("=")[0]
-        is_char = "Character" in clean or "DynamicCharacter" in clean
-        var_sym = VariableSymbol(
-            name=var,
-            file_path=file_path,
-            line_number=idx + 1,
-            code_line=clean,
-            type_name=inferred_t,
-            is_constant=is_const,
-            is_character=is_char,
-        )
-        scope.variables[var] = var_sym
-        self.variables[var] = var_sym
+    def _collect_label_body(self, *args, **kwargs):
+        return self._collector._collect_label_body(*args, **kwargs)
 
-    def _collect_define_audio(self, m_audio_def, scope: FileScope) -> None:
-        """Handle `define audio.NAME = "file.ogg"`."""
-        alias = m_audio_def.group(1)
-        target_file = m_audio_def.group(2).replace("\\", "/").lower()
-        scope.defined_audio_map[alias] = target_file
-        scope.declared_symbols.add(alias)
-        scope.declared_symbols.add(f"audio.{alias}")
-        self.defined_audio_map[alias] = target_file
-        self.declared_symbols.add(alias)
-        self.declared_symbols.add(f"audio.{alias}")
-        # Register alias → disk path for audio hover. The alias
-        # resolves to the *file* named in target_file (relative to game/);
-        # we look it up via media_disk_files. Done at parse time so hover
-        # never re-reads source files (renpy-magic re-reads per hover —
-        # we avoid that anti-pattern).
-        self.assets.register_audio_alias(alias, target_file)
+    def _collect_images(self, *args, **kwargs):
+        return self._collector._collect_images(*args, **kwargs)
 
-    def _collect_screen_transform(
-        self,
-        m_screen_def,
-        m_trans,
-        clean: str,
-        line: str,
-        file_path: str,
-        idx: int,
-        scope: FileScope,
-    ) -> str | None:
-        """Handle `screen name(...)` and `transform name(...)`.
+    def _collect_misc(self, *args, **kwargs):
+        return self._collector._collect_misc(*args, **kwargs)
 
-        Returns the current screen name (or None) for context.
-        """
-        if m_screen_def:
-            s_name = m_screen_def.group(2)
-            s_params = m_screen_def.group(3)
-            sig = parse_signature(s_params)
-            scr_sym = ScreenSymbol(
-                name=s_name, file_path=file_path, line_number=idx + 1, signature=sig
-            )
-            scope.screens[s_name] = scr_sym
-            self.screens[s_name] = scr_sym
+    def _collect_symbols(self, *args, **kwargs):
+        return self._collector._collect_symbols(*args, **kwargs)
 
-        new_screen = None
+    def _collect_from_python_block(self, *args, **kwargs):
+        return self._collector._collect_from_python_block(*args, **kwargs)
 
-        # Screen context (screen blocks are always top-level)
-        if len(line) - len(line.lstrip(" ")) == 0:
-            new_screen = m_screen_def.group(2) if m_screen_def else None
-
-        if m_trans:
-            trans_name = m_trans.group(1)
-            trans_params = m_trans.group(2)  # None if no params declared
-            trans_sig = parse_signature(trans_params) if trans_params else None
-            trans_sym = TransformSymbol(
-                name=trans_name,
-                file_path=file_path,
-                line_number=idx + 1,
-                code_line=clean,
-                signature=trans_sig,
-            )
-            scope.transforms[trans_name] = trans_sym
-            self.transforms[trans_name] = trans_sym
-            scope.user_symbols.add(trans_name)
-            scope.declared_symbols.add(trans_name)
-            self.user_symbols.add(trans_name)
-            self.declared_symbols.add(trans_name)
-
-        return new_screen
-
-    def _collect_label(
-        self,
-        m_label,
-        clean: str,
-        file_path: str,
-        idx: int,
-        scope: FileScope,
-        current_global_label: str | None,
-    ) -> tuple[str, str, str | None]:
-        """Handle `label name(params):` — RPY307, LabelSymbol.
-
-        Returns (label_name, current_global_label, current_label).
-        """
-        raw_name = m_label.group(1)
-        if raw_name.startswith("."):
-            label_name = f"{current_global_label}{raw_name}" if current_global_label else raw_name
-        else:
-            label_name = raw_name
-            current_global_label = label_name
-        if label_name in self.labels:
-            if not label_name.startswith("_"):
-                prev_file = self.labels[label_name].file_path
-                prev_line = self.labels[label_name].line_number
-                self.diagnostics.append(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        line_content=clean,
-                        code="RPY307",
-                        message=f"Duplicate label '{label_name}'. Previously declared at {os.path.basename(prev_file)}:{prev_line}. Causes fatal ScriptError.",
-                        severity="ERROR",
-                    )
-                )
-        else:
-            sig = parse_signature(m_label.group(2))
-            lbl_sym = LabelSymbol(
-                name=label_name,
-                file_path=file_path,
-                line_number=idx + 1,
-                code_line=clean,
-                signature=sig,
-            )
-            scope.labels[label_name] = lbl_sym
-            self.labels[label_name] = lbl_sym
-
-        return label_name, current_global_label, label_name
-
-    def _collect_label_body(
-        self,
-        clean: str,
-        file_path: str,
-        idx: int,
-        scope: FileScope,
-        current_label: str | None,
-        current_global_label: str | None,
-        current_screen: str | None,
-    ) -> None:
-        """Handle jump/call/return inside label + screen edges."""
-        if current_label:
-            if RE_RETURN.match(clean):
-                if current_label in scope.labels:
-                    scope.labels[current_label].has_return = True
-                if current_label in self.labels:
-                    self.labels[current_label].has_return = True
-
-            m_jump_in_label = RE_JUMP_TARGET.match(clean)
-            if m_jump_in_label:
-                raw_target_j = m_jump_in_label.group(1)
-                if raw_target_j.startswith("."):
-                    target_j = (
-                        f"{current_global_label}{raw_target_j}"
-                        if current_global_label
-                        else raw_target_j
-                    )
-                else:
-                    target_j = raw_target_j
-
-                if current_label in scope.labels:
-                    scope.labels[current_label].outgoing_jumps.add(target_j)
-                if current_label in self.labels:
-                    self.labels[current_label].outgoing_jumps.add(target_j)
-                scope.referenced_labels.add(target_j)
-                self.referenced_labels.add(target_j)
-
-                self.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
-                scope.jump_sources.setdefault(target_j, []).append((file_path, idx + 1))
-
-        # Edges from screens (Jump/Call actions) and screen usage
-        if current_screen:
-            for m_act in RE_SCREEN_JUMP_ACTION.finditer(clean):
-                scope.screen_action_jumps.setdefault(current_screen, set()).add(m_act.group(1))
-                self.screen_action_jumps.setdefault(current_screen, set()).add(m_act.group(1))
-
-        for m_usage in RE_SCREEN_CALL.finditer(clean):
-            scope.used_screens.add(m_usage.group(1))
-            self.used_screens.add(m_usage.group(1))
-            usage_src = current_screen or current_label
-            if usage_src:
-                scope.screen_uses.setdefault(usage_src, set()).add(m_usage.group(1))
-                self.screen_uses.setdefault(usage_src, set()).add(m_usage.group(1))
-
-        for m_show in RE_SCREEN_SHOW_ACTION.finditer(clean):
-            scope.used_screens.add(m_show.group(1))
-            self.used_screens.add(m_show.group(1))
-
-    def _collect_images(
-        self,
-        clean: str,
-        clean_line: str,
-        file_path: str,
-        idx: int,
-        lines: list[str],
-        scope: FileScope,
-    ) -> tuple[bool, int]:
-        """Handle layeredimage and image declarations — RPY504.
-
-        Returns (was_handled, new_idx).
-        """
-        m_limg = RE_LAYEREDIMAGE_START.match(clean_line)
-        if m_limg:
-            limg_indent = len(m_limg.group(1))
-            limg_tag = m_limg.group(2).strip()
-            next_block_idx, block_lines = self._consume_block(lines, idx + 1, limg_indent)
-
-            attrs: set[str] = set()
-            for bl in block_lines:
-                clean_bl = _strip_comment(bl).strip()
-                m_attr = RE_LAYEREDIMAGE_ATTR.match(clean_bl)
-                if m_attr:
-                    attrs.add(m_attr.group(1).strip())
-
-            img_sym = ImageSymbol(
-                name=limg_tag,
-                file_path=file_path,
-                line_number=idx + 1,
-                body="layeredimage",
-                is_layered=True,
-                attributes=attrs,
-            )
-            scope.images[limg_tag] = img_sym
-            self.images[limg_tag] = img_sym
-
-            return True, next_block_idx
-
-        m_img = RE_IMAGE_DEF.match(clean)
-        if m_img:
-            img_name = m_img.group(1).strip()
-            img_body = m_img.group(2).strip()
-
-            if img_name in self.images:
-                prev_file = self.images[img_name].file_path
-                prev_line = self.images[img_name].line_number
-                prev_body = self.images[img_name].body
-                is_exact_dup = img_body == prev_body
-                msg = (
-                    f"Duplicate image declaration '{img_name}'. Identical to declaration at {os.path.basename(prev_file)}:{prev_line}."
-                    if is_exact_dup
-                    else f"Image '{img_name}' is redefined (override). Previously declared at {os.path.basename(prev_file)}:{prev_line}."
-                )
-                self.diagnostics.append(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        line_content=clean,
-                        code="RPY504",
-                        message=msg,
-                        severity="WARNING" if not is_exact_dup else "INFO",
-                    )
-                )
-            img_sym = ImageSymbol(
-                name=img_name,
-                file_path=file_path,
-                line_number=idx + 1,
-                body=img_body,
-                is_layered=False,
-                image_path=_extract_string_literal(img_body),
-            )
-            scope.images[img_name] = img_sym
-            self.images[img_name] = img_sym
-            return True, idx  # caller will use next_idx
-
-        return False, idx
-
-    def _collect_misc(
-        self,
-        clean: str,
-        line: str,
-        file_path: str,
-        idx: int,
-        lines: list[str],
-        scope: FileScope,
-    ) -> tuple[bool, int]:
-        """Handle channels, dynamic jumps, quoted strings, init python.
-
-        Returns (was_init_python, new_idx).
-        """
-        m_chan = re.search(r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', clean)
-        if m_chan:
-            chan_name = m_chan.group(1).lower()
-            scope.registered_audio_channels.add(chan_name)
-            self.registered_audio_channels.add(chan_name)
-
-        if (
-            "renpy.call(" in clean
-            or "renpy.jump(" in clean
-            or "call expression" in clean
-            or "jump expression" in clean
-        ):
-            self.has_dynamic_jumps = True
-
-        if '"' in clean or "'" in clean:
-            for str_match in RE_QUOTED_IDENTIFIER.finditer(clean):
-                candidate = str_match.group(1)
-                if candidate.isidentifier():
-                    scope.referenced_labels.add(candidate)
-                    self.referenced_labels.add(candidate)
-
-        m_init = RE_INIT_PYTHON_START.match(line)
-        if m_init:
-            indent = len(m_init.group(1))
-            next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
-            self._collect_from_python_block(block_lines, scope, file_path, idx + 2)
-            return True, next_idx
-
-        return False, idx
-
-    def _collect_symbols(self, file_path: str):
-        """Collects symbols from a .rpy file (default/define/screen/label/image/...).
-
-        Phase 3 Step 5 (0.5.6): split from 378 lines into 7 methods + dispatcher.
-        """
-        try:
-            norm_path = normalize_path(file_path)
-            scope = FileScope()
-
-            if norm_path in self.in_memory_files:
-                lines = self.in_memory_files[norm_path].splitlines(keepends=True)
-            else:
-                with open(file_path, encoding="utf-8", newline="") as f:
-                    lines = f.readlines()
-                self._stage1_lines[norm_path] = lines
-
-            if file_path.endswith("_ren.py"):
-                self._collect_from_python_block(lines, scope, file_path, 1)
-                self.file_scopes[norm_path] = scope
-                return
-
-            idx = 0
-            current_label: str | None = None
-            current_global_label: str | None = None
-            current_screen: str | None = None
-
-            while idx < len(lines):
-                next_idx, line, clean_line = _get_logical_line(lines, idx)
-                clean = clean_line.strip()
-                if not clean:
-                    idx = next_idx
-                    continue
-
-                # --- default ---
-                m_def = RE_DEFAULT.match(clean)
-                if m_def:
-                    self._collect_default(m_def, clean, line, file_path, idx, scope)
-                    idx = next_idx
-                    continue
-
-                # --- define audio ---
-                m_audio_def = RE_DEFINE_AUDIO.match(clean)
-                if m_audio_def:
-                    self._collect_define_audio(m_audio_def, scope)
-                    idx = next_idx
-                    continue
-
-                # --- define ---
-                m_define = RE_DEFINE.match(clean)
-                if m_define:
-                    self._collect_define(m_define, clean, line, file_path, idx, scope)
-                    idx = next_idx
-                    continue
-
-                # --- screen + transform ---
-                m_screen_def = RE_SCREEN_START.match(line)
-                m_trans = RE_TRANSFORM.match(clean)
-                if m_screen_def or m_trans:
-                    self._collect_screen_transform(
-                        m_screen_def, m_trans, clean, line, file_path, idx, scope
-                    )
-
-                # Screen context (screen blocks are always top-level)
-                # Important: current_screen is reset to None for ANY top-level line,
-                # not only screen. This is needed so `label start:` resets the screen context.
-                if len(line) - len(line.lstrip(" ")) == 0:
-                    current_screen = m_screen_def.group(2) if m_screen_def else None
-
-                # --- label ---
-                m_label = RE_LABEL.match(clean)
-                if m_label:
-                    label_name, current_global_label, current_label = self._collect_label(
-                        m_label, clean, file_path, idx, scope, current_global_label
-                    )
-                    idx = next_idx
-                    continue
-
-                # --- label body (jumps, returns, screen edges) ---
-                self._collect_label_body(
-                    clean,
-                    file_path,
-                    idx,
-                    scope,
-                    current_label,
-                    current_global_label,
-                    current_screen,
-                )
-
-                # --- images (layeredimage + image) ---
-                img_handled, img_new_idx = self._collect_images(
-                    clean, clean_line, file_path, idx, lines, scope
-                )
-                if img_handled:
-                    idx = img_new_idx if img_new_idx != idx else next_idx
-                    continue
-
-                # --- misc (channels, dynamic jumps, strings, init python) ---
-                init_handled, init_new_idx = self._collect_misc(
-                    clean, line, file_path, idx, lines, scope
-                )
-                if init_handled:
-                    idx = init_new_idx
-                    continue
-
-                idx = next_idx
-
-            self.file_scopes[norm_path] = scope
-
-        except UnicodeDecodeError as e:
-            self._emit_encoding_error(file_path, e)
-        except OSError:
-            pass
-
-    def _collect_from_python_block(
-        self,
-        code_lines: list[str],
-        scope: FileScope | None = None,
-        file_path: str = "",
-        start_line: int = 1,
-    ) -> None:
-        full_code = "".join(code_lines)
-        for m in re.finditer(
-            r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', full_code
-        ):
-            chan = m.group(1).lower()
-            if scope is not None:
-                scope.registered_audio_channels.add(chan)
-            self.registered_audio_channels.add(chan)
-
-        names, refs = self.python_ast.collect_from_python_block(code_lines)
-        for name, line_offset in names.items():
-            real_line = start_line + line_offset - 1
-            if scope is not None:
-                scope.user_symbols.add(name)
-                scope.declared_symbols.add(name)
-            self.user_symbols.add(name)
-            self.declared_symbols.add(name)
-            if file_path:
-                var_sym = VariableSymbol(
-                    name=name,
-                    file_path=file_path,
-                    line_number=real_line,
-                    code_line=f"# definition of {name}",
-                    is_constant=False,
-                )
-                if scope is not None:
-                    scope.variables[name] = var_sym
-                self.variables[name] = var_sym
-
-        if scope is not None:
-            scope.referenced_labels.update(refs)
-        self.referenced_labels.update(refs)
-
-    def _consume_block(
-        self, lines: list[str], start_idx: int, header_indent: int
-    ) -> tuple[int, list[str]]:
-        block = []
-        idx = start_idx
-        while idx < len(lines):
-            line = lines[idx]
-            stripped = line.strip()
-            if not stripped:
-                block.append(line)
-                idx += 1
-                continue
-
-            current_indent = len(line) - len(line.lstrip(" "))
-            if stripped.startswith("#") and current_indent <= header_indent:
-                break
-
-            if current_indent > header_indent:
-                block.append(line)
-                idx += 1
-            else:
-                break
-
-        while block and not block[-1].strip():
-            block.pop()
-            idx -= 1
-
-        return idx, block
+    def _consume_block(self, *args, **kwargs):
+        return self._collector._consume_block(*args, **kwargs)
 
     def _parse_noqa(self, line: str) -> tuple[bool, set[str] | None]:
         from senpy.core.file_collector import parse_noqa
 
         return parse_noqa(line)
 
-    def _scan_python_assets(self, code_lines: list[str] | str) -> None:
-        """Targeted search for media files in Python blocks (protection against false RPY503 without overhead)."""
-        if isinstance(code_lines, str):
-            code_lines = [code_lines]
-        for line in code_lines:
-            if '"' in line or "'" in line:  # Fast-path: ultra-fast pre-filter
-                for match in RE_STRING_MATCH.finditer(line):
-                    inner = match.group(0).strip("\"'")
-                    val_clean = inner.replace("\\", "/").lower().strip()
-                    if any(val_clean.endswith(ext) for ext in MEDIA_EXTENSIONS):
-                        self._mark_asset_used(val_clean)
-                        self._mark_asset_used(os.path.basename(val_clean))
+    def _scan_python_assets(self, *args, **kwargs):
+        return self._collector._scan_python_assets(*args, **kwargs)
 
     def _apply_severity(self, diag: Diagnostic) -> None:
         """Applies severity overrides from the config or default levels.
@@ -1366,31 +605,8 @@ class SenpyAnalyzer:
     def _build_noqa_map(self, lines: list[str]) -> dict[int, set[str] | None]:
         return build_noqa_map(lines)
 
-    def _handle_init_python_block(
-        self, lines: list[str], idx: int, file_path: str, noqa_map: dict
-    ) -> int | None:
-        """Detect `init python:` block and run AST checks on it.
-
-        Returns `next_idx` (the index after the block) if an init block was
-        found and processed, or `None` if the current line is not an init
-        python block start.
-        """
-        # Use the raw_line from lines[idx] — format_checker may have modified it.
-        raw_line = lines[idx]
-        m_init = RE_INIT_PYTHON_START.match(raw_line)
-        if not m_init:
-            return None
-
-        indent = len(m_init.group(1))
-        next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
-        if block_lines:
-            self._scan_python_assets(block_lines)
-            import textwrap
-
-            code = textwrap.dedent("".join(block_lines))
-            self.python_ast.check_init_dependency(code, file_path, idx + 2, noqa_map, lines)
-            self.python_ast.check_python_ast(code, file_path, idx + 2, noqa_map, lines)
-        return next_idx
+    def _handle_init_python_block(self, *args, **kwargs):
+        return self._collector._handle_init_python_block(*args, **kwargs)
 
     def _push_label_scope_if_match(
         self, clean: str, state: _FileAnalysisState, line_indent: int

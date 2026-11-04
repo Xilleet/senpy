@@ -33,7 +33,7 @@ from test_lsp import MockDocument, MockWorkspace, setup_test_workspace
 
 import senpy.lsp.server as server_mod
 from senpy.core.analyzer import SenpyAnalyzer
-from senpy.core.analyzer import _extract_string_literal as _extract_string_literal_analyzer
+from senpy.core.file_collector import _extract_string_literal as _extract_string_literal_analyzer
 from senpy.domain.image_size import (
     clamp_to_hover_box,
     get_image_size,

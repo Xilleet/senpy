@@ -141,3 +141,129 @@ def suggest_match(
     """
     matches = difflib.get_close_matches(target, list(candidates), n=1, cutoff=cutoff)
     return matches[0] if matches else None
+
+
+def _count_bracket_delta(s: str) -> int:
+    """Counts the bracket balance of (, [, { outside string literals."""
+    if not any(c in s for c in "()[]{}"):
+        return 0
+
+    delta = 0
+    in_quote = None
+    i = 0
+    n = len(s)
+    while i < n:
+        ch = s[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if in_quote in ('"""', "'''"):
+            if s[i : i + 3] == in_quote:
+                in_quote = None
+                i += 3
+                continue
+            i += 1
+            continue
+        if in_quote:
+            if ch == in_quote:
+                in_quote = None
+            i += 1
+            continue
+        if s[i : i + 3] in ('"""', "'''"):
+            in_quote = s[i : i + 3]
+            i += 3
+            continue
+        if ch in ('"', "'"):
+            in_quote = ch
+            i += 1
+            continue
+        if ch in "([{":
+            delta += 1
+        elif ch in ")]}":
+            delta -= 1
+        i += 1
+    return delta
+
+
+def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
+    """
+    Joins multi-line constructs (line continuation via '\\' or unclosed brackets).
+    Returns (next_idx, raw_line, clean_line).
+    Fault-tolerant: prevents cascading file swallowing on unclosed brackets.
+    """
+    first_raw = lines[idx]
+    first_clean = _strip_comment(first_raw)
+    stripped = first_clean.strip()
+
+    bracket_depth = _count_bracket_delta(first_clean)
+    ends_with_backslash = stripped.endswith("\\")
+
+    # The line needs joining ONLY if there is an explicit '\' continuation or an unclosed bracket outside quotes
+    if not ends_with_backslash and bracket_depth <= 0:
+        return idx + 1, first_raw, first_clean
+
+    raw_parts = [first_raw]
+    clean_parts = [first_clean]
+    curr_idx = idx
+
+    max_lookahead = 50  # Protection against infinite line swallowing
+    lookahead_count = 0
+
+    while curr_idx + 1 < len(lines):
+        clean_stripped = clean_parts[-1].rstrip()
+        ends_with_backslash = clean_stripped.endswith("\\")
+        if not ends_with_backslash and bracket_depth <= 0:
+            break
+
+        lookahead_count += 1
+        if lookahead_count > max_lookahead:
+            break
+
+        peek_raw = lines[curr_idx + 1]
+        peek_clean = _strip_comment(peek_raw).strip()
+
+        # Block boundary: if there is no explicit backslash '\', and the next line is
+        # a new top-level keyword construct (label, screen, init, define, default, transform, image, style, layeredimage),
+        # force-stop so we don't swallow another scene on a broken bracket.
+        peek_indent = len(peek_raw) - len(peek_raw.lstrip(" "))
+        if (
+            not ends_with_backslash
+            and peek_indent == 0
+            and peek_clean.startswith(
+                (
+                    "label ",
+                    "screen ",
+                    "init ",
+                    "define ",
+                    "default ",
+                    "transform ",
+                    "image ",
+                    "style ",
+                    "layeredimage ",
+                )
+            )
+        ):
+            break
+
+        curr_idx += 1
+        next_raw = lines[curr_idx]
+        next_clean = _strip_comment(next_raw)
+
+        raw_parts.append(next_raw)
+        clean_parts.append(next_clean)
+        bracket_depth += _count_bracket_delta(next_clean)
+
+    if len(raw_parts) == 1:
+        return idx + 1, first_raw, first_clean
+
+    cleaned_tokens = []
+    for p in clean_parts:
+        c = p.strip()
+        if c.endswith("\\"):
+            c = c[:-1].strip()
+        if c:
+            cleaned_tokens.append(c)
+
+    indent = len(clean_parts[0]) - len(clean_parts[0].lstrip())
+    joined_clean = (" " * indent) + " ".join(cleaned_tokens)
+    return curr_idx + 1, "".join(raw_parts), joined_clean
