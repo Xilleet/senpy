@@ -18,6 +18,7 @@ from senpy.rules.python_ast import extract_assigned_names
 
 if TYPE_CHECKING:
     from senpy.core.analyzer import SenpyAnalyzer
+    from senpy.core.symbols import LabelSymbol
 
 _MERMAID_RESERVED_IDS = {"end"}
 
@@ -189,9 +190,26 @@ class StoryFlowAnalyzer:
         for scr_name in root_screens:
             screen_targets.update(self.analyzer.screen_action_jumps.get(scr_name, ()))
 
-        reachable: set[str] = set()
-        queue = deque(root_labels)
-        reachable.update(root_labels)
+        reachable = self._find_reachable_labels(labels, root_labels, screen_targets)
+
+        # Pre-compute incoming dict in O(N+E) (one pass over all labels and their outgoing_jumps),
+        # then O(1) lookup in the loop below. Previously this was an O(N²) inline scan.
+        incoming_jumps: dict[str, set[str]] = {}
+        for src_name, src_lbl in labels.items():
+            for tgt in src_lbl.outgoing_jumps:
+                incoming_jumps.setdefault(tgt, set()).add(src_name)
+
+        return self._collect_story_islands(labels, reachable, incoming_jumps)
+
+    def _find_reachable_labels(
+        self,
+        labels: dict[str, LabelSymbol],
+        root_labels: set[str],
+        screen_targets: set[str],
+    ) -> set[str]:
+        """BFS from root labels through outgoing_jumps; screen bridges inject extra seeds."""
+        reachable: set[str] = set(root_labels)
+        queue: deque[str] = deque(root_labels)
 
         # Jump/Call actions from reachable screens open new labels
         for target in screen_targets:
@@ -208,15 +226,15 @@ class StoryFlowAnalyzer:
                     reachable.add(target)
                     queue.append(target)
 
-        # previously here was `any(label_name in l.outgoing_jumps for l in labels.values)`
-        # inside a loop over labels — that is O(N²). On a project with 1000 labels = 1M checks.
-        # Pre-compute incoming dict in O(N+E) (one pass over all labels and their outgoing_jumps),
-        # then O(1) lookup in the loop below.
-        incoming_jumps: dict[str, set[str]] = {}
-        for src_name, src_lbl in labels.items():
-            for tgt in src_lbl.outgoing_jumps:
-                incoming_jumps.setdefault(tgt, set()).add(src_name)
+        return reachable
 
+    def _collect_story_islands(
+        self,
+        labels: dict[str, LabelSymbol],
+        reachable: set[str],
+        incoming_jumps: dict[str, set[str]],
+    ) -> list[Diagnostic]:
+        """Emit RPY309 for every unreachable non-system label that has incoming jumps or static references."""
         diagnostics: list[Diagnostic] = []
         for label_name, lbl in labels.items():
             if label_name in reachable:
@@ -300,6 +318,7 @@ class StoryFlowAnalyzer:
         """Parses choices from a menu block. Returns (idx, choices, uninitialized_vars).
 
         Extracted from analyze_menu_flow in Phase 4 Step 2 (0.5.7).
+        Choice-detection + empty-check helpers further split out.
         """
         from senpy.text_utils import _strip_comment
 
@@ -309,22 +328,6 @@ class StoryFlowAnalyzer:
         choice_indent: int | None = None
         statement_counts: dict[int, int] = {}
         uninitialized_vars: dict[str, tuple[str, ...]] = {}
-
-        def check_empty_choice(branch: FlowBranch | None):
-            if branch and statement_counts.get(id(branch), 0) == 0 and file_path:
-                start_c, end_c = get_utf16_range(branch.raw, branch.name)
-                self.analyzer._add_diagnostic(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=branch.line,
-                        line_content=branch.raw,
-                        code="RPY402",
-                        message=f"Menu choice '{branch.name}' has no statements inside and will immediately fall through.",
-                        col=start_c,
-                        end_col=end_c,
-                    ),
-                    noqa_map,
-                )
 
         while idx < len(lines):
             raw_line = lines[idx]
@@ -338,21 +341,15 @@ class StoryFlowAnalyzer:
             if line_indent <= menu_indent:
                 break
 
-            m_choice = RE_MENU_CHOICE.match(raw_line)
-            is_direct_choice = bool(
-                m_choice
-                and line_indent > menu_indent
-                and (choice_indent is None or line_indent == choice_indent)
-            )
-
-            if is_direct_choice:
+            if self._is_direct_choice_line(raw_line, menu_indent, choice_indent):
                 if choice_indent is None:
                     choice_indent = line_indent
 
                 if current_choice:
-                    check_empty_choice(current_choice)
+                    self._check_empty_choice(current_choice, statement_counts, file_path, noqa_map)
                     choices.append(current_choice)
 
+                m_choice = RE_MENU_CHOICE.match(raw_line)
                 current_choice = FlowBranch(
                     kind="choice",
                     name=m_choice.group(2).strip("\"'"),  # type: ignore[union-attr]
@@ -384,10 +381,49 @@ class StoryFlowAnalyzer:
             idx += 1
 
         if current_choice:
-            check_empty_choice(current_choice)
+            self._check_empty_choice(current_choice, statement_counts, file_path, noqa_map)
             choices.append(current_choice)
 
         return idx, choices, uninitialized_vars
+
+    @staticmethod
+    def _is_direct_choice_line(
+        raw_line: str,
+        menu_indent: int,
+        choice_indent: int | None,
+    ) -> bool:
+        """True if `raw_line` looks like a top-level menu choice at the choice's indent."""
+        m_choice = RE_MENU_CHOICE.match(raw_line)
+        if not m_choice:
+            return False
+        line_indent = len(raw_line) - len(raw_line.lstrip(" "))
+        if line_indent <= menu_indent:
+            return False
+        return choice_indent is None or line_indent == choice_indent
+
+    def _check_empty_choice(
+        self,
+        branch: FlowBranch,
+        statement_counts: dict[int, int],
+        file_path: str,
+        noqa_map: dict,
+    ) -> None:
+        """Emit RPY402 if a menu choice has zero statements inside (fall-through)."""
+        if not branch or statement_counts.get(id(branch), 0) != 0 or not file_path:
+            return
+        start_c, end_c = get_utf16_range(branch.raw, branch.name)
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=branch.line,
+                line_content=branch.raw,
+                code="RPY402",
+                message=f"Menu choice '{branch.name}' has no statements inside and will immediately fall through.",
+                col=start_c,
+                end_col=end_c,
+            ),
+            noqa_map,
+        )
 
     def _analyze_choice_body(
         self,
