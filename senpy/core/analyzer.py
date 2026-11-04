@@ -557,15 +557,24 @@ class SenpyAnalyzer:
             self.cache_manager.save_manifest(new_manifest)
 
     def _differential_purge_file(self, norm_path: str, file_path: str) -> None:
-        """
-        Differentially removes symbols of only one file from the global structures,
+        """Differentially removes symbols of only one file from the global structures,
         without invoking an expensive full rebuild of all project files (_rebuild_aggregates).
+
+        Delegates to 3 helper methods (split in REF-002, was CC=27 → ~3 each):
+          1. _purge_object_registries — fast O(1) pop from dict registries
+          2. _purge_jump_sources — filter jump_sources for this file
+          3. _purge_shared_sets — differential set cleanup (check other scopes)
         """
         old_scope = self.file_scopes.pop(norm_path, None)
         if not old_scope:
             return
 
-        # 1. Fast O(1) removal from object registries
+        self._purge_object_registries(old_scope)
+        self._purge_jump_sources(old_scope, file_path)
+        self._purge_shared_sets(old_scope)
+
+    def _purge_object_registries(self, old_scope: FileScope) -> None:
+        """Fast O(1) removal of file's symbols from global dict registries."""
         for k in old_scope.variables:
             self.variables.pop(k, None)
         for k in old_scope.labels:
@@ -579,7 +588,8 @@ class SenpyAnalyzer:
         for k in old_scope.defined_audio_map:
             self.defined_audio_map.pop(k, None)
 
-        # 2. Clear jump_sources only for this file
+    def _purge_jump_sources(self, old_scope: FileScope, file_path: str) -> None:
+        """Clear jump_sources entries that originated from the purged file."""
         for tgt in old_scope.jump_sources:
             if tgt in self.jump_sources:
                 self.jump_sources[tgt] = [
@@ -588,8 +598,9 @@ class SenpyAnalyzer:
                 if not self.jump_sources[tgt]:
                     self.jump_sources.pop(tgt, None)
 
-        # 3. Differential set cleanup:
-        # A symbol is removed from the global set only if it is not present in any other file of the project.
+    def _purge_shared_sets(self, old_scope: FileScope) -> None:
+        """Differential set cleanup: remove a symbol from the global set only
+        if it is NOT present in any other file scope."""
         other_scopes = list(self.file_scopes.values())
 
         for sym in old_scope.user_symbols:
