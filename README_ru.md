@@ -42,6 +42,19 @@ pip install senpy-linter
 
 ## Что нового
 
+### 0.7.6 — Новые правила (RPY704-707, RPY801-802), улучшения правил, mypy, 100% fixtures
+
+| Функция | Описание |
+|---|---|
+| **6 новых правил** | RPY704 (unused `default` variable), RPY705 (unused screen parameter), RPY706 (unused transform parameter), RPY707 (unused audio channel registration), RPY801 (duplicate translation string), RPY802 (inconsistent translation across files). Всего: 49 → **51 правил**. |
+| **Улучшения правил** | RPY108: ловит несовместимые BinOp в выражениях (`"text" + 5`). RPY401: concrete fix suggestion (`$ var = 0`). RPY403: tautology detection (`if x or not x:`). RPY502: case-insensitive matching (`show Sayori` → предлагает `sayori`). |
+| **100% fixture-покрытие** | Все 51 правила теперь имеют bad+good `.rpy` fixtures с auto-verified JSON snapshots. Было 23/45 (51%). |
+| **mypy 264 → 32** | Vendor исключён, DiagnosticSink → SenpyAnalyzer (TYPE_CHECKING), pygls overrides, None guards. −88% ошибок. |
+| **CLI flag validation** | `--fix+--check`, `--fix+--diff`, `--check+--diff` теперь exit с кодом 2 и понятным сообщением (без traceback). Warnings для no-op комбинаций. |
+| **CI badges всегда обновляются** | Бейджи теперь обновляются на каждый push в main, даже если matrix-тест упал (через `if: always()`). Больше никаких stale green бейджей. |
+| **Dependabot** | Еженедельные обновления зависимостей для pip + GitHub Actions, сгруппированные в один PR. |
+| **RPY902 example plugin** | `examples/todo_comment_plugin/` — детектит `# TODO:`, `# FIXME:`, `# XXX:`, `# HACK:` комментарии. Второй example plugin рядом с `my_senpy_plugin` (RPY901). |
+
 ### 0.7.5 — Plugin autoload, CI hardening, BLAKE2b hash
 
 | Функция | Описание |

@@ -41,6 +41,19 @@ Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github
 ---
 ## What's New
 
+### 0.7.6 — New rules (RPY704-707, RPY801-802), rule improvements, mypy hardening, fixture coverage 100%
+
+| Feature | Description |
+|---|---|
+| **6 new lint rules** | RPY704 (unused `default` variable), RPY705 (unused screen parameter), RPY706 (unused transform parameter), RPY707 (unused audio channel registration), RPY801 (duplicate translation string), RPY802 (inconsistent translation across files). Total: 49 → **51 rules**. |
+| **Rule improvements** | RPY108: catches incompatible BinOp in expressions (`"text" + 5`). RPY401: concrete fix suggestion (`$ var = 0`). RPY403: tautology detection (`if x or not x:`). RPY502: case-insensitive image matching (`show Sayori` → suggests `sayori`). |
+| **Fixture coverage 100%** | All 51 rules now have bad+good `.rpy` fixtures with auto-verified JSON snapshots. Was 23/45 (51%). |
+| **mypy 264 → 32** | Vendor excluded, DiagnosticSink → SenpyAnalyzer (TYPE_CHECKING), pygls overrides, None guards. −88% errors. |
+| **CLI flag validation** | `--fix+--check`, `--fix+--diff`, `--check+--diff` now exit with code 2 and a clear message (no traceback). Warnings for no-op combinations. |
+| **CI badges always update** | Badges now update on every main push, even if a matrix test fails (via `if: always()`). No more stale green badges. |
+| **Dependabot** | Weekly dependency updates for pip + GitHub Actions, grouped into single PRs. |
+| **RPY902 example plugin** | `examples/todo_comment_plugin/` — detects `# TODO:`, `# FIXME:`, `# XXX:`, `# HACK:` comments. Second example plugin alongside `my_senpy_plugin` (RPY901). |
+
 ### 0.7.5 — Plugin autoload, CI hardening, BLAKE2b hash
 
 | Feature | Description |

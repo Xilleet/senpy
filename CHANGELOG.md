@@ -11,13 +11,148 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.7.x)**: [0.7.5](#075) | [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
+- **Current (0.7.x)**: [0.7.6](#076) | [0.7.5](#075) | [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
 
 - **0.6.x**: [0.6.6](#066) | [0.6.5](#065) | [0.6.4](#064) | [0.6.3](#063) | [0.6.2](#062) | [0.6.1](#061) | [0.6.0](#060)
 
 - **0.5.x**: [0.5.8](#058) | [0.5.7](#057) | [0.5.6](#056) | [0.5.5](#055) | [0.5.4 ⚠️](#054) | [0.5.3](#053) | [0.5.2](#052) | [0.5.1](#051) | [0.5.0](#050)
 
 - **0.4.x**: [0.4.8](#048) | [0.4.7](#047)
+
+---
+
+<a id="076"></a>
+
+## [0.7.6] — New rules (RPY704-707, RPY801-802), rule improvements, mypy hardening, fixture coverage 100%
+
+Feature patch release. Six new lint rules, four rule improvements, 100%
+fixture coverage (45/45 → 51/51 rules), mypy errors reduced from 264 to 32
+(−88%), and CI badges now update even when a matrix job fails. All 1331
+tests pass, ruff check clean, 0 import cycles across 87 modules.
+
+### New Rules — Dead Code (RPY704-707)
+
+Four new rules in the dead-code domain, extending RPY701-703 (unused
+define/transform/screen):
+
+| Rule | Severity | What |
+|---|---|---|
+| **RPY704** | HINT | Unused `default` variable — declared but never referenced. Complement to RPY701 (which covers `define` constants). |
+| **RPY705** | HINT | Unused screen parameter — `screen shop(unused_param, gold):` where `unused_param` is never used in the body. |
+| **RPY706** | HINT | Unused transform parameter — same logic as RPY705 for transforms. Required extending `TransformSymbol` with a `signature` field. |
+| **RPY707** | HINT | Unused audio channel registration — `renpy.music.register_channel("name")` but no `play`/`queue`/`stop` on that channel. |
+
+All four are HINT severity (dead code, not bugs). RPY705/706 check
+parameter usage anywhere in the file (approximation — a proper
+cross-reference requires parsing the screen/transform body block by
+indent. Documented as a limitation; accepted for v1).
+
+### New Rules — Translation Quality (RPY801-802)
+
+Two new rules for translation file quality, extending RPY601-603:
+
+| Rule | Severity | What |
+|---|---|---|
+| **RPY801** | WARNING | Duplicate translation string — same `old` source text appears twice in a file. Second translation silently overrides the first (dead code). |
+| **RPY802** | WARNING | Inconsistent translation across files — same source string translated differently in different files within the same language directory (e.g. `game/tl/russian/common.rpy` vs `game/tl/russian/dialogue.rpy`). |
+
+RPY802 is a cross-file check — it requires a new `check_cross_language_consistency()`
+function that collects all translation pairs across all `game/tl/<lang>/`
+files and flags inconsistent translations within each language.
+
+### Rule Improvements — RPY108, RPY401, RPY403, RPY502
+
+| Rule | Improvement |
+|---|---|
+| **RPY108** | Now catches incompatible binary operations inside expressions (`$ result = "text" + 5`, `$ x = [1,2] - 3`). Previously only caught type conflicts at the assignment level. New `_check_binop_incompatible()` helper checks all `BinOp` AST nodes. |
+| **RPY401** | Now provides a concrete fix suggestion: `fix_replacement = "$ var = 0"` + actionable message ("Add '$ var = 0' to this branch or use 'default var' at top level"). |
+| **RPY403** | Now detects tautologies (`if x or not x:` — always True) and always-true literals (`if "non-empty":`). Dual to the existing contradiction check (`if x and not x:`). |
+| **RPY502** | Case-insensitive matching for image tags and attributes. `show Sayori` now suggests `sayori` (case mismatch), and `show sayori Happy` suggests `happy`. Falls back to difflib fuzzy match if no case-insensitive exact match. |
+
+### Fixture Coverage — 45/45 → 51/51 (100%)
+
+Before this release, 22 of 45 rules had no fixture tests. All 51 rules
+now have at least one bad + one good `.rpy` fixture file, auto-verified
+via snapshot JSON. This includes:
+
+- RPY100 (file not valid UTF-8) — special binary fixture in cp1251 encoding
+- RPY503 (unused media asset) — documented limitation (requires real
+  image files on disk, which the fixture framework doesn't copy; covered
+  by unit tests in `test_asset_checker.py` instead)
+- RPY802 (cross-language inconsistency) — fixture documents the bad case
+  but can't trigger it in CI (requires multi-file structure); covered by
+  unit tests in `test_translation_rpy8xx.py` instead
+
+New script: `scripts/create_wl440_fixtures.py` — idempotent generator
+for all fixture files. Run once, then `pytest --update-snapshots` to
+auto-generate JSON snapshots.
+
+### mypy Hardening — 264 → 32 errors (−88%)
+
+Three-phase approach to reduce mypy errors before the 0.8.0 architecture
+split (WL-200):
+
+| Phase | What | Errors before | Errors after |
+|---|---|---|---|
+| **Phase 1** | Exclude vendored unrpyc from mypy; fix 2 trivial errors in `cli/main.py` | 264 | 168 |
+| **Phase 2a** | Replace `DiagnosticSink` Protocol with `SenpyAnalyzer` via `TYPE_CHECKING` in BaseChecker, StateChecker, DialogueChecker, PythonAstChecker, StoryFlowAnalyzer, MermaidBuilder | 168 | 60 |
+| **Phase 2b** | Fix pygls `LanguageServer` imports (`type: ignore`); add None guards for `FlowBranch \| None`; fix AST node narrowing; fix `float`/`int` assignment; fix `Optional` access | 60 | **32** |
+
+Remaining 32 errors are mostly `arg-type` (function signature mismatches)
+and `union-attr` (Optional access without guard) in `python_ast.py`,
+`state.py`, `sarif.py`, `lsp/` handlers. These require deeper type
+narrowing or API stubs — deferred to WL-201 Phase 2c or WL-634 (ISP
+Protocol split, post-WL-200).
+
+**Architectural compromise (Phase 2a):** Replacing `DiagnosticSink` Protocol
+with `SenpyAnalyzer` is a pragmatic fix, not the correct architecture. The
+Protocol was too narrow (declared only diagnostics methods, but checkers
+use variables/labels/screens/assets). Proper fix is ISP (Interface
+Segregation Principle) split into `DiagnosticSink`, `SymbolProvider`,
+`AssetProvider`, `FlowProvider` — tracked as WL-634, planned for 0.8.0.
+
+### CLI — Flag combination validation
+
+New `_validate_flag_combinations()` function catches user mistakes
+before analysis starts:
+
+- `--fix + --check` → error (can't apply and dry-run simultaneously)
+- `--fix + --diff` → error (can't apply and only-show-diff)
+- `--check + --diff` → error (two dry-run modes is ambiguous)
+- `--extend-select` without `--select` → warning (no-op)
+- `--extend-ignore` without `--ignore` → warning (no-op)
+- `--add-noqa + --fix` → warning (both target fixable diagnostics)
+
+Hard errors exit with code 2 and a clear message (no traceback).
+
+### CI — Badges always update; Dependabot; macOS matrix
+
+| Change | What |
+|---|---|
+| **Badges `if: always()`** | `update-badges` job now runs even when a matrix test fails. Previously, one failed macOS job blocked badge updates → stale green badge. Now badges always reflect the latest test run. |
+| **Dependabot** | `.github/dependabot.yml` — weekly updates for pip deps + GitHub Actions. Groups related updates into one PR. |
+| **macOS × Python 3.11/3.13** | CI matrix expanded from 6 to 14 jobs (Ubuntu/Windows/macOS × 3.11/3.12/3.13 + Ubuntu/Windows × 3.14-beta experimental). |
+| **Python 3.14 classifier** | Added to `pyproject.toml` classifiers. |
+
+### Example Plugin — RPY902 (todo_comment_plugin)
+
+New example plugin in `examples/todo_comment_plugin/`:
+`RPY902` — detects `# TODO:`, `# FIXME:`, `# XXX:`, `# HACK:` comments
+left in `.rpy` files. HINT severity (reminders, not bugs). Case-insensitive,
+word-boundary aware (`# todolist` doesn't fire, `# TODO:` does).
+
+### Tests
+
+- **1331 tests pass** (up from 1203 in 0.7.5; +128 from new rules + fixtures + mypy fixes)
+- Ruff check clean. 0 import cycles across 87 modules.
+- Coverage stable at ~82%.
+- mypy: 32 errors (down from 263 in 0.7.5; baseline, non-blocking).
+
+### Internal
+
+No public APIs changed (except: 6 new rule codes in RULES_DATABASE,
+RULE_SEVERITY, TSUNDERE_FLAVORS, and tsundere messages). All new rules
+are HINT or WARNING — none are ERROR, so existing CI gates are unaffected.
 
 ---
 

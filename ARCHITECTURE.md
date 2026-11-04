@@ -92,7 +92,7 @@ senpy/
 │   ├── registry.py          # @register_rule decorator, _REGISTERED_LINT_RULES
 │   └── security.py          # PLUGIN_API_VERSION, check_api_version, trust store
 │
-├── rules/                   # Lint rules (45 built-in rules across 7 domains + plugin rules)
+├── rules/                   # Lint rules (51 built-in rules across 8 domains + plugin rules)
 │   ├── base.py              # BaseChecker — abstract base for all checkers
 │   ├── checkers/            # Per-domain checker modules
 │   │   ├── formatting.py    # RPY0xx (tabs, smart quotes, RPY100 encoding check)
