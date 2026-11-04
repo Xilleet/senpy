@@ -1560,138 +1560,166 @@ class PythonAstChecker:
         screen_local_symbols: set[str],
         noqa_map: dict,
     ) -> None:
-        """RPY403, RPY202, RPY103: Checks if/elif conditions via AST."""
+        """RPY403, RPY202, RPY103: Checks if/elif conditions via AST.
+
+        Thin dispatcher: delegates to 2 helpers.
+        """
         try:
             cond_tree = ast.parse(expr, mode="eval")
+            self._check_rpy403_condition(
+                cond_tree, expr, file_path, line_idx, line_content, noqa_map
+            )
+            self._check_undeclared_vars_in_condition(
+                cond_tree,
+                file_path,
+                line_idx,
+                line_content,
+                screen_name,
+                screen_local_symbols,
+                noqa_map,
+            )
+        except SyntaxError as e:
+            _logger.debug("check_condition: ast.parse failed: %s", e)
 
-            # RPY403: Always-False conditions (dead code).
-            # Catches: `if False:`, `if 0:`, `if "":`, `if []:`, `if None:`
-            if isinstance(cond_tree.body, ast.Constant) and not bool(cond_tree.body.value):
+    def _check_rpy403_condition(
+        self,
+        cond_tree: ast.Expression,
+        expr: str,
+        file_path: str,
+        line_idx: int,
+        line_content: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY403: Always-false, always-true, contradiction, tautology checks."""
+        body = cond_tree.body
+
+        # Always-False: `if False:`, `if 0:`, `if "":`, `if []:`, `if None:`
+        if isinstance(body, ast.Constant) and not bool(body.value):
+            self.analyzer._add_diagnostic(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=line_idx,
+                    line_content=line_content,
+                    code="RPY403",
+                    message=f"Condition '{expr}' is always False. This block will never execute.",
+                ),
+                noqa_map,
+            )
+        # Always-True: `if True:`, `if 1:`, `if "non-empty":` (skip bare True/1)
+        elif (
+            isinstance(body, ast.Constant)
+            and bool(body.value)
+            and not isinstance(body.value, type(None))
+        ):
+            if expr.strip() not in ("True", "1"):
                 self.analyzer._add_diagnostic(
                     Diagnostic(
                         file_path=file_path,
                         line_number=line_idx,
                         line_content=line_content,
                         code="RPY403",
-                        message=f"Condition '{expr}' is always False. This block will never execute.",
+                        message=f"Condition '{expr}' is always True. The condition is redundant — remove it or simplify the logic.",
                     ),
                     noqa_map,
                 )
-            # RPY403 (improvement 0.7.6): Always-True conditions (dead else branch).
-            # Catches: `if True:`, `if 1:`, `if "non-empty":`, `if [1,2]:`
-            # These are not crashes, but the else branch is dead code and
-            # the condition itself is pointless (always executes).
-            elif (
-                isinstance(cond_tree.body, ast.Constant)
-                and bool(cond_tree.body.value)
-                and not isinstance(cond_tree.body.value, type(None))
-            ):
-                # Skip if it's just `True` with no else — common pattern for
-                # "always run this block" (e.g. debug blocks). Only flag if
-                # the expression is more complex than a bare True literal.
-                if expr.strip() not in ("True", "1"):
-                    self.analyzer._add_diagnostic(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=line_idx,
-                            line_content=line_content,
-                            code="RPY403",
-                            message=f"Condition '{expr}' is always True. The condition is redundant — remove it or simplify the logic.",
-                        ),
-                        noqa_map,
-                    )
-            # RPY403: Contradiction in AND — `if x and not x:` (always False)
-            elif isinstance(cond_tree.body, ast.BoolOp) and isinstance(cond_tree.body.op, ast.And):
-                names = {n.id for n in cond_tree.body.values if isinstance(n, ast.Name)}
-                not_names = {
-                    n.operand.id
-                    for n in cond_tree.body.values
-                    if isinstance(n, ast.UnaryOp)
-                    and isinstance(n.op, ast.Not)
-                    and isinstance(n.operand, ast.Name)
-                }
-                contradictions = names.intersection(not_names)
-                if contradictions:
-                    var_c = next(iter(contradictions))
-                    self.analyzer._add_diagnostic(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=line_idx,
-                            line_content=line_content,
-                            code="RPY403",
-                            message=f"Condition contains mutually exclusive contradiction: '{var_c} and not {var_c}'. Always evaluates to False.",
-                        ),
-                        noqa_map,
-                    )
-            # RPY403 (improvement 0.7.6): Tautology in OR — `if x or not x:` (always True)
-            # This is the dual of the contradiction check above.
-            elif isinstance(cond_tree.body, ast.BoolOp) and isinstance(cond_tree.body.op, ast.Or):
-                names = {n.id for n in cond_tree.body.values if isinstance(n, ast.Name)}
-                not_names = {
-                    n.operand.id
-                    for n in cond_tree.body.values
-                    if isinstance(n, ast.UnaryOp)
-                    and isinstance(n.op, ast.Not)
-                    and isinstance(n.operand, ast.Name)
-                }
-                tautologies = names.intersection(not_names)
-                if tautologies:
-                    var_t = next(iter(tautologies))
-                    self.analyzer._add_diagnostic(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=line_idx,
-                            line_content=line_content,
-                            code="RPY403",
-                            message=f"Condition contains tautology: '{var_t} or not {var_t}'. Always evaluates to True.",
-                        ),
-                        noqa_map,
-                    )
+        # Contradiction in AND: `if x and not x:` (always False)
+        elif isinstance(body, ast.BoolOp) and isinstance(body.op, ast.And):
+            names = {n.id for n in body.values if isinstance(n, ast.Name)}
+            not_names = {
+                n.operand.id
+                for n in body.values
+                if isinstance(n, ast.UnaryOp)
+                and isinstance(n.op, ast.Not)
+                and isinstance(n.operand, ast.Name)
+            }
+            contradictions = names.intersection(not_names)
+            if contradictions:
+                var_c = next(iter(contradictions))
+                self.analyzer._add_diagnostic(
+                    Diagnostic(
+                        file_path=file_path,
+                        line_number=line_idx,
+                        line_content=line_content,
+                        code="RPY403",
+                        message=f"Condition contains mutually exclusive contradiction: '{var_c} and not {var_c}'. Always evaluates to False.",
+                    ),
+                    noqa_map,
+                )
+        # Tautology in OR: `if x or not x:` (always True)
+        elif isinstance(body, ast.BoolOp) and isinstance(body.op, ast.Or):
+            names = {n.id for n in body.values if isinstance(n, ast.Name)}
+            not_names = {
+                n.operand.id
+                for n in body.values
+                if isinstance(n, ast.UnaryOp)
+                and isinstance(n.op, ast.Not)
+                and isinstance(n.operand, ast.Name)
+            }
+            tautologies = names.intersection(not_names)
+            if tautologies:
+                var_t = next(iter(tautologies))
+                self.analyzer._add_diagnostic(
+                    Diagnostic(
+                        file_path=file_path,
+                        line_number=line_idx,
+                        line_content=line_content,
+                        code="RPY403",
+                        message=f"Condition contains tautology: '{var_t} or not {var_t}'. Always evaluates to True.",
+                    ),
+                    noqa_map,
+                )
 
-            for node in ast.walk(cond_tree):
-                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
-                    var_name = node.id
-                    if var_name.startswith("_") or var_name in SCREEN_LOCAL_IGNORE:
-                        continue
-                    if (
-                        var_name not in self.analyzer.declared_symbols
-                        and var_name not in screen_local_symbols
-                    ):
-                        hint = suggest_similar_symbol(var_name, self.analyzer.user_symbols)
-                        start_c, end_c = get_utf16_range(line_content, var_name)
-                        if screen_name:
-                            self.analyzer._add_diagnostic(
-                                Diagnostic(
-                                    file_path=file_path,
-                                    line_number=line_idx,
-                                    line_content=line_content,
-                                    code="RPY202",
-                                    message=(
-                                        f"Screen '{screen_name}' accesses undeclared variable '{var_name}'{hint}. "
-                                        "Screens can be evaluated in the main menu or before game start, causing a crash."
-                                    ),
-                                    col=start_c,
-                                    end_col=end_c,
+    def _check_undeclared_vars_in_condition(
+        self,
+        cond_tree: ast.Expression,
+        file_path: str,
+        line_idx: int,
+        line_content: str,
+        screen_name: str | None,
+        screen_local_symbols: set[str],
+        noqa_map: dict,
+    ) -> None:
+        """RPY202/RPY103: Undeclared variables in if/elif conditions."""
+        for node in ast.walk(cond_tree):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                var_name = node.id
+                if var_name.startswith("_") or var_name in SCREEN_LOCAL_IGNORE:
+                    continue
+                if (
+                    var_name not in self.analyzer.declared_symbols
+                    and var_name not in screen_local_symbols
+                ):
+                    hint = suggest_similar_symbol(var_name, self.analyzer.user_symbols)
+                    start_c, end_c = get_utf16_range(line_content, var_name)
+                    if screen_name:
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=line_idx,
+                                line_content=line_content,
+                                code="RPY202",
+                                message=(
+                                    f"Screen '{screen_name}' accesses undeclared variable '{var_name}'{hint}. "
+                                    "Screens can be evaluated in the main menu or before game start, causing a crash."
                                 ),
-                                noqa_map,
-                            )
-                        else:
-                            self.analyzer._add_diagnostic(
-                                Diagnostic(
-                                    file_path=file_path,
-                                    line_number=line_idx,
-                                    line_content=line_content,
-                                    code="RPY103",
-                                    message=f"Undeclared variable '{var_name}' in condition{hint}. Evaluating this condition will crash with NameError.",
-                                    col=start_c,
-                                    end_col=end_c,
-                                ),
-                                noqa_map,
-                            )
-
-        except SyntaxError as e:
-            # log debug instead of silent suppress.
-            _logger.debug("check_condition: ast.parse failed: %s", e)
+                                col=start_c,
+                                end_col=end_c,
+                            ),
+                            noqa_map,
+                        )
+                    else:
+                        self.analyzer._add_diagnostic(
+                            Diagnostic(
+                                file_path=file_path,
+                                line_number=line_idx,
+                                line_content=line_content,
+                                code="RPY103",
+                                message=f"Undeclared variable '{var_name}' in condition{hint}. Evaluating this condition will crash with NameError.",
+                                col=start_c,
+                                end_col=end_c,
+                            ),
+                            noqa_map,
+                        )
 
     def check_cfg_condition(
         self,
