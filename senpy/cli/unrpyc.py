@@ -17,6 +17,7 @@ import urllib.error
 import urllib.request
 import zipfile
 import zlib
+from typing import Any
 
 from rich.console import Console
 
@@ -351,7 +352,7 @@ def decompile_to_sandbox(
         progress_print(msg)
 
         try:
-            rpy_text = decompile_rpyc(rpyc_file)
+            rpy_text: Any = decompile_rpyc(rpyc_file)
             with open(rpy_path, "w", encoding="utf-8") as f:
                 f.write(rpy_text)
             decompiled_rpy.append(rpy_path)

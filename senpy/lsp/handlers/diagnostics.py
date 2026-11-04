@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     try:
         from pygls.lsp.server import LanguageServer
     except ImportError:
-        from pygls.server import LanguageServer
+        from pygls.server import LanguageServer  # type: ignore[attr-defined, no-redef]
 
 from lsprotocol import types as lsp
 

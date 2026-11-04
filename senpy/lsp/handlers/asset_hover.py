@@ -71,8 +71,9 @@ def _path_to_file_uri(path: str) -> str:
     return Path(os.path.abspath(path)).as_uri()
 
 
-def _format_bytes(n: int) -> str:
+def _format_bytes(size: int) -> str:
     """Human-readable file size for hover metadata line."""
+    n: float = size
     for unit in ("B", "KB", "MB", "GB"):
         if n < 1024 or unit == "GB":
             return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"

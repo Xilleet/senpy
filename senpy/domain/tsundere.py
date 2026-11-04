@@ -14,7 +14,7 @@ def _is_russian_os() -> bool:
         return True
     if os.name == "nt":
         try:
-            return ctypes.windll.kernel32.GetUserDefaultUILanguage() == 1049
+            return ctypes.windll.kernel32.GetUserDefaultUILanguage() == 1049  # type: ignore[attr-defined]
         except (AttributeError, OSError) as e:
             # log debug instead of silent suppress. ctypes.windll may
             # not be available on non-Windows (AttributeError) or Windows may

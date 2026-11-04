@@ -52,9 +52,9 @@ class StateChecker(BaseChecker):
         self.branch_uninitialized.update(uninit_vars)
 
         if self.if_stack:
-            self.if_stack[-1].current_branch.defined_vars.update(guaranteed_in_if)
+            self.if_stack[-1].current_branch.defined_vars.update(guaranteed_in_if)  # type: ignore[union-attr]
             if all_terminates:
-                self.if_stack[-1].current_branch.terminates = True
+                self.if_stack[-1].current_branch.terminates = True  # type: ignore[union-attr]
         else:
             self.guaranteed_vars.update(guaranteed_in_if)
 
@@ -155,7 +155,7 @@ class StateChecker(BaseChecker):
             r"^\s*(?:jump\b|return\b|\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b)",
             stripped,
         ):
-            self.if_stack[-1].current_branch.terminates = True
+            self.if_stack[-1].current_branch.terminates = True  # type: ignore[union-attr]
 
     def _check_menu_block(
         self,
@@ -187,9 +187,9 @@ class StateChecker(BaseChecker):
 
         # Pass menu's guaranteed variables to current if-branch
         if self.if_stack:
-            self.if_stack[-1].current_branch.defined_vars.update(guaranteed_vars)
+            self.if_stack[-1].current_branch.defined_vars.update(guaranteed_vars)  # type: ignore[union-attr]
             if all_terminates:
-                self.if_stack[-1].current_branch.terminates = True
+                self.if_stack[-1].current_branch.terminates = True  # type: ignore[union-attr]
         else:
             self.guaranteed_vars.update(guaranteed_vars)
 
@@ -231,7 +231,7 @@ class StateChecker(BaseChecker):
             self.analyzer._clear_safe_cfg_vars(py_code, self.branch_uninitialized)
             assigned_names = extract_assigned_names(py_code)
             if self.if_stack:
-                self.if_stack[-1].current_branch.defined_vars.update(assigned_names)
+                self.if_stack[-1].current_branch.defined_vars.update(assigned_names)  # type: ignore[union-attr]
             else:
                 self.guaranteed_vars.update(assigned_names)
         return idx + 1, False
@@ -276,12 +276,12 @@ class StateChecker(BaseChecker):
                 self.analyzer._clear_safe_cfg_vars(code, self.branch_uninitialized)
                 assigned_names = extract_assigned_names(code)
                 if self.if_stack:
-                    self.if_stack[-1].current_branch.defined_vars.update(assigned_names)
+                    self.if_stack[-1].current_branch.defined_vars.update(assigned_names)  # type: ignore[union-attr]
                     if re.search(
                         r"\brenpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\s*\(",
                         code,
                     ):
-                        self.if_stack[-1].current_branch.terminates = True
+                        self.if_stack[-1].current_branch.terminates = True  # type: ignore[union-attr]
                 else:
                     self.guaranteed_vars.update(assigned_names)
         return consumed_idx, False

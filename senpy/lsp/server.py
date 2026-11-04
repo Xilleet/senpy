@@ -18,7 +18,7 @@ _logger = get_logger("lsp.server")
 try:
     from pygls.lsp.server import LanguageServer
 except ImportError:
-    from pygls.server import LanguageServer
+    from pygls.server import LanguageServer  # type: ignore[attr-defined, no-redef]
 
 server = LanguageServer("senpy-lsp", _SENPY_VERSION)
 

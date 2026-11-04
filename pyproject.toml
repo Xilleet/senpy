@@ -200,6 +200,13 @@ check_untyped_defs = true
 module = ["pygls.*", "lsprotocol.*"]
 ignore_missing_imports = true
 
+# pygls 2.x экспортирует LanguageServer через __getattr__ (динамически).
+# mypy не видит этот атрибут и ругается [attr-defined] + [no-redef] в
+# каждом LSP handler файле. Игнорируем только эти два error codes.
+[[tool.mypy.overrides]]
+module = ["pygls.server", "pygls"]
+disable_error_code = ["attr-defined", "no-redef"]
+
 # Vendored unrpyc — полностью исключаем из проверки.
 [[tool.mypy.overrides]]
 module = ["senpy.vendor.*"]

@@ -355,7 +355,7 @@ class StoryFlowAnalyzer:
 
                 current_choice = FlowBranch(
                     kind="choice",
-                    name=m_choice.group(2).strip("\"'"),
+                    name=m_choice.group(2).strip("\"'"),  # type: ignore[union-attr]
                     line=idx + 1,
                     raw=stripped,
                 )

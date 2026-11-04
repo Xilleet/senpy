@@ -249,7 +249,7 @@ def generate_html_report(
             card = f"""
             <div class="diag-card {diag.severity}">
                 <div class="diag-header">
-                    <span class="diag-rule" style="color: var(--{diag.severity.lower()})">{diag.code} ({diag.severity})</span>
+                    <span class="diag-rule" style="color: var(--{(diag.severity or 'info').lower()})">{diag.code} ({diag.severity})</span>
                     <span class="diag-loc">{file_name}:{diag.line_number}</span>
                 </div>
                 <div class="diag-msg">{safe_msg}</div>

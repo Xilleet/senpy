@@ -221,7 +221,8 @@ class CacheManager:
                 )
 
         for sym in sorted(analyzer.declared_symbols):
-            hasher.update(sym.encode("utf-8"))
+            if sym:
+                hasher.update(sym.encode("utf-8"))
             if sym in analyzer.variables and analyzer.variables[sym].type_name:
                 hasher.update(analyzer.variables[sym].type_name.encode("utf-8"))
 

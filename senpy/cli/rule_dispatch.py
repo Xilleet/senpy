@@ -72,7 +72,7 @@ def _filter_rules(
             rule_tags = {t.lower() for t in info.get("tags", [])}
             if not (rule_tags & wanted_tags):
                 continue
-        if wanted_sev is not None and info["severity"].upper() != wanted_sev:
+        if wanted_sev is not None and str(info["severity"]).upper() != wanted_sev:
             continue
         out.append(_rule_to_dict(code, info))
         seen_codes.add(code)

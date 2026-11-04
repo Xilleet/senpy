@@ -30,7 +30,7 @@ def generate_sarif(diagnostics: list[Diagnostic], project_path: str) -> str:
     # 1. Populate the rules dictionary (so GitHub can show a detailed error description)
     rules_added = set()
     for rule_id, info in RULES_DATABASE.items():
-        sarif["runs"][0]["tool"]["driver"]["rules"].append(
+        sarif["runs"][0]["tool"]["driver"]["rules"].append(  # type: ignore[index]
             {
                 "id": rule_id,
                 "shortDescription": {"text": info["title"]},
@@ -47,7 +47,7 @@ def generate_sarif(diagnostics: list[Diagnostic], project_path: str) -> str:
     for diag in diagnostics:
         # Just in case a new rule appeared that is not in the database
         if diag.code not in rules_added:
-            sarif["runs"][0]["tool"]["driver"]["rules"].append(
+            sarif["runs"][0]["tool"]["driver"]["rules"].append(  # type: ignore[index]
                 {"id": diag.code, "shortDescription": {"text": f"Rule {diag.code}"}}
             )
             rules_added.add(diag.code)
@@ -81,6 +81,6 @@ def generate_sarif(diagnostics: list[Diagnostic], project_path: str) -> str:
                 }
             ],
         }
-        sarif["runs"][0]["results"].append(result)
+        sarif["runs"][0]["results"].append(result)  # type: ignore[index]
 
     return json.dumps(sarif, indent=2, ensure_ascii=False)
