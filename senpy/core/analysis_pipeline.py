@@ -18,6 +18,7 @@ Before this extraction, SenpyAnalyzer was 855 lines. After: ~400 lines
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from senpy.core.cache import CachedFileEntry, compute_file_hash
@@ -41,8 +42,21 @@ if TYPE_CHECKING:
     from senpy.core.analyzer import SenpyAnalyzer
 
 
-# Re-export _FileAnalysisState (defined in analyzer.py, used here)
-# We'll import it lazily to avoid circular imports.
+@dataclass(slots=True)
+class _FileAnalysisState:
+    """Per-file mutable state shared across _analyze_file helpers.
+
+    Bundles the 5 checkers + scope stack + file_modified flag so the
+    dispatcher can pass a single object instead of 7 parameters.
+    """
+
+    scope_stack: ScopeStack
+    fmt: FormattingChecker
+    screen: ScreenChecker
+    asset: AssetChecker
+    dialogue: DialogueChecker
+    st_checker: StateChecker
+    file_modified: bool = False
 
 
 class AnalysisPipeline:
@@ -211,8 +225,6 @@ class AnalysisPipeline:
 
     def _analyze_file(self, file_path: str) -> None:
         """Analyze a single .rpy file: collect symbols and run all lint rules."""
-        from senpy.core.analyzer import _FileAnalysisState
-
         a = self.analyzer
         lines = a._read_file_lines(file_path)
         if lines is None or file_path.endswith("_ren.py"):

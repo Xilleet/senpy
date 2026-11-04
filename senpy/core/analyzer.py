@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 
 from senpy.core.analysis_pipeline import AnalysisPipeline
 from senpy.core.cache import CacheManager
@@ -15,7 +14,6 @@ from senpy.core.file_collector import (
 )
 from senpy.core.models import AnalysisResult, Diagnostic, FileScope
 from senpy.core.paths import normalize_path
-from senpy.core.scope import ScopeStack
 from senpy.core.symbol_table import SymbolTable
 from senpy.core.symbols import (
     ImageSymbol,
@@ -26,13 +24,6 @@ from senpy.core.symbols import (
 )
 from senpy.domain.assets import AssetManager, find_orphaned_rpyc
 from senpy.domain.text_tags import get_utf16_range
-from senpy.rules.checkers import (
-    AssetChecker,
-    DialogueChecker,
-    FormattingChecker,
-    ScreenChecker,
-    StateChecker,
-)
 from senpy.rules.deprecated import DeprecationChecker
 from senpy.rules.flow import StoryFlowAnalyzer
 from senpy.rules.python_ast import PythonAstChecker
@@ -49,23 +40,6 @@ from senpy.text_utils import (  # noqa: E402, F401
 # body. Used for `image name = "path"` and `image name = Transform("path", …)`
 # so ImageSymbol.image_path can be populated at parse time (renpy-magic's
 # extractAssetPath does the same in TS; we cover the common cases here).
-
-
-@dataclass(slots=True)
-class _FileAnalysisState:
-    """Per-file mutable state shared across _analyze_file helpers.
-
-    Bundles the 5 checkers + scope stack + file_modified flag so the
-    dispatcher can pass a single object instead of 7 parameters.
-    """
-
-    scope_stack: ScopeStack
-    fmt: FormattingChecker
-    screen: ScreenChecker
-    asset: AssetChecker
-    dialogue: DialogueChecker
-    st_checker: StateChecker
-    file_modified: bool = False
 
 
 class SenpyAnalyzer:
