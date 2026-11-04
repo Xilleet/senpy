@@ -170,25 +170,17 @@ class AssetChecker(BaseChecker):
         stripped: str,
         noqa_map: dict,
     ) -> None:
-        """RPY502: Validate the image name and attributes in show/scene."""
-        raw_tokens = m_show.group(2).split()
-        img_tokens = []
-        for t in raw_tokens:
-            clean_t = t.rstrip(":")
-            if clean_t in CLAUSE_KEYWORDS:
-                break
-            img_tokens.append(clean_t)
-            if t.endswith(":"):
-                break
+        """RPY502: Validate the image name and attributes in show/scene.
 
-        # "show layer <name>" — clearing a layer, NOT showing an image
-        if img_tokens and img_tokens[0] == "layer" and m_show.group(1) == "show":
-            img_tokens = []
-
-        if not img_tokens:
+        Dispatcher: extracts image tokens via `_extract_show_image_tokens`,
+        then dispatches to `_validate_image_attributes` (base exists, attrs wrong)
+        or `_emit_unknown_base_tag` (base tag missing).
+        """
+        extracted = self._extract_show_image_tokens(m_show)
+        if extracted is None:
             return
 
-        full_img_tag = " ".join(img_tokens)
+        img_tokens, full_img_tag = extracted
         self.analyzer._mark_asset_used(full_img_tag)
         base_tag = img_tokens[0]
         all_valid = self.analyzer.valid_images.union(self.analyzer.images.keys())
@@ -231,6 +223,33 @@ class AssetChecker(BaseChecker):
             stripped=stripped,
             noqa_map=noqa_map,
         )
+
+    @staticmethod
+    def _extract_show_image_tokens(m_show) -> tuple[list[str], str] | None:
+        """Parse `m_show.group(2)` into (img_tokens, full_img_tag), or None if the
+        statement is not actually showing an image (no tokens, or `show layer <name>`).
+
+        Stops at the first CLAUSE_KEYWORDS token (e.g. `at`, `with`, `as`) and at
+        the first token ending with `:` (ATL block opener).
+        """
+        raw_tokens = m_show.group(2).split()
+        img_tokens: list[str] = []
+        for t in raw_tokens:
+            clean_t = t.rstrip(":")
+            if clean_t in CLAUSE_KEYWORDS:
+                break
+            img_tokens.append(clean_t)
+            if t.endswith(":"):
+                break
+
+        # "show layer <name>" — clearing a layer, NOT showing an image
+        if img_tokens and img_tokens[0] == "layer" and m_show.group(1) == "show":
+            return None
+
+        if not img_tokens:
+            return None
+
+        return img_tokens, " ".join(img_tokens)
 
     def _validate_image_attributes(
         self,

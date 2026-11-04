@@ -131,7 +131,11 @@ class DialogueChecker(BaseChecker):
         noqa_map: dict[int, set[str] | None],
     ) -> None:
         """RPY302, RPY306, RPY310: Check jump/call targets for non-existent labels,
-        return path, and argument validation."""
+        return path, and argument validation.
+
+        Dispatcher only: parse + resolve target + emit shared RPY302, then route
+        to `_check_jump_target` / `_check_call_target` for command-specific checks.
+        """
         m_jump = RE_JUMP_CALL.match(stripped) if stripped.startswith(("jump ", "call ")) else None
         if not m_jump:
             return
@@ -152,68 +156,120 @@ class DialogueChecker(BaseChecker):
 
         self.analyzer.referenced_labels.add(target_label)
 
-        # RPY302: non-existent label
+        # RPY302: non-existent label (shared between jump and call)
         if target_label not in self.analyzer.labels:
-            matches = difflib.get_close_matches(
-                target_label, list(self.analyzer.labels.keys()), n=1, cutoff=0.6
-            )
-            best_match = matches[0] if matches else None
-            hint = f" (did you mean '{best_match}' ?)" if best_match else ""
-            start_c, end_c = self.analyzer._get_utf16_range(raw_line, raw_target)
-            self.analyzer._add_diagnostic(
-                Diagnostic(
-                    file_path=file_path,
-                    line_number=idx + 1,
-                    line_content=stripped,
-                    code="RPY302",
-                    message=f"{cmd_type.capitalize()} to non-existent label '{raw_target}'{hint}. Causes ScriptError.",
-                    col=start_c,
-                    end_col=end_c,
-                    fix_title=f"Change to '{best_match}'" if best_match else None,
-                    fix_replacement=best_match,
-                ),
-                noqa_map,
+            self._emit_rpy302_missing_label(
+                cmd_type=cmd_type,
+                raw_target=raw_target,
+                target_label=target_label,
+                file_path=file_path,
+                idx=idx,
+                raw_line=raw_line,
+                stripped=stripped,
+                noqa_map=noqa_map,
             )
 
-        if cmd_type == "jump" and branch_uninitialized is not None:
-            branch_uninitialized.clear()
+        if cmd_type == "jump":
+            self._check_jump_target(target_label, branch_uninitialized)
         elif cmd_type == "call":
-            # RPY310: argument validation
-            if (
-                target_label in self.analyzer.labels
-                and self.analyzer.labels[target_label].signature
-            ):
-                sig = self.analyzer.labels[target_label].signature
-                m_args = re.search(r"\bcall\s+(?!screen\b)[^\W\d]\w*\s*(?:\((.*?)\))?", stripped)
-                call_args = m_args.group(1) if m_args and m_args.group(1) is not None else None
-                err_msg = validate_call_arguments(sig, call_args)
-                if err_msg:
-                    self.analyzer._add_diagnostic(
-                        Diagnostic(
-                            file_path=file_path,
-                            line_number=idx + 1,
-                            line_content=stripped,
-                            code="RPY310",
-                            message=f"Invalid arguments in 'call {target_label}': {err_msg}. Causes fatal TypeError.",
-                            severity="ERROR",
-                        ),
-                        noqa_map,
-                    )
+            self._check_call_target(
+                target_label=target_label,
+                raw_target=raw_target,
+                file_path=file_path,
+                idx=idx,
+                stripped=stripped,
+                noqa_map=noqa_map,
+            )
 
-            # RPY306: return path check
-            if target_label in self.analyzer.labels and not self.analyzer._can_reach_return(
-                target_label
-            ):
+    def _emit_rpy302_missing_label(
+        self,
+        *,
+        cmd_type: str,
+        raw_target: str,
+        target_label: str,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        stripped: str,
+        noqa_map: dict[int, set[str] | None],
+    ) -> None:
+        """Emit RPY302 for a jump/call to a non-existent label, with a difflib hint."""
+        matches = difflib.get_close_matches(
+            target_label, list(self.analyzer.labels.keys()), n=1, cutoff=0.6
+        )
+        best_match = matches[0] if matches else None
+        hint = f" (did you mean '{best_match}' ?)" if best_match else ""
+        start_c, end_c = self.analyzer._get_utf16_range(raw_line, raw_target)
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=idx + 1,
+                line_content=stripped,
+                code="RPY302",
+                message=f"{cmd_type.capitalize()} to non-existent label '{raw_target}'{hint}. Causes ScriptError.",
+                col=start_c,
+                end_col=end_c,
+                fix_title=f"Change to '{best_match}'" if best_match else None,
+                fix_replacement=best_match,
+            ),
+            noqa_map,
+        )
+
+    def _check_jump_target(
+        self,
+        target_label: str,
+        branch_uninitialized: dict | None,
+    ) -> None:
+        """Jump-specific post-checks: a jump terminates the current branch,
+        so any MAYBE_SET vars from an unfinished menu choice are no longer relevant.
+        """
+        if branch_uninitialized is not None:
+            branch_uninitialized.clear()
+
+    def _check_call_target(
+        self,
+        *,
+        target_label: str,
+        raw_target: str,
+        file_path: str,
+        idx: int,
+        stripped: str,
+        noqa_map: dict[int, set[str] | None],
+    ) -> None:
+        """Call-specific post-checks: RPY310 (argument validation) + RPY306 (return path)."""
+        # RPY310: argument validation
+        if target_label in self.analyzer.labels and self.analyzer.labels[target_label].signature:
+            sig = self.analyzer.labels[target_label].signature
+            m_args = re.search(r"\bcall\s+(?!screen\b)[^\W\d]\w*\s*(?:\((.*?)\))?", stripped)
+            call_args = m_args.group(1) if m_args and m_args.group(1) is not None else None
+            err_msg = validate_call_arguments(sig, call_args)
+            if err_msg:
                 self.analyzer._add_diagnostic(
                     Diagnostic(
                         file_path=file_path,
                         line_number=idx + 1,
                         line_content=stripped,
-                        code="RPY306",
-                        message=f"Static analysis could not find a 'return' path from called label '{target_label}'. Verify that control flow returns correctly.",
+                        code="RPY310",
+                        message=f"Invalid arguments in 'call {target_label}': {err_msg}. Causes fatal TypeError.",
+                        severity="ERROR",
                     ),
                     noqa_map,
                 )
+
+        # RPY306: return path check
+        if target_label in self.analyzer.labels and not self.analyzer._can_reach_return(
+            target_label
+        ):
+            self.analyzer._add_diagnostic(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=idx + 1,
+                    line_content=stripped,
+                    code="RPY306",
+                    message=f"Static analysis could not find a 'return' path from called label '{target_label}'. Verify that control flow returns correctly.",
+                ),
+                noqa_map,
+            )
 
     def _check_dynamic_jump_targets(
         self,
