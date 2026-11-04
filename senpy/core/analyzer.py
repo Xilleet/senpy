@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from senpy.core.cache import CachedFileEntry, CacheManager, CacheManifest, compute_file_hash
 from senpy.core.config import load_config
 from senpy.core.constants import (
-    IGNORED_DIRS,
     MEDIA_EXTENSIONS,
     RE_DEFAULT,
     RE_DEFINE,
@@ -18,7 +17,6 @@ from senpy.core.constants import (
     RE_LABEL,
     RE_LAYEREDIMAGE_ATTR,
     RE_LAYEREDIMAGE_START,
-    RE_NOQA,
     RE_QUOTED_IDENTIFIER,
     RE_RETURN,
     RE_SCREEN_CALL,
@@ -28,6 +26,12 @@ from senpy.core.constants import (
     RE_STRING_MATCH,
     RE_TRANSFORM,
     SENPY_VERSION,
+)
+from senpy.core.file_collector import (
+    build_noqa_map,
+    discover_rpy_files,
+    emit_encoding_error,
+    read_file_lines,
 )
 from senpy.core.models import RULE_SEVERITY, AnalysisResult, Diagnostic, FileScope
 from senpy.core.paths import normalize_path
@@ -650,40 +654,10 @@ class SenpyAnalyzer:
         return file_diags
 
     def _get_rpy_files(self) -> tuple[list[str], list[str]]:
-        main_files: list[str] = []
-        tl_files: list[str] = []
-        for root, dirs, filenames in os.walk(self.project_path, followlinks=False):
-            dirs[:] = sorted([d for d in dirs if d not in IGNORED_DIRS])
-            rel_parts = os.path.relpath(root, self.project_path).replace("\\", "/").split("/")
-            is_tl_dir = "tl" in rel_parts
-
-            for f in sorted(filenames):
-                if f.endswith((".rpy", "_ren.py")):
-                    full_p = os.path.join(root, f)
-                    if is_tl_dir:
-                        tl_files.append(full_p)
-                    else:
-                        main_files.append(full_p)
-        return sorted(main_files), sorted(tl_files)
+        return discover_rpy_files(self.project_path)
 
     def _emit_encoding_error(self, file_path: str, err: UnicodeDecodeError) -> None:
-        """RPY100: the file is not readable as UTF-8. Previously the decode error was
-        swallowed by `except: pass` — the linter silently skipped the file and reported "clean",
-        although Ren'Py will crash when loading such a script."""
-        self.diagnostics.append(
-            Diagnostic(
-                file_path=file_path,
-                line_number=1,
-                line_content="",
-                code="RPY100",
-                severity="ERROR",
-                message=(
-                    f"File is not valid UTF-8 ({err.reason} at byte offset {err.start}). "
-                    "Ren'Py requires UTF-8 script files: the game will fail to load it. "
-                    "The file was skipped by the linter; re-save it with UTF-8 encoding."
-                ),
-            )
-        )
+        emit_encoding_error(file_path, err, self.diagnostics)
 
     def _collect_default(
         self,
@@ -1271,14 +1245,9 @@ class SenpyAnalyzer:
         return idx, block
 
     def _parse_noqa(self, line: str) -> tuple[bool, set[str] | None]:
-        m = RE_NOQA.search(line)
-        if not m:
-            return False, None
-        codes_str = m.group(1) or m.group(2)
-        if codes_str:
-            codes = {c.strip().upper() for c in codes_str.split(",") if c.strip()}
-            return True, codes
-        return True, None
+        from senpy.core.file_collector import parse_noqa
+
+        return parse_noqa(line)
 
     def _scan_python_assets(self, code_lines: list[str] | str) -> None:
         """Targeted search for media files in Python blocks (protection against false RPY503 without overhead)."""
@@ -1395,13 +1364,7 @@ class SenpyAnalyzer:
             self._write_fixed_file(file_path, lines)
 
     def _build_noqa_map(self, lines: list[str]) -> dict[int, set[str] | None]:
-        """Pre-parse all `# noqa` comments in the file into a line→codes map."""
-        noqa_map: dict[int, set[str] | None] = {}
-        for line_no, raw_line in enumerate(lines, start=1):
-            has_noqa, codes = self._parse_noqa(raw_line)
-            if has_noqa:
-                noqa_map[line_no] = codes
-        return noqa_map
+        return build_noqa_map(lines)
 
     def _handle_init_python_block(
         self, lines: list[str], idx: int, file_path: str, noqa_map: dict
@@ -1512,21 +1475,7 @@ class SenpyAnalyzer:
         return next_idx
 
     def _read_file_lines(self, file_path: str) -> list[str] | None:
-        """Read file lines for analysis: in-memory, stage1 cache, or from disk.
-
-        Returns None if file can't be read.
-        """
-        try:
-            norm_path = normalize_path(file_path)
-            if norm_path in self.in_memory_files:
-                return self.in_memory_files[norm_path].splitlines(keepends=True)
-            elif norm_path in self._stage1_lines:
-                return self._stage1_lines.pop(norm_path)
-            else:
-                with open(file_path, encoding="utf-8", newline="") as f:
-                    return f.readlines()
-        except (UnicodeDecodeError, OSError):
-            return None
+        return read_file_lines(file_path, self.in_memory_files, self._stage1_lines)
 
     def _write_fixed_file(self, file_path: str, lines: list[str]) -> None:
         """Write modified lines back to file (for --fix mode)."""
