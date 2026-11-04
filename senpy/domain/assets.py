@@ -138,6 +138,20 @@ class AssetManager:
 
     def index(self) -> None:
         """Scans the project directory and RPA archives, indexing all media files."""
+        self._reset_asset_state()
+
+        if self.project_path in self._asset_cache:
+            cached_assets, cached_images = self._asset_cache[self.project_path]
+            self.known_assets = set(cached_assets)
+            self.valid_images = set(cached_images)
+
+        self._index_disk_files()
+        self._index_valid_images()
+
+        self._asset_cache[self.project_path] = (set(self.known_assets), set(self.valid_images))
+
+    def _reset_asset_state(self) -> None:
+        """Clear all asset indexes before re-indexing."""
         self.known_assets.clear()
         self.valid_images = set(BUILTIN_COLORS)
         self.media_disk_files.clear()
@@ -146,11 +160,13 @@ class AssetManager:
         self.audio_name_to_path.clear()
         self.used_asset_keys.clear()
 
-        if self.project_path in self._asset_cache:
-            cached_assets, cached_images = self._asset_cache[self.project_path]
-            self.known_assets = set(cached_assets)
-            self.valid_images = set(cached_images)
+    def _index_disk_files(self) -> None:
+        """Walk the project directory, registering disk files and RPA archives.
 
+        Populates `known_assets`, `media_disk_files`, `audio_dir_files`,
+        `image_name_to_path`, `audio_name_to_path`. Skips Senpy-own files
+        and non-asset extensions.
+        """
         for root, dirs, filenames in os.walk(self.project_path, followlinks=False):
             dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
             for f in filenames:
@@ -203,6 +219,13 @@ class AssetManager:
                 if f.lower().endswith(".rpa"):
                     self._read_rpa_index(full_path)
 
+    def _index_valid_images(self) -> None:
+        """Populate `valid_images` with tokenized names from `known_assets`.
+
+        Strict parsing applies only to the official images/ standard:
+        `images/foo/bar.png` → "foo bar" + "bar". Other assets are
+        registered as-is by `_index_disk_files`.
+        """
         for asset in self.known_assets:
             base, ext = os.path.splitext(asset)
 
@@ -215,8 +238,6 @@ class AssetManager:
                     tokenized = clean_name.replace("/", " ").replace("_", " ")
                     self.valid_images.add(tokenized)
                     self.valid_images.add(os.path.basename(clean_name))
-
-        self._asset_cache[self.project_path] = (set(self.known_assets), set(self.valid_images))
 
     def _register_image_for_hover(self, clean_rel: str, full_path: str) -> None:
         """Register *full_path* under one or more Ren'Py image-name keys.

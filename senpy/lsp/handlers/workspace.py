@@ -133,59 +133,73 @@ def folding_range(ls: LanguageServer, params: lsp.FoldingRangeParams) -> list[ls
     _RE_MENU = re.compile(r"^menu\s*:?")
     _RE_TRANSFORM = re.compile(r"^transform\s+(\w+)")
     _RE_PYTHON_BLOCK = re.compile(r"^python\s*:")
+    _SCOPE_PATTERNS = (_RE_LABEL, _RE_SCREEN, _RE_INIT, _RE_MENU, _RE_TRANSFORM, _RE_PYTHON_BLOCK)
 
     ranges: list[lsp.FoldingRange] = []
-
     # Stack of open blocks: (start_line_0based, indent, keyword)
     open_blocks: list[tuple[int, int, str]] = []
 
     for i, raw_line in enumerate(lines):
-        # Count the indentation (in spaces, with expandtabs)
         stripped = raw_line.lstrip(" \t")
         leading = raw_line[: len(raw_line) - len(stripped)]
         indent = len(leading.expandtabs(4))
 
-        # Close blocks with greater or equal indentation
-        while open_blocks and indent <= open_blocks[-1][1]:
-            start_line, start_indent, keyword = open_blocks.pop()
-            if i - 1 > start_line:  # at least 2 lines in the block
-                ranges.append(
-                    lsp.FoldingRange(
-                        start_line=start_line,
-                        end_line=i - 1,
-                        kind=lsp.FoldingRangeKind.Region,
-                    )
-                )
+        _close_blocks_at_indent(i, indent, open_blocks, ranges)
 
-        # Check whether the line opens a new scope
         clean = stripped.split("#")[0].strip()  # strip the comment
-        if clean:
-            is_scope_opener = (
-                _RE_LABEL.match(clean)
-                or _RE_SCREEN.match(clean)
-                or _RE_INIT.match(clean)
-                or _RE_MENU.match(clean)
-                or _RE_TRANSFORM.match(clean)
-                or _RE_PYTHON_BLOCK.match(clean)
-            )
-            if is_scope_opener and clean.endswith(":"):
-                open_blocks.append((i, indent, clean))
+        if clean and _is_scope_opener_line(clean, _SCOPE_PATTERNS):
+            open_blocks.append((i, indent, clean))
 
-    # Close remaining open blocks (until end of file)
-    for start_line, start_indent, keyword in open_blocks:
-        if len(lines) - 1 > start_line:
-            ranges.append(
-                lsp.FoldingRange(
-                    start_line=start_line,
-                    end_line=len(lines) - 1,
-                    kind=lsp.FoldingRangeKind.Region,
-                )
-            )
+    _flush_open_blocks(len(lines), open_blocks, ranges)
 
     # Sort by start_line (blocks close in reverse order —
     # inner before outer, but the client expects them in order)
     ranges.sort(key=lambda r: r.start_line)
     return ranges
+
+
+def _close_blocks_at_indent(
+    current_line: int,
+    current_indent: int,
+    open_blocks: list[tuple[int, int, str]],
+    ranges: list[lsp.FoldingRange],
+) -> None:
+    """Pop and emit folding ranges for any open blocks at indent ≥ current_indent."""
+    while open_blocks and current_indent <= open_blocks[-1][1]:
+        start_line, _start_indent, _keyword = open_blocks.pop()
+        if current_line - 1 > start_line:  # at least 2 lines in the block
+            ranges.append(
+                lsp.FoldingRange(
+                    start_line=start_line,
+                    end_line=current_line - 1,
+                    kind=lsp.FoldingRangeKind.Region,
+                )
+            )
+
+
+def _is_scope_opener_line(clean: str, patterns: tuple[re.Pattern[str], ...]) -> bool:
+    """True if the cleaned line opens a new Ren'Py scope (label, screen, menu, ...)."""
+    if not clean.endswith(":"):
+        return False
+    return any(p.match(clean) for p in patterns)
+
+
+def _flush_open_blocks(
+    total_lines: int,
+    open_blocks: list[tuple[int, int, str]],
+    ranges: list[lsp.FoldingRange],
+) -> None:
+    """Close remaining open blocks (until end of file)."""
+    last_line_idx = total_lines - 1
+    for start_line, _start_indent, _keyword in open_blocks:
+        if last_line_idx > start_line:
+            ranges.append(
+                lsp.FoldingRange(
+                    start_line=start_line,
+                    end_line=last_line_idx,
+                    kind=lsp.FoldingRangeKind.Region,
+                )
+            )
 
 
 def document_highlight(

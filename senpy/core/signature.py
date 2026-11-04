@@ -107,6 +107,21 @@ def validate_call_arguments(sig: SignatureInfo, args_str: str | None) -> str | N
     if has_star or has_star_kw:
         return None  # Dynamic unpacking (*args, **kwargs), skip strict check
 
+    # 1+2: positional count and unknown kwargs
+    err = _check_arg_counts_and_kwargs(sig, num_pos, kwargs)
+    if err:
+        return err
+
+    # 3+4: required coverage and positional/keyword overlap
+    return _check_required_args_and_overlap(sig, num_pos, kwargs)
+
+
+def _check_arg_counts_and_kwargs(
+    sig: SignatureInfo,
+    num_pos: int,
+    kwargs: set[str],
+) -> str | None:
+    """Check (1) extra positional args beyond max_args and (2) unknown named kwargs."""
     # 1. Extra positional arguments
     if not sig.has_varargs and num_pos > sig.max_args:
         return f"takes at most {int(sig.max_args)} argument(s), but {num_pos} were provided"
@@ -118,9 +133,19 @@ def validate_call_arguments(sig: SignatureInfo, args_str: str | None) -> str | N
             first = min(unexpected)
             return f"got unexpected keyword argument '{first}'"
 
-    # 3. Check coverage of required parameters
+    return None
+
+
+def _check_required_args_and_overlap(
+    sig: SignatureInfo,
+    num_pos: int,
+    kwargs: set[str],
+) -> str | None:
+    """Check (3) coverage of required parameters and (4) positional/keyword duplication."""
     covered_by_pos = set(sig.pos_names[:num_pos])
     all_provided = covered_by_pos | kwargs
+
+    # 3. Check coverage of required parameters
     missing = sig.required_names - all_provided
     if missing:
         missing_sorted = sorted(missing)
