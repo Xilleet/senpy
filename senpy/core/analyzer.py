@@ -3,13 +3,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from senpy.core.cache import CachedFileEntry, CacheManager, CacheManifest, compute_file_hash
+from senpy.core.analysis_pipeline import AnalysisPipeline
+from senpy.core.cache import CacheManager
 from senpy.core.config import load_config
-from senpy.core.constants import (
-    RE_LABEL,
-    RE_SCREEN_START,
-    SENPY_VERSION,
-)
 from senpy.core.file_collector import (
     FileCollector,
     build_noqa_map,
@@ -17,10 +13,9 @@ from senpy.core.file_collector import (
     emit_encoding_error,
     read_file_lines,
 )
-from senpy.core.models import RULE_SEVERITY, AnalysisResult, Diagnostic, FileScope
+from senpy.core.models import AnalysisResult, Diagnostic, FileScope
 from senpy.core.paths import normalize_path
-from senpy.core.progress import progress_print
-from senpy.core.scope import ScopeStack, ScopeType
+from senpy.core.scope import ScopeStack
 from senpy.core.symbol_table import SymbolTable
 from senpy.core.symbols import (
     ImageSymbol,
@@ -30,7 +25,7 @@ from senpy.core.symbols import (
     VariableSymbol,
 )
 from senpy.domain.assets import AssetManager, find_orphaned_rpyc
-from senpy.domain.text_tags import get_utf16_range, process_quoted_strings
+from senpy.domain.text_tags import get_utf16_range
 from senpy.rules.checkers import (
     AssetChecker,
     DialogueChecker,
@@ -115,6 +110,7 @@ class SenpyAnalyzer:
         # Base sets — now managed by SymbolTable
         self._symbols = SymbolTable()
         self._collector = FileCollector(self)
+        self._pipeline = AnalysisPipeline(self)
 
         # Other structures and scan metadata
         self.diagnostics: list[Diagnostic] = []
@@ -243,37 +239,7 @@ class SenpyAnalyzer:
         self.diagnostics.extend(self.assets.check_unused())
 
     def run(self, quiet: bool = False) -> AnalysisResult:
-        self._run_reset()
-
-        self._index_assets()
-        main_rpy, tl_rpy = self._get_rpy_files()
-        rpy_files = main_rpy + self.extra_files
-
-        old_manifest = self.cache_manager.load_manifest() if not self.fix else None
-        cached_files = old_manifest.files if old_manifest else {}
-
-        file_hashes, stage1_diags_map = self._collect_all_symbols(rpy_files, cached_files, quiet)
-
-        self._rebuild_aggregates()
-
-        current_global_hash = self.cache_manager.compute_global_hash(self)
-        is_global_unchanged = (
-            old_manifest is not None and old_manifest.global_symbol_hash == current_global_hash
-        )
-
-        new_cached_entries = self._analyze_all_files(
-            rpy_files, cached_files, file_hashes, stage1_diags_map, is_global_unchanged, quiet
-        )
-
-        self._finalize_results(tl_rpy, new_cached_entries, current_global_hash)
-
-        return AnalysisResult(
-            diagnostics=self.diagnostics,
-            file_count=len(rpy_files) + len(tl_rpy),
-            total_lines=self.total_lines,
-            fixed_count=self.fixed_count,
-            fixable_count=self.fixable_count,
-        )
+        return self._pipeline.run(quiet)
 
     def _run_reset(self) -> None:
         """Reset all analyzer state for a fresh run."""
@@ -288,126 +254,11 @@ class SenpyAnalyzer:
     def _collect_all_symbols(self, *args, **kwargs):
         return self._collector._collect_all_symbols(*args, **kwargs)
 
-    def _analyze_all_files(
-        self,
-        rpy_files: list[str],
-        cached_files: dict,
-        file_hashes: dict[str, str],
-        stage1_diags_map: dict[str, list],
-        is_global_unchanged: bool,
-        quiet: bool,
-    ) -> dict[str, CachedFileEntry]:
-        """[2/2] Analyze all .rpy files for lint rules (Tier 2 cache).
+    def _analyze_all_files(self, *args, **kwargs):
+        return self._pipeline._analyze_all_files(*args, **kwargs)
 
-        Returns new_cached_entries for manifest save.
-        """
-        total_files = len(rpy_files)
-        new_cached_entries: dict[str, CachedFileEntry] = {}
-
-        for i, file_path in enumerate(rpy_files, 1):
-            fname = os.path.basename(file_path)
-            norm_path = normalize_path(file_path)
-            mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else 0.0
-            size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-
-            if not quiet:
-                msg = f"\r[2/2] Анализ правил: {i}/{total_files} ({fname[:25]})"
-                progress_print(msg)
-
-            is_tier2_hit = False
-            if (
-                is_global_unchanged
-                and norm_path in cached_files
-                and cached_files[norm_path].mtime == mtime
-                and cached_files[norm_path].size == size
-                and norm_path not in self.in_memory_files
-                and not self.fix
-            ):
-                entry = cached_files[norm_path]
-                f_hash = file_hashes.get(norm_path) or compute_file_hash(file_path)
-                if entry.content_hash and f_hash == entry.content_hash:
-                    self.diagnostics.extend(entry.diagnostics)
-                    self.assets.used_asset_keys.update(entry.used_assets)
-                    self.total_lines += entry.lines_count
-                    new_cached_entries[norm_path] = entry
-                    is_tier2_hit = True
-
-            if not is_tier2_hit:
-                diag_start = len(self.diagnostics)
-                lines_start = self.total_lines
-                used_start = set(self.assets.used_asset_keys)
-
-                self._analyze_file(file_path)
-
-                new_diags = self.diagnostics[diag_start:]
-                lines_added = self.total_lines - lines_start
-                new_used = self.assets.used_asset_keys - used_start
-
-                if norm_path in self.file_scopes and not self.fix:
-                    f_hash = file_hashes.get(norm_path) or compute_file_hash(file_path)
-                    new_cached_entries[norm_path] = CachedFileEntry(
-                        mtime=mtime,
-                        size=size,
-                        lines_count=lines_added,
-                        scope=self.file_scopes[norm_path],
-                        diagnostics=new_diags,
-                        used_assets=new_used,
-                        content_hash=f_hash,
-                        collect_diagnostics=stage1_diags_map.get(norm_path, []),
-                    )
-
-        if not quiet:
-            print()
-
-        return new_cached_entries
-
-    def _finalize_results(
-        self,
-        tl_rpy: list[str],
-        new_cached_entries: dict[str, CachedFileEntry],
-        current_global_hash: str,
-    ) -> None:
-        """Run post-analysis checks, TL validation, severity overrides, and save cache."""
-        from senpy.rules.checkers.translation import (
-            analyze_tl_file,
-            check_cross_language_consistency,
-        )
-        from senpy.rules.dead_code import check_unused_declarations
-
-        self._check_unreachable_labels()
-        self._check_unused_assets()
-        check_unused_declarations(self)
-
-        for tl_file in tl_rpy:
-            analyze_tl_file(self, tl_file)
-
-        # RPY802: cross-language consistency — check if the same source
-        # string is translated inconsistently across different files within
-        # the SAME language directory. Catches copy-paste translation errors
-        # where the same source gets two different translations in one lang.
-        check_cross_language_consistency(self, tl_rpy)
-
-        if self.severity_overrides:
-            for d in self.diagnostics:
-                if d.code in self.severity_overrides:
-                    d.severity = self.severity_overrides[d.code]
-
-        # strict=True: promote every remaining diagnostic to ERROR.
-        # Runs AFTER severity_overrides so an explicit demote (e.g.
-        # RPY104=INFO) still wins — see _apply_severity for the same
-        # policy on the hot path.
-        if self.strict:
-            for d in self.diagnostics:
-                if d.code not in self.severity_overrides:
-                    d.severity = "ERROR"
-
-        if not self.fix and new_cached_entries:
-            new_manifest = CacheManifest(
-                version=SENPY_VERSION,
-                global_symbol_hash=current_global_hash,
-                files=new_cached_entries,
-            )
-            self.cache_manager.save_manifest(new_manifest)
+    def _finalize_results(self, *args, **kwargs):
+        return self._pipeline._finalize_results(*args, **kwargs)
 
     def _differential_purge_file(self, norm_path: str, file_path: str) -> None:
         """Differentially removes symbols of only one file — delegates to SymbolTable."""
@@ -429,30 +280,8 @@ class SenpyAnalyzer:
         """Rebuilds global symbol sets — delegates to SymbolTable."""
         self._symbols.rebuild_from_scopes(self.file_scopes)
 
-    def analyze_file_only(self, file_path: str) -> list[Diagnostic]:
-        """Fast analysis of only the changed file for LSP without state leakage."""
-        file_diags: list[Diagnostic] = []
-        old_diags = self.diagnostics
-        self.diagnostics = file_diags
-        norm_path = normalize_path(file_path)
-        try:
-            rel_parts = os.path.relpath(file_path, self.project_path).replace("\\", "/").split("/")
-        except ValueError:
-            # Windows: file_path and project_path are on different drives (D: vs C:)
-            # — os.path.relpath fails. Use the absolute path as a fallback.
-            rel_parts = file_path.replace("\\", "/").split("/")
-        try:
-            if "tl" in rel_parts:
-                from senpy.rules.checkers.translation import analyze_tl_file
-
-                analyze_tl_file(self, file_path)
-            else:
-                self._differential_purge_file(norm_path, file_path)
-                self._collect_symbols(file_path)
-                self._analyze_file(file_path)
-        finally:
-            self.diagnostics = old_diags
-        return file_diags
+    def analyze_file_only(self, file_path):
+        return self._pipeline.analyze_file_only(file_path)
 
     def _get_rpy_files(self) -> tuple[list[str], list[str]]:
         return discover_rpy_files(self.project_path)
@@ -501,32 +330,11 @@ class SenpyAnalyzer:
     def _scan_python_assets(self, *args, **kwargs):
         return self._collector._scan_python_assets(*args, **kwargs)
 
-    def _apply_severity(self, diag: Diagnostic) -> None:
-        """Applies severity overrides from the config or default levels.
+    def _apply_severity(self, diag):
+        return self._pipeline._apply_severity(diag)
 
-        Resolution order (first match wins):
-        1. Explicit ``[tool.senpy.severity]`` override for this rule code.
-        2. The diagnostic's own severity (set by the checker).
-        3. ``RULE_SEVERITY`` default for this code, falling back to WARNING.
-        4. If ``strict`` is True and steps 1-3 did not produce ERROR,
-           promote to ERROR. Step 1 (explicit override) still wins over
-           strict — otherwise strict mode would silently re-promote a
-           rule the user explicitly demoted.
-        """
-        if self.severity_overrides and diag.code in self.severity_overrides:
-            diag.severity = self.severity_overrides[diag.code]
-        elif not diag.severity:
-            diag.severity = RULE_SEVERITY.get(diag.code, "WARNING")
-        if self.strict and diag.code not in self.severity_overrides:
-            diag.severity = "ERROR"
-
-    def _add_diagnostic(self, diag: Diagnostic, noqa_map: dict[int, set[str] | None]):
-        if diag.line_number in noqa_map:
-            ignored_codes = noqa_map[diag.line_number]
-            if ignored_codes is None or diag.code in ignored_codes:
-                return
-        self._apply_severity(diag)
-        self.diagnostics.append(diag)
+    def _add_diagnostic(self, diag, noqa_map):
+        return self._pipeline._add_diagnostic(diag, noqa_map)
 
     def _can_reach_return(self, label_name: str, visited: set[str] | None = None) -> bool:
         return self.flow.can_reach_return(label_name, visited)
@@ -544,63 +352,7 @@ class SenpyAnalyzer:
         return attrs
 
     def _analyze_file(self, file_path: str):
-        """Analyze a single .rpy file: collect symbols and run all lint rules.
-
-        This is the per-file dispatcher. The main loop walks logical lines
-        and delegates to 6 checkers (format, screen, asset, dialogue,
-        quoted-strings, state) plus init-python-block AST checks.
-        """
-        lines = self._read_file_lines(file_path)
-        if lines is None or file_path.endswith("_ren.py"):
-            return
-
-        self.total_lines += len(lines)
-        state = _FileAnalysisState(
-            scope_stack=ScopeStack(self.declared_symbols),
-            fmt=FormattingChecker(self),
-            screen=ScreenChecker(self),
-            asset=AssetChecker(self),
-            dialogue=DialogueChecker(self),
-            st_checker=StateChecker(self),
-        )
-        noqa_map = self._build_noqa_map(lines)
-
-        idx = 0
-        while idx < len(lines):
-            next_idx, raw_line, clean = _get_logical_line(lines, idx)
-            stripped = clean.strip()
-            if not stripped:
-                idx = next_idx
-                continue
-
-            line_indent = len(raw_line) - len(raw_line.lstrip(" "))
-            state.scope_stack.pop_to_indent(line_indent)
-
-            raw_line, modified = state.fmt.check_line(
-                file_path, idx, raw_line, clean, state.scope_stack, noqa_map, lines
-            )
-            if modified:
-                state.file_modified = True
-
-            init_next = self._handle_init_python_block(lines, idx, file_path, noqa_map)
-            if init_next is not None:
-                idx = init_next
-                continue
-
-            self._push_label_scope_if_match(clean, state, line_indent)
-
-            if self._push_screen_scope_if_match(raw_line, state, line_indent):
-                idx += 1
-                continue
-
-            next_idx = self._run_line_checkers(
-                file_path, idx, next_idx, raw_line, clean, stripped, state, noqa_map, lines
-            )
-            idx = next_idx
-
-        state.st_checker._pop_and_merge_all_if()
-        if state.file_modified and self.fix:
-            self._write_fixed_file(file_path, lines)
+        return self._pipeline._analyze_file(file_path)
 
     def _build_noqa_map(self, lines: list[str]) -> dict[int, set[str] | None]:
         return build_noqa_map(lines)
@@ -608,123 +360,23 @@ class SenpyAnalyzer:
     def _handle_init_python_block(self, *args, **kwargs):
         return self._collector._handle_init_python_block(*args, **kwargs)
 
-    def _push_label_scope_if_match(
-        self, clean: str, state: _FileAnalysisState, line_indent: int
-    ) -> None:
-        """If `clean` matches `label X:`, push a LABEL scope and register params."""
-        m_label = RE_LABEL.match(clean)
-        if not m_label:
-            return
-        state.scope_stack.push(ScopeType.LABEL, m_label.group(1), line_indent)
-        state.st_checker.reset()
-        raw_params = m_label.group(2)
-        if raw_params:
-            for p in raw_params.split(","):
-                p_clean = p.split("=")[0].strip()
-                if p_clean and p_clean.isidentifier():
-                    state.scope_stack.add_symbol(p_clean)
+    def _push_label_scope_if_match(self, *args, **kwargs):
+        return self._pipeline._push_label_scope_if_match(*args, **kwargs)
 
-    def _push_screen_scope_if_match(
-        self, raw_line: str, state: _FileAnalysisState, line_indent: int
-    ) -> bool:
-        """If `raw_line` matches `screen X():`, push a SCREEN scope + params.
+    def _push_screen_scope_if_match(self, *args, **kwargs):
+        return self._pipeline._push_screen_scope_if_match(*args, **kwargs)
 
-        Returns True if a screen scope was pushed (caller should `continue`),
-        False otherwise.
-        """
-        m_screen = RE_SCREEN_START.match(raw_line)
-        if not m_screen:
-            return False
-        screen_name = m_screen.group(2)
-        state.scope_stack.push(ScopeType.SCREEN, screen_name, line_indent)
-        params_str = m_screen.group(3)
-        if params_str:
-            for p in params_str.split(","):
-                p_clean = p.split("=")[0].strip()
-                if p_clean and p_clean.isidentifier():
-                    state.scope_stack.add_symbol(p_clean)
-        return True
-
-    def _run_line_checkers(
-        self,
-        file_path: str,
-        idx: int,
-        next_idx: int,
-        raw_line: str,
-        clean: str,
-        stripped: str,
-        state: _FileAnalysisState,
-        noqa_map: dict,
-        lines: list[str],
-    ) -> int:
-        """Run screen, asset, dialogue, quoted-string, and state checkers
-        for one logical line. Returns the next line index (may differ from
-        `next_idx` if state_checker overrides it).
-        """
-        # 2. ScreenChecker (RPY203, RPY204, RPY206)
-        state.screen.check_line(file_path, idx, raw_line, clean, state.scope_stack, noqa_map, lines)
-        # 3. AssetChecker (RPY501, RPY502)
-        state.asset.check_line(file_path, idx, raw_line, clean, state.scope_stack, noqa_map, lines)
-        # 4. DialogueChecker (RPY302, RPY305, RPY306, RPY308)
-        state.dialogue.check_line(
-            file_path,
-            idx,
-            raw_line,
-            clean,
-            state.scope_stack,
-            noqa_map,
-            lines,
-            state.st_checker.branch_uninitialized,
-        )
-        # 5. Quoted strings check (RPY101, RPY301, RPY304)
-        if not stripped.startswith(("$", "python")):
-            new_line, modified = self._check_and_fix_quoted_strings(
-                file_path, idx + 1, raw_line, state.scope_stack.get_local_symbols(), noqa_map
-            )
-            if modified:
-                lines[idx] = new_line
-                state.file_modified = True
-        # 6. StateChecker (RPY102-106, RPY201, RPY205, RPY401-403)
-        next_idx, _ = state.st_checker.check_line(
-            file_path, idx, next_idx, raw_line, clean, state.scope_stack, noqa_map, lines
-        )
-        return next_idx
+    def _run_line_checkers(self, *args, **kwargs):
+        return self._pipeline._run_line_checkers(*args, **kwargs)
 
     def _read_file_lines(self, file_path: str) -> list[str] | None:
         return read_file_lines(file_path, self.in_memory_files, self._stage1_lines)
 
-    def _write_fixed_file(self, file_path: str, lines: list[str]) -> None:
-        """Write modified lines back to file (for --fix mode)."""
-        try:
-            with open(file_path, "w", encoding="utf-8", newline="") as f:
-                f.writelines(lines)
-        except OSError:
-            pass
+    def _write_fixed_file(self, file_path, lines):
+        return self._pipeline._write_fixed_file(file_path, lines)
 
-    def _check_and_fix_quoted_strings(
-        self,
-        file_path: str,
-        line_idx: int,
-        raw_line: str,
-        extra_symbols: set[str],
-        noqa_map: dict,
-    ) -> tuple[str, bool]:
-        new_line, modified, diags, fixed, fixable, used_assets = process_quoted_strings(
-            raw_line=raw_line,
-            line_idx=line_idx,
-            file_path=file_path,
-            declared_symbols=self.declared_symbols,
-            extra_symbols=extra_symbols,
-            user_symbols=self.user_symbols,
-            fix=self.fix,
-        )
-        for asset in used_assets:
-            self._mark_asset_used(asset)
-        for diag in diags:
-            self._add_diagnostic(diag, noqa_map)
-        self.fixed_count += fixed
-        self.fixable_count += fixable
-        return new_line, modified
+    def _check_and_fix_quoted_strings(self, *args, **kwargs):
+        return self._pipeline._check_and_fix_quoted_strings(*args, **kwargs)
 
     def _check_unreachable_labels(self) -> None:
         self.diagnostics.extend(self.flow.check_unreachable_labels())
