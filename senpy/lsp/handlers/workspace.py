@@ -192,7 +192,8 @@ def document_highlight(
     ls: LanguageServer, params: lsp.DocumentHighlightParams
 ) -> list[lsp.DocumentHighlight]:
     server_mod = _get_server_mod()
-    """Highlights all occurrences of the word under the cursor in the current file."""
+    """Highlights all occurrences of the word under the cursor in the current file.
+    """
     if server_mod._active_analyzer is None or not server_mod._is_initialized:
         return []
 
@@ -205,46 +206,48 @@ def document_highlight(
         return []
 
     line = doc.lines[line_idx]
-    col = params.position.character
-
-    # Extract the word under the cursor
-    word = None
-    for m in re.finditer(r"[a-zA-Z_][a-zA-Z0-9_\.]*", line):
-        if m.start() <= col <= m.end():
-            word = m.group(0)
-            break
-
+    word = _extract_word_at_position(line, params.position.character)
     if not word:
         return []
 
-    # Check that this is a user-defined symbol (label/screen/transform/variable)
-    is_user_symbol = (
-        word in server_mod._active_analyzer.labels
-        or word in server_mod._active_analyzer.screens
-        or word in server_mod._active_analyzer.transforms
-        or word in server_mod._active_analyzer.variables
-        or word in server_mod._active_analyzer.user_symbols
-    )
-
-    if not is_user_symbol:
+    if not _is_user_symbol(word, server_mod._active_analyzer):
         return []
 
-    # Find all occurrences of the word in the current file
-    highlights: list[lsp.DocumentHighlight] = []
+    return _find_all_occurrences(word, doc.lines)
 
-    for i, file_line in enumerate(doc.lines):
-        # Simple find for each occurrence of the word in the line
+
+def _extract_word_at_position(line: str, col: int) -> str | None:
+    """Extract the identifier under the cursor position."""
+    for m in re.finditer(r"[a-zA-Z_][a-zA-Z0-9_\.]*", line):
+        if m.start() <= col <= m.end():
+            return m.group(0)
+    return None
+
+
+def _is_user_symbol(word: str, analyzer) -> bool:
+    """Check if word is a user-defined symbol (label/screen/transform/variable)."""
+    return (
+        word in analyzer.labels
+        or word in analyzer.screens
+        or word in analyzer.transforms
+        or word in analyzer.variables
+        or word in analyzer.user_symbols
+    )
+
+
+def _find_all_occurrences(word: str, lines: list[str]) -> list[lsp.DocumentHighlight]:
+    """Find all whole-word occurrences of `word` in `lines`, classifying each
+    as Read or Write (declaration lines get Write)."""
+    highlights: list[lsp.DocumentHighlight] = []
+    for i, file_line in enumerate(lines):
         start = 0
         while True:
             pos = file_line.find(word, start)
             if pos == -1:
                 break
-            # Check word boundaries (not part of another word)
             before = file_line[pos - 1] if pos > 0 else " "
             after = file_line[pos + len(word)] if pos + len(word) < len(file_line) else " "
             if not (before.isalnum() or before == "_") and not (after.isalnum() or after == "_"):
-                # This is a whole word, not a substring
-                # Determine the kind: Write if this is a declaration line, Read otherwise
                 stripped = file_line.strip()
                 is_declaration = (
                     stripped.startswith(f"label {word}")
@@ -268,7 +271,6 @@ def document_highlight(
                     )
                 )
             start = pos + 1
-
     return highlights
 
 

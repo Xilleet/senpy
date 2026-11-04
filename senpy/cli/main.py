@@ -506,55 +506,12 @@ def filter_diagnostics(
     args,
     ignored_codes: set[str],
 ) -> tuple[list, int]:
-    """Filters diagnostics by --ignore, --select, --tag, --ignore-tag, --errors-only, --info.
+    """Filters diagnostics by --ignore, --select, --tag, --ignore-tag, --errors-only, --info."""
+    select_codes = _build_select_codes(args)
+    full_ignored = _build_full_ignored(ignored_codes, args)
+    wanted_tags, ignored_tags = _build_tag_filters(args)
 
-    Filtering logic:
-      1. start with all rules enabled
-      2. if args.select is non-empty: disable all, enable only args.select + args.extend_select
-      3. else: extend_select is ignored (select is empty — everything is enabled)
-      4. remove ignored_codes (includes --ignore + --extend-ignore, collected in main())
-      5. apply --tag (whitelist) and --ignore-tag (blacklist) by looking up
-         each diagnostic's rule code in RULES_DATABASE.tags
-      6. apply --errors-only, --info (existing logic)
-
-    Args:
-        result: AnalysisResult with a .diagnostics list.
-        args: Namespace with .ignore, .select, .extend_select, .tag,
-            .ignore_tag, .errors_only, .info.
-        ignored_codes: Set of rule codes to ignore (includes --ignore,
-            --extend-ignore, collected in main()).
-
-    Returns:
-        Tuple (active_diagnostics, hidden_info_count):
-        - active_diagnostics: filtered list for output
-        - hidden_info_count: how many INFO entries are hidden (for the "use --info" message)
-    """
-    # Build the whitelist from --select + --extend-select.
-    # extend_select only has an effect if --select is set (like ruff).
-    select_codes: set[str] = set()
-    if getattr(args, "select", None):
-        select_codes.update(c.strip().upper() for c in args.select)
-        if getattr(args, "extend_select", None):
-            select_codes.update(c.strip().upper() for c in args.extend_select)
-
-    # --extend-ignore is added to ignored_codes (inside filter_diagnostics,
-    # so the function is self-contained — does not depend on main()'s assembly).
-    full_ignored = set(ignored_codes)
-    if getattr(args, "extend_ignore", None):
-        full_ignored.update(c.strip().upper() for c in args.extend_ignore)
-
-    # Tag-based filters. Tags are looked up via RULES_DATABASE; rules
-    # missing from the database (e.g. plugin rules with unknown codes)
-    # are treated as having no tags — they pass --tag (no constraint)
-    # but are always dropped by --ignore-tag (conservative).
     from senpy.rules.rules_info import RULES_DATABASE
-
-    wanted_tags: set[str] | None = None
-    if getattr(args, "tag", None):
-        wanted_tags = {t.lower() for t in args.tag}
-    ignored_tags: set[str] = set()
-    if getattr(args, "ignore_tag", None):
-        ignored_tags = {t.lower() for t in args.ignore_tag}
 
     def _passes_tag_filters(code: str) -> bool:
         info = RULES_DATABASE.get(code)
@@ -563,25 +520,80 @@ def filter_diagnostics(
             return False
         return not (ignored_tags and (rule_tags & ignored_tags))
 
-    hidden_info_count = sum(
+    hidden_info_count = _count_hidden_info(
+        result.diagnostics, full_ignored, select_codes, _passes_tag_filters, args.info
+    )
+    active_diagnostics = _filter_active(
+        result.diagnostics, full_ignored, select_codes, _passes_tag_filters, args
+    )
+    return active_diagnostics, hidden_info_count
+
+
+def _build_select_codes(args) -> set[str]:
+    """Build the whitelist from --select + --extend-select."""
+    select_codes: set[str] = set()
+    if getattr(args, "select", None):
+        select_codes.update(c.strip().upper() for c in args.select)
+        if getattr(args, "extend_select", None):
+            select_codes.update(c.strip().upper() for c in args.extend_select)
+    return select_codes
+
+
+def _build_full_ignored(ignored_codes: set[str], args) -> set[str]:
+    """Combine ignored_codes with --extend-ignore."""
+    full_ignored = set(ignored_codes)
+    if getattr(args, "extend_ignore", None):
+        full_ignored.update(c.strip().upper() for c in args.extend_ignore)
+    return full_ignored
+
+
+def _build_tag_filters(args) -> tuple[set[str] | None, set[str]]:
+    """Extract --tag (whitelist) and --ignore-tag (blacklist) from args."""
+    wanted_tags: set[str] | None = None
+    if getattr(args, "tag", None):
+        wanted_tags = {t.lower() for t in args.tag}
+    ignored_tags: set[str] = set()
+    if getattr(args, "ignore_tag", None):
+        ignored_tags = {t.lower() for t in args.ignore_tag}
+    return wanted_tags, ignored_tags
+
+
+def _count_hidden_info(
+    diagnostics: list,
+    full_ignored: set[str],
+    select_codes: set[str],
+    passes_tag_filters,
+    show_info: bool,
+) -> int:
+    """Count INFO-severity diagnostics that are filtered out (for the 'use --info' message)."""
+    return sum(
         1
-        for e in result.diagnostics
+        for e in diagnostics
         if e.severity == "INFO"
         and e.code not in full_ignored
         and (not select_codes or e.code in select_codes)
-        and _passes_tag_filters(e.code)
-        and not args.info
+        and passes_tag_filters(e.code)
+        and not show_info
     )
-    active_diagnostics = [
+
+
+def _filter_active(
+    diagnostics: list,
+    full_ignored: set[str],
+    select_codes: set[str],
+    passes_tag_filters,
+    args,
+) -> list:
+    """Apply all filters to produce the active diagnostics list."""
+    return [
         e
-        for e in result.diagnostics
+        for e in diagnostics
         if e.code not in full_ignored
         and (not select_codes or e.code in select_codes)
-        and _passes_tag_filters(e.code)
+        and passes_tag_filters(e.code)
         and (not args.errors_only or e.severity == "ERROR")
         and (args.info or e.severity != "INFO")
     ]
-    return active_diagnostics, hidden_info_count
 
 
 def render_sarif(active_diagnostics, args, console) -> int:
