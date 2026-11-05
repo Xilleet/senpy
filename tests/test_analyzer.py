@@ -1014,6 +1014,114 @@ def test_lsp_differential_update_multiple_files_integrity(tmp_path: Path):
     assert "shared_var" in analyzer.declared_symbols
 
 
+def test_lsp_differential_purge_keeps_symbol_declared_in_other_file(tmp_path: Path):
+    """Differential purge must not drop a symbol from object registries
+    when the symbol is also declared in another file.
+
+    Regression for B1: purge_object_registries used to pop keys from the
+    global object dicts (variables/labels/screens/images/transforms/
+    defined_audio_map) unconditionally, ignoring whether the same symbol
+    was still declared in a sibling FileScope. The LSP fast-path
+    (analyze_file_only) is exposed to this when the edited file stops
+    declaring a symbol that another file still declares.
+    """
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+
+    file_a = game_dir / "a.rpy"
+    file_b = game_dir / "b.rpy"
+
+    # Both files declare `shared_var` and `shared_label` initially.
+    file_a.write_text(
+        "default shared_var = 1\ndefault a_only = 10\n"
+        "label shared_label:\n    return\n"
+        "label a_only_label:\n    return\n",
+        encoding="utf-8",
+    )
+    file_b.write_text(
+        "default shared_var = 2\ndefault b_only = 20\n" "label shared_label_b:\n    return\n",
+        encoding="utf-8",
+    )
+
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    analyzer.run(quiet=True)
+
+    # Sanity check after full run: shared symbol is in both the dict and the set.
+    assert "shared_var" in analyzer.variables
+    assert "shared_var" in analyzer.declared_symbols
+
+    # Edit file A: drop `shared_var` and `shared_label` declarations entirely.
+    file_a.write_text(
+        "default a_only = 10\nlabel a_only_label:\n    return\n",
+        encoding="utf-8",
+    )
+    analyzer.analyze_file_only(str(file_a))
+
+    # The edited file no longer declares shared_var, but file B still does.
+    # The global object dict (variables) must keep the entry sourced from B.
+    assert "shared_var" in analyzer.variables, (
+        "purge_object_registries dropped `shared_var` from analyzer.variables "
+        "even though file B still declares it"
+    )
+    # The aggregate set is also expected to retain it (this already worked).
+    assert "shared_var" in analyzer.declared_symbols
+
+    # The variable symbol must reflect the surviving declaration (file B).
+    var_sym = analyzer.variables["shared_var"]
+    assert var_sym is not None
+    # File A's a_only was retained, file B's b_only must survive untouched.
+    assert "a_only" in analyzer.variables
+    assert "b_only" in analyzer.variables
+
+
+def test_lsp_differential_purge_keeps_shared_label_in_other_file(tmp_path: Path):
+    """Same regression as above, but for the `labels` object dict.
+
+    A label that is declared in both files must remain in analyzer.labels
+    after the edited file drops its declaration, because the other file
+    still declares it.
+    """
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+
+    file_a = game_dir / "a.rpy"
+    file_b = game_dir / "b.rpy"
+
+    # Both files declare a label with the same name (this is technically
+    # a duplicate-label scenario, but Ren'Py resolves it by last-wins;
+    # the linter emits RPY307 separately). For purge purposes, the key
+    # point is that the label name should remain resolvable globally
+    # while at least one file still declares it.
+    file_a.write_text(
+        "label common_label:\n    return\nlabel a_only_label:\n    return\n",
+        encoding="utf-8",
+    )
+    file_b.write_text(
+        "label common_label:\n    return\nlabel b_only_label:\n    return\n",
+        encoding="utf-8",
+    )
+
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    analyzer.run(quiet=True)
+
+    assert "common_label" in analyzer.labels
+    assert "a_only_label" in analyzer.labels
+    assert "b_only_label" in analyzer.labels
+
+    # File A drops common_label entirely.
+    file_a.write_text("label a_only_label:\n    return\n", encoding="utf-8")
+    analyzer.analyze_file_only(str(file_a))
+
+    # common_label still declared by file B → must remain globally resolvable.
+    assert "common_label" in analyzer.labels, (
+        "purge_object_registries dropped `common_label` from analyzer.labels "
+        "even though file B still declares it"
+    )
+    assert "b_only_label" in analyzer.labels
+    # a_only_label was retained by file A.
+    assert "a_only_label" in analyzer.labels
+
+
 def test_multiline_calls_and_playlists_parsing(tmp_path: Path):
     """Verify multiline call statements, transform declarations, and audio playlists glue cleanly."""
     extra_files = {

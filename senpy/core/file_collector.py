@@ -444,31 +444,33 @@ class FileCollector:
         else:
             label_name = raw_name
             current_global_label = label_name
-        if label_name in self.analyzer.labels:
-            if not label_name.startswith("_"):
-                prev_file = self.analyzer.labels[label_name].file_path
-                prev_line = self.analyzer.labels[label_name].line_number
-                self.analyzer.diagnostics.append(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        line_content=clean,
-                        code="RPY307",
-                        message=f"Duplicate label '{label_name}'. Previously declared at {os.path.basename(prev_file)}:{prev_line}. Causes fatal ScriptError.",
-                        severity="ERROR",
-                    )
+        if label_name in self.analyzer.labels and not label_name.startswith("_"):
+            prev_file = self.analyzer.labels[label_name].file_path
+            prev_line = self.analyzer.labels[label_name].line_number
+            self.analyzer.diagnostics.append(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=idx + 1,
+                    line_content=clean,
+                    code="RPY307",
+                    message=f"Duplicate label '{label_name}'. Previously declared at {os.path.basename(prev_file)}:{prev_line}. Causes fatal ScriptError.",
+                    severity="ERROR",
                 )
-        else:
-            sig = parse_signature(m_label.group(2))
-            lbl_sym = LabelSymbol(
-                name=label_name,
-                file_path=file_path,
-                line_number=idx + 1,
-                code_line=clean,
-                signature=sig,
             )
-            scope.labels[label_name] = lbl_sym
-            self.analyzer.labels[label_name] = lbl_sym
+        sig = parse_signature(m_label.group(2))
+        lbl_sym = LabelSymbol(
+            name=label_name,
+            file_path=file_path,
+            line_number=idx + 1,
+            code_line=clean,
+            signature=sig,
+        )
+        # Always record in both scope.labels and analyzer.labels — even for
+        # duplicate declarations — so that differential purge can correctly
+        # detect that the symbol is still declared by a surviving file when
+        # one of the declarations is removed.
+        scope.labels[label_name] = lbl_sym
+        self.analyzer.labels[label_name] = lbl_sym
 
         return label_name, current_global_label, label_name
 

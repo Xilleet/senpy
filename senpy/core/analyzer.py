@@ -240,7 +240,7 @@ class SenpyAnalyzer:
         if not old_scope:
             return
 
-        self._symbols.purge_object_registries(old_scope)
+        self._symbols.purge_object_registries(old_scope, self.file_scopes)
         self._symbols.purge_jump_sources(old_scope, file_path)
         self._symbols.purge_shared_sets(old_scope, self.file_scopes)
 

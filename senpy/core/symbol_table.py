@@ -147,20 +147,44 @@ class SymbolTable:
         for targets in self.screen_action_jumps.values():
             self.referenced_labels.update(targets)
 
-    def purge_object_registries(self, old_scope: FileScope) -> None:
-        """Fast O(1) removal of a file's symbols from global dict registries."""
+    def purge_object_registries(
+        self, old_scope: FileScope, file_scopes: dict[str, FileScope]
+    ) -> None:
+        """Remove a file's symbols from global object dicts only when no
+        other file scope still declares the same symbol.
+
+        Mirrors the contract of purge_shared_sets: every key is checked
+        against the surviving FileScopes before being popped. This keeps
+        the LSP fast-path (analyze_file_only) consistent with the full
+        rebuild path — when the edited file drops a declaration that
+        another file still holds, the global registry must keep the
+        surviving entry rather than silently losing it.
+        """
+        other_scopes = list(file_scopes.values())
+
         for k in old_scope.variables:
-            self.variables.pop(k, None)
+            if not any(k in s.variables for s in other_scopes):
+                self.variables.pop(k, None)
+
         for k in old_scope.labels:
-            self.labels.pop(k, None)
+            if not any(k in s.labels for s in other_scopes):
+                self.labels.pop(k, None)
+
         for k in old_scope.screens:
-            self.screens.pop(k, None)
+            if not any(k in s.screens for s in other_scopes):
+                self.screens.pop(k, None)
+
         for k in old_scope.images:
-            self.images.pop(k, None)
+            if not any(k in s.images for s in other_scopes):
+                self.images.pop(k, None)
+
         for k in old_scope.transforms:
-            self.transforms.pop(k, None)
+            if not any(k in s.transforms for s in other_scopes):
+                self.transforms.pop(k, None)
+
         for k in old_scope.defined_audio_map:
-            self.defined_audio_map.pop(k, None)
+            if not any(k in s.defined_audio_map for s in other_scopes):
+                self.defined_audio_map.pop(k, None)
 
     def purge_jump_sources(self, old_scope: FileScope, file_path: str) -> None:
         """Clear jump_sources entries that originated from the purged file."""
