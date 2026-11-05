@@ -11,13 +11,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.7.x)**: [0.7.6](#076) | [0.7.5](#075) | [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
+- **Current (0.7.x)**: [0.7.7](#077) | [0.7.6](#076) | [0.7.5](#075) | [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
 
 - **0.6.x**: [0.6.6](#066) | [0.6.5](#065) | [0.6.4](#064) | [0.6.3](#063) | [0.6.2](#062) | [0.6.1](#061) | [0.6.0](#060)
 
 - **0.5.x**: [0.5.8](#058) | [0.5.7](#057) | [0.5.6](#056) | [0.5.5](#055) | [0.5.4 ⚠️](#054) | [0.5.3](#053) | [0.5.2](#052) | [0.5.1](#051) | [0.5.0](#050)
 
 - **0.4.x**: [0.4.8](#048) | [0.4.7](#047)
+
+---
+
+<a id="077"></a>
+
+## [0.7.7] — Documentation, SEO & Open VSX publishing
+
+Documentation and discoverability release. All 1331 tests pass unchanged. This release focuses on making
+Senpy findable by users who don't already know the name.
+
+### Documentation — README
+
+- **New comparison section**: `Senpy vs built-in renpy lint` —
+  12-row table covering approach, speed, save/rollback safety,
+  translation mismatch detection, story graph, dead code, branching
+  dataflow, init phase dependency, CI-readiness, IDE integration, what
+  each tool catches, and distribution. Closes the comparative search
+  intent for `renpy linter`, `renpy lint alternative`, `renpy static
+  analysis` queries.
+- **New comparison section**: `Senpy vs vscode-language-renpy`
+  (official extension) — 12-row table covering syntax highlighting,
+  language configuration, snippets, real-time diagnostics, go-to-def,
+  find references, hover docs, rename, semantic tokens, story graph,
+  save/rollback safety, translation validator. Positions Senpy as
+  complementary to the official extension, not a replacement. Closes
+  the `renpy vscode extension`, `renpy lsp`, `renpy language server`
+  query cluster.
+- **New disambiguation footer**: `Other projects named "senpy"` —
+  lists the 4 unrelated projects that share the name `senpy` (PyPI
+  sentiment-analysis server, `ACasey13/senpy` Neyer sensitivity
+  testing, SCIA Engineer `senpy` XML framework, ScienceDirect academic
+  paper). Reduces bounce rate from users who landed here by mistake and
+  helps Google disambiguate the brand.
+
+### Changed — `senpy-vscode/package.json`
+
+- **`displayName`**: `senpy-vscode` → `Senpy — Ren'Py Linter & Language
+  Server` (was the package name; now SEO-friendly).
+- **`description`**: panch-line removed, replaced with SEO-rich
+  description mentioning undefined variables, broken labels,
+  control-flow bugs, save/rollback issues, translation errors.
+- **`categories`**: `["Other"]` → `["Programming Languages", "Linters",
+  "Formatters"]`.
+- **`keywords`**: added 15 SEO keywords (`renpy`, `ren'py`, `visual
+  novel`, `linter`, `static analysis`, `language server`, `lsp`, `code
+  quality`, `game development`, `translation`, `localization`, `save
+  safety`, `rollback`, `story graph`, `rpy`).
+- **`galleryBanner`**: added (`#1f1f28`, dark theme).
+- **`icon`**: added (`images/icon.png`, 256×256).
+- **`license`**: `SEE LICENSE IN LICENSE`.
+- **`bugs`**, **`homepage`**: added, pointing to GitHub.
+- **Bugfix**: `npm-runall` → `npm-run-all` (typo in `devDependencies`
+  that would break `npm install`).
+
+### Changed — `senpy-vscode/README.md`
+
+Replaced the 2-line stub with a full Marketplace-ready README: badges,
+why-Senpy, key features, screenshots (via absolute GitHub URLs so `vsce`
+includes them in `.vsix`), installation instructions, comparison tables
+with built-in lint and `vscode-language-renpy`, full detection list by
+RPY1xx–RPY8xx category, who-is-Senpy-for, configuration, links to
+GitHub/PyPI/Habr/Lemma Soft Forums.
+
+### Publishing — Open VSX Registry
+
+Extension `xilleet.senpy-vscode` 0.7.7 published to Open VSX
+(https://open-vsx.org/extension/xilleet/senpy-vscode). Available for
+auto-discovery in VSCodium, Cursor, GitLab Web IDE, and Eclipse Theia.
+112 cumulative downloads at release time. VS Code Marketplace
+publication is blocked due to Microsoft Azure DevOps sanctions on
+Russian accounts — Open VSX is used as the primary registry, GitHub
+Releases as the secondary distribution channel for VS Code users.
+
+### Known limitations
+
+- `senpy.exe` (36 MB PyInstaller bundle) is still bundled inside the
+  `.vsix`. This makes the package large and triggered scanning
+  rejections on first Open VSX upload attempts. Long-term solution:
+  move `senpy.exe` to a separate GitHub Release asset and download on
+  first run. Tracked as a backlog item.
+- Namespace `xilleet` on Open VSX is not yet verified (claim pending
+  manual review by Eclipse Foundation administrators via GitHub issue
+  in `EclipseFdn/open-vsx.org`).
 
 ---
 
