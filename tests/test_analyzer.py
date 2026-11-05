@@ -800,6 +800,43 @@ def test_rules_database_completeness():
     assert not extra, f"RULES_DATABASE has rules not in RULE_SEVERITY: {extra}"
 
 
+def test_rule_severity_matches_rules_database_severity():
+    """Every rule's severity in RULE_SEVERITY must equal its severity in
+    RULES_DATABASE.
+
+    RULE_SEVERITY (in models.py) and
+    RULES_DATABASE.severity (in rules_info.py) used to be two independent
+    sources of truth. Four rules (RPY107, RPY303, RPY503, RPY504) drifted
+    — RULES_DATABASE declared them WARNING/INFO, but RULE_SEVERITY had
+    HINT. The runtime fallback in ``_apply_severity``
+    (analysis_pipeline.py) consults RULE_SEVERITY, so the runtime
+    severity silently disagreed with the documented severity in
+    ``senpy rule list`` and the SARIF/rdjson output.
+
+    RULE_SEVERITY is derived from RULES_DATABASE — there is
+    exactly one source of truth. This test guards against future drift
+    by asserting value parity for every rule code.
+    """
+    from senpy.core.models import RULE_SEVERITY
+    from senpy.rules.rules_info import RULES_DATABASE
+
+    mismatches: list[tuple[str, str, str]] = []
+    for code, severity in RULE_SEVERITY.items():
+        db_entry = RULES_DATABASE.get(code)
+        if db_entry is None:
+            mismatches.append((code, severity, "<missing in RULES_DATABASE>"))
+            continue
+        db_severity = db_entry.get("severity")
+        if severity != db_severity:
+            mismatches.append((code, severity, str(db_severity)))
+
+    assert not mismatches, (
+        "RULE_SEVERITY and RULES_DATABASE.severity disagree for these "
+        f"rules (each tuple is code, RULE_SEVERITY value, RULES_DATABASE "
+        f"value): {mismatches}"
+    )
+
+
 def test_tsundere_flavors_completeness():
     """TSUNDERE_FLAVORS и RULE_SEVERITY совпадают ключ-в-ключ"""
     from senpy.core.models import RULE_SEVERITY

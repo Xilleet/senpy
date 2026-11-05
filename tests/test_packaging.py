@@ -402,13 +402,17 @@ class TestRuleCountConsistency:
     """P0'-6: Rule count должен быть консистентен между источниками."""
 
     def _get_actual_rule_count(self) -> int:
-        """Считает правила из models.RULE_SEVERITY — canonical source."""
-        if not _MODELS_PY.exists():
-            pytest.skip("models.py отсутствует")
-        content = _MODELS_PY.read_text(encoding="utf-8")
-        # Считаем строки вида "RPYxxx": "SEVERITY",
-        matches = re.findall(r'"(RPY\d{3})"\s*:\s*"', content)
-        return len(set(matches))  # уникальные
+        """Counts rules from the canonical source — RULES_DATABASE.
+
+        Previously this regex-parsed models.py for ``"RPYxxx": "SEVERITY"``
+        lines, but after the single-source-of-truth refactor,
+        RULE_SEVERITY is a computed dict derived from RULES_DATABASE.
+        The regex would find zero entries. Reading the runtime dict
+        is more robust and reflects what users actually see.
+        """
+        from senpy.core.models import RULE_SEVERITY
+
+        return len(RULE_SEVERITY)
 
     def test_rules_info_py_uses_dynamic_count(self):
         """rules_info.py НЕ должен хардкодить число правил.
