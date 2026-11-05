@@ -17,6 +17,7 @@ Format:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -129,11 +130,31 @@ def _read_trust_store() -> dict:
 
 
 def _write_trust_store(data: dict) -> None:
-    """Write trust store to disk (atomic-ish: creates dir first)."""
+    """Write trust store to disk atomically.
+
+    Writes the new content to a sibling temp file first, then ``os.replace``s
+    it onto the real path. ``os.replace`` is atomic on POSIX and Windows, so
+    a crash during ``json.dump`` cannot leave a partially-written trust
+    store: either the previous content survives intact, or the new content
+    fully replaces it. The temp file is cleaned up if the rename fails.
+    """
     path = get_trust_store_path()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    store_dir = os.path.dirname(path)
+    os.makedirs(store_dir, exist_ok=True)
+
+    tmp_path = f"{path}.tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, path)
+    except BaseException:
+        # Clean up the temp file if anything went wrong (write error, rename
+        # failure, KeyboardInterrupt, ...). The previously persisted trust
+        # store at ``path`` is left untouched because os.replace has not
+        # happened yet.
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
 
 
 def is_plugin_trusted(plugin_name: str) -> bool:

@@ -390,6 +390,80 @@ class TestTrustStore:
         # Should not raise, should return False
         assert is_plugin_trusted("any-plugin") is False
 
+    def test_write_trust_store_preserves_existing_on_failure(self, monkeypatch, tmp_path):
+        """Atomic write: if the final rename fails, the original trust store
+        must remain intact (no partial overwrite).
+
+        Regression: ``_write_trust_store`` used to ``open(path, "w")``
+        which truncates the file before ``json.dump`` is called. A crash or
+        exception during the dump left a partially-written file, which the
+        next ``_read_trust_store`` silently treated as empty (fail-safe).
+        The user lost all trust grants with no signal.
+
+        With the atomic-write fix (tmpfile + ``os.replace``), a failure
+        during the rename step must leave the previously persisted trust
+        store untouched.
+        """
+        monkeypatch.setenv("SENPY_HOME", str(tmp_path))
+        from senpy.plugins import security
+
+        # Seed the trust store with one trusted plugin.
+        security.trust_plugin("preserved-plugin")
+        store_path = security.get_trust_store_path()
+        with open(store_path, encoding="utf-8") as f:
+            original_content = f.read()
+        assert "preserved-plugin" in original_content
+
+        # Force os.replace to fail mid-write.
+        real_replace = os.replace
+
+        def _failing_replace(src: str, dst: str) -> None:
+            # Only fail when destination is the trust store itself; let any
+            # other replace (e.g. pytest internals) succeed.
+            if os.path.abspath(dst) == os.path.abspath(store_path):
+                raise OSError("simulated rename failure")
+            return real_replace(src, dst)
+
+        monkeypatch.setattr("os.replace", _failing_replace)
+
+        # Attempt to add a second plugin — this write must raise but NOT
+        # corrupt the existing trust store.
+        with pytest.raises(OSError, match="simulated rename failure"):
+            security.trust_plugin("new-plugin")
+
+        # The on-disk file must be byte-for-byte the pre-failure content.
+        with open(store_path, encoding="utf-8") as f:
+            after_failure = f.read()
+        assert after_failure == original_content, (
+            "Atomic write did not preserve the original trust store on "
+            "rename failure: original content was overwritten"
+        )
+
+        # And the trust store must still be readable + contain only the
+        # originally-trusted plugin.
+        assert security.is_plugin_trusted("preserved-plugin") is True
+        assert security.is_plugin_trusted("new-plugin") is False
+
+    def test_write_trust_store_leaves_no_tmp_file_on_success(self, monkeypatch, tmp_path):
+        """Atomic write: after a successful write, no leftover .tmp file
+        remains in the trust store directory.
+        """
+        monkeypatch.setenv("SENPY_HOME", str(tmp_path))
+        from senpy.plugins import security
+
+        security.trust_plugin("single-plugin")
+        store_path = security.get_trust_store_path()
+        store_dir = os.path.dirname(store_path)
+
+        leftover = [
+            name
+            for name in os.listdir(store_dir)
+            if name.startswith("trusted_plugins.json") and name != "trusted_plugins.json"
+        ]
+        assert (
+            leftover == []
+        ), f"Atomic write left a leftover tmp file in trust store dir: {leftover}"
+
 
 # =============================================================================
 # SEC-P2: Default trust callback (interactive prompt)
