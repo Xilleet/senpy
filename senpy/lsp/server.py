@@ -237,8 +237,11 @@ class SenpyLSPServer:
         # P1'-8: per-URI debounce timers.
         self.change_timers: dict[str, threading.Timer] = {}
         # P1'-9: reader-writer lock for analysis state.
-        # Replaces the module-level _analysis_lock in the new architecture.
-        # Module-level _analysis_lock remains for back-compat (see below).
+        # Reader-writer lock: reading handlers take a read lock (parallel),
+        # writers (run_full / run_single_file_diagnostics) take a write
+        # lock (exclusive). The legacy module-level _analysis_lock was
+        # removed in T-009 (0.8.0) — it serialised every reader,
+        # defeating the RWLock.
         self.rw_lock = _RWLock()
 
 
@@ -246,7 +249,6 @@ class SenpyLSPServer:
 _lsp_server = SenpyLSPServer()
 
 
-_analysis_lock = threading.Lock()
 _previously_diagnosed_uris: set[str] = set()
 _latest_diagnostics_by_path: dict[str, list[tuple[Diagnostic, lsp.Diagnostic]]] = {}
 _change_timer: threading.Timer | None = None
@@ -323,32 +325,31 @@ def _create_lsp_diagnostic(diag: Diagnostic) -> lsp.Diagnostic:
 
 
 def _with_analysis_lock(func):
-    """Reading handlers must wait for _analysis_lock.
+    """Reading handlers take the RWLock read lock.
 
     Writers (run_full_project_diagnostics / run_single_file_diagnostics)
-    mutate the _active_analyzer registries only under the lock; without it, readers
-    catch RuntimeError: dictionary changed size during iteration and see
-    half-written snapshots. The wrapper signature is strictly (ls, params): pygls
-    inspects the first parameter (wrap_with_server) and decides whether to pass
-    the server instance as the first argument.
+    mutate the _active_analyzer registries only under the write lock;
+    without it, readers catch RuntimeError: dictionary changed size
+    during iteration and see half-written snapshots. The wrapper signature
+    is strictly (ls, params): pygls inspects the first parameter
+    (wrap_with_server) and decides whether to pass the server instance
+    as the first argument.
 
-    P1'-9 (0.6.0-12): we use a reader-writer lock. Handlers are read-only
-    operations (they read _active_analyzer.labels, _symbol_snapshot, etc.).
-    Therefore we take a read lock — multiple handlers can work in parallel.
-    Writers (run_full_project_diagnostics) take a write lock exclusively.
+    Reading handlers (completions / definition / hover / document_symbols
+    / code_action / etc.) take a read lock — multiple handlers can work
+    in parallel. Writers take a write lock exclusively.
 
-    The module-level _analysis_lock remains as a fallback — we also take it,
-    for back-compat with old tests that may check the lock state directly.
-    It will be removed in 0.7.0.
+    The legacy module-level ``_analysis_lock`` was removed in
+    0.8.0: it serialised every reader, defeating the RWLock. Reader
+    concurrency is now real — see
+    ``tests/test_lsp_rwlock.py::test_with_analysis_lock_handlers_run_in_parallel``.
     """
 
     @functools.wraps(func)
     def wrapper(ls, params):
-        # P1'-9: take the read lock + the old exclusive lock for back-compat
         _lsp_server.rw_lock.acquire_read()
         try:
-            with _analysis_lock:
-                return func(ls, params)
+            return func(ls, params)
         finally:
             _lsp_server.rw_lock.release_read()
 
@@ -370,62 +371,61 @@ def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
 
     _lsp_server.rw_lock.acquire_write()
     try:
-        with _analysis_lock:
-            # trigger_uri may be empty when called from the `initialized`
-            # handler (workspace-wide scan with no specific file). In that
-            # case fall back to the workspace root path; if that's also
-            # missing, log and return silently — there is nothing to scan.
-            if trigger_uri:
-                file_path = _uri_to_path(trigger_uri)
-                project_root = _get_workspace_root(ls, file_path)
-            else:
-                try:
-                    workspace_root = ls.workspace.root_path
-                except AttributeError:
-                    workspace_root = None
-                if not workspace_root:
-                    _logger.debug(
-                        "run_full_project_diagnostics: empty trigger_uri and "
-                        "no workspace root; skipping scan"
-                    )
-                    return
-                project_root = workspace_root
-
-            if _active_analyzer is None or _current_workspace_root != project_root:
-                _current_workspace_root = project_root
-                _active_analyzer = SenpyAnalyzer(project_root)
-
-            result = _active_analyzer.run(quiet=True)
-            _is_initialized = True
-            # UX: snapshot of symbols for autocomplete/rename/hover.
-            # Must be AFTER run() but BEFORE the diagnostics check.
-            _refresh_symbol_snapshot()
-
-            files_diags: dict[str, list[lsp.Diagnostic]] = {}
-            new_diagnostics_by_path: dict[str, list[tuple[Diagnostic, lsp.Diagnostic]]] = {}
-
-            for diag in result.diagnostics:
-                diag_uri = _path_to_uri(diag.file_path)
-                lsp_diag = _create_lsp_diagnostic(diag)
-                files_diags.setdefault(diag_uri, []).append(lsp_diag)
-                norm_file = _normalize_path(diag.file_path)  # P0-6: unified normalization
-                new_diagnostics_by_path.setdefault(norm_file, []).append((diag, lsp_diag))
-
-            # Atomically update the shared cache (without .clear())
-            _latest_diagnostics_by_path = new_diagnostics_by_path
-
-            current_uris = set(files_diags.keys())
-            for uri, diags in files_diags.items():
-                ls.text_document_publish_diagnostics(
-                    lsp.PublishDiagnosticsParams(uri=uri, diagnostics=diags)
+        # trigger_uri may be empty when called from the `initialized`
+        # handler (workspace-wide scan with no specific file). In that
+        # case fall back to the workspace root path; if that's also
+        # missing, log and return silently — there is nothing to scan.
+        if trigger_uri:
+            file_path = _uri_to_path(trigger_uri)
+            project_root = _get_workspace_root(ls, file_path)
+        else:
+            try:
+                workspace_root = ls.workspace.root_path
+            except AttributeError:
+                workspace_root = None
+            if not workspace_root:
+                _logger.debug(
+                    "run_full_project_diagnostics: empty trigger_uri and "
+                    "no workspace root; skipping scan"
                 )
+                return
+            project_root = workspace_root
 
-            for uri in _previously_diagnosed_uris - current_uris:
-                ls.text_document_publish_diagnostics(
-                    lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[])
-                )
+        if _active_analyzer is None or _current_workspace_root != project_root:
+            _current_workspace_root = project_root
+            _active_analyzer = SenpyAnalyzer(project_root)
 
-            _previously_diagnosed_uris = current_uris
+        result = _active_analyzer.run(quiet=True)
+        _is_initialized = True
+        # UX: snapshot of symbols for autocomplete/rename/hover.
+        # Must be AFTER run() but BEFORE the diagnostics check.
+        _refresh_symbol_snapshot()
+
+        files_diags: dict[str, list[lsp.Diagnostic]] = {}
+        new_diagnostics_by_path: dict[str, list[tuple[Diagnostic, lsp.Diagnostic]]] = {}
+
+        for diag in result.diagnostics:
+            diag_uri = _path_to_uri(diag.file_path)
+            lsp_diag = _create_lsp_diagnostic(diag)
+            files_diags.setdefault(diag_uri, []).append(lsp_diag)
+            norm_file = _normalize_path(diag.file_path)  # P0-6: unified normalization
+            new_diagnostics_by_path.setdefault(norm_file, []).append((diag, lsp_diag))
+
+        # Atomically update the shared cache (without .clear())
+        _latest_diagnostics_by_path = new_diagnostics_by_path
+
+        current_uris = set(files_diags.keys())
+        for uri, diags in files_diags.items():
+            ls.text_document_publish_diagnostics(
+                lsp.PublishDiagnosticsParams(uri=uri, diagnostics=diags)
+            )
+
+        for uri in _previously_diagnosed_uris - current_uris:
+            ls.text_document_publish_diagnostics(
+                lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[])
+            )
+
+        _previously_diagnosed_uris = current_uris
     finally:
         _lsp_server.rw_lock.release_write()
 
@@ -442,25 +442,24 @@ def run_single_file_diagnostics(ls: LanguageServer, uri: str, content: str):
 
     _lsp_server.rw_lock.acquire_write()
     try:
-        with _analysis_lock:
-            file_path = _uri_to_path(uri)
-            norm_file = _normalize_path(file_path)  # P0-6: unified normalization
+        file_path = _uri_to_path(uri)
+        norm_file = _normalize_path(file_path)  # P0-6: unified normalization
 
-            _active_analyzer.in_memory_files[norm_file] = content
-            diags = _active_analyzer.analyze_file_only(file_path)
+        _active_analyzer.in_memory_files[norm_file] = content
+        diags = _active_analyzer.analyze_file_only(file_path)
 
-            lsp_diags: list[lsp.Diagnostic] = []
-            pairs: list[tuple[Diagnostic, lsp.Diagnostic]] = []
+        lsp_diags: list[lsp.Diagnostic] = []
+        pairs: list[tuple[Diagnostic, lsp.Diagnostic]] = []
 
-            for diag in diags:
-                lsp_diag = _create_lsp_diagnostic(diag)
-                lsp_diags.append(lsp_diag)
-                pairs.append((diag, lsp_diag))
+        for diag in diags:
+            lsp_diag = _create_lsp_diagnostic(diag)
+            lsp_diags.append(lsp_diag)
+            pairs.append((diag, lsp_diag))
 
-            _latest_diagnostics_by_path[norm_file] = pairs
-            ls.text_document_publish_diagnostics(
-                lsp.PublishDiagnosticsParams(uri=uri, diagnostics=lsp_diags)
-            )
+        _latest_diagnostics_by_path[norm_file] = pairs
+        ls.text_document_publish_diagnostics(
+            lsp.PublishDiagnosticsParams(uri=uri, diagnostics=lsp_diags)
+        )
     finally:
         _lsp_server.rw_lock.release_write()
 

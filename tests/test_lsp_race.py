@@ -1,14 +1,19 @@
-"""TDD-тест: LSP-гонка — читатели реестров без _analysis_lock.
+"""LSP-гонка — читатели реестров под RWLock write lock.
 
 Писатели (run_full_project_diagnostics / run_single_file_diagnostics) мутируют
-реестры _active_analyzer только под _analysis_lock, а читающие обработчики
-(completions / definition / hover / document_symbols / code_action) читают те
-же реестры без лока: возможны "RuntimeError: dictionary changed size during
-iteration", половинные снапшоты и запись _collect_symbols в file_scopes
-посреди чужого run().
+реестры _active_analyzer только под write lock rw_lock, а читающие обработчики
+(completions / definition / hover / document_symbols / code_action) берут read
+lock: возможны "RuntimeError: dictionary changed size during iteration",
+половинные снапшоты и запись _collect_symbols в file_scopes посреди чужого run().
 
-Эталонное поведение: читатель, запущенный при занятом локе, ОБЯЗАН ждать
-освобождения и только потом читать (детерминированная проверка, не стресс).
+Эталонное поведение: читатель, запущенный при занятом write lock, ОБЯЗАН ждать
+его освобождения и только потом читать (детерминированная проверка, не стресс).
+
+Историческая справка: до 0.8.0 использовался module-level
+``_analysis_lock`` (exclusive threading.Lock) поверх RWLock read lock — это
+сериализовало всех reader'ов. После 0.8.0 exclusive lock удалён, RWLock стал
+единственным механизмом синхронизации. Эти тесты теперь берут write lock
+и проверяют, что reader под read lock ждёт его освобождения.
 """
 
 from __future__ import annotations
@@ -61,21 +66,22 @@ label forest_scene:
     return script_file, analyzer
 
 
-def _assert_reader_blocked_by_lock(mock_ls, params, handler):
-    """Читатель при занятом _analysis_lock обязан ждать; после освобождения — доделать."""
+def _assert_reader_blocked_by_write_lock(mock_ls, params, handler):
+    """Читатель при занятом write lock обязан ждать; после освобождения — доделать."""
     finished = threading.Event()
 
     def reader():
         handler(mock_ls, params)
         finished.set()
 
-    with server_mod._analysis_lock:
+    # Берём write lock — reader (под read lock) обязан ждать.
+    with server_mod._lsp_server.rw_lock.write_lock():
         t = threading.Thread(target=reader, daemon=True)
         t.start()
         t.join(timeout=0.5)
         assert not finished.is_set(), (
             f"{handler.__name__} прочитал реестры анализатора, НЕ дождавшись "
-            "_analysis_lock — гонка с run_full/run_single_diagnostics"
+            "write lock — гонка с run_full/run_single_diagnostics"
         )
     t.join(timeout=2.0)
     assert finished.is_set(), f"{handler.__name__} не завершился после освобождения лока"
@@ -90,7 +96,7 @@ def test_completions_waits_for_analysis_lock(tmp_path: Path):
         text_document=lsp.TextDocumentIdentifier(uri=uri),
         position=lsp.Position(line=1, character=9),
     )
-    _assert_reader_blocked_by_lock(mock_ls, params, server_mod.completions)
+    _assert_reader_blocked_by_write_lock(mock_ls, params, server_mod.completions)
 
 
 def test_definition_waits_for_analysis_lock(tmp_path: Path):
@@ -102,7 +108,7 @@ def test_definition_waits_for_analysis_lock(tmp_path: Path):
         text_document=lsp.TextDocumentIdentifier(uri=uri),
         position=lsp.Position(line=1, character=9),  # на слове forest_scene
     )
-    _assert_reader_blocked_by_lock(mock_ls, params, server_mod.definition)
+    _assert_reader_blocked_by_write_lock(mock_ls, params, server_mod.definition)
 
 
 def test_document_symbols_waits_for_analysis_lock(tmp_path: Path):
@@ -113,4 +119,4 @@ def test_document_symbols_waits_for_analysis_lock(tmp_path: Path):
     params = lsp.DocumentSymbolParams(
         text_document=lsp.TextDocumentIdentifier(uri=uri),
     )
-    _assert_reader_blocked_by_lock(mock_ls, params, server_mod.document_symbols)
+    _assert_reader_blocked_by_write_lock(mock_ls, params, server_mod.document_symbols)

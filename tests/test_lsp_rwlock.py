@@ -272,3 +272,55 @@ def test_rwlock_release_on_exception():
         pass
     elapsed = time.monotonic() - start
     assert elapsed < 0.5, f"Lock не отпущен после exception (прошло {elapsed:.2f}s)"
+
+
+# =============================================================================
+# Integration: multiple _with_analysis_lock handlers run in parallel
+# =============================================================================
+
+
+def test_with_analysis_lock_handlers_run_in_parallel():
+    """Multiple handlers decorated with ``_with_analysis_lock`` must be
+    able to run concurrently — that is the whole point of a reader-writer
+    lock.
+
+    Regression: ``_with_analysis_lock`` used to take BOTH the
+    new RWLock read lock AND the legacy exclusive ``_analysis_lock``.
+    The exclusive lock serialised every reader, so the RWLock provided
+    zero reader concurrency — every ``hover`` / ``definition`` /
+    ``completion`` request blocked all other readers.
+
+    After: the legacy ``_analysis_lock`` is removed; readers take
+    only the RWLock read lock and can run in parallel. This test runs
+    two decorated handlers concurrently and asserts that they overlap
+    in time — i.e. the second one starts while the first one is still
+    inside the critical section.
+    """
+    import threading
+
+    in_handler = threading.Barrier(2, timeout=2.0)
+    finished = threading.Event()
+    overlap_seen = {"value": False}
+
+    @server_mod._with_analysis_lock
+    def slow_handler(ls, params):
+        in_handler.wait()
+        # If we reach here, two handlers were inside the critical section
+        # at the same time — reader concurrency works.
+        overlap_seen["value"] = True
+        finished.set()
+
+    t1 = threading.Thread(target=slow_handler, args=(None, None), daemon=True)
+    t2 = threading.Thread(target=slow_handler, args=(None, None), daemon=True)
+    t1.start()
+    t2.start()
+    # Each handler waits for the barrier (i.e. for the other one to also
+    # enter). If the lock serialises them, the barrier times out and the
+    # test fails with BrokenBarrierError.
+    t1.join(timeout=3.0)
+    t2.join(timeout=3.0)
+
+    assert overlap_seen["value"], (
+        "Two _with_analysis_lock handlers did not run concurrently — the "
+        "legacy _analysis_lock is still serialising readers (B10 regression)"
+    )
