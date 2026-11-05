@@ -277,6 +277,52 @@ The standard built-in `renpy lint` command only checks for basic syntax errors a
 
 ---
 
+## Senpy vs built-in `renpy lint`
+
+Ren'Py ships with a built-in `lint` command (`renpy.exe lint`), but it launches the entire Pygame runtime and only catches syntax-level issues. Senpy is a standalone static analyzer that runs without the Ren'Py SDK and catches a different class of bugs.
+
+| Aspect | Ren'Py built-in `lint` | Senpy |
+|---|---|---|
+| **Approach** | Launches Pygame runtime, executes `init python:` blocks | Static analysis, no SDK required |
+| **Speed on 70k LOC** | 30–40 seconds | ~3.5s cold / 0.04s incremental |
+| **Save / rollback safety** | ❌ | ✅ `RPY104`, `RPY105`, `RPY106` |
+| **Translation mismatch detection** | ❌ | ✅ `RPY601`, `RPY602`, `RPY603` |
+| **Story graph visualization** | ❌ | ✅ `senpy --graph` |
+| **Dead code detection** | ❌ | ✅ `RPY701`–`RPY707` |
+| **Branching dataflow analysis** | ❌ | ✅ `RPY401`, `RPY404` |
+| **Init phase dependency graph** | ❌ | ✅ `RPY109` |
+| **CI-ready (GitHub Actions, SARIF)** | Needs headless Ren'Py SDK in CI | `pip install senpy-linter` + SARIF output |
+| **IDE integration** | ❌ | ✅ LSP for VS Code (20+ handlers) |
+| **What it catches** | Syntax errors, broken `jump`/`call` targets, missing images | + Save corruption, rollback desync, translation bugs, dead code, type taint, init order |
+| **Distribution** | Bundled with Ren'Py SDK | PyPI (`senpy-linter`) + Open VSX extension + GitHub Releases |
+
+The two tools are **complementary, not replacements**. Senpy catches a class of bugs that built-in `lint` cannot see (semantic, save/rollback, translation, control-flow). Run both: built-in `lint` for SDK-level checks, Senpy for everything else.
+
+---
+
+## Senpy vs `vscode-language-renpy` (official extension)
+
+`vscode-language-renpy` is the **official** Ren'Py extension for VS Code (152 ⭐, maintained by the Ren'Py team). It provides syntax highlighting and basic snippets. Senpy provides **semantic analysis** on top of that — it understands variables, control flow, screens, and translation files, not just text.
+
+| Capability | `vscode-language-renpy` | Senpy |
+|---|---|---|
+| Syntax highlighting | ✅ | ✅ |
+| Language configuration (brackets, comments) | ✅ | ✅ |
+| Snippets | ✅ basic | ❌ |
+| **Real-time diagnostics** | ❌ | ✅ 49+ rules, runs on every keystroke |
+| **Go-to-definition** | ❌ | ✅ labels, screens, transforms, defines |
+| **Find references** | ❌ | ✅ across the whole project |
+| **Hover docs** | ❌ | ✅ renpy API + asset previews |
+| **Rename symbol** | ❌ | ✅ labels, screens |
+| **Semantic tokens** | ❌ | ✅ |
+| **Story graph visualization** | ❌ | ✅ Mermaid diagram of branching routes |
+| **Save / rollback safety checks** | ❌ | ✅ |
+| **Translation validator** | ❌ | ✅ `game/tl/` mismatch detection + coverage |
+
+The two extensions are **complementary and can be installed side-by-side**. If you want both syntax highlighting (official) and semantic diagnostics (Senpy), install both.
+
+---
+
 ## LSP & VS Code Features
 
 Senpy includes a full **Language Server Protocol** implementation with 20+ handlers:
@@ -611,6 +657,22 @@ issue and fix what matters to users.
 
 Also check out [ScreenTale](https://github.com/Xilleet/ScreenTale), another
 tool from me.
+
+---
+
+## Other projects named "senpy"
+
+The name `senpy` is shared with several unrelated projects. If you landed here looking for one of those, here's a disambiguation:
+
+| Project | What it is | Link |
+|---|---|---|
+| **Senpy (this repo)** | Semantic linter and static analyzer for Ren'Py visual novels | https://github.com/Xilleet/senpy |
+| `pypi.org/project/senpy` | Sentiment analysis server (Marl/Onyx/NIF vocabularies) | https://pypi.org/project/senpy/ |
+| `ACasey13/senpy` | Python package for Neyer sensitivity testing | https://github.com/ACasey13/senpy |
+| SCIA Engineer `senpy` | Python framework to generate SCIA Engineer XML data | https://www.scia.net/en/support/addons/senpy-python-framework-generate-scia-engineer-data |
+| *Senpy: A framework for semantic sentiment and emotion* | Academic paper, ScienceDirect | https://www.sciencedirect.com/science/article/abs/pii/S0950705119305313 |
+
+This project (`Xilleet/senpy`) is the only one related to Ren'Py. The naming collision is unfortunate — if you came here from a search for sentiment analysis or sensitivity testing, please follow the corresponding link above.
 
 ---
 
