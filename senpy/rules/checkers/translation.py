@@ -17,10 +17,10 @@ from senpy.core.models import Diagnostic
 from senpy.core.paths import normalize_path
 
 if TYPE_CHECKING:
-    from senpy.core.analyzer import SenpyAnalyzer
+    from senpy.core.protocols import DiagnosticSink, DiagnosticSinkAndSymbolsAndNoqa
 
 
-def analyze_tl_file(analyzer: SenpyAnalyzer, file_path: str) -> None:
+def analyze_tl_file(analyzer: DiagnosticSinkAndSymbolsAndNoqa, file_path: str) -> None:
     """Analyze a translation (.rpy) file for RPY601/602/603 issues.
 
     Reads the file (or in-memory content), parses old/new translation pairs,
@@ -116,7 +116,7 @@ def parse_tl_pairs(lines: list[str]) -> list[tuple[str, int, str, int]]:
 
 
 def validate_tl_pairs(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSinkAndSymbolsAndNoqa,
     pairs: list[tuple[str, int, str, int]],
     file_path: str,
     noqa_map: dict[int, set[str] | None],
@@ -151,7 +151,7 @@ def validate_tl_pairs(
 
 
 def _check_rpy603(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSink,
     old_txt: str,
     new_txt: str,
     new_line: int,
@@ -179,7 +179,7 @@ def _check_rpy603(
 
 
 def _check_rpy601(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSink,
     old_masked: str,
     new_masked: str,
     new_txt: str,
@@ -218,7 +218,7 @@ def _check_rpy601(
 
 
 def _check_rpy602(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSink,
     old_masked: str,
     new_masked: str,
     new_txt: str,
@@ -245,7 +245,7 @@ def _check_rpy602(
 
 
 def _check_rpy801(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSink,
     old_txt: str,
     old_line: int,
     seen_old: dict[str, int],
@@ -280,7 +280,9 @@ def _check_rpy801(
         seen_old[old_txt] = old_line
 
 
-def check_cross_language_consistency(analyzer: SenpyAnalyzer, tl_files: list[str]) -> None:
+def check_cross_language_consistency(
+    analyzer: DiagnosticSinkAndSymbolsAndNoqa, tl_files: list[str]
+) -> None:
     """RPY802: Check cross-language translation consistency.
 
     Thin dispatcher (REF-009): delegates to _build_lang_map + _find_inconsistencies.
@@ -326,7 +328,7 @@ def _extract_lang_from_path(tl_file: str) -> str:
 
 
 def _find_and_emit_inconsistencies(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSinkAndSymbolsAndNoqa,
     lang_translations: dict[str, dict[str, set[str]]],
     tl_files: list[str],
 ) -> None:

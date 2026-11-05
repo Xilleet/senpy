@@ -16,14 +16,15 @@ from senpy.core.scope import ScopeStack
 from senpy.core.signature import validate_call_arguments
 
 if TYPE_CHECKING:
-    from senpy.core.analyzer import SenpyAnalyzer
+    from senpy.core.protocols import DiagnosticSinkAndSymbols
+
 from senpy.rules.base import BaseChecker
 
 
 class DialogueChecker(BaseChecker):
     """RPY3xx — Dialogue, quote checks, jump/call transitions, and label fallthrough."""
 
-    def __init__(self, analyzer: SenpyAnalyzer):
+    def __init__(self, analyzer: DiagnosticSinkAndSymbols):
         super().__init__(analyzer)
         self.in_label_context = False
         self.current_global_label: str | None = None

@@ -17,7 +17,7 @@ from senpy.domain.text_tags import get_utf16_range
 from senpy.rules.python_ast import extract_assigned_names
 
 if TYPE_CHECKING:
-    from senpy.core.analyzer import SenpyAnalyzer
+    from senpy.core.protocols import DiagnosticSinkAndSymbols
     from senpy.core.symbols import LabelSymbol
 
 _MERMAID_RESERVED_IDS = {"end"}
@@ -124,7 +124,7 @@ def merge_flow_branches(
 class StoryFlowAnalyzer:
     """Analyzes the transition graph, menu forks, and generates Mermaid diagrams of the plot."""
 
-    def __init__(self, analyzer: SenpyAnalyzer):
+    def __init__(self, analyzer: DiagnosticSinkAndSymbols):
         self.analyzer = analyzer
 
     def can_reach_return(self, label_name: str, visited: set[str] | None = None) -> bool:
@@ -576,7 +576,7 @@ class MermaidBuilder:
     Extracted from StoryFlowAnalyzer.generate_mermaid_graph in Phase 4 Step 3 (0.5.7).
     """
 
-    def __init__(self, analyzer: SenpyAnalyzer):
+    def __init__(self, analyzer: DiagnosticSinkAndSymbols):
         self.analyzer = analyzer
 
     def build(self) -> str:
@@ -603,7 +603,7 @@ class MermaidBuilder:
 class _GraphContext:
     """Pre-computed data shared across the build helpers."""
 
-    analyzer: SenpyAnalyzer
+    analyzer: DiagnosticSinkAndSymbols
     labels: dict = field(default_factory=dict)
     screens_registry: dict = field(default_factory=dict)
     graph_screens: list = field(default_factory=list)

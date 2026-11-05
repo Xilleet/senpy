@@ -20,7 +20,11 @@ from senpy.core.analyzer import SenpyAnalyzer
 from senpy.core.protocols import (
     AssetProvider,
     DiagnosticSink,
+    DiagnosticSinkAndSymbols,
+    DiagnosticSinkAndSymbolsAndFlow,
+    DiagnosticSinkAndSymbolsAndNoqa,
     FlowProvider,
+    FullAnalyzer,
     NoqaMapProvider,
     ProjectInfo,
     SymbolProvider,
@@ -249,4 +253,56 @@ class TestNoqaMapProviderProtocol:
         assert len(emitted) == 1, (
             f"_add_diagnostic_by_file must emit the diagnostic when no "
             f"# noqa directive suppresses it — got {len(emitted)} diagnostics"
+        )
+
+
+class TestIntersectionProtocols:
+    """Convenience intersection Protocols for checker ``__init__`` typing.
+
+    Each checker declares the minimal Protocol surface it needs:
+
+    - ``DiagnosticSinkAndSymbols`` — for the four "simple" line checkers
+      (FormattingChecker, ScreenChecker, AssetChecker, DialogueChecker).
+    - ``DiagnosticSinkAndSymbolsAndFlow`` — for StateChecker (adds
+      FlowProvider for ``_check_*`` delegation).
+    - ``DiagnosticSinkAndSymbolsAndNoqa`` — for cross-file rules
+      (dead_code.py, translation._check_rpy802) that emit through
+      ``_add_diagnostic_by_file``.
+    - ``FullAnalyzer`` — for PythonAstChecker and StoryFlowAnalyzer
+      (need the whole analyzer surface).
+
+    ``SenpyAnalyzer`` implements every Protocol because it implements
+    every individual half — these tests assert the structural intersection
+    contract so a future test double only has to satisfy the surface it
+    is typed against.
+    """
+
+    def test_analyzer_implements_diagnostic_sink_and_symbols(self, tmp_path):
+        analyzer = _make_analyzer(tmp_path)
+        assert isinstance(analyzer, DiagnosticSinkAndSymbols), (
+            "SenpyAnalyzer must implement DiagnosticSinkAndSymbols — "
+            "the minimal intersection used by FormattingChecker, "
+            "ScreenChecker, AssetChecker, DialogueChecker"
+        )
+
+    def test_analyzer_implements_diagnostic_sink_and_symbols_and_flow(self, tmp_path):
+        analyzer = _make_analyzer(tmp_path)
+        assert isinstance(analyzer, DiagnosticSinkAndSymbolsAndFlow), (
+            "SenpyAnalyzer must implement DiagnosticSinkAndSymbolsAndFlow — "
+            "used by StateChecker which delegates to flow/python_ast helpers"
+        )
+
+    def test_analyzer_implements_diagnostic_sink_and_symbols_and_noqa(self, tmp_path):
+        analyzer = _make_analyzer(tmp_path)
+        assert isinstance(analyzer, DiagnosticSinkAndSymbolsAndNoqa), (
+            "SenpyAnalyzer must implement DiagnosticSinkAndSymbolsAndNoqa — "
+            "used by cross-file rules that emit through "
+            "_add_diagnostic_by_file (dead_code, translation._check_rpy802)"
+        )
+
+    def test_analyzer_implements_full_analyzer(self, tmp_path):
+        analyzer = _make_analyzer(tmp_path)
+        assert isinstance(analyzer, FullAnalyzer), (
+            "SenpyAnalyzer must implement FullAnalyzer — the intersection of "
+            "every Protocol, used by PythonAstChecker and StoryFlowAnalyzer"
         )

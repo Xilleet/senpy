@@ -230,20 +230,47 @@ class DiagnosticSinkAndSymbols(DiagnosticSink, SymbolProvider, Protocol):
     """
 
 
+class DiagnosticSinkAndSymbolsAndFlow(DiagnosticSink, SymbolProvider, FlowProvider, Protocol):
+    """Intersection of DiagnosticSink, SymbolProvider and FlowProvider.
+
+    Used by ``StateChecker`` — it emits diagnostics (DiagnosticSink),
+    reads symbol registries (SymbolProvider) AND delegates to flow /
+    python_ast helpers like ``_check_cfg_condition`` /
+    ``_analyze_menu_flow`` (FlowProvider). StateChecker is the only
+    per-line checker that needs FlowProvider; the other four
+    (FormattingChecker, ScreenChecker, AssetChecker, DialogueChecker)
+    can use the narrower ``DiagnosticSinkAndSymbols``.
+    """
+
+
+class DiagnosticSinkAndSymbolsAndNoqa(DiagnosticSink, SymbolProvider, NoqaMapProvider, Protocol):
+    """Intersection of DiagnosticSink, SymbolProvider and NoqaMapProvider.
+
+    Used by cross-file rules (``dead_code.py``, ``translation.py``'s
+    ``_check_rpy802_cross_language``) that emit diagnostics through
+    ``_add_diagnostic_by_file`` (NoqaMapProvider) for declaration lines
+    in files that have already been analysed. The NoqaMapProvider half
+    lets the rule honour ``# noqa: RPYxxx`` directives on the
+    declaration line without re-threading the per-file ``noqa_map``
+    through the call stack.
+    """
+
+
 class FullAnalyzer(
     DiagnosticSink,
     SymbolProvider,
     AssetProvider,
     FlowProvider,
+    NoqaMapProvider,
     ProjectInfo,
     Protocol,
 ):
     """Intersection of every Protocol SenpyAnalyzer implements.
 
     Used by callers that need the whole analyzer surface in one typed
-    parameter (e.g. ``PythonAstChecker``, ``StoryFlowAnalyzer``,
-    cross-file rules). Equivalent to the old ``analyzer: SenpyAnalyzer``
-    concrete type hint, but expressed structurally so that a future
-    test double only has to satisfy the Protocol surface rather than
-    inherit from ``SenpyAnalyzer``.
+    parameter (e.g. ``PythonAstChecker``, ``StoryFlowAnalyzer``).
+    Equivalent to the old ``analyzer: SenpyAnalyzer`` concrete type
+    hint, but expressed structurally so that a future test double only
+    has to satisfy the Protocol surface rather than inherit from
+    ``SenpyAnalyzer``.
     """

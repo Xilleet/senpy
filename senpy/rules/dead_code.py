@@ -22,7 +22,7 @@ from senpy.core.models import Diagnostic
 from senpy.core.paths import normalize_path
 
 if TYPE_CHECKING:
-    from senpy.core.analyzer import SenpyAnalyzer
+    from senpy.core.protocols import DiagnosticSinkAndSymbolsAndNoqa
 
 # Pre-compiled regex for word tokenization.
 _WORD_RE = re.compile(r"\w+")
@@ -40,7 +40,7 @@ _BUILTIN_AUDIO_CHANNELS = frozenset({"music", "sound", "voice", "audio"})
 
 
 def _build_word_index(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSinkAndSymbolsAndNoqa,
 ) -> dict[str, set[tuple[str, int]]]:
     """Build a word → set of (norm_path, line_idx_0based) index in one pass.
 
@@ -99,7 +99,7 @@ def _is_used(
 
 
 def _check_rpy701(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSinkAndSymbolsAndNoqa,
     word_locations: dict[str, set[tuple[str, int]]],
 ) -> None:
     """RPY701: Unused define constants."""
@@ -122,7 +122,7 @@ def _check_rpy701(
 
 
 def _check_rpy702(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSinkAndSymbolsAndNoqa,
     word_locations: dict[str, set[tuple[str, int]]],
 ) -> None:
     """RPY702: Unused transforms."""
@@ -143,7 +143,7 @@ def _check_rpy702(
 
 
 def _check_rpy703(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSinkAndSymbolsAndNoqa,
     word_locations: dict[str, set[tuple[str, int]]],
 ) -> None:
     """RPY703: Unused screens."""
@@ -164,7 +164,7 @@ def _check_rpy703(
 
 
 def _check_rpy704(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSinkAndSymbolsAndNoqa,
     word_locations: dict[str, set[tuple[str, int]]],
 ) -> None:
     """RPY704: Unused `default` variables (non-constant, complement to RPY701).
@@ -194,7 +194,7 @@ def _check_rpy704(
 
 
 def _check_rpy705(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSinkAndSymbolsAndNoqa,
     word_locations: dict[str, set[tuple[str, int]]],
 ) -> None:
     """RPY705: Unused screen parameters.
@@ -231,7 +231,7 @@ def _check_rpy705(
 
 
 def _check_rpy706(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSinkAndSymbolsAndNoqa,
     word_locations: dict[str, set[tuple[str, int]]],
 ) -> None:
     """RPY706: Unused transform parameters (same logic as RPY705 for transforms)."""
@@ -260,7 +260,7 @@ def _check_rpy706(
 
 
 def _check_rpy707(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSinkAndSymbolsAndNoqa,
     word_locations: dict[str, set[tuple[str, int]]],
 ) -> None:
     """RPY707: Unused audio channel registrations.
@@ -309,7 +309,7 @@ def _check_rpy707(
 
 
 def _emit_unused_channel_diagnostic(
-    analyzer: SenpyAnalyzer,
+    analyzer: DiagnosticSinkAndSymbolsAndNoqa,
     chan: str,
     register_lines: dict[str, set[int]],
 ) -> None:
@@ -356,7 +356,7 @@ def _emit_unused_channel_diagnostic(
 # =============================================================================
 
 
-def check_unused_declarations(analyzer: SenpyAnalyzer) -> None:
+def check_unused_declarations(analyzer: DiagnosticSinkAndSymbolsAndNoqa) -> None:
     """RPY701-707: Find unused define/transform/screen/variable/param/channel (dead code).
 
     Disabled if the project has dynamic jumps (can't track references reliably).

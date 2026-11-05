@@ -14,7 +14,8 @@ from senpy.core.constants import (
 from senpy.core.scope import ScopeStack
 
 if TYPE_CHECKING:
-    from senpy.core.analyzer import SenpyAnalyzer
+    from senpy.core.protocols import DiagnosticSinkAndSymbolsAndFlow
+
 from senpy.rules.base import BaseChecker, IfBlockContext
 from senpy.rules.flow import FlowBranch, merge_flow_branches
 from senpy.rules.python_ast import extract_assigned_names
@@ -23,7 +24,7 @@ from senpy.rules.python_ast import extract_assigned_names
 class StateChecker(BaseChecker):
     """RPY1xx, RPY4xx — Check variables, types, conditions, mutations, and menu forks."""
 
-    def __init__(self, analyzer: SenpyAnalyzer):
+    def __init__(self, analyzer: DiagnosticSinkAndSymbolsAndFlow):
         super().__init__(analyzer)
         self.branch_uninitialized: dict[str, tuple[str, ...]] = {}
         self.guaranteed_vars: set[str] = set()

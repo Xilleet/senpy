@@ -11,7 +11,7 @@ from senpy.core.models import Diagnostic
 from senpy.domain.text_tags import get_utf16_range, suggest_similar_symbol
 
 if TYPE_CHECKING:
-    from senpy.core.analyzer import SenpyAnalyzer
+    from senpy.core.protocols import FullAnalyzer
 
 _logger = get_logger("rules.python_ast")
 
@@ -487,7 +487,7 @@ def extract_assigned_names(py_code: str) -> set[str]:
 class PythonAstChecker:
     """Checks embedded Python code via AST for compliance with Ren'Py rules."""
 
-    def __init__(self, analyzer: SenpyAnalyzer):
+    def __init__(self, analyzer: FullAnalyzer):
         self.analyzer = analyzer
 
     def collect_from_python_block(self, code_lines: list[str]) -> tuple[dict[str, int], set[str]]:
