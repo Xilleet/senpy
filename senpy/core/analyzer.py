@@ -93,6 +93,12 @@ class SenpyAnalyzer:
         self.fixable_count: int = 0
         self.file_scopes: dict[str, FileScope] = {}
         self._stage1_lines: dict[str, list[str]] = {}
+        # Per-file noqa maps accumulated during _analyze_file; consumed by
+        # cross-file rules (RPY701-707, RPY802). Initialised here (not just
+        # in _run_reset) so that analyze_file_only — which can be called
+        # without a prior run() in LSP fast-path tests — does not crash
+        # with AttributeError.
+        self._noqa_maps: dict[str, dict[int, set[str] | None]] = {}
 
     # --- SymbolTable delegation (properties) ---
     # All symbol attributes are now backed by SymbolTable.
@@ -224,6 +230,37 @@ class SenpyAnalyzer:
         self.fixed_count = 0
         self.fixable_count = 0
         self._stage1_lines.clear()
+        # Per-file noqa maps accumulated during _analyze_file; consumed by
+        # cross-file rules (RPY701-707, RPY802) which emit diagnostics for
+        # files that have already been analysed. Reset here so a warm run
+        # does not leak stale directives from the previous pass.
+        self._noqa_maps: dict[str, dict[int, set[str] | None]] = {}
+
+    def _get_noqa_map_for_file(self, file_path: str) -> dict[int, set[str] | None]:
+        """Return the ``# noqa`` directive map for ``file_path``.
+
+        Returns an empty dict if the file was never analysed (e.g. a brand
+        new file that has no diagnostics yet, or a file that was skipped
+        due to a Tier 2 cache hit). Callers that emit cross-file
+        diagnostics (RPY701-707, RPY802) use this to honour ``# noqa``
+        directives on the declaration line of the symbol they fire on.
+        """
+        return self._noqa_maps.get(normalize_path(file_path), {})
+
+    def _add_diagnostic_by_file(self, diag) -> None:
+        """Emit a diagnostic for a specific file, honouring its noqa map.
+
+        Used by cross-file rules (RPY701-707, RPY802) whose diagnostics
+        target a declaration line in a file that has already been
+        analysed. Looks up the per-file ``noqa_map`` populated during
+        ``_analyze_file`` and delegates to ``_add_diagnostic``.
+
+        If the target file was never analysed (no noqa map), the
+        diagnostic is still emitted — ``# noqa`` suppression is a
+        best-effort convenience, not a hard contract.
+        """
+        noqa_map = self._get_noqa_map_for_file(diag.file_path)
+        self._add_diagnostic(diag, noqa_map)
 
     def _collect_all_symbols(self, *args, **kwargs):
         return self._collector._collect_all_symbols(*args, **kwargs)

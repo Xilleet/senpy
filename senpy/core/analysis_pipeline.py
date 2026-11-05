@@ -252,6 +252,11 @@ class AnalysisPipeline:
             st_checker=StateChecker(a),
         )
         noqa_map = build_noqa_map(lines)
+        # Persist the per-file noqa map so that cross-file rules
+        # (RPY701 through RPY707 and RPY802) running later in
+        # _finalize_results can honour inline suppression directives on the
+        # declaration line of the symbol they fire on.
+        a._noqa_maps[normalize_path(file_path)] = noqa_map
 
         idx = 0
         while idx < len(lines):

@@ -26,6 +26,13 @@ class FakeAnalyzer:
 
     validate_tl_pairs appends diagnostics to analyzer.diagnostics and
     calls analyzer._get_utf16_range for column positions. We stub both.
+
+    The real SenpyAnalyzer exposes ``_add_diagnostic(diag, noqa_map)``
+    (per-file) and ``_add_diagnostic_by_file(diag)`` (cross-file).
+    Both honour ``# noqa`` suppression directives via the per-file
+    noqa_map populated during ``_analyze_file``. The fake analyser used
+    by these unit tests does not care about noqa suppression, so both
+    helpers simply apply severity and append the diagnostic unconditionally.
     """
 
     def __init__(self):
@@ -37,6 +44,18 @@ class FakeAnalyzer:
             idx = line.index(sub)
             return (idx + 1, idx + len(sub) + 1)
         return (1, min(len(line) + 1, 10))
+
+    def _add_diagnostic(self, diag, noqa_map) -> None:
+        """Per-file emission helper — mirrors SenpyAnalyzer._add_diagnostic
+        without applying noqa filtering (unit tests don't set up directives).
+        """
+        self.diagnostics.append(diag)
+
+    def _add_diagnostic_by_file(self, diag) -> None:
+        """Cross-file emission helper — mirrors
+        SenpyAnalyzer._add_diagnostic_by_file without noqa filtering.
+        """
+        self.diagnostics.append(diag)
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +74,7 @@ class TestRPY801Duplicate:
             ("Hello", 6, "Zdravstvuy", 7),  # duplicate old
             ("Goodbye", 10, "Poka", 11),
         ]
-        validate_tl_pairs(analyzer, pairs, "test.rpy")
+        validate_tl_pairs(analyzer, pairs, "test.rpy", {})
         rpy801_diags = [d for d in analyzer.diagnostics if d.code == "RPY801"]
         assert len(rpy801_diags) == 1
         assert "Duplicate" in rpy801_diags[0].message
@@ -69,7 +88,7 @@ class TestRPY801Duplicate:
             ("Hello", 2, "Privet", 3),
             ("Goodbye", 6, "Poka", 7),
         ]
-        validate_tl_pairs(analyzer, pairs, "test.rpy")
+        validate_tl_pairs(analyzer, pairs, "test.rpy", {})
         rpy801_diags = [d for d in analyzer.diagnostics if d.code == "RPY801"]
         assert len(rpy801_diags) == 0
 
@@ -81,7 +100,7 @@ class TestRPY801Duplicate:
             ("Hello", 3, "B", 4),
             ("Hello", 5, "C", 6),
         ]
-        validate_tl_pairs(analyzer, pairs, "test.rpy")
+        validate_tl_pairs(analyzer, pairs, "test.rpy", {})
         rpy801_diags = [d for d in analyzer.diagnostics if d.code == "RPY801"]
         assert len(rpy801_diags) == 1  # only first duplicate is reported
 
@@ -93,7 +112,7 @@ class TestRPY801Duplicate:
             ("Hello", 2, "Privet", 3),
             ("Hello", 6, "", 7),  # empty new — RPY603, but also duplicate
         ]
-        validate_tl_pairs(analyzer, pairs, "test.rpy")
+        validate_tl_pairs(analyzer, pairs, "test.rpy", {})
         # RPY801 may or may not fire depending on control flow (empty new
         # triggers `continue` before reaching RPY801 check). This test
         # verifies the current behavior — if it changes, update the assertion.
