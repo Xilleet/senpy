@@ -21,7 +21,7 @@
 
 <p align="center">
   <b>"Notice me, Senpy! (⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄)"</b><br>
-  <i>Fast semantic linter, control-flow analyzer, and language server for Ren'Py visual novels.</i>
+  <i>Senpy — Fast static analyzer, semantic linter, control-flow analyzer and VS Code language server for Ren'Py visual novels. Detects undefined variables, broken labels, control-flow bugs, rollback/save issues, translation errors, and more.</i>
 </p>
 
 ![](https://github.com/Xilleet/senpy/blob/main/docs/images/senpy-lsp-demo.gif)
