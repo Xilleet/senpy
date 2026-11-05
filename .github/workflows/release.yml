@@ -216,7 +216,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [build, build-vsix] 
+    needs: [build, build-vsix]
     environment: pypi  # нужно для Trusted Publishing (ВАРИАНТ B)
     # Если используете ВАРИАНТ A (API token) — environment можно убрать
 
@@ -267,16 +267,122 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      # =========================================================================
+      # Build release body from CHANGELOG.md + a static header file.
+      #
+      # Strategy:
+      #   1. Read .github/release-header.md (badges, install links, SEO blurb)
+      #      — committed once, reused for every release.
+      #   2. Extract the section "## [X.Y.Z] — ..." from CHANGELOG.md
+      #      (the chunk between this version's heading and the next "## ["
+      #      heading, or end of file).
+      #   3. Concatenate header + changelog slice → release_body.md
+      #   4. Pass via body_path to softprops/action-gh-release.
+      #
+      # If .github/release-header.md is missing, falls back to changelog-only.
+      # If the version section isn't found in CHANGELOG.md, falls back to
+      #   generate_release_notes: true (GitHub's auto-commit-summary mode).
+      # =========================================================================
+      - name: Build release body from CHANGELOG.md
+        id: body
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Building release body for v${VERSION}..."
+
+          # Locate CHANGELOG section: heading is `## [X.Y.Z] — ...` (Keep a Changelog)
+          # Match the base version part (strip pre-release suffix like -rc1).
+          BASE_VERSION=$(echo "${VERSION}" | cut -d'-' -f1)
+
+          CHANGELOG_FILE="CHANGELOG.md"
+          HEADER_FILE=".github/release-header.md"
+          BODY_FILE="release_body.md"
+
+          # --- Extract changelog section ---
+          # awk: print lines between the matching `## [X.Y.Z]` heading and
+          # the next `## [` heading (exclusive), or EOF. Skip HTML anchor
+          # lines (`<a id="..."></a>`) used for in-file navigation — they
+          # belong to the next section, not this one.
+          SECTION=$(awk -v ver="${BASE_VERSION}" '
+            BEGIN { capture = 0 }
+            /^## \[/ {
+              if (capture == 1) { exit }
+              line = $0
+              gsub(/^## \[/, "", line)
+              gsub(/\].*/, "", line)
+              gsub(/-.*$/, "", line)
+              if (line == ver) { capture = 1; print; next }
+            }
+            capture == 1 && /^<a id=/ { next }
+            capture == 1 { print }
+          ' "${CHANGELOG_FILE}")
+
+          if [ -z "${SECTION}" ]; then
+            echo "WARNING: No section '## [${BASE_VERSION}]' found in ${CHANGELOG_FILE}."
+            echo "Falling back to generate_release_notes=true (GitHub auto-summary)."
+            echo "use_auto_notes=true" >> $GITHUB_OUTPUT
+            rm -f "${BODY_FILE}"
+            exit 0
+          fi
+
+          # --- Build the body ---
+          > "${BODY_FILE}"
+
+          # Header (optional — committed once, reused for every release)
+          if [ -f "${HEADER_FILE}" ]; then
+            cat "${HEADER_FILE}" >> "${BODY_FILE}"
+            # Ensure a blank separator line between header and changelog
+            printf '\n\n---\n\n' >> "${BODY_FILE}"
+          fi
+
+          # Changelog section
+          printf '%s\n' "${SECTION}" >> "${BODY_FILE}"
+
+          # --- Find previous version for Full Changelog link ---
+          # CHANGELOG is sorted newest-first, so the "previous" version in
+          # SemVer order is the NEXT `## [X.Y.Z]` heading in file order
+          # (i.e. the one immediately below the matched section).
+          PREV_VERSION=$(awk -v ver="${BASE_VERSION}" '
+            BEGIN { found = 0 }
+            /^## \[/ {
+              line = $0
+              gsub(/^## \[/, "", line)
+              gsub(/\].*/, "", line)
+              gsub(/-.*$/, "", line)
+              if (found == 1) { print line; exit }
+              if (line == ver) { found = 1 }
+            }
+          ' "${CHANGELOG_FILE}")
+
+          # Footer with Full Changelog link (GitHub auto-generates this when
+          # generate_release_notes is true; we add it manually since we're
+          # providing our own body).
+          printf '\n\n---\n\n' >> "${BODY_FILE}"
+          if [ -n "${PREV_VERSION}" ]; then
+            printf '**Full Changelog**: https://github.com/Xilleet/senpy/compare/v%s...v%s\n' \
+              "${PREV_VERSION}" "${BASE_VERSION}" >> "${BODY_FILE}"
+          else
+            printf '**Full Changelog**: https://github.com/Xilleet/senpy/commits/v%s\n' \
+              "${BASE_VERSION}" >> "${BODY_FILE}"
+          fi
+
+          echo "=== Release body preview (first 30 lines) ==="
+          head -30 "${BODY_FILE}"
+          echo "=== Total body length: $(wc -l < "${BODY_FILE}") lines ==="
+          echo "use_auto_notes=false" >> $GITHUB_OUTPUT
+          echo "body_path=${BODY_FILE}" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Senpy v${{ steps.version.outputs.version }}
-          # GitHub сам собирает release notes из commits между тегами
-          # Группирует по Conventional Commits (feat:, fix:, docs:, chore:)
-          generate_release_notes: true
+          # Use the SEO-rich body we built from CHANGELOG.md, OR fall back to
+          # GitHub's auto-generated commit-summary notes if extraction failed.
+          body_path: ${{ steps.body.outputs.body_path }}
+          generate_release_notes: ${{ steps.body.outputs.use_auto_notes == 'true' }}
           draft: false
-          # Если тег содержит '-' (v0.6.0-rc1) → помечаем как prerelease
+          # Если тег содержит '-' → помечаем как prerelease
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             release/*.whl
