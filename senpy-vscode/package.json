@@ -1,19 +1,48 @@
 {
   "publisher": "Xilleet",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Xilleet/senpy"
-  },
   "name": "senpy-vscode",
-  "displayName": "senpy-vscode",
-  "description": "Notice me, Senpy! Fast semantic Ren'Py linter with LSP support",
+  "displayName": "Senpy — Ren'Py Linter & Language Server",
+  "description": "Fast static analyzer, semantic linter and Language Server for Ren'Py visual novels. Detects undefined variables, broken labels, control-flow bugs, save/rollback issues and translation errors in real time.",
   "version": "0.7.6",
   "engines": {
     "vscode": "^1.85.0"
   },
+  "license": "SEE LICENSE IN LICENSE",
   "categories": [
-    "Other"
+    "Programming Languages",
+    "Linters",
+    "Formatters"
   ],
+  "keywords": [
+    "renpy",
+    "ren'py",
+    "visual novel",
+    "linter",
+    "static analysis",
+    "language server",
+    "lsp",
+    "code quality",
+    "game development",
+    "translation",
+    "localization",
+    "save safety",
+    "rollback",
+    "story graph",
+    "rpy"
+  ],
+  "galleryBanner": {
+    "color": "#1f1f28",
+    "theme": "dark"
+  },
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xilleet/senpy"
+  },
+  "bugs": {
+    "url": "https://github.com/Xilleet/senpy/issues"
+  },
+  "homepage": "https://github.com/Xilleet/senpy#readme",
   "activationEvents": [
     "onLanguage:renpy",
     "onCommand:senpy.showStoryGraph",
