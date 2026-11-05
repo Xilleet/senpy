@@ -1,20 +1,25 @@
 """base — extracted from checkers.py (Phase 2, 0.5.4).
 
-ISP Protocol split: BaseChecker type-hints analyzer via TYPE_CHECKING
-Protocols. At runtime, SenpyAnalyzer is passed directly — it implements
-all Protocols. The type hints document which Protocols each checker
-actually needs, enabling future mock testing.
+ISP Protocol split: BaseChecker type-hints analyzer via the
+DiagnosticSinkAndSymbols Protocol (intersection of DiagnosticSink and
+SymbolProvider). At runtime, SenpyAnalyzer is passed directly — it
+implements the Protocol. Subclasses that need AssetProvider or
+FlowProvider declare that in their own type hints.
+
+See ``senpy/core/protocols.py`` for the Protocol definitions and
+``tests/test_protocols_runtime.py`` for the runtime ``isinstance``
+contract.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from senpy.core.scope import ScopeStack
 from senpy.rules.flow import FlowBranch
 
 if TYPE_CHECKING:
-    pass
+    from senpy.core.protocols import DiagnosticSinkAndSymbols
 
 
 class IfBlockContext:
@@ -30,13 +35,21 @@ class IfBlockContext:
 class BaseChecker:
     """Base class for line-by-line checkers.
 
-    The analyzer parameter is typed as DiagnosticSink & SymbolProvider
-    (intersection) under TYPE_CHECKING. At runtime, SenpyAnalyzer is
-    passed — it implements both Protocols. Subclasses that need
-    AssetProvider or FlowProvider declare that in their own type hints.
+    The analyzer parameter is typed as DiagnosticSinkAndSymbols — the
+    intersection of DiagnosticSink (for ``_add_diagnostic`` /
+    ``_get_utf16_range`` / ``fix`` / ``fixable_count`` / ``fixed_count``)
+    and SymbolProvider (for ``variables`` / ``labels`` / ``screens`` /
+    ``transforms`` / ``images`` / ``user_symbols`` / ``declared_symbols``
+    / ``referenced_labels`` / ``has_dynamic_jumps`` /
+    ``missing_defaults``). At runtime, SenpyAnalyzer is passed — it
+    implements both halves.
+
+    Subclasses that need additional Protocols (AssetProvider for
+    AssetChecker, FlowProvider for StateChecker) declare that via their
+    own ``__init__`` signature.
     """
 
-    def __init__(self, analyzer: Any):
+    def __init__(self, analyzer: DiagnosticSinkAndSymbols):
         self.analyzer = analyzer
 
     def check_line(

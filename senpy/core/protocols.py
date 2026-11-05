@@ -159,3 +159,49 @@ class ProjectInfo(Protocol):
     """Project-level metadata."""
 
     project_path: str
+
+
+# =============================================================================
+# Intersection Protocols — convenience compositions for checker __init__.
+# =============================================================================
+
+
+class DiagnosticSinkAndSymbols(DiagnosticSink, SymbolProvider, Protocol):
+    """Intersection of DiagnosticSink and SymbolProvider.
+
+    Most built-in line checkers (FormattingChecker, ScreenChecker,
+    AssetChecker, DialogueChecker, StateChecker) need both: they emit
+    diagnostics via ``_add_diagnostic`` / ``_get_utf16_range`` (the
+    DiagnosticSink half) AND read symbol registries like
+    ``analyzer.labels`` / ``analyzer.screens`` / ``analyzer.variables``
+    (the SymbolProvider half).
+
+    Declared as a single named Protocol so that checker ``__init__``
+    signatures can take a single typed parameter instead of being forced
+    to type it as ``Any`` (which is what the previous compromise did —
+    see CHANGELOG Phase 2a). Multiple-inheritance composition of two
+    ``Protocol`` classes produces a structural intersection that
+    ``@runtime_checkable`` can verify with ``isinstance``.
+
+    SenpyAnalyzer implements this Protocol because it implements both
+    halves individually.
+    """
+
+
+class FullAnalyzer(
+    DiagnosticSink,
+    SymbolProvider,
+    AssetProvider,
+    FlowProvider,
+    ProjectInfo,
+    Protocol,
+):
+    """Intersection of every Protocol SenpyAnalyzer implements.
+
+    Used by callers that need the whole analyzer surface in one typed
+    parameter (e.g. ``PythonAstChecker``, ``StoryFlowAnalyzer``,
+    cross-file rules). Equivalent to the old ``analyzer: SenpyAnalyzer``
+    concrete type hint, but expressed structurally so that a future
+    test double only has to satisfy the Protocol surface rather than
+    inherit from ``SenpyAnalyzer``.
+    """
