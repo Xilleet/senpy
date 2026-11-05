@@ -119,13 +119,40 @@ def discover_plugins():
 # =============================================================================
 
 
+def _resolve_plugin_api_version(rule_cls: type) -> str | None:
+    """Resolve PLUGIN_API_VERSION declared by a plugin Rule.
+
+    Plugins may declare PLUGIN_API_VERSION in two ways:
+
+    1. As a class attribute on the Rule subclass (e.g.
+       ``class MyRule(Rule): PLUGIN_API_VERSION = "1.0"``).
+    2. As a module-level constant in the module that defines the Rule
+       (e.g. ``PLUGIN_API_VERSION = "1.0"`` at the top of ``rules.py``).
+       This is the convention used by both shipped example plugins
+       (examples/my_senpy_plugin/rules.py:22,
+       examples/todo_comment_plugin/todo_comment_plugin/rules.py:37).
+
+    Returns the version string if declared in either place, otherwise None.
+    The class attribute takes precedence (more specific scope).
+    """
+    class_attr = getattr(rule_cls, "PLUGIN_API_VERSION", None)
+    if class_attr is not None:
+        return class_attr
+
+    module = sys.modules.get(getattr(rule_cls, "__module__", None))
+    if module is None:
+        return None
+    return getattr(module, "PLUGIN_API_VERSION", None)
+
+
 def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
     """Load a single plugin entry point with security checks.
 
     Pipeline:
         1. Load entry_point value (the Rule subclass)
         2. Verify it's a Rule subclass (skip if not, with warning)
-        3. Check plugin's api_version if declared (skip if incompatible)
+        3. Check plugin's api_version (class attribute OR module-level
+           constant — see _resolve_plugin_api_version). Skip if incompatible.
         4. Trust check: call trust_callback (or default) — skip if declined
         5. Return _LoadedEntryPoint(name, rule_cls), or None if skipped
 
@@ -161,8 +188,13 @@ def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
         return None
 
     # Step 3: Check plugin's api_version (SEC-P1)
-    # Plugin can declare PLUGIN_API_VERSION as class attribute on the Rule subclass
-    plugin_api_version = getattr(rule_cls, "PLUGIN_API_VERSION", None)
+    # Plugins may declare PLUGIN_API_VERSION either as a class attribute on
+    # the Rule subclass or as a module-level constant. Both shipped example
+    # plugins (examples/my_senpy_plugin/rules.py:22,
+    # examples/todo_comment_plugin/todo_comment_plugin/rules.py:37) follow
+    # the module-level convention, so a class-only lookup is insufficient —
+    # the version check would be silently skipped for the documented pattern.
+    plugin_api_version = _resolve_plugin_api_version(rule_cls)
     if plugin_api_version is not None:
         from senpy.plugins.security import check_api_version
 
@@ -177,6 +209,12 @@ def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
                 PLUGIN_API_VERSION,
             )
             return None
+    else:
+        _logger.debug(
+            "Plugin %r does not declare PLUGIN_API_VERSION "
+            "(neither class nor module attribute). Loading without version check.",
+            plugin_name,
+        )
 
     # Step 4: Trust check (SEC-P2)
     if trust_callback is None:

@@ -117,15 +117,12 @@ class TestPluginMetadata:
     def test_plugin_api_version_is_set(self):
         """The plugin declares PLUGIN_API_VERSION at module level.
 
-        Note: this matches the pattern in my_senpy_plugin/rules.py —
-        PLUGIN_API_VERSION is a module-level constant, not a class
-        attribute. The loader (`senpy/plugins/loader.py:165`) does
-        `getattr(rule_cls, "PLUGIN_API_VERSION", None)` which returns
-        None for module-level declarations (class attrs only). This is
-        a known limitation of the current plugin API — the version
-        check is skipped silently when the attr is module-level. Both
-        example plugins (RPY901, RPY902) follow this pattern, so we
-        test for module-level presence to match the established convention.
+        This matches the pattern in my_senpy_plugin/rules.py — PLUGIN_API_VERSION
+        is a module-level constant, not a class attribute. The loader resolves
+        PLUGIN_API_VERSION from either location (see
+        ``senpy.plugins.loader._resolve_plugin_api_version``), so module-level
+        declarations are checked for compatibility the same way class
+        attributes are.
         """
         # _rules_module is the already-loaded module (loaded via importlib
         # at the top of this file).

@@ -167,6 +167,99 @@ class TestPluginLoading:
         result = load_plugin(_MockEntryPoint())
         assert result is None  # skipped due to version mismatch
 
+    def test_load_plugin_skips_incompatible_module_level_api_version(self):
+        """Plugin declaring an incompatible PLUGIN_API_VERSION at module
+        level (the convention used by both example plugins) must also be
+        skipped.
+
+        Regression for B5: ``getattr(rule_cls, "PLUGIN_API_VERSION", None)``
+        only inspects the class attribute, returning ``None`` when the
+        plugin follows the documented convention of declaring
+        ``PLUGIN_API_VERSION`` as a module-level constant. As a result the
+        version check was silently skipped for both shipped example plugins.
+        """
+        import types
+
+        from senpy.plugins.base import Rule, RuleMeta
+        from senpy.plugins.loader import load_plugin
+
+        # Build a throwaway module that exposes PLUGIN_API_VERSION at module
+        # level (matches examples/my_senpy_plugin/rules.py:22 and
+        # examples/todo_comment_plugin/todo_comment_plugin/rules.py:37).
+        module = types.ModuleType("test_incompatible_module_plugin")
+        module.PLUGIN_API_VERSION = "2.0"  # incompatible
+
+        class ModuleLevelRule(Rule):
+            meta = RuleMeta(code="RPY999", docs="module-level", severity="WARNING")
+
+            def check(self, ctx):
+                return []
+
+        # Bind the class to the synthetic module so rule_cls.__module__
+        # resolves to it.
+        ModuleLevelRule.__module__ = "test_incompatible_module_plugin"
+        module.ModuleLevelRule = ModuleLevelRule
+        import sys
+
+        sys.modules["test_incompatible_module_plugin"] = module
+
+        class _MockEntryPoint:
+            name = "module-level-plugin"
+            group = "senpy.plugins"
+            value = "test_incompatible_module_plugin:ModuleLevelRule"
+
+            def load(self):
+                return module.ModuleLevelRule
+
+        try:
+            result = load_plugin(_MockEntryPoint(), trust_callback=lambda _name: True)
+            assert result is None, (
+                "load_plugin must skip plugins whose module-level "
+                "PLUGIN_API_VERSION is incompatible"
+            )
+        finally:
+            sys.modules.pop("test_incompatible_module_plugin", None)
+
+    def test_load_plugin_accepts_compatible_module_level_api_version(self):
+        """Plugin declaring a compatible PLUGIN_API_VERSION at module level
+        must be loaded — the loader's module-level fallback must not break
+        the happy path."""
+        import sys
+        import types
+
+        from senpy.plugins.base import Rule, RuleMeta
+        from senpy.plugins.loader import load_plugin
+
+        module = types.ModuleType("test_compatible_module_plugin")
+        module.PLUGIN_API_VERSION = "1.0"  # compatible with Senpy
+
+        class CompatibleRule(Rule):
+            meta = RuleMeta(code="RPY998", docs="compatible", severity="WARNING")
+
+            def check(self, ctx):
+                return []
+
+        CompatibleRule.__module__ = "test_compatible_module_plugin"
+        module.CompatibleRule = CompatibleRule
+        sys.modules["test_compatible_module_plugin"] = module
+
+        class _MockEntryPoint:
+            name = "compatible-module-plugin"
+            group = "senpy.plugins"
+            value = "test_compatible_module_plugin:CompatibleRule"
+
+            def load(self):
+                return module.CompatibleRule
+
+        try:
+            result = load_plugin(_MockEntryPoint(), trust_callback=lambda _name: True)
+            assert result is not None, (
+                "load_plugin must accept plugins with a compatible "
+                "module-level PLUGIN_API_VERSION"
+            )
+        finally:
+            sys.modules.pop("test_compatible_module_plugin", None)
+
     def test_load_plugin_handles_import_error_gracefully(self):
         """If entry_point.load() raises ImportError, return None (isolation)."""
         from senpy.plugins.loader import load_plugin
