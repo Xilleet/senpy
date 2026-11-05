@@ -34,7 +34,6 @@ _WHITELIST = {
     # them from the whitelist. They have 7-61 Russian comment lines each.
     # Tracked as follow-up to WL-638.
     "scripts/restructure_senpy.py",
-    "scripts/update_renpy_api.py",
     "scripts/update_unrpyc_pin.py",
     # clean_internal_ids.py has one Russian word ("версия") inside a
     # docstring example showing what the script scrubs. It's part of

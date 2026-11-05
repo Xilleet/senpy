@@ -241,7 +241,7 @@ senpy/
 ├── tests/                       # pytest test suite (700+ tests)
 ├── scripts/                     # Maintenance scripts
 │   ├── check_cycles.py          # Import cycle detector
-│   ├── update_renpy_api.py      # Regenerate renpy_api.py from Ren'Py source
+│   ├── fetch_renpy_docs.py      # Regenerate renpy_api_generated.py from Ren'Py RST docs
 │   └── update_unrpyc_pin.py     # Update pinned unrpyc SHA256
 ├── docs/                        # Documentation and images
 ├── examples/                    # Example plugin + demo scripts

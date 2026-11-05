@@ -6,10 +6,9 @@ Copyright (c) 2026 Allure Diffusion). Algorithm adapted 1:1 from the
 TypeScript original; the RST source layout and directive grammar are
 dictated by the Ren'Py Sphinx docs, not by renpy-magic's code.
 
-Coverage gap this script closes vs Senpy's existing ``update_renpy_api.py``:
-- ``update_renpy_api.py`` parses Python export modules (statementexports.py
-  etc.) via AST and extracts only ``renpy.X()`` function signatures.
-- This script parses RST docs and extracts:
+Coverage (supersedes the old Python-AST-based generator that only
+extracted ``renpy.X()`` function signatures from the export modules).
+This script parses RST docs and extracts:
     * ``config.*`` variables (≈286 entries)
     * ``gui.*`` variables (≈107 entries)
     * ``build.*`` variables (≈18 entries)
@@ -622,7 +621,7 @@ def main() -> int:
     all_entries: list[dict] = []
 
     print("\n=== RST Documentation Files ===")
-    # Parallel fetch — same pattern as update_renpy_api.py.
+    # Parallel fetch — same pattern used earlier in this module's lifecycle.
     with ThreadPoolExecutor(max_workers=6) as executor:
         futures = {
             executor.submit(fetch_url, GITHUB_RAW_BASE + fname): fname for fname in RST_FILES
