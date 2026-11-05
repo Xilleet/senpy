@@ -13,6 +13,7 @@ Protocols:
   - SymbolProvider — symbol access: variables, labels, screens, transforms, images, user_symbols, declared_symbols, referenced_labels, has_dynamic_jumps, missing_defaults
   - AssetProvider — asset access: _mark_asset_used, _get_tag_known_attributes, known_assets, valid_images, audio_dir_files, defined_audio_map, registered_audio_channels
   - FlowProvider — flow/checker delegation: _analyze_menu_flow, _can_reach_return, _check_cfg_condition, _check_cfg_interpolations, _check_condition, _check_python_ast, _check_screen_mutation, _clear_safe_cfg_vars, _consume_block, _scan_python_assets
+  - NoqaMapProvider — per-file noqa directive lookup for cross-file rules
   - ProjectInfo — project metadata: project_path
 
 SenpyAnalyzer implements ALL Protocols (it's the concrete class).
@@ -152,6 +153,47 @@ class FlowProvider(Protocol):
     ) -> tuple[int, list[str]]: ...
 
     def _scan_python_assets(self, code_lines: list[str] | str) -> None: ...
+
+
+@runtime_checkable
+class NoqaMapProvider(Protocol):
+    """Per-file ``# noqa`` directive lookup for cross-file rules.
+
+    Cross-file rules (RPY701-707, RPY802) emit diagnostics whose
+    ``file_path`` and ``line_number`` point at the declaration line of
+    a symbol in a file that has already been analysed (and whose
+    ``noqa_map`` is therefore no longer on the call stack). These rules
+    look up the per-file directive map via ``_get_noqa_map_for_file``
+    and emit the diagnostic through ``_add_diagnostic_by_file`` so that
+    inline ``# noqa: RPYxxx`` directives on the declaration line are
+    honoured the same way as built-in per-line checkers honour them
+    through ``_add_diagnostic``.
+
+    SenpyAnalyzer populates its ``_noqa_maps`` dict during
+    ``AnalysisPipeline._analyze_file`` and ``analyze_tl_file``.
+    """
+
+    def _get_noqa_map_for_file(self, file_path: str) -> dict[int, set[str] | None]:
+        """Return the ``# noqa`` directive map for ``file_path``.
+
+        Returns an empty dict if the file was never analysed (e.g. a
+        brand new file, or a file that was skipped due to a Tier 2
+        cache hit). Cross-file rules use this to honour inline
+        suppression directives on the declaration line of the symbol
+        they fire on.
+        """
+        ...
+
+    def _add_diagnostic_by_file(self, diag: Diagnostic) -> None:
+        """Emit a diagnostic for a specific file, honouring its noqa map.
+
+        Looks up the per-file ``noqa_map`` populated during
+        ``_analyze_file`` and delegates to ``_add_diagnostic``. If the
+        target file was never analysed, the diagnostic is still emitted
+        — ``# noqa`` suppression is a best-effort convenience, not a
+        hard contract.
+        """
+        ...
 
 
 @runtime_checkable

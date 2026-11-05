@@ -21,6 +21,7 @@ from senpy.core.protocols import (
     AssetProvider,
     DiagnosticSink,
     FlowProvider,
+    NoqaMapProvider,
     ProjectInfo,
     SymbolProvider,
 )
@@ -145,4 +146,107 @@ class TestDiagnosticSinkIsSingleSourceOfTruth:
         assert senpy.DiagnosticSink is ProtocolsDiagnosticSink, (
             "senpy.DiagnosticSink (the top-level re-export) must point at "
             "senpy.core.protocols.DiagnosticSink — no shadowing duplicates"
+        )
+
+
+class TestNoqaMapProviderProtocol:
+    """``NoqaMapProvider`` Protocol — per-file ``# noqa`` directive lookup
+    for cross-file rules.
+
+    Regression for T-024: after T-004 introduced ``_noqa_maps`` on
+    SenpyAnalyzer and the ``_add_diagnostic_by_file`` helper, these
+    methods became de facto public API consumed by ``dead_code.py``
+    (7 call sites) and ``_check_rpy802_cross_language`` (1 call site).
+    But the ``DiagnosticSink`` Protocol (protocols.py:38-49) does not
+    declare them — so a plugin author or test double implementing
+    ``DiagnosticSink`` would silently lack the cross-file emission
+    surface.
+
+    ``NoqaMapProvider`` declares the missing contract explicitly.
+    ``SenpyAnalyzer`` already implements both methods (added in T-004),
+    so this is an additive Protocol — no runtime changes.
+    """
+
+    def test_noqa_map_provider_is_runtime_checkable(self):
+        assert NoqaMapProvider._is_runtime_protocol, (
+            "NoqaMapProvider must be decorated with @runtime_checkable so "
+            "isinstance(analyzer, NoqaMapProvider) performs a structural "
+            "check at runtime"
+        )
+
+    def test_analyzer_implements_noqa_map_provider(self, tmp_path):
+        analyzer = _make_analyzer(tmp_path)
+        assert isinstance(analyzer, NoqaMapProvider), (
+            "SenpyAnalyzer must implement NoqaMapProvider Protocol — "
+            "missing one of: _get_noqa_map_for_file, _add_diagnostic_by_file"
+        )
+
+    def test_get_noqa_map_for_file_returns_empty_for_unknown_file(self, tmp_path):
+        """When the file was never analysed, the lookup must return an empty
+        dict rather than raising — cross-file rules emit diagnostics for
+        files that may have been skipped due to a Tier 2 cache hit."""
+        analyzer = _make_analyzer(tmp_path)
+        result = analyzer._get_noqa_map_for_file("/nonexistent/file.rpy")
+        assert result == {}, (
+            f"_get_noqa_map_for_file must return {{}} for unknown files, " f"got: {result!r}"
+        )
+
+    def test_add_diagnostic_by_file_honours_noqa(self, tmp_path):
+        """``_add_diagnostic_by_file`` must suppress a diagnostic when the
+        target file's noqa map contains the diagnostic's line and code.
+
+        This is the core T-004 contract: cross-file rules emit
+        diagnostics through ``_add_diagnostic_by_file`` so that
+        ``# noqa: RPYxxx`` directives on the declaration line are
+        honoured the same way as built-in per-line checkers honour them
+        through ``_add_diagnostic``.
+        """
+        from senpy.core.models import Diagnostic
+        from senpy.core.paths import normalize_path
+
+        analyzer = _make_analyzer(tmp_path)
+
+        # Pretend that script.rpy was analysed and its line 1 has a
+        # blanket suppression directive (codes=None means "suppress all").
+        script_path = str(tmp_path / "game" / "script.rpy")
+        analyzer._noqa_maps[normalize_path(script_path)] = {1: None}
+
+        diag = Diagnostic(
+            file_path=script_path,
+            line_number=1,
+            line_content="default unused = 0",
+            code="RPY704",
+            message="Unused default variable (test)",
+            severity="HINT",
+        )
+        analyzer._add_diagnostic_by_file(diag)
+
+        suppressed = [d for d in analyzer.diagnostics if d.code == "RPY704"]
+        assert suppressed == [], (
+            "_add_diagnostic_by_file must honour # noqa directives on the "
+            "diagnostic's file/line — diagnostic was emitted despite suppression"
+        )
+
+    def test_add_diagnostic_by_file_emits_when_no_suppression(self, tmp_path):
+        """Symmetric to the previous test: without a noqa directive, the
+        diagnostic must be emitted."""
+        from senpy.core.models import Diagnostic
+
+        analyzer = _make_analyzer(tmp_path)
+        script_path = str(tmp_path / "game" / "script.rpy")
+
+        diag = Diagnostic(
+            file_path=script_path,
+            line_number=1,
+            line_content="default unused = 0",
+            code="RPY704",
+            message="Unused default variable (test)",
+            severity="HINT",
+        )
+        analyzer._add_diagnostic_by_file(diag)
+
+        emitted = [d for d in analyzer.diagnostics if d.code == "RPY704"]
+        assert len(emitted) == 1, (
+            f"_add_diagnostic_by_file must emit the diagnostic when no "
+            f"# noqa directive suppresses it — got {len(emitted)} diagnostics"
         )
