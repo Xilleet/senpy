@@ -12,6 +12,7 @@ from collections import Counter
 from typing import TYPE_CHECKING
 
 from senpy.core.constants import NON_DIALOGUE_STATEMENTS
+from senpy.core.file_collector import build_noqa_map
 from senpy.core.models import Diagnostic
 from senpy.core.paths import normalize_path
 
@@ -40,7 +41,11 @@ def analyze_tl_file(analyzer: SenpyAnalyzer, file_path: str) -> None:
 
     analyzer.total_lines += len(lines)
     pairs = parse_tl_pairs(lines)
-    validate_tl_pairs(analyzer, pairs, file_path)
+    noqa_map = build_noqa_map(lines)
+    # Persist for the later cross-file RPY802 check; the per-file rules
+    # below consume this map directly via _add_diagnostic.
+    analyzer._noqa_maps[normalize_path(file_path)] = noqa_map
+    validate_tl_pairs(analyzer, pairs, file_path, noqa_map)
 
 
 def parse_tl_pairs(lines: list[str]) -> list[tuple[str, int, str, int]]:
@@ -114,6 +119,7 @@ def validate_tl_pairs(
     analyzer: SenpyAnalyzer,
     pairs: list[tuple[str, int, str, int]],
     file_path: str,
+    noqa_map: dict[int, set[str] | None],
 ) -> None:
     """Validate translation pairs for RPY601/602/603/801.
 
@@ -130,21 +136,32 @@ def validate_tl_pairs(
         old_masked = re.sub(r"\\.|(\{\{|\}\}|\[\[|\]\])", "  ", old_txt)
         new_masked = re.sub(r"\\.|(\{\{|\}\}|\[\[|\]\])", "  ", new_txt)
 
-        if _check_rpy603(analyzer, old_txt, new_txt, new_line, file_path):
+        if _check_rpy603(analyzer, old_txt, new_txt, new_line, file_path, noqa_map):
             continue
 
-        _check_rpy601(analyzer, old_masked, new_masked, new_txt, new_line, file_path, re_var)
-        _check_rpy602(analyzer, old_masked, new_masked, new_txt, new_line, file_path, re_tag)
-        _check_rpy801(analyzer, old_txt, old_line, seen_old, duplicate_reported, file_path)
+        _check_rpy601(
+            analyzer, old_masked, new_masked, new_txt, new_line, file_path, re_var, noqa_map
+        )
+        _check_rpy602(
+            analyzer, old_masked, new_masked, new_txt, new_line, file_path, re_tag, noqa_map
+        )
+        _check_rpy801(
+            analyzer, old_txt, old_line, seen_old, duplicate_reported, file_path, noqa_map
+        )
 
 
 def _check_rpy603(
-    analyzer: SenpyAnalyzer, old_txt: str, new_txt: str, new_line: int, file_path: str
+    analyzer: SenpyAnalyzer,
+    old_txt: str,
+    new_txt: str,
+    new_line: int,
+    file_path: str,
+    noqa_map: dict[int, set[str] | None],
 ) -> bool:
     """RPY603: Empty translation string. Returns True if diagnostic was emitted (caller should `continue`)."""
     if old_txt.strip() and not new_txt.strip():
         start_c, end_c = analyzer._get_utf16_range(f'new "{new_txt}"', new_txt)
-        analyzer.diagnostics.append(
+        analyzer._add_diagnostic(
             Diagnostic(
                 file_path=file_path,
                 line_number=new_line,
@@ -154,7 +171,8 @@ def _check_rpy603(
                 severity="WARNING",
                 col=start_c,
                 end_col=end_c,
-            )
+            ),
+            noqa_map,
         )
         return True
     return False
@@ -168,6 +186,7 @@ def _check_rpy601(
     new_line: int,
     file_path: str,
     re_var: re.Pattern,
+    noqa_map: dict[int, set[str] | None],
 ) -> None:
     """RPY601: Variable interpolation mismatch [var]."""
     old_vars = Counter(re_var.findall(old_masked))
@@ -183,7 +202,7 @@ def _check_rpy601(
             diffs.append(f"typo/extra: {', '.join(f'[{v}]' for v in extra)}")
 
         start_c, end_c = analyzer._get_utf16_range(new_txt, next(iter(extra)) if extra else None)
-        analyzer.diagnostics.append(
+        analyzer._add_diagnostic(
             Diagnostic(
                 file_path=file_path,
                 line_number=new_line,
@@ -193,7 +212,8 @@ def _check_rpy601(
                 severity="ERROR",
                 col=start_c,
                 end_col=end_c,
-            )
+            ),
+            noqa_map,
         )
 
 
@@ -205,12 +225,13 @@ def _check_rpy602(
     new_line: int,
     file_path: str,
     re_tag: re.Pattern,
+    noqa_map: dict[int, set[str] | None],
 ) -> None:
     """RPY602: Formatting tag mismatch {b}, {color}, etc."""
     old_tags = Counter(re_tag.findall(old_masked))
     new_tags = Counter(re_tag.findall(new_masked))
     if old_tags != new_tags:
-        analyzer.diagnostics.append(
+        analyzer._add_diagnostic(
             Diagnostic(
                 file_path=file_path,
                 line_number=new_line,
@@ -218,7 +239,8 @@ def _check_rpy602(
                 code="RPY602",
                 message="Formatting tags count or names do not match the original string. Text styles may break.",
                 severity="WARNING",
-            )
+            ),
+            noqa_map,
         )
 
 
@@ -229,12 +251,13 @@ def _check_rpy801(
     seen_old: dict[str, int],
     duplicate_reported: set[str],
     file_path: str,
+    noqa_map: dict[int, set[str] | None],
 ) -> None:
     """RPY801: Duplicate translation string in the same file."""
     if old_txt in seen_old and old_txt not in duplicate_reported:
         first_line = seen_old[old_txt]
         start_c, end_c = analyzer._get_utf16_range(f'old "{old_txt}"', old_txt)
-        analyzer.diagnostics.append(
+        analyzer._add_diagnostic(
             Diagnostic(
                 file_path=file_path,
                 line_number=old_line,
@@ -249,7 +272,8 @@ def _check_rpy801(
                 severity="WARNING",
                 col=start_c,
                 end_col=end_c,
-            )
+            ),
+            noqa_map,
         )
         duplicate_reported.add(old_txt)
     elif old_txt not in seen_old:
@@ -313,7 +337,7 @@ def _find_and_emit_inconsistencies(
             if len(non_empty) > 1:
                 diag_file, diag_line = _find_first_occurrence(old_txt, lang, tl_files)
                 variants_str = " | ".join(f'"{v}"' for v in sorted(non_empty))
-                analyzer.diagnostics.append(
+                analyzer._add_diagnostic_by_file(
                     Diagnostic(
                         file_path=diag_file,
                         line_number=diag_line,

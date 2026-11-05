@@ -71,6 +71,12 @@ class SenpyAnalyzer:
             # the rest of the config — assume strict=False (caller manages
             # the full severity policy themselves).
             self.strict = False
+            # Plugin execution is also caller-managed: explicit callers
+            # (e.g. tests, LSP) default to plugins OFF unless they opt in
+            # via the dedicated constructor argument. Reading senpy.toml
+            # here would surprise callers that pass severity_overrides
+            # expecting full programmatic control.
+            self.enable_plugins = False
         else:
             cfg = load_config(self.project_path)
             self.severity_overrides = {
@@ -80,6 +86,10 @@ class SenpyAnalyzer:
             # explicit severity_overrides have been applied, so overrides
             # still win — see _apply_severity).
             self.strict = bool(cfg.get("strict", False))
+            # Plugin rule execution is opt-in for 0.8.0 (default False).
+            # When True, registered Rule subclasses are invoked per-file
+            # during _analyze_file (see T-003 in WORKLOG).
+            self.enable_plugins = bool(cfg.get("enable_plugins", False))
 
         # Base sets — now managed by SymbolTable
         self._symbols = SymbolTable()

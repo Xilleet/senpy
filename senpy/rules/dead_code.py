@@ -109,7 +109,7 @@ def _check_rpy701(
         if var_sym.is_character:
             continue
         if not _is_used(name, var_sym.file_path, var_sym.line_number, word_locations):
-            analyzer.diagnostics.append(
+            analyzer._add_diagnostic_by_file(
                 Diagnostic(
                     file_path=var_sym.file_path,
                     line_number=var_sym.line_number,
@@ -130,7 +130,7 @@ def _check_rpy702(
         if name in BUILTIN_SYMBOLS:
             continue
         if not _is_used(name, trn_sym.file_path, trn_sym.line_number, word_locations):
-            analyzer.diagnostics.append(
+            analyzer._add_diagnostic_by_file(
                 Diagnostic(
                     file_path=trn_sym.file_path,
                     line_number=trn_sym.line_number,
@@ -151,7 +151,7 @@ def _check_rpy703(
         if name in BUILTIN_SCREENS:
             continue
         if not _is_used(name, scr_sym.file_path, scr_sym.line_number, word_locations):
-            analyzer.diagnostics.append(
+            analyzer._add_diagnostic_by_file(
                 Diagnostic(
                     file_path=scr_sym.file_path,
                     line_number=scr_sym.line_number,
@@ -181,7 +181,7 @@ def _check_rpy704(
         if var_sym.is_character:
             continue
         if not _is_used(name, var_sym.file_path, var_sym.line_number, word_locations):
-            analyzer.diagnostics.append(
+            analyzer._add_diagnostic_by_file(
                 Diagnostic(
                     file_path=var_sym.file_path,
                     line_number=var_sym.line_number,
@@ -213,7 +213,7 @@ def _check_rpy705(
             continue
         for param_name in scr_sym.signature.all_names:
             if not _is_used(param_name, scr_sym.file_path, scr_sym.line_number, word_locations):
-                analyzer.diagnostics.append(
+                analyzer._add_diagnostic_by_file(
                     Diagnostic(
                         file_path=scr_sym.file_path,
                         line_number=scr_sym.line_number,
@@ -242,7 +242,7 @@ def _check_rpy706(
             continue
         for param_name in trn_sym.signature.all_names:
             if not _is_used(param_name, trn_sym.file_path, trn_sym.line_number, word_locations):
-                analyzer.diagnostics.append(
+                analyzer._add_diagnostic_by_file(
                     Diagnostic(
                         file_path=trn_sym.file_path,
                         line_number=trn_sym.line_number,
@@ -334,7 +334,7 @@ def _emit_unused_channel_diagnostic(
                 break
         if decl_file != "<unknown>":
             break
-    analyzer.diagnostics.append(
+    analyzer._add_diagnostic_by_file(
         Diagnostic(
             file_path=decl_file,
             line_number=decl_line,

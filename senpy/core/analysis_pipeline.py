@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 from senpy.core.cache import CachedFileEntry, compute_file_hash
 from senpy.core.constants import RE_LABEL, RE_SCREEN_START
 from senpy.core.file_collector import build_noqa_map
+from senpy.core.logging import get_logger
 from senpy.core.models import RULE_SEVERITY, AnalysisResult, Diagnostic
 from senpy.core.paths import normalize_path
 from senpy.core.progress import progress_print
@@ -40,6 +41,8 @@ from senpy.text_utils import _get_logical_line
 
 if TYPE_CHECKING:
     from senpy.core.analyzer import SenpyAnalyzer
+
+_logger = get_logger("plugins")
 
 
 @dataclass(slots=True)
@@ -295,6 +298,14 @@ class AnalysisPipeline:
         if state.file_modified and a.fix:
             self._write_fixed_file(file_path, lines)
 
+        # Plugin rules run after the built-in BaseChecker dispatch — they
+        # are per-file just like the built-in checkers, but operate on the
+        # whole file (Rule.check returns list[Diagnostic] for ctx.lines).
+        # Gated by config['enable_plugins'] (default false in 0.8.0,
+        # see T-003 in WORKLOG).
+        if a.enable_plugins:
+            self._run_plugin_rules(file_path, lines)
+
     def _push_label_scope_if_match(self, clean: str, state: Any, line_indent: int) -> None:
         """If `clean` matches `label X:`, push a LABEL scope and register params."""
         m_label = RE_LABEL.match(clean)
@@ -411,6 +422,81 @@ class AnalysisPipeline:
                 return
         self._apply_severity(diag)
         self.analyzer.diagnostics.append(diag)
+
+    def _run_plugin_rules(self, file_path: str, lines: list[str]) -> None:
+        """Invoke every registered plugin Rule on the analysed file.
+
+        Runs after the built-in per-line BaseChecker dispatch. Each plugin
+        rule receives a RuleContext with the file's lines and a snapshot
+        of the analyzer's symbol registries; its returned Diagnostics are
+        emitted through ``_add_diagnostic_by_file`` so that inline
+        ``# noqa`` directives are honoured (see T-004 in WORKLOG).
+
+        Isolation: a rule whose ``check()`` raises is logged at WARNING
+        and skipped — the analyzer must not crash because a third-party
+        plugin raised.
+        """
+        from senpy.plugins.base import RuleContext
+        from senpy.plugins.registry import get_registered_lint_rules
+
+        a = self.analyzer
+        registered = get_registered_lint_rules()
+        if not registered:
+            return
+
+        # Build the symbol snapshot once per file. Plugin authors get a
+        # typed-ish view of the analyzer's symbol registries via the
+        # ``symbols`` dict on RuleContext. The shape mirrors what the
+        # built-in cross-file rules already use, so a plugin author can
+        # re-use the same dict convention.
+        symbols = {
+            "labels": dict(a.labels),
+            "screens": dict(a.screens),
+            "transforms": dict(a.transforms),
+            "variables": dict(a.variables),
+            "images": dict(a.images),
+            "user_symbols": set(a.user_symbols),
+            "declared_symbols": set(a.declared_symbols),
+            "referenced_labels": set(a.referenced_labels),
+        }
+
+        for _code, rule_cls in registered:
+            try:
+                rule = rule_cls()
+            except Exception as exc:
+                _logger.warning(
+                    "Plugin rule %s could not be instantiated: %s. Skipping.",
+                    getattr(rule_cls, "__name__", rule_cls),
+                    exc,
+                )
+                continue
+
+            ctx = RuleContext(
+                file_path=file_path,
+                lines=list(lines),
+                symbols=symbols,
+                analyzer=a,
+                config=a.severity_overrides,
+            )
+
+            try:
+                returned = rule.check(ctx)
+            except Exception as exc:
+                _logger.warning(
+                    "Plugin rule %s.check() raised: %s. Skipping its diagnostics.",
+                    rule_cls.__name__,
+                    exc,
+                )
+                continue
+
+            if not returned:
+                continue
+
+            for diag in returned:
+                # Plugin diagnostics flow through _add_diagnostic_by_file
+                # so that # noqa directives on the offending line are
+                # honoured the same way as built-in rules (T-004).
+                a._add_diagnostic_by_file(diag)
 
     def _write_fixed_file(self, file_path: str, lines: list[str]) -> None:
         """Write modified lines back to file (for --fix mode)."""
