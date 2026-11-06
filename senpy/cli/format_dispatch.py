@@ -22,7 +22,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from senpy.cli.main import console
+from senpy.cli._console import console
 from senpy.formatter.core import FormatConfig, Formatter
 
 

@@ -13,6 +13,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from senpy.cli._console import console
 from senpy.cli.unrpyc import (  # noqa: F401 — re-exported for backward compat with tests
     decompile_to_sandbox,
     extract_scripts_from_rpa,
@@ -23,19 +24,6 @@ from senpy.core.config import load_config
 from senpy.domain.tsundere import TSUNDERE_FLAVORS, TSUNDERE_UI
 from senpy.formats.traceback import find_latest_traceback, parse_traceback_file
 from senpy.formatter import FormatConfig, Formatter  # noqa: F401 — re-exported for backward compat
-
-# Pipes (VS Code extension, >file, CI) always receive utf-8: the default
-# Windows pipe encoding is locale (cp1251) -> UnicodeEncodeError on ✔/(//∇//)
-# and mojibake for Cyrillic (Node decodes the pipe as utf8). Interactive
-# console is not touched: rich writes through WriteConsoleW there (Unicode-safe).
-for _stream in (sys.stdout, sys.stderr):
-    if _stream is not None and not _stream.isatty() and hasattr(_stream, "reconfigure"):
-        _stream.reconfigure(encoding="utf-8")
-
-# The Windows legacy renderer in rich crashes on a stdout pipe (WriteConsoleW on
-# an invalid handle): disable it when the output is not an interactive terminal.
-# In a live console (isatty=True) the behavior is unchanged.
-console = Console(legacy_windows=sys.stdout.isatty())
 
 SEVERITY_STYLES = {
     "ERROR": ("bold red", "red dim"),
