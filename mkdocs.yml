@@ -177,6 +177,9 @@ extra:
 extra_css:
   - assets/extra.css
 
+extra_javascript:
+  - assets/breadcrumb-jsonld.js
+
 # =============================================================================
 # Watch — rebuild on source changes during local `mkdocs serve`.
 # =============================================================================
