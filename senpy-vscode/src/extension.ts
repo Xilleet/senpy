@@ -539,6 +539,12 @@ function isNewer(latest: string, current: string): boolean {
 
 function getWebviewContent(graphContent: string, metaJson: string): string {
     const safeSource = escapeMermaidSource(graphContent);
+    // Escape </script> in metaJson — an HTML parser terminates the <script>
+    // element on </script> regardless of type="application/json". A file path
+    // containing </script> would break out of the element. Replace < with
+    // \u003c (standard JSON-in-HTML escaping — does not break JSON parsing
+    // because \u003c is a valid JSON string escape for <).
+    const safeMetaJson = metaJson.replace(/</g, '\\u003c');
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -621,7 +627,7 @@ function getWebviewContent(graphContent: string, metaJson: string): string {
     </div>
 
     <script id="senpy-metadata" type="application/json">
-        ${metaJson}
+        ${safeMetaJson}
     </script>
 
     <script type="module">

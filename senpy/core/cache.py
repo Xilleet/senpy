@@ -262,6 +262,12 @@ class CacheManager:
         for var in sorted(analyzer.variables.values(), key=lambda v: v.name):
             if var.is_constant:
                 hasher.update(var.name.encode("utf-8"))
+            # is_character: RPY105 (constant mutation) checks this flag —
+            # a Character variable allows mutation, a plain constant does not.
+            # Without hashing is_character, flipping it (e.g. Character →
+            # plain value with the same type_name) would not invalidate the
+            # cache. The docstring already claims this is hashed.
+            hasher.update(str(var.is_character).encode("utf-8"))
 
         for img_name in sorted(analyzer.images.keys()):
             hasher.update(img_name.encode("utf-8"))
