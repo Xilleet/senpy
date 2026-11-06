@@ -11,13 +11,186 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.7.x)**: [0.7.7](#077) | [0.7.6](#076) | [0.7.5](#075) | [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
+- **Current (0.8.x)**: [0.8.0](#080)
+
+- **0.7.x**: [0.7.7](#077) | [0.7.6](#076) | [0.7.5](#075) | [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
 
 - **0.6.x**: [0.6.6](#066) | [0.6.5](#065) | [0.6.4](#064) | [0.6.3](#063) | [0.6.2](#062) | [0.6.1](#061) | [0.6.0](#060)
 
 - **0.5.x**: [0.5.8](#058) | [0.5.7](#057) | [0.5.6](#056) | [0.5.5](#055) | [0.5.4 ⚠️](#054) | [0.5.3](#053) | [0.5.2](#052) | [0.5.1](#051) | [0.5.0](#050)
 
 - **0.4.x**: [0.4.8](#048) | [0.4.7](#047)
+
+---
+
+<a id="080"></a>
+
+## [0.8.0] — Production-stable: security hardening, soundness fixes, plugin API contract
+
+First release declared production-stable. 1487 tests (up from 1331 in 0.7.7,
++156). Closes all P0/P1 audit findings (security, soundness, CLI contracts)
+identified in the comprehensive audit at commit 40789b7. The 0.7.7 release
+was a documentation/SEO stub for Open VSX publishing — this is the first
+substantive release since 0.7.6, containing 117 commits (55 significant
+after filtering badge-noise and merges), including a new MkDocs Material
+documentation site, security hardening across CLI/LSP/HTML report, and
+the complete RWLock migration.
+
+### Security
+
+- **JUnit XML escaping**: `diag.code` and `diag.line_content` are now
+  HTML-escaped via `_xml_escape` in `<failure>`/`<skipped>` elements —
+  previously, source code with `<`, `>`, `&` broke the whole report for
+  Jenkins/GitLab CI/TeamCity parsers.
+- **`--fix` write failures surfaced**: `_write_fixed_file` no longer
+  silently swallows `OSError` (read-only file, disk full, permission
+  denied). Each failed write is logged at WARNING, recorded in
+  `AnalysisResult.failed_writes`, and forces a non-zero CLI exit code —
+  silent data loss is no longer possible.
+- **XSS in HTML report**: `diag.code` and `diag.severity` are now
+  HTML-escaped before interpolation into the diagnostic card. A malicious
+  plugin rule code (e.g. `'RPY001"><img src=x onerror=alert(1)>'`) can
+  no longer execute in the browser when the user opens
+  `senpy --export-html` output. The CSS variable lookup
+  `var(--{severity})` is also sanitised to a safe CSS identifier.
+- **Path traversal in LSP asset hover**: `_resolve_relative_to_game`
+  now uses `os.path.realpath` + `os.path.commonpath` containment check.
+  A malicious `.rpy` with `image evil = "images/../../etc/passwd"` can
+  no longer disclose system file size/path via hover.
+- **Plugin code collision rejected at runtime**: `register_loaded_plugins()`
+  now rejects plugin rules whose `code` collides with a built-in
+  `RULES_DATABASE` entry. Previously the collision was only filtered
+  client-side in `senpy rule list` — the plugin rule still ran during
+  `analyzer.run()`, producing duplicate diagnostics. The `RPY9xx` range
+  is formally reserved for plugin rules.
+
+### Changed — CLI
+
+- **`--exit-zero` honoured by every output format**: previously only
+  `render_text` respected the flag; the other six renderers (sarif,
+  json, junit, github, rdjson, gitlab) returned `1 if error_count > 0
+  else 0` unconditionally, breaking non-blocking CI workflows like
+  `senpy --exit-zero --format sarif`. A shared `_exit_code(args,
+  error_count)` helper now applies the flag consistently.
+- **CI badges moved to GitHub Gist**: the `update-badges` CI job no
+  longer commits `chore(badge): update dynamic badges [skip ci]` back
+  to `main` (which caused merge conflicts with maintainer pushes). Badge
+  JSON is now pushed to a GitHub Gist via API; `main` is never touched.
+  README badge URLs point at the gist's raw JSON.
+- **`bump_version.py` extended**: now updates 4 hardcoded version mentions
+  (`.pre-commit-hooks.yaml`, `.github/release-header.md`, `docs/install.md`,
+  `docs/index.md`) that previously drifted every release.
+
+### Changed — Architecture (internal, no API break)
+
+- **`SenpyAnalyzer` god-file split**: extracted `FileCollector` (file
+  discovery, I/O, symbol collection — 14 `_collect_*` methods),
+  `AnalysisPipeline` (per-file analysis, plugin rule dispatch,
+  `--fix` writer — 12 methods), `SymbolTable` (15+ symbol attrs),
+  `_console` shared module. 38 characterization tests guard the split.
+  `SenpyAnalyzer` is now a thin facade with pass-through wrappers.
+- **`cli/main.py` god-file split**: extracted `args`, `filters`,
+  `renderers`, `early_exits`, `runner`, `commands`, `discover`,
+  `format_dispatch`, `inspect_dispatch`, `rule_dispatch`.
+- **RWLock migration complete**: legacy module-level `_analysis_lock`
+  removed; reader-writer lock is the single synchronization mechanism.
+  `did_close` now holds the write lock when mutating `in_memory_files`.
+- **`Protocol`-based checker contracts**: `DiagnosticSink`,
+  `NoqaMapProvider`, typed `BaseChecker` via Protocol intersections
+  (not concrete analyzer). `RULE_SEVERITY` derived from
+  `RULES_DATABASE` (eliminates drift).
+- **`AssetManager` stale class-level cache removed**: cache that
+  survived file deletions in LSP is gone; asset state is now per-run.
+- **`dry_run_callback` replaces `builtins.open` monkey-patch**: `--diff`
+  mode no longer patches `builtins.open` globally; the analyzer accepts
+  a callback that captures what `--fix` would write without touching
+  the disk.
+- **Coverage gate raised to 80%**; multiple checkers split for lower
+  cyclomatic complexity (`check_unused_declarations` CC 53→2,
+  `check_condition` split, `check_init_dependency` split into 3,
+  `_check_jump_call_targets` split, `AssetManager.index` split,
+  `validate_call_arguments` split, `validate_tl_pairs` split,
+  `check_cross_language_consistency` split, `_check_binop_incompatible`
+  split, `check_story_islands` split, `folding_range` split).
+
+### Fixed
+
+- **Tier 2 cache hit restores `fixable_count` and `fixed_count`**:
+  previously, a warm run with a cache hit lost these counters, making
+  `--check` output inconsistent between cold and warm runs.
+- **Differential purge keeps cross-file shared symbols**: purging a
+  file for re-analysis no longer removes its contribution to shared
+  sets (`referenced_labels`, `user_symbols`, `declared_symbols`) that
+  other files' diagnostics depend on.
+- **Plugin trust store atomic write**: a failure during trust-store
+  write no longer truncates the file (content is preserved).
+- **`PLUGIN_API_VERSION` checked at module level** (in addition to
+  instance level) — a plugin with a wrong API version is rejected
+  earlier.
+- **`# noqa` honoured in `dead_code` and translation rules**:
+  previously, plugin-rule diagnostics from these checkers ignored
+  inline `# noqa` directives.
+- **Plugin rules wired into the analyzer**: the `_run_plugin_rules`
+  path was not actually invoked during `analyzer.run()` (gated by
+  `enable_plugins` config, default false in 0.8.0).
+- **Call hierarchy ranges point at jump lines** (not label
+  declarations); labels are now indexed per-file, fixing
+  cross-file rename/reference.
+- **Range formatting capability removed** from LSP (was not
+  supported by the formatter; advertising it caused VS Code to
+  show a broken "Format Selection" command).
+- **`did_close` holds write lock** when mutating `in_memory_files`
+  (race condition with concurrent `did_change`).
+- **HTML report shows real elapsed time** (was hardcoded `0.0`).
+
+### Documentation
+
+- **MkDocs Material site**: new documentation site at `docs/` with 13
+  pages (install, configuration, CLI reference, formatter, plugin
+  development, comparison, renpy-linter/error-checker/static-analysis/
+  story-graph/translation-checker/vscode-extension/github-actions).
+  Built with MkDocs Material theme; deployed via `.github/workflows/docs.yml`
+  to GitHub Pages. Includes custom CSS, favicon, and Senpy brand icon
+  from the Open VSX extension.
+- **`SECURITY.md` synced with code**: real HTML report CSP documented
+  (was `default-src 'none'`, actually `default-src 'self'; script-src
+  'self' 'unsafe-inline' ...`); new "No Plugin Sandbox Exists" section
+  (hardening checklist is advisory, not enforced); TOFU placeholder
+  added (trust-check runs after load — fix planned).
+- **`ARCHITECTURE.md` synced**: `SafeCacheUnpickler` described as
+  allowlist-only (was incorrectly documented as having a blocklist);
+  rule count 45→51; formatter count 8→9; `format skip` directive
+  removed from docs (not implemented).
+- **`senpy-vscode/README.md`**: rule count 33+→51.
+- **`docs/comparison.md`**: test count 1331→1487.
+- **`docs/FORMAT_STYLE_GUIDE.md`**: formatter count 8→9.
+- **`docs/formatter.md`**: removed `# senpy: format skip` example (not
+  implemented); replaced with a note that `format off`/`on` is the only
+  toggle.
+- **Plugin example README**: new "Rule code ranges (contract)" section
+  documenting `RPY0xx`–`RPY8xx` (built-in) vs `RPY9xx` (plugin) ranges.
+
+### CI / Release infrastructure
+
+- **GitHub Release notes auto-generated from CHANGELOG**: the release
+  workflow now builds the release body from the matching `## [X.Y.Z]`
+  section in `CHANGELOG.md` + a header template (`.github/release-header.md`),
+  so release notes are never out of sync with the changelog.
+- **CI badges served from GitHub Gist**: badge JSON is pushed to a Gist
+  via API instead of committing back to `main` (eliminates merge-conflict
+  churn with maintainer pushes).
+- **macOS CI matrix** (added in 0.7.5, retained): Ubuntu × Windows × macOS
+  across Python 3.11/3.12/3.13, plus Python 3.14 beta (experimental).
+
+### Migration notes
+
+- **Plugin authors**: if your plugin used a built-in code (`RPY001`–`RPY8xx`),
+  it will now be rejected at load time with a WARNING. Switch to an unused
+  `RPY9xx` code.
+- **CI users**: `senpy --exit-zero --format sarif` now correctly exits 0
+  even with errors (was exit 1). `senpy --fix` on a read-only file now
+  exits non-zero (was silent success).
+- **No breaking API changes** for plugin authors or library users.
 
 ---
 

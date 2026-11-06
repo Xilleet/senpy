@@ -6,7 +6,7 @@
 #
 #     repos:
 #       - repo: https://github.com/Xilleet/senpy
-#         rev: v0.7.5   # Use the latest tag
+#         rev: 0.8.0   # Use the latest tag
 #         hooks:
 #           - id: senpy
 #

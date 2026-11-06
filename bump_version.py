@@ -6,6 +6,13 @@ All other files (constants.py, server.py, pyproject.toml) import or
 read it dynamically. Only package.json (for the VS Code marketplace)
 still requires an explicit version — we update it here.
 
+Hardcoded version mentions (4 files that reference the version as a
+plain string, not via import) are also updated here:
+  - .pre-commit-hooks.yaml         (rev: vX.Y.Z in comment)
+  - .github/release-header.md      (Open VSX badge URL)
+  - docs/install.md                (comment with version)
+  - docs/index.md                  (Open VSX badge URL)
+
 Usage:
     python bump_version.py             # interactive menu
     python bump_version.py patch       # 0.4.7 -> 0.4.8
@@ -23,6 +30,24 @@ import sys
 
 VERSION_PY_PATH = os.path.join("senpy", "__version__.py")
 PACKAGE_JSON_PATH = os.path.join("senpy-vscode", "package.json")
+
+# Hardcoded version mentions — files that reference the version as a plain
+# string (not via import). Each entry: (file_path, regex_pattern, replacement_template).
+# The regex must capture the current version (X.Y.Z or vX.Y.Z) so we can
+# replace only the version token, preserving surrounding text (URLs, comments).
+# Patterns use \d+\.\d+\.\d+ to match ANY semver — the script replaces the
+# FIRST occurrence per file. If a file has multiple version mentions, extend
+# the per-file logic below.
+HARDCODED_VERSION_FILES: list[tuple[str, str]] = [
+    # .pre-commit-hooks.yaml: "#         rev: v0.7.5   # Use the latest tag"
+    (".pre-commit-hooks.yaml", r"(rev:\s*)v\d+\.\d+\.\d+"),
+    # .github/release-header.md: "Open%20VSX-0.7.7-success"
+    (".github/release-header.md", r"(Open%20VSX-)\d+\.\d+\.\d+"),
+    # docs/install.md: "# senpy 0.7.7"
+    ("docs/install.md", r"(senpy\s+)\d+\.\d+\.\d+"),
+    # docs/index.md: "Open%20VSX-0.7.7-success"
+    ("docs/index.md", r"(Open%20VSX-)\d+\.\d+\.\d+"),
+]
 
 
 def select_target_version(major: int, minor: int, patch: int) -> str | None:
@@ -149,6 +174,38 @@ def write_version_to_package_json(next_ver: str) -> None:
         print(f"[!] Warning: failed to sync package.json: {e}")
 
 
+def write_version_to_hardcoded_files(next_ver: str) -> None:
+    """Update hardcoded version mentions in 4 files that can't import __version__.
+
+    These files reference the version as a plain string (in comments, badge
+    URLs, etc.) and are not dynamically updated. Without this function, they
+    drift every release — e.g. ``.pre-commit-hooks.yaml`` was stuck at
+    ``v0.7.5`` while the project moved to ``0.7.7``.
+    """
+    for file_path, pattern in HARDCODED_VERSION_FILES:
+        if not os.path.exists(file_path):
+            print(f"[!] Warning: {file_path} not found, skipping.")
+            continue
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                content = f.read()
+            # Replace the FIRST version match in the file. All 4 files have
+            # exactly one version mention; if a file ever gains more, extend
+            # this with a per-file count or use re.sub with count=N.
+            new_content, n = re.subn(pattern, rf"\g<1>{next_ver}", content, count=1)
+            if n == 0:
+                print(f"[!] Warning: no version pattern matched in {file_path}. Skipping.")
+                continue
+            if new_content == content:
+                print(f"[=] {file_path}: already at {next_ver}")
+                continue
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            print(f"[+] {file_path}: -> {next_ver}")
+        except OSError as e:
+            print(f"[!] Warning: failed to update {file_path}: {e}")
+
+
 def bump_version():
     maj_n, min_n, pat_n = read_current_version()
     current_ver = f"{maj_n}.{min_n}.{pat_n}"
@@ -166,7 +223,12 @@ def bump_version():
     # 2. Update senpy-vscode/package.json (marketplace requires explicit version)
     write_version_to_package_json(next_ver)
 
-    # 3. Done. constants.py, server.py, pyproject.toml will pick up the version
+    # 3. Update hardcoded version mentions in 4 files (pre-commit-hooks,
+    #    release-header, docs/install, docs/index). These can't import
+    #    __version__ and used to drift every release.
+    write_version_to_hardcoded_files(next_ver)
+
+    # 4. Done. constants.py, server.py, pyproject.toml will pick up the version
     # automatically via import / dynamic = ["version"].
     print(f"\n[*] Success! Project updated to version {next_ver}.")
     print("    constants.py / server.py / pyproject.toml will pick it up automatically.\n")

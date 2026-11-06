@@ -41,81 +41,22 @@ Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github
 ---
 ## What's New
 
-### 0.7.6 — New rules (RPY704-707, RPY801-802), rule improvements, mypy hardening, fixture coverage 100%
+### 0.8.0 — Production-stable: security hardening, soundness fixes, plugin API contract
 
 | Feature | Description |
 |---|---|
-| **6 new lint rules** | RPY704 (unused `default` variable), RPY705 (unused screen parameter), RPY706 (unused transform parameter), RPY707 (unused audio channel registration), RPY801 (duplicate translation string), RPY802 (inconsistent translation across files). Total: 49 → **51 rules**. |
-| **Rule improvements** | RPY108: catches incompatible BinOp in expressions (`"text" + 5`). RPY401: concrete fix suggestion (`$ var = 0`). RPY403: tautology detection (`if x or not x:`). RPY502: case-insensitive image matching (`show Sayori` → suggests `sayori`). |
-| **Fixture coverage 100%** | All 51 rules now have bad+good `.rpy` fixtures with auto-verified JSON snapshots. Was 23/45 (51%). |
-| **mypy 264 → 32** | Vendor excluded, DiagnosticSink → SenpyAnalyzer (TYPE_CHECKING), pygls overrides, None guards. −88% errors. |
-| **CLI flag validation** | `--fix+--check`, `--fix+--diff`, `--check+--diff` now exit with code 2 and a clear message (no traceback). Warnings for no-op combinations. |
-| **CI badges always update** | Badges now update on every main push, even if a matrix test fails (via `if: always()`). No more stale green badges. |
-| **Dependabot** | Weekly dependency updates for pip + GitHub Actions, grouped into single PRs. |
-| **RPY902 example plugin** | `examples/todo_comment_plugin/` — detects `# TODO:`, `# FIXME:`, `# XXX:`, `# HACK:` comments. Second example plugin alongside `my_senpy_plugin` (RPY901). |
-
-### 0.7.5 — Plugin autoload, CI hardening, BLAKE2b hash
-
-| Feature | Description |
-|---|---|
-| **Plugin autoload** | Installed-and-trusted plugins are now loaded automatically when you run `senpy`, `senpy rule list/show`, or `senpy inspect`. Previously the loader pipeline existed but was never called from CLI entrypoints — plugin rules were invisible. Now `senpy rule list` after `pip install -e examples/my_senpy_plugin` shows `RPY901`. |
-| **Pre-commit hook** | `.pre-commit-hooks.yaml` ships in the repo root. Add Senpy to any project using [pre-commit](https://pre-commit.com) with a 4-line config (see [Pre-commit Integration](#pre-commit-integration) below). Only `--check` (non-mutating) is exposed — `--fix` would loop on Windows CRLF. |
-| **BLAKE2b cache hash** | File cache keys now use BLAKE2b instead of MD5. Faster, no security baggage. Old `.senpy_cache/cache.pkl` invalidates silently (hash mismatch → cache miss → recompute, no crash). |
-| **`_RWLock` timeout** | The LSP server's read/write lock gained `acquire_read(timeout=...)` / `acquire_write(timeout=...)` so a stuck client can't hang the LSP forever. Full migration to the `readerwriterlock` library is deferred to post-1.0 (documented tradeoff). |
-| **macOS Python matrix** | CI now runs Ubuntu × Windows × macOS across Python 3.11/3.12/3.13 (9 jobs), plus Python 3.14 beta on Ubuntu + Windows (experimental, `continue-on-error`). |
-| **`SYSTEM_LABELS` in inspect** | `senpy inspect` no longer reports `start`, `splash_window`, `after_load`, `main_menu`, etc. as "unreferenced" — they are system labels Ren'Py calls automatically. |
-| **`NON_ASSET_EXTENSIONS`** | `.rpy`, `.rpym`, `.rpyc`, `.rpa` files are no longer counted as "unused assets" by RPY503 — they are code, not media. |
-| **English-only codebase** | All comments and docstrings in `senpy/` are now English (the Russian-to-English translation pass was completed in 0.7.3; 0.7.5 extends the guard to `scripts/`). The `test_no_russian_comments.py` test now scans `scripts/` too. |
-
-### 0.7.4 — Introspection, output formats, rule metadata, strict mode, formatter rule
-
-| Feature | Description |
-|---|---|
-| **`senpy inspect` subcommand** | Dumps all symbols Senpy sees in a project as JSON: labels, screens, variables, transforms, images, jump_sources (reverse index), used_assets, diagnostics, unresolved (broken jumps / missing screens / unreferenced labels / unused assets), and per-section stats. Designed for debugging hover/asset resolution and for plugin authoring. Shortcuts: `--summary`, `--unresolved`, `--label X`, `--screen X`, `--transform X`. |
-| **Output formats: rdjson + gitlab** | `--output-format rdjson` (Reviewdog NDJSON — one JSON object per line, pipe into `reviewdog -f=rdjson`) and `--output-format gitlab` (GitLab Code Quality JSON array — fingerprint-stable for MR annotations). Total output formats: 7 (`text`, `json`, `sarif`, `junit`, `github`, `rdjson`, `gitlab`). |
-| **`senpy rule` subcommand** | Browse rule metadata without running the analyzer: `senpy rule list [--format json] [--tag T] [--severity S]`, `senpy rule show CODE`. `--rules` and `--rule CODE` flags on the main CLI continue to work as aliases. |
-| **Tags on rules** | Every rule in `RULES_DATABASE` now has a `tags` field (28 tags across 51 rules: `formatting`, `variables`, `state`, `rollback`, `deprecated`, `screen`, `assets`, `audio`, `translations`, `dead-code`, etc.). `senpy rule list --tag rollback` filters by tag (union semantics). |
-| **`--tag` / `--ignore-tag` filters** | Lint mode accepts `--tag rollback state` (run only those rules) and `--ignore-tag dead-code` (silence those rules). Tag matching is case-insensitive; a rule passes `--tag` if ANY of its tags matches. |
-| **`strict = true` config** | The `strict` field on `SenpyConfig` is now enforced (was documented since 0.6.0 but never read). With `strict = true`, every diagnostic whose code is NOT explicitly overridden in `[tool.senpy.severity]` is promoted to `ERROR`. Explicit severity overrides win over strict. |
-| **FMT-STRING-CONSISTENCY** | 8th formatter rule (7th in code, 8th by ID). Normalizes the outer quotes of single-line string literals in CODE lines to a consistent style. Default: `'hi'` → `"hi"` (Ren'Py convention). Configurable via `string_style = "double" | "single" | "preserve"`. Dialogue and triple-quoted strings are intentionally not touched. |
-| **Format Style Guide (stub)** | `docs/FORMAT_STYLE_GUIDE.md` documents the 6 original formatter rules. Full version (8 rules) lands in 0.7.6. |
-
-### 0.7.3 — Plugin trust UX, English-only codebase, dynamic badges
-
-| Feature | Description |
-|---|---|
-| **Non-interactive plugin trust** | `--trust-plugin NAME` / `--untrust-plugin NAME` CLI flags write to `~/.senpy/trusted_plugins.json` and `sys.exit(0)` without running the analyzer. Trust management is now fully scriptable. The default trust callback detects LSP mode (`--lsp` in argv) and declines untrusted plugins without prompting (no `input()` hang in LSP). |
-| **English-only codebase (Russian-to-English pass)** | All Russian comments and docstrings in `senpy/` translated to English in a single mechanical pass: 52 files, ~1057 lines changed (additions = removals, no logic changes). `senpy/domain/tsundere.py` (intentional Russian easter-egg) and `senpy/vendor/` are whitelisted. `tests/test_no_russian_comments.py` guards the invariant going forward. |
-| **Dynamic badges** | Five badges auto-updated by CI on every push to `main`: tests, rules, LSP handlers, coverage, speed. `scripts/update_badges.py` reads metrics and writes JSON files; `scripts/push_badges_to_gist.py` then pushes them to a GitHub Gist via API (no commit-back to `main`, no merge conflicts). README badges are shields.io `endpoint?url=...` pointing at the gist's raw JSON. |
-| **6 new CLI flags** | `--statistics`, `--add-noqa`, `--respect-gitignore`, `--config FILE` (with `SENPY_CONFIG` env var), `--show-settings`, `--cache-dir`. |
-
-### 0.7.2 — God-function splitting, DRY cleanup
-
-| Feature | Description |
-|---|---|
-| **God-function refactoring** | 12 long functions split into focused helpers (≤60 lines each, ≤80 for dispatch tables). Notable: `_check_show_scene` (188 → 30 lines), `_check_audio_statement` (174 → 21 lines), `MermaidBuilder.build` (132 → 18 lines), `process_quoted_strings` (187 → 58 lines). All public APIs unchanged; characterization tests held. |
-| **DRY helpers** | New `senpy/core/paths.py` (28 LOC) and `senpy/core/progress.py` (24 LOC) centralize `normalize_path` and `progress_print` — previously copy-pasted across modules. |
-| **First dynamic badge** | The `tests` badge auto-updates on `main` via `scripts/update_badges.py`. 4 more badges arrive in 0.7.3. |
-
-### 0.7.1 — Stabilization, dynamic badges, CONTRIBUTING refresh
-
-| Feature | Description |
-|---|---|
-| **Stale API cleanup** | All `LanguageServer.show_message_log` calls (pygls 2.x removed API) replaced with `_logger.debug/warning`. Stale `build_exe.bat` and `build_vsix_dev.bat` removed. |
-| **Doc-sync** | README "What's New" updated from 0.6.0 to 0.7.0; plugin example in README synced with `examples/my_senpy_plugin/`; SECURITY.md broken test links fixed. |
-| **Internal-ID scrub hook** | `scripts/clean_internal_ids.py` (pre-commit hook) scrubs any leaked internal task IDs from comments, CHANGELOG, commit messages, docstrings. `tests/test_clean_internal_ids.py` locks in the contract. |
-| **`warnings.filterwarnings` removal** | Module-level global filterwarnings removed from `core/analyzer.py` and `lsp/server.py`. Tests run with `-W error::SyntaxWarning` to catch silent regressions. |
-
-### 0.7.0 — Image/Audio/Video Hover + Auto-generated API Docs
-
-| Feature | Description |
-|---|---|
-| **Image Preview on Hover** | Hover over `show sayori happy` or `scene bg forest` to see an inline preview of the sprite/CG with size metadata. The PNG/JPEG/WEBP/GIF/BMP header parser is custom-written, requiring no dependency on Pillow. |
-| **Audio Hover** | Hover over `play music bgm_calm` / `queue sound click` / `define audio.X = "…"` statements to see a "Play" link that opens VS Code's built-in media viewer. Aliases are resolved during indexing, not on every hover. |
-| **Video Hover** | If an image or an auto-discovered file has a video extension (`.mp4`, `.webm`, `.ogv`, `.avi`, `.mkv`), the hover will display an "Open in default app" link via the new `senpy.openExternal` VS Code command. |
-| **Auto-generated Ren'Py API Docs** | 754 entries have been automatically collected from Ren'Py 8.5.3 RST sources. Together with 221 curated entries, `RENPY_API_DOCS_ALL` now contains **975 symbols** — a 4.4× increase. |
-| **TextMate Grammar for `.rpy`/`.rpym`** | A 270-line grammar with `source.renpy` scope, copied verbatim from [renpy-magic](https://github.com) (MIT). It covers comments, strings, Ren'Py text tags `{…}` and interpolation `[…]`, `python`/`init python` blocks, `$`-prefixed python lines, labels, screens, transforms, image definitions, say statements, numbers, and operators. |
-| **Orphaned Video Detector** | `MEDIA_EXTENSIONS` has been expanded to include `.mp4`/`.avi`/`.mkv` — RPY503 (unused asset check) now flags orphaned video files as well. |
+| **JUnit XML escaping** | `diag.code` and `diag.line_content` are now HTML-escaped in `<failure>`/`<skipped>` elements. Source code with `<`, `>`, `&` no longer breaks the whole JUnit report for Jenkins/GitLab CI/TeamCity parsers. |
+| **`--fix` write failures surfaced** | `_write_fixed_file` no longer silently swallows `OSError` (read-only file, disk full, permission denied). Failed writes are logged at WARNING, recorded in `AnalysisResult.failed_writes`, and force a non-zero CLI exit code — silent data loss is no longer possible. |
+| **XSS in HTML report** | `diag.code` and `diag.severity` are now HTML-escaped before interpolation. A malicious plugin rule code can no longer execute JavaScript when the user opens `senpy --export-html` output in a browser. CSS variable lookup also sanitised. |
+| **Path traversal in LSP hover** | `_resolve_relative_to_game` now uses `realpath` + `commonpath` containment check. A malicious `.rpy` with `image evil = "images/../../etc/passwd"` can no longer disclose system file size/path via hover. |
+| **Plugin code collision rejected** | `register_loaded_plugins()` now rejects plugin rules whose `code` collides with a built-in `RULES_DATABASE` entry. Previously the collision was only filtered in `senpy rule list` — the plugin rule still ran during analysis. `RPY9xx` range formally reserved for plugins. |
+| **`--exit-zero` for all formats** | Previously only `render_text` honoured `--exit-zero`; the other six renderers (sarif, json, junit, github, rdjson, gitlab) ignored it, breaking non-blocking CI workflows like `senpy --exit-zero --format sarif`. A shared `_exit_code` helper now applies the flag consistently. |
+| **CI badges moved to Gist** | The `update-badges` CI job no longer commits `chore(badge): update dynamic badges [skip ci]` back to `main` (which caused merge conflicts). Badge JSON is pushed to a GitHub Gist via API; `main` is never touched. |
+| **MkDocs Material documentation site** | New `docs/` site with 13 pages (install, configuration, CLI reference, formatter, plugin development, comparison, renpy-* guides). Deployed to GitHub Pages via `docs.yml` workflow. |
+| **GitHub Release notes auto-generated** | Release workflow builds the release body from the matching `## [X.Y.Z]` CHANGELOG section + header template — release notes are never out of sync with the changelog. |
+| **`bump_version.py` extended** | Now updates 4 hardcoded version mentions (`.pre-commit-hooks.yaml`, `.github/release-header.md`, `docs/install.md`, `docs/index.md`) that previously drifted every release. |
+| **Architecture cleanup** | `SenpyAnalyzer` god-file split into `FileCollector` + `AnalysisPipeline` + `SymbolTable` (38 characterization tests guard the split). `cli/main.py` split into 10 modules. RWLock migration complete. Coverage gate raised to 80%. |
+| **Docs sync** | `SECURITY.md`, `ARCHITECTURE.md`, `senpy-vscode/README.md`, `docs/comparison.md`, `docs/FORMAT_STYLE_GUIDE.md`, `docs/formatter.md` all synced with current code state. |
 
 Full changelog: [CHANGELOG.md](https://github.com/Xilleet/senpy/blob/main/CHANGELOG.md)
 
