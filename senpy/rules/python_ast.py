@@ -469,19 +469,68 @@ def _extract_assign_target_name(node: ast.Assign | ast.AugAssign) -> tuple[str, 
 
 
 def extract_assigned_names(py_code: str) -> set[str]:
-    """Extracts the variable names that are assigned a value in a Python line."""
-    assigned = set()
+    """Extracts the variable names that are assigned a value in a Python line.
+
+    Handles all Python assignment forms:
+      - Plain: ``x = 5``
+      - Chained: ``a = b = 5``
+      - Tuple unpacking: ``a, b = 1, 2`` (and nested ``a, (b, c) = ...``)
+      - List unpacking: ``[a, b] = 1, 2``
+      - Starred: ``a, *b = [1, 2, 3]``
+      - Walrus: ``(x := 5)`` (and nested ``(x := (y := 5))``)
+      - AnnAssign: ``x: int = 5`` (and ``x: int`` without value)
+      - AugAssign: ``x += 1`` (and ``-=``, ``*=``, etc.)
+    """
+    assigned: set[str] = set()
     try:
         tree = ast.parse(py_code)
         for node in ast.walk(tree):
+            # Plain and chained assignment: a = b = 5
             if isinstance(node, ast.Assign):
                 for target in node.targets:
-                    if isinstance(target, ast.Name):
-                        assigned.add(target.id)
+                    _collect_target_names(target, assigned)
+            # Annotated, augmented, and walrus: all have a single .target
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+                _collect_target_names(node.target, assigned)
     except SyntaxError as e:
-        # log debug instead of silent suppress.
         _logger.debug("extract_assigned_names: ast.parse failed: %s", e)
     return assigned
+
+
+def _collect_target_names(target: ast.expr, names: set[str]) -> None:
+    """Recursively extract variable names from an assignment target.
+
+    Handles:
+      - ``ast.Name``: ``x`` → add ``x``.
+      - ``ast.Tuple`` / ``ast.List``: ``a, b`` → add each element.
+      - ``ast.Starred``: ``*b`` → add ``b`` (the inner name).
+      - Other (``ast.Attribute``, ``ast.Subscript``): ignored (not a
+        simple variable name).
+    """
+    if isinstance(target, ast.Name):
+        names.add(target.id)
+    elif isinstance(target, (ast.Tuple, ast.List)):
+        for elt in target.elts:
+            _collect_target_names(elt, names)
+    elif isinstance(target, ast.Starred):
+        _collect_target_names(target.value, names)
+    # ast.Attribute, ast.Subscript, etc. — not a simple variable name.
+
+
+def _collect_target_names_into_dict(target: ast.expr, d: dict) -> None:
+    """Recursively extract variable names from an assignment target and
+    remove them from ``d`` (a dict, typically ``branch_uninitialized``).
+
+    Same recursion as ``_collect_target_names``, but pops from a dict
+    instead of adding to a set.
+    """
+    if isinstance(target, ast.Name):
+        d.pop(target.id, None)
+    elif isinstance(target, (ast.Tuple, ast.List)):
+        for elt in target.elts:
+            _collect_target_names_into_dict(elt, d)
+    elif isinstance(target, ast.Starred):
+        _collect_target_names_into_dict(target.value, d)
 
 
 class PythonAstChecker:
@@ -1796,15 +1845,25 @@ class PythonAstChecker:
             _logger.debug("check_cfg_condition: ast.parse failed: %s", e)
 
     def clear_safe_cfg_vars(self, py_code: str, branch_uninitialized: dict) -> None:
-        """Removes variables from uninitialized if they have been assigned a value."""
+        """Removes variables from uninitialized if they have been assigned a value.
+
+        Handles all Python assignment forms (plain, tuple unpacking,
+        walrus, AnnAssign, AugAssign) via ``_collect_target_names``.
+        """
         try:
             tree = ast.parse(py_code)
             for node in tree.body:
                 if isinstance(node, ast.Assign):
                     for target in node.targets:
-                        if isinstance(target, ast.Name):
-                            branch_uninitialized.pop(target.id, None)
+                        _collect_target_names_into_dict(target, branch_uninitialized)
+                elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+                    _collect_target_names_into_dict(node.target, branch_uninitialized)
+                elif isinstance(node, ast.Expr):
+                    # Walrus inside an expression statement: `(x := 5)`.
+                    # ast.walk finds all NamedExpr nodes recursively.
+                    for child in ast.walk(node):
+                        if isinstance(child, ast.NamedExpr):
+                            _collect_target_names_into_dict(child.target, branch_uninitialized)
 
         except SyntaxError as e:
-            # log debug instead of silent suppress.
             _logger.debug("clear_safe_cfg_vars: ast.parse failed: %s", e)
