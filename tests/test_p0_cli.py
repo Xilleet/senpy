@@ -15,6 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _write_project(tmp_path: Path) -> Path:
     """Минимальный Ren'Py-проект с заведомо известными diagnostic'ами."""
@@ -362,5 +364,29 @@ def test_fix_on_writable_file_exits_zero_when_no_errors(tmp_path: Path):
     result = _run_cli(["--fix", "--no-cache"], project)
     assert result.returncode == 0, (
         f"--fix on a writable file with no errors must exit 0, got {result.returncode}.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+
+
+# =============================================================================
+# --exit-zero must be honoured by every output format (silent exit-code regression)
+# =============================================================================
+
+
+@pytest.mark.parametrize("output_format", ["sarif", "json", "junit", "github", "rdjson", "gitlab"])
+def test_exit_zero_forces_exit_0_for_every_format(tmp_path: Path, output_format: str):
+    """``senpy --exit-zero --format <X>`` on a project with ERROR diagnostics
+    must exit 0, not 1.
+
+    Before the fix only ``render_text`` honoured ``args.exit_zero``; the other
+    six renderers returned ``1 if error_count > 0 else 0`` unconditionally.
+    Users who wrote ``senpy --exit-zero --format sarif`` for a non-blocking CI
+    nightly report got exit 1 — breaking ``continue-on-error`` workflows.
+    """
+    project = _write_project(tmp_path)
+    result = _run_cli(["--exit-zero", "--format", output_format], project)
+    assert result.returncode == 0, (
+        f"--exit-zero with --format {output_format} must exit 0 even with ERROR diagnostics.\n"
+        f"got exit {result.returncode}.\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )

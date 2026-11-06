@@ -53,6 +53,7 @@ def _make_args(**kwargs):
         "path": ".",
         "output_file": None,
         "output_format": "text",
+        "exit_zero": False,
     }
     defaults.update(kwargs)
     return Namespace(**defaults)
@@ -149,6 +150,26 @@ class TestRenderSarif:
         assert out_file.exists()
         data = json.loads(out_file.read_text(encoding="utf-8"))
         assert data["version"] == "2.1.0"
+
+    def test_exit_zero_forces_exit_0_even_with_errors(self):
+        """``--exit-zero`` must override the default exit-1-on-errors contract.
+
+        Documented CLI flag for non-blocking CI runs (nightly reports,
+        informational scans). Before the fix ``render_sarif`` ignored
+        ``args.exit_zero`` and returned 1 on any ERROR diagnostic, breaking
+        ``continue-on-error`` workflows.
+        """
+        from rich.console import Console
+
+        from senpy.cli.main import render_sarif
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="sarif", exit_zero=True)
+        exit_code = render_sarif(diags, args, console)
+        assert (
+            exit_code == 0
+        ), f"--exit-zero should force exit 0 even with ERROR diagnostics, got {exit_code}"
 
 
 # =============================================================================
@@ -261,6 +282,25 @@ class TestRenderJson:
         assert data["diagnostics"] == []
         assert exit_code == 0
 
+    def test_exit_zero_forces_exit_0_even_with_errors(self):
+        """``--exit-zero`` must override the default exit-1-on-errors contract.
+
+        Documented CLI flag for non-blocking CI runs. Before the fix
+        ``render_json`` ignored ``args.exit_zero``.
+        """
+        from rich.console import Console
+
+        from senpy.cli.main import render_json
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        result = MockResult(diagnostics=diags, total_lines=100, fixed_count=0)
+        args = _make_args(output_format="json", exit_zero=True)
+        exit_code = render_json(diags, result, 0.5, args, console)
+        assert (
+            exit_code == 0
+        ), f"--exit-zero should force exit 0 even with ERROR diagnostics, got {exit_code}"
+
 
 # =============================================================================
 # render_rdjson() — Reviewdog NDJSON
@@ -334,6 +374,24 @@ class TestRenderRdjson:
         assert "saved to" in captured.out
         text = out_file.read_text(encoding="utf-8")
         assert "RPY104" in text
+
+    def test_exit_zero_forces_exit_0_even_with_errors(self):
+        """``--exit-zero`` must override the default exit-1-on-errors contract.
+
+        Documented CLI flag for non-blocking CI runs. Before the fix
+        ``render_rdjson`` ignored ``args.exit_zero``.
+        """
+        from rich.console import Console
+
+        from senpy.cli.main import render_rdjson
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="rdjson", exit_zero=True)
+        exit_code = render_rdjson(diags, args, console)
+        assert (
+            exit_code == 0
+        ), f"--exit-zero should force exit 0 even with ERROR diagnostics, got {exit_code}"
 
 
 # =============================================================================
@@ -420,6 +478,24 @@ class TestRenderGitlab:
         assert "saved to" in captured.out
         data = json.loads(out_file.read_text(encoding="utf-8"))
         assert data[0]["check_name"] == "RPY104"
+
+    def test_exit_zero_forces_exit_0_even_with_errors(self):
+        """``--exit-zero`` must override the default exit-1-on-errors contract.
+
+        Documented CLI flag for non-blocking CI runs. Before the fix
+        ``render_gitlab`` ignored ``args.exit_zero``.
+        """
+        from rich.console import Console
+
+        from senpy.cli.main import render_gitlab
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="gitlab", exit_zero=True)
+        exit_code = render_gitlab(diags, args, console)
+        assert (
+            exit_code == 0
+        ), f"--exit-zero should force exit 0 even with ERROR diagnostics, got {exit_code}"
 
 
 # =============================================================================
@@ -607,6 +683,24 @@ class TestRenderJunit:
         assert skipped[0].get("type") == 'PLUGIN<X>&"rule"'
         assert skipped[0].get("message") == "warn < & > test"
 
+    def test_exit_zero_forces_exit_0_even_with_errors(self):
+        """``--exit-zero`` must override the default exit-1-on-errors contract.
+
+        Documented CLI flag for non-blocking CI runs. Before the fix
+        ``render_junit`` ignored ``args.exit_zero``.
+        """
+        from rich.console import Console
+
+        from senpy.cli.main import render_junit
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="junit", exit_zero=True)
+        exit_code = render_junit(diags, args, console)
+        assert (
+            exit_code == 0
+        ), f"--exit-zero should force exit 0 even with ERROR diagnostics, got {exit_code}"
+
 
 # =============================================================================
 # render_github() — characterization safety net for T-017 split
@@ -696,3 +790,21 @@ class TestRenderGithub:
         content = out_file.read_text(encoding="utf-8")
         assert "::error" in content
         assert "RPY101" in content
+
+    def test_exit_zero_forces_exit_0_even_with_errors(self):
+        """``--exit-zero`` must override the default exit-1-on-errors contract.
+
+        Documented CLI flag for non-blocking CI runs. Before the fix
+        ``render_github`` ignored ``args.exit_zero``.
+        """
+        from rich.console import Console
+
+        from senpy.cli.main import render_github
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="github", exit_zero=True, path=".")
+        exit_code = render_github(diags, args, console)
+        assert (
+            exit_code == 0
+        ), f"--exit-zero should force exit 0 even with ERROR diagnostics, got {exit_code}"

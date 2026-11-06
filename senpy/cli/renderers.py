@@ -75,7 +75,7 @@ def render_sarif(active_diagnostics, args, console) -> int:
     else:
         print(sarif_str)
     error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
-    return 1 if error_count > 0 else 0
+    return _exit_code(args, error_count)
 
 
 def render_rdjson(active_diagnostics, args, console) -> int:
@@ -98,7 +98,7 @@ def render_rdjson(active_diagnostics, args, console) -> int:
         else:
             print()
     error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
-    return 1 if error_count > 0 else 0
+    return _exit_code(args, error_count)
 
 
 def render_gitlab(active_diagnostics, args, console) -> int:
@@ -115,7 +115,7 @@ def render_gitlab(active_diagnostics, args, console) -> int:
     else:
         print(out_str)
     error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
-    return 1 if error_count > 0 else 0
+    return _exit_code(args, error_count)
 
 
 def render_json(active_diagnostics, result, elapsed, args, console) -> int:
@@ -152,7 +152,7 @@ def render_json(active_diagnostics, result, elapsed, args, console) -> int:
     else:
         print(json_str)
     error_count = sum(1 for e in active_diagnostics if e.severity == "ERROR")
-    return 1 if error_count > 0 else 0
+    return _exit_code(args, error_count)
 
 
 def render_junit(active_diagnostics, args, console) -> int:
@@ -209,7 +209,7 @@ def render_junit(active_diagnostics, args, console) -> int:
         console.print(f"[bold green]✔ JUnit report saved to {args.output_file}[/bold green]")
     else:
         print(junit_str)
-    return 1 if error_count > 0 else 0
+    return _exit_code(args, error_count)
 
 
 def render_github(active_diagnostics, args, console) -> int:
@@ -256,7 +256,7 @@ def render_github(active_diagnostics, args, console) -> int:
                     f"::{level} file={file_rel},line={diag.line_number},col={diag.col}::{diag.code}: {msg}\n"
                 )
         console.print(f"[bold green]✔ GitHub annotations saved to {args.output_file}[/bold green]")
-    return 1 if error_count > 0 else 0
+    return _exit_code(args, error_count)
 
 
 def _xml_escape(text: str) -> str:
@@ -268,6 +268,27 @@ def _xml_escape(text: str) -> str:
         .replace('"', "&quot;")
         .replace("'", "&apos;")
     )
+
+
+def _exit_code(args, error_count: int) -> int:
+    """Compute the CLI exit code from diagnostics + ``--exit-zero`` flag.
+
+    ``--exit-zero`` is a documented CLI contract for non-blocking CI runs
+    (nightly reports, informational scans): the run always exits 0 even with
+    ERROR diagnostics, so the job does not fail the workflow. Every output
+    format must honour this flag — previously only ``render_text`` did, the
+    other six renderers returned ``1 if error_count > 0 else 0`` unconditionally.
+
+    Note: this only covers the diagnostics→exit-code path. A separate
+    ``failed_writes`` signal (``--fix`` could not write the file back) is
+    OR'd into the exit code by ``runner._force_nonzero_if_failed_writes``
+    — that signal is orthogonal to ``--exit-zero`` and is NOT suppressed
+    by it (silent data loss must remain detectable regardless of the
+    exit-zero mode).
+    """
+    if getattr(args, "exit_zero", False):
+        return 0
+    return 1 if error_count > 0 else 0
 
 
 def _render_diagnostic_cards(
@@ -482,5 +503,6 @@ def render_text(
     # 4. Summary line + exit code
     error_count = _render_summary_line(active_diagnostics, result, elapsed, is_tsundere, console)
 
-    # --exit-zero forces exit 0 even with errors (for non-blocking CI)
-    return 0 if args.exit_zero else (1 if error_count > 0 else 0)
+    # --exit-zero forces exit 0 even with errors (for non-blocking CI).
+    # Same contract as every other renderer (see _exit_code).
+    return _exit_code(args, error_count)
