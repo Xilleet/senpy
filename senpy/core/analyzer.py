@@ -307,6 +307,15 @@ class SenpyAnalyzer:
     def _rebuild_aggregates(self) -> None:
         """Rebuilds global symbol sets — delegates to SymbolTable."""
         self._symbols.rebuild_from_scopes(self.file_scopes)
+        # Restore audio aliases into AssetManager.audio_name_to_path.
+        # On Tier 1 cache hit, _collect_symbols() is skipped (cached
+        # FileScope is restored directly), so register_audio_alias() is
+        # never called. rebuild_from_scopes() restores defined_audio_map
+        # (alias→target_path), but NOT audio_name_to_path (the disk-path
+        # index that resolve_audio_path() uses for hover). Without this
+        # loop, audio hover stops working after the first (cold) run.
+        for alias, target_file in self._symbols.defined_audio_map.items():
+            self.assets.register_audio_alias(alias, target_file)
 
     def analyze_file_only(self, file_path):
         return self._pipeline.analyze_file_only(file_path)
