@@ -241,15 +241,37 @@ def generate_html_report(
         )
     else:
         for diag in diagnostics:
-            # Escape HTML to prevent accidental DOM breaking from source code
+            # Escape every user-influenced field. ``diag.message``,
+            # ``diag.line_content`` and ``diag.file_path`` are obviously
+            # source-derived. ``diag.code`` and ``diag.severity`` come from
+            # rule metadata — built-in rules are safe (``RPYxxx`` /
+            # ``ERROR``/``WARNING``/...), but plugin rules expose arbitrary
+            # strings to the host (``@register_rule("ANY STRING")`` and
+            # ``RuleMeta(severity=...)``). Without escaping, a malicious or
+            # buggy plugin rule code like ``'RPY001"><img src=x
+            # onerror=alert(document.cookie)>'`` executes in the browser when
+            # the user opens the HTML report.
             safe_msg = html.escape(diag.message)
             safe_code = html.escape(diag.line_content.strip())
+            safe_rule_code = html.escape(diag.code or "")
+            safe_severity = html.escape(diag.severity or "")
             file_name = html.escape(os.path.basename(diag.file_path))
+            # The CSS variable lookup ``var(--{severity})`` uses the
+            # unescaped severity as a token name (CSS identifiers cannot
+            # contain quotes or brackets), so we use the escaped form
+            # defensively too — it preserves ``ERROR``/``WARNING`` and
+            # neutralises anything else.
+            css_severity = (diag.severity or "info").lower()
+            # Defensive: css_severity is a CSS identifier — only allow
+            # [A-Za-z0-9_-] to avoid CSS-injection through ``var(--...)``.
+            safe_css_severity = (
+                "".join(c for c in css_severity if c.isalnum() or c in "-_") or "info"
+            )
 
             card = f"""
-            <div class="diag-card {diag.severity}">
+            <div class="diag-card {safe_severity}">
                 <div class="diag-header">
-                    <span class="diag-rule" style="color: var(--{(diag.severity or 'info').lower()})">{diag.code} ({diag.severity})</span>
+                    <span class="diag-rule" style="color: var(--{safe_css_severity})">{safe_rule_code} ({safe_severity})</span>
                     <span class="diag-loc">{file_name}:{diag.line_number}</span>
                 </div>
                 <div class="diag-msg">{safe_msg}</div>
