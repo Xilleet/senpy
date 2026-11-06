@@ -81,9 +81,10 @@ theme:
   font:
     text: Inter
     code: JetBrains Mono
-  favicon: assets/favicon.svg
+  favicon: assets/icon.png
+  logo: assets/icon.png  # Brand icon (256×256 PNG, same as Open VSX extension)
   icon:
-    logo: material/eye-circle  # "Notice me" — Senpy pun on senpai
+    logo: material/eye-circle  # Fallback Material icon used in nav (small)
 
 # =============================================================================
 # Markdown extensions — match Ruff/FastAPI configuration closely.
