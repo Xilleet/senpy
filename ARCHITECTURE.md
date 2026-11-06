@@ -78,7 +78,7 @@ senpy/
 │
 ├── formatter/               # Code formatter (Black-style for Ren'Py)
 │   ├── core.py              # Formatter class, FormatConfig, @register_rule decorator
-│   └── rules/               # 8 formatter rules (indent, whitespace, quotes, spacing, string-consistency)
+│   └── rules/               # 9 formatter rules (indent, whitespace, quotes, spacing, string-consistency)
 │
 ├── lsp/                     # Language Server Protocol implementation
 │   ├── server.py            # pygls LanguageServer setup, _RWLock (with timeout), symbol snapshot
@@ -111,7 +111,7 @@ senpy/
 │   ├── deprecated.py        # RPY107 (deprecated Ren'Py API)
 │   ├── flow.py              # RPY4xx (branch dataflow, Mermaid graph builder)
 │   ├── python_ast.py        # Python AST checker ($-statements, init python blocks)
-│   └── rules_info.py        # RULES_DATABASE (45 rules + 28 tags), --rules output
+│   └── rules_info.py        # RULES_DATABASE (51 rules + 28 tags), --rules output
 │
 ├── vendor/                  # Vendored dependencies (do not modify)
 │   └── unrpyc/              # .rpyc decompiler (pinned commit, SHA256-verified)
@@ -221,9 +221,15 @@ re-parsing but still runs all lint rules.
 cached diagnostics are restored directly. This is the fast path —
 incremental analysis in ~0.04s for 77,000 lines.
 
-`SafeCacheUnpickler` restricts unpickling to `senpy.core.cache` classes
-only, with a module blocklist (`os`, `sys`, `subprocess`, etc.) as
-defense-in-depth against cache poisoning.
+`SafeCacheUnpickler` restricts unpickling to `senpy.core.cache` and a
+small set of legacy module paths only (allowlist-based — see
+`senpy/core/cache.py:SafeCacheUnpickler.ALLOWED_MODULES`). There is no
+module blocklist; the allowlist alone is the defense, since legitimate
+cache contents are only Senpy's own dataclasses and primitives. Any
+`find_class` outside the allowlist rejects the file (a broken cache = `None`
+= a regular rebuild). The vendored `senpy/vendor/unrpyc/magic.py` has a
+separate `SafeUnpickler` for `.rpyc` files which uses both allowlist and
+blocklist — that is a different unpickler for a different input.
 
 ## Rule Engine
 
@@ -315,7 +321,7 @@ gets analyzed.
 | `textDocument/foldingRange` | Fold blocks (labels, screens, init python) |
 | `textDocument/documentHighlight` | Highlight same symbol occurrences |
 | `textDocument/documentColor` | Hex colors as clickable swatches |
-| `textDocument/formatting` | Format document (8 formatter rules) |
+| `textDocument/formatting` | Format document (9 formatter rules) |
 | `textDocument/rangeFormatting` | Format selection |
 | `textDocument/signatureHelp` | Parameter hints for `call label(...)` / `use screen(...)` |
 | `textDocument/prepareCallHierarchy` | Find callers (jump/call graph) |
@@ -389,8 +395,9 @@ already-formatted code produces zero changes):
 | FMT-COLON-SPACING | No space before block-opening colon |
 | FMT-STRING-CONSISTENCY | Normalize outer quotes of string literals (default: double). 0.7.4+. |
 
-Skip mechanism: `# senpy: format off` / `# senpy: format on` /
-`# senpy: format skip` comments disable formatting for specific blocks.
+Skip mechanism: `# senpy: format off` / `# senpy: format on` comments
+disable formatting for specific blocks. There is no separate `format
+skip` directive — `format off`/`on` is the only toggle.
 
 Style guide: see [`FORMAT STYLE GUIDE`](docs/FORMAT_STYLE_GUIDE.md) for the
 canonical reference of each rule with examples.
@@ -400,11 +407,20 @@ canonical reference of each rule with examples.
 ### Safe Unpickling
 
 Cache files (`.senpy_cache/cache.pkl`) are loaded via `SafeCacheUnpickler`
-which restricts `find_class()` to `senpy.core.cache` classes only. A
-module blocklist (`os`, `sys`, `subprocess`, `socket`, `shutil`,
-`pathlib`, `builtins`, `ctypes`, `multiprocessing`, `pickle`, `marshal`)
-provides defense-in-depth even if someone adds a dangerous module to
-the safe list.
+which restricts `find_class()` to an **allowlist** of `senpy.core.*`
+module paths only (see `senpy/core/cache.py:SafeCacheUnpickler.ALLOWED_MODULES`).
+There is no separate module blocklist — the allowlist alone is the
+defense, since legitimate cache contents are only Senpy's own
+dataclasses and primitives. Any `find_class` for a module outside the
+allowlist raises `UnpicklingError`, and the cache is treated as broken
+(rebuilt from scratch).
+
+> The vendored `senpy/vendor/unrpyc/magic.py` has a separate
+> `SafeUnpickler` for `.rpyc` files, which uses both an allowlist **and**
+> a blocklist (`os`, `sys`, `subprocess`, `socket`, `shutil`, `pathlib`,
+> `builtins`, `ctypes`, `multiprocessing`, `pickle`, `marshal`). That
+> blocklist does NOT apply to `SafeCacheUnpickler` — they are different
+> unpicklers for different inputs (`cache.pkl` vs `.rpyc`).
 
 ### unrpyc Pinning
 

@@ -1,4 +1,4 @@
-"""FileCollector — file discovery and I/O utilities extracted from SenpyAnalyzer.
+"""FileCollector — file discovery, I/O, and symbol collection extracted from SenpyAnalyzer.
 
 Manages:
   - .rpy file discovery (os.walk, IGNORED_DIRS, tl/ detection)
@@ -7,10 +7,14 @@ Manages:
   - noqa map building (line→codes)
   - Encoding error emission (RPY100)
   - Logical line joining (multi-line via backslash or unclosed brackets)
+  - Per-file symbol collection (_collect_symbols and all _collect_*
+    helpers — labels, screens, images, transforms, variables, defaults,
+    defines, audio aliases, init python blocks, etc.)
 
-These are pure utility functions that don't touch symbol registries.
-The symbol collection logic (_collect_symbols, _collect_default, etc.)
-stays in SenpyAnalyzer for now — it will be extracted in Step 2c.
+The symbol collection logic was originally in SenpyAnalyzer and has
+been fully migrated to FileCollector. SenpyAnalyzer now delegates to
+FileCollector via thin pass-through wrappers (kept for back-compat
+with external callers that still call analyzer._collect_symbols).
 """
 
 from __future__ import annotations

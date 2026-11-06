@@ -78,9 +78,30 @@ reporting:
 - **Plugin trust store** (`~/.senpy/trusted_plugins.json`):
   trust-on-first-use model. CI environments (non-TTY) auto-skip untrusted
   plugins (fail-safe).
+
+  > **Known limitation (planned fix):** the trust check currently runs
+  > **after** `entry_point.load()` — meaning the plugin's top-level
+  > Python code (`__init__.py`, module body, class decorators) executes
+  > before the trust decision is made. Trust only gates whether the
+  > rule class enters `_REGISTERED_LINT_RULES`, not whether the plugin
+  > module is imported. This is a known gap scheduled to be fixed
+  > before 0.8.0 — trust-check will move **before** load. Plugin
+  > authors should not rely on import-time side effects.
 - **HTML report CSP** (`senpy/formats/html_report.py`):
-  `Content-Security-Policy: default-src 'none'` + Mermaid `securityLevel:
-  'strict'` — prevents XSS in generated reports.
+  `Content-Security-Policy: default-src 'self'; script-src 'self'
+  'unsafe-inline' https://cdn.jsdelivr.net/npm/mermaid@10/
+  https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/; style-src 'self'
+  'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src
+  'self'` + Mermaid `securityLevel: 'strict'`. Diagnostics' `code`,
+  `severity`, `message`, `line_content` and `file_path` are HTML-escaped
+  before interpolation (since 0.7.7) — prevents XSS from plugin rule
+  metadata in generated reports.
+  > **Known limitation:** `script-src` includes `'unsafe-inline'` to
+  > support Mermaid's runtime initialization (which evaluates an inline
+  > script). A nonce-based CSP is planned post-0.8 to remove this. The
+  > Mermaid `securityLevel: 'strict'` setting and the HTML-escaping of
+  > all diagnostic fields mitigate the inline-script risk in the
+  > meantime.
 - **LSP URI scheme validation + workspace containment** (`senpy/lsp/server.py`,
   0.6.2): `_uri_to_path` rejects non-`file:` URIs and (optionally)
   paths outside workspace root.
@@ -102,6 +123,26 @@ If you write a Senpy plugin, follow these guidelines:
 4. **No file writes outside the project directory.** Use Senpy's
    `DiagnosticSink` API, not direct file I/O.
 5. **Pin your dependencies.** A plugin is only as secure as its deps.
+
+## No Plugin Sandbox Exists
+
+Senpy does **not** run plugins in a sandbox. Once a plugin is loaded
+(via `entry_point.load()`), it executes with the full privileges of the
+Senpy process — same filesystem, network, and subprocess access as the
+linter itself. The "Hardening Checklist" above is **advisory**, not
+enforced: nothing in the runtime prevents a plugin from `subprocess.run`,
+`socket`, `open(file, "w")`, or `os.system`.
+
+The only enforcement layer is the **trust store** (`~/.senpy/trusted_plugins.json`)
+— a plugin is loaded only after explicit user approval (or auto-skipped in
+non-TTY CI environments). Users are responsible for vetting plugins
+before trusting them, the same way they vet any `pip install` dependency.
+
+A proper plugin sandbox (subinterpreters, restricted execution,
+capability-based I/O) is **out of scope** for 0.8.0 and is tracked as a
+post-0.8 R&D item. The current model is "trust first, run with full
+privileges" — same as pytest plugins, ruff plugins, or any other
+in-process plugin system.
 
 ## Disclosure Policy
 

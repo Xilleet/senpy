@@ -28,7 +28,7 @@ Ren'Py ships with a built-in `lint` command, but it launches the entire Pygame r
 
 ## Key Features
 
-- **33+ semantic rules** (RPY1xx–RPY8xx) covering state, screens, dialogue, branching, assets, translation, dead code.
+- **51 semantic rules** (RPY1xx–RPY8xx) covering state, screens, dialogue, branching, assets, translation, dead code.
 - **LSP with 20+ handlers**: diagnostics, completion, hover, go-to-definition, references, rename, folding, document symbols, workspace symbols, code actions, semantic tokens.
 - **Interactive story graph** — visualize branching narrative as a Mermaid diagram.
 - **Translation coverage reports** — find missing strings, mismatched variables, broken formatting tags in `game/tl/`.

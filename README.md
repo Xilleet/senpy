@@ -341,7 +341,7 @@ Senpy includes a full **Language Server Protocol** implementation with 20+ handl
 | **Document Highlight** | cursor | Highlight all occurrences of word in file |
 | **QuickFix** | `Ctrl+.` | Auto-fix suggestions (tabs→spaces, smart quotes, unclosed tags) |
 | **Color Swatches** | `0.6.0+` | Hex color literals shown as clickable color picker |
-| **Format Document** | `Shift+Alt+F` | Run Senpy formatter (8 rules) |
+| **Format Document** | `Shift+Alt+F` | Run Senpy formatter (9 rules) |
 | **Signature Help** | `0.6.0+` | Parameter hints for `call label(...)` / `use screen(...)` |
 | **Call Hierarchy** | `0.6.0+` | Right-click → "Find Callers" / "Find References" |
 | **Story Graph** | command | Interactive Mermaid.js flowchart of all labels and jumps |

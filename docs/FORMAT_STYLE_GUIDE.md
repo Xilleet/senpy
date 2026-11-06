@@ -7,8 +7,8 @@ for Rust — there are no configuration options for individual rules
 (except `string_style`, see FMT-STRING-CONSISTENCY below). The goal
 is **idempotent** output: `senpy format format(x) == senpy format(x)`.
 
-> **Status:** This is a stub covering the 8 formatter rules shipped
-> in Senpy 0.7.4. The full style guide (with before/after examples
+> **Status:** This is a stub covering the 9 formatter rules shipped
+> in Senpy 0.7.4+. The full style guide (with before/after examples
 > for every rule, edge cases, and rationale) is scheduled for 0.7.6.
 > The current document is enough to understand what `senpy format` will
 > do to your `.rpy` files, but does not yet cover every edge case.

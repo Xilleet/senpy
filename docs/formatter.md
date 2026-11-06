@@ -164,13 +164,9 @@ $ x = {                  # hand-aligned dict
 
 The formatter preserves everything between the markers verbatim.
 
-For a single line you want to skip:
-
-```renpy
-$ x = 1   # senpy: format skip
-```
-
-The line is preserved as-is.
+> There is no single-line skip directive — use `# senpy: format off`
+> before the line and `# senpy: format on` after it to preserve a
+> single line as-is.
 
 Use these for:
 

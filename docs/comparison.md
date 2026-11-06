@@ -168,11 +168,11 @@ handles highlighting, Senpy handles diagnostics and navigation.
 | **GitHub stars** | n/a (part of Ren'Py SDK) | 152 | 0–50 (new) |
 | **License** | Ren'Py license (MIT-compatible for the SDK) | MIT | MIT |
 | **Distribution** | Bundled with Ren'Py SDK | VS Code Marketplace | PyPI + Open VSX + GitHub Releases |
-| **Test suite** | Ren'Py's own | Small | 1331 tests, 100% fixture coverage (51/51 rules) |
+| **Test suite** | Ren'Py's own | Small | 1487 tests, 100% fixture coverage (51/51 rules) |
 | **Stability** | Stable, slow-moving | Stable | Beta (0.7.x), fast-moving |
 
 Senpy is newer and has a solo maintainer, but the test suite is
-comprehensive (1331 tests, 100% fixture coverage for all 51 rules,
+comprehensive (1487 tests, 100% fixture coverage for all 51 rules,
 characterization tests for the CLI, security tests for cache/URI/unrpyc).
 The rule set is documented in [RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)
 and the architecture in [ARCHITECTURE.md](https://github.com/Xilleet/senpy/blob/main/ARCHITECTURE.md).
