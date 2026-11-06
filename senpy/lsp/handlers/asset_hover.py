@@ -105,14 +105,38 @@ def _resolve_image_disk_path(image_name: str) -> str | None:
 
 
 def _resolve_relative_to_game(rel: str, project_path: str) -> str | None:
-    """Try a few candidate absolute paths for a game/-relative reference."""
+    """Try a few candidate absolute paths for a game/-relative reference.
+
+    Resolves ``rel`` against ``project_path/game`` and ``project_path``,
+    then verifies the resolved real path is still inside one of those
+    roots. This blocks path-traversal payloads (``images/../../secret``,
+    symlinks pointing outside the project, absolute paths that
+    ``os.path.join`` would silently accept) — without it, hovering over a
+    malicious ``image`` declaration disclosed the size and path of
+    arbitrary files outside the project (info disclosure).
+
+    The existing ``lstrip("./")`` accidentally neutralises payloads that
+    START with ``.`` or ``/`` (e.g. ``../../etc/passwd`` → ``etc/passwd``,
+    ``/etc/passwd`` → ``etc/passwd``), but a payload with a non-dot prefix
+    like ``images/../../secret`` slips through. The realpath+commonpath
+    check is the real defence.
+    """
     rel = rel.replace("\\", "/").lstrip("./")
-    for candidate in (
-        os.path.join(project_path, "game", rel),
-        os.path.join(project_path, rel),
-    ):
-        if os.path.exists(candidate):
-            return candidate
+    game_root = os.path.realpath(os.path.join(project_path, "game"))
+    proj_root = os.path.realpath(project_path)
+    for base in (game_root, proj_root):
+        candidate = os.path.realpath(os.path.join(base, rel))
+        try:
+            # commonpath returns the longest common sub-path of both args.
+            # If candidate is inside base, commonpath == base. If candidate
+            # escaped base via ``..`` or a symlink, commonpath != base.
+            if os.path.commonpath([candidate, base]) == base and os.path.exists(candidate):
+                return candidate
+        except ValueError:
+            # On Windows, commonpath raises ValueError when the two paths
+            # are on different drives (e.g. C:\\project vs D:\\file).
+            # That's a definite escape — skip this base.
+            continue
     return None
 
 

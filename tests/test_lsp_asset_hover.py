@@ -639,3 +639,191 @@ class TestVSCodeOpenExternalCommand:
             "package.json contributes.commands must list 'senpy.openExternal' "
             "so VS Code knows the command exists (even if hidden from palette)."
         )
+
+
+# =============================================================================
+# _resolve_relative_to_game — path-traversal protection
+# =============================================================================
+
+
+class TestResolveRelativeToGameSecurity:
+    """``_resolve_relative_to_game`` must reject paths that escape the
+    project root via ``..`` segments.
+
+    The function resolves a game-relative reference (e.g. the
+    ``"file.png"`` in ``image bg = "file.png"``) to an absolute disk path.
+    Before the fix, ``os.path.join(project, "game", "images/../../secret")``
+    was accepted and ``os.path.exists`` confirmed the file — so hovering
+    over a malicious ``image`` declaration disclosed the size and path of
+    arbitrary files outside the project (info disclosure).
+
+    Note on the existing ``lstrip("./")``: it accidentally neutralises
+    payloads that START with ``.`` or ``/`` (e.g. ``../../etc/passwd`` →
+    ``etc/passwd``, ``/etc/passwd`` → ``etc/passwd``). But a payload with
+    a non-dot prefix like ``images/../../secret`` slips through — that is
+    the real vector this test class covers.
+    """
+
+    def test_dotdot_traversal_returns_none(self, tmp_path: Path):
+        """``images/../../secret.txt`` must NOT resolve to a file outside game/.
+
+        PoC: a file ``secret.txt`` is created at the project root (outside
+        ``game/``). The relative path ``images/../../secret.txt`` from
+        ``game/images/`` (which exists) escapes up to the project root and
+        resolves to ``secret.txt``. Without the fix, ``os.path.exists``
+        confirms the file and the hover discloses its size and path.
+        """
+        from senpy.lsp.handlers.asset_hover import _resolve_relative_to_game
+
+        game_dir = tmp_path / "game"
+        images_dir = game_dir / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        # Place a file OUTSIDE game/ but INSIDE tmp_path — the traversal
+        # target. ``os.path.exists`` would return True for it without the fix.
+        secret = tmp_path / "secret.txt"
+        secret.write_text("outside game/", encoding="utf-8")
+
+        result = _resolve_relative_to_game("images/../../secret.txt", str(tmp_path))
+        assert result is None, (
+            f"_resolve_relative_to_game resolved a path-traversal payload to "
+            f"{result!r} — the hover would disclose the size and path of a "
+            "file outside game/ (info disclosure)."
+        )
+
+    def test_normal_relative_path_resolves(self, tmp_path: Path):
+        """A normal game-relative path (``images/bg.png``) must resolve.
+
+        Regression guard: the traversal fix must NOT break the legitimate
+        use case — every normal asset reference must still resolve.
+        """
+        from senpy.lsp.handlers.asset_hover import _resolve_relative_to_game
+
+        game_dir = tmp_path / "game"
+        images_dir = game_dir / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        bg = images_dir / "bg.png"
+        bg.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        result = _resolve_relative_to_game("images/bg.png", str(tmp_path))
+        assert result is not None, (
+            "Normal game-relative path 'images/bg.png' did not resolve — "
+            "the traversal fix broke the legitimate use case."
+        )
+        assert os.path.realpath(result) == os.path.realpath(str(bg))
+
+    def test_path_in_project_root_resolves(self, tmp_path: Path):
+        """A path at the project root (not under game/) must resolve too."""
+        from senpy.lsp.handlers.asset_hover import _resolve_relative_to_game
+
+        # The second candidate is os.path.join(project_path, rel).
+        marker = tmp_path / "marker.txt"
+        marker.write_text("root-level", encoding="utf-8")
+
+        result = _resolve_relative_to_game("marker.txt", str(tmp_path))
+        assert result is not None
+        assert os.path.realpath(result) == os.path.realpath(str(marker))
+
+    def test_leading_dot_slash_resolves(self, tmp_path: Path):
+        """``./images/bg.png`` (with leading ``./``) must still resolve.
+
+        The existing ``lstrip("./")`` behaviour strips the leading ``./``
+        before joining — the traversal fix must preserve this.
+        """
+        from senpy.lsp.handlers.asset_hover import _resolve_relative_to_game
+
+        game_dir = tmp_path / "game"
+        images_dir = game_dir / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        bg = images_dir / "bg.png"
+        bg.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        result = _resolve_relative_to_game("./images/bg.png", str(tmp_path))
+        assert result is not None, (
+            "Leading './images/bg.png' did not resolve — the traversal fix "
+            "broke the lstrip('./') handling for normal relative paths."
+        )
+
+    def test_backslash_path_resolves(self, tmp_path: Path):
+        """Backslash separators (Windows-style) must be normalised and resolve."""
+        from senpy.lsp.handlers.asset_hover import _resolve_relative_to_game
+
+        game_dir = tmp_path / "game"
+        images_dir = game_dir / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        bg = images_dir / "bg.png"
+        bg.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        # Windows-style separator — the function replaces \ with / before joining.
+        result = _resolve_relative_to_game("images\\bg.png", str(tmp_path))
+        assert result is not None, (
+            "Backslash path 'images\\bg.png' did not resolve — the "
+            "traversal fix broke backslash normalisation."
+        )
+
+    def test_dotdot_inside_project_does_not_escape(self, tmp_path: Path):
+        """``images/../bg.png`` must resolve to ``game/bg.png`` (no escape).
+
+        A ``..`` segment that stays inside the project is fine — the fix
+        must only reject paths that escape the project root, not all
+        ``..`` segments. The fix uses ``realpath`` which resolves ``..``
+        before the containment check, so legitimate ``..`` segments
+        that stay inside the project still work.
+        """
+        from senpy.lsp.handlers.asset_hover import _resolve_relative_to_game
+
+        game_dir = tmp_path / "game"
+        images_dir = game_dir / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        bg = game_dir / "bg.png"
+        bg.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        result = _resolve_relative_to_game("images/../bg.png", str(tmp_path))
+        assert result is not None, (
+            "Path 'images/../bg.png' did not resolve — the fix is too "
+            "strict and rejects legitimate ``..`` segments that stay "
+            "inside the project root."
+        )
+        assert os.path.realpath(result) == os.path.realpath(str(bg))
+
+    def test_symlink_escape_returns_none(self, tmp_path: Path):
+        """A symlink that points outside the project must NOT resolve.
+
+        Symlinks bypass simple string-based ``..`` checks. The fix uses
+        ``os.path.realpath`` (which follows symlinks) before the
+        containment check — so a symlink to a file outside the project
+        is rejected.
+        """
+        import sys
+
+        if sys.platform == "win32":
+            pytest.skip("Symlink semantics differ on Windows; tested on POSIX.")
+
+        from senpy.lsp.handlers.asset_hover import _resolve_relative_to_game
+
+        # Create a real file OUTSIDE the project that the symlink will target.
+        outside = tmp_path.parent / "senpy_outside_target.txt"
+        try:
+            outside.write_text("outside", encoding="utf-8")
+        except OSError:
+            pytest.skip("Cannot create file outside tmp_path in this environment.")
+
+        try:
+            game_dir = tmp_path / "game"
+            game_dir.mkdir(parents=True, exist_ok=True)
+            link = game_dir / "escape.png"
+            try:
+                os.symlink(str(outside), link)
+            except OSError:
+                pytest.skip("Cannot create symlink in this environment.")
+
+            result = _resolve_relative_to_game("escape.png", str(tmp_path))
+            assert result is None, (
+                f"_resolve_relative_to_game resolved a symlink that escapes "
+                f"the project root to {result!r} — symlinks must be followed "
+                "by realpath before the containment check."
+            )
+        finally:
+            try:
+                outside.unlink()
+            except OSError:
+                pass
