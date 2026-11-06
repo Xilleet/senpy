@@ -49,13 +49,30 @@ def did_change(ls, params: lsp.DidChangeTextDocumentParams) -> None:
 
 
 def did_close(ls, params: lsp.DidCloseTextDocumentParams) -> None:
-    """TEXT_DOCUMENT_DID_CLOSE: removes the file from the analyzer's in-memory buffer."""
+    """TEXT_DOCUMENT_DID_CLOSE: removes the file from the analyzer's in-memory buffer.
+
+    Mutates ``_active_analyzer.in_memory_files`` — same shared dict that
+    ``run_single_file_diagnostics`` writes to under the RWLock write
+    lock. Without that lock a ``did_close`` fired mid-write lets the
+    reader see a half-mutated dict (or, on CPython, only the GIL saves
+    us from a torn struct). The contract is: any mutation of
+    ``in_memory_files`` goes through the write lock, so ``did_close``
+    must too.
+    """
     from senpy.lsp import server as server_mod
 
     uri = params.text_document.uri
     if server_mod._active_analyzer is not None:
         norm_file = server_mod._normalize_path(server_mod._uri_to_path(uri))
-        server_mod._active_analyzer.in_memory_files.pop(norm_file, None)
+        with server_mod._lsp_server.rw_lock.write_lock():
+            # Re-check inside the lock: _active_analyzer could have been
+            # swapped out by run_full_project_diagnostics between the
+            # outer None-check and acquire_write(). The mutation must
+            # target the analyzer that is current at mutation time, not
+            # the one that was current at check time.
+            current = server_mod._active_analyzer
+            if current is not None:
+                current.in_memory_files.pop(norm_file, None)
 
 
 def did_change_watched_files(ls, params: lsp.DidChangeWatchedFilesParams) -> None:

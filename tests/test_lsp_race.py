@@ -120,3 +120,19 @@ def test_document_symbols_waits_for_analysis_lock(tmp_path: Path):
         text_document=lsp.TextDocumentIdentifier(uri=uri),
     )
     _assert_reader_blocked_by_write_lock(mock_ls, params, server_mod.document_symbols)
+
+
+def test_did_close_waits_for_write_lock(tmp_path: Path):
+    """did_close мутирует ``_active_analyzer.in_memory_files`` — это writer.
+
+    Пока внешний writer (run_full / run_single_file_diagnostics) держит
+    write lock, did_close обязан ждать его освобождения. Без блокировки
+    возможна гонка: did_close выкидывает ключ из ``in_memory_files``
+    посреди записи ``run_single_file_diagnostics``, и reader видит
+    половинное состояние реестра.
+    """
+    script_file, _ = setup_test_workspace(tmp_path)
+    uri = server_mod._path_to_uri(str(script_file))
+    mock_ls = MagicMock()
+    params = lsp.DidCloseTextDocumentParams(text_document=lsp.TextDocumentIdentifier(uri=uri))
+    _assert_reader_blocked_by_write_lock(mock_ls, params, server_mod.did_close)
