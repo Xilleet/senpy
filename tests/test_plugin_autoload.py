@@ -362,3 +362,214 @@ class TestAutoloadStateSurvives:
         data = json.loads(capsys.readouterr().out)
         rpy901_count = sum(1 for e in data if e["code"] == "RPY901")
         assert rpy901_count == 1  # not 2 — idempotency held
+
+
+# =============================================================================
+# Built-in code collision at runtime — plugin rule with a built-in code
+# must NOT be registered, must NOT run during analyzer.run().
+# =============================================================================
+
+
+class TestPluginCodeCollisionRuntime:
+    """Plugin rules whose ``code`` collides with a built-in ``RULES_DATABASE``
+    entry must be rejected at registration time — they must not appear in
+    ``_REGISTERED_LINT_RULES`` and must not run during ``analyzer.run()``.
+
+    The existing ``test_builtin_code_wins_on_collision`` only checks the
+    ``senpy rule list`` CLI output (where the collision is filtered out
+    client-side in ``rule_dispatch.py``). That filter is cosmetic — the
+    plugin rule was still registered and was still invoked by
+    ``_run_plugin_rules`` during analysis, producing duplicate diagnostics
+    or shadowing the built-in behaviour.
+
+    After the fix: ``register_loaded_plugins()`` rejects any plugin rule
+    whose ``code`` is already present in ``RULES_DATABASE``. The plugin
+    is logged at WARNING and skipped — never enters the registry, never
+    runs.
+    """
+
+    def test_plugin_with_builtin_code_not_in_registry(self):
+        """A plugin rule with ``code="RPY001"`` (a built-in) must NOT be
+        added to ``_REGISTERED_LINT_RULES``.
+
+        Before the fix: ``register_loaded_plugins()`` appended every
+        loaded rule to the registry unconditionally, so a plugin with
+        ``RPY001`` ended up as a second entry next to the built-in
+        RPY001 — both ran during analysis.
+        """
+        from senpy.plugins.loader import _LoadedEntryPoint, register_loaded_plugins
+
+        rule_cls = _make_rule_cls("RPY001", docs="Plugin hijacking built-in code.")
+        loaded = [_LoadedEntryPoint(name="rogue-plugin", rule_cls=rule_cls)]
+
+        register_loaded_plugins(loaded)
+
+        registered = get_registered_lint_rules()
+        colliding = [(c, cls) for c, cls in registered if c == "RPY001"]
+        assert colliding == [], (
+            f"Plugin rule with built-in code RPY001 was registered: {colliding}. "
+            "Plugin rules with built-in codes must be rejected at registration."
+        )
+
+    def test_plugin_with_non_builtin_code_still_registers(self):
+        """A plugin rule with ``code="RPY901"`` (a non-built-in code in
+        the reserved RPY9xx plugin range) must still register normally.
+
+        Regression guard: the collision check must NOT over-reach and
+        reject legitimate plugin codes.
+        """
+        from senpy.plugins.loader import _LoadedEntryPoint, register_loaded_plugins
+
+        rule_cls = _make_rule_cls("RPY901", docs="Legit plugin rule.")
+        loaded = [_LoadedEntryPoint(name="my-plugin", rule_cls=rule_cls)]
+
+        register_loaded_plugins(loaded)
+
+        registered = get_registered_lint_rules()
+        codes = [c for c, _ in registered]
+        assert "RPY901" in codes, (
+            f"Legitimate plugin code RPY901 was not registered: {codes}. "
+            "The collision check must only reject built-in codes."
+        )
+
+    def test_plugin_with_builtin_code_does_not_run_in_analyzer(self, tmp_path):
+        """End-to-end: a plugin rule with ``code="RPY001"`` registered via
+        autoload must NOT be invoked by ``_run_plugin_rules`` during
+        ``analyzer.run()``.
+
+        This is the runtime contract that ``test_builtin_code_wins_on_collision``
+        did NOT cover — it only checked ``senpy rule list`` output.
+        """
+        from senpy.core.analyzer import SenpyAnalyzer
+
+        # Plugin rule that, if it ran, would emit a diagnostic with a
+        # distinctive message we can search for. Using RPY001 (a real
+        # built-in) as the colliding code.
+        marker_msg = "ROGUE_PLUGIN_RAN_MARKER"
+
+        class _RogueRule(Rule):
+            meta = RuleMeta(
+                code="RPY001",
+                docs="Hijacks built-in RPY001.",
+                severity="WARNING",
+                tags=["test-plugin"],
+            )
+            PLUGIN_API_VERSION = "1.0"
+
+            def check(self, ctx):  # type: ignore[override]
+                from senpy.core.models import Diagnostic
+
+                return [
+                    Diagnostic(
+                        file_path=ctx.file_path,
+                        line_number=1,
+                        line_content="rogue",
+                        code="RPY001",
+                        message=marker_msg,
+                        severity="WARNING",
+                    )
+                ]
+
+        ep = _FakeEntryPoint("rogue-plugin", _RogueRule)
+
+        # Build a minimal project with plugins enabled (enable_plugins is
+        # a config option in senpy.toml, not a constructor argument).
+        # The [senpy] section is required — without it the option is ignored.
+        game_dir = tmp_path / "game"
+        game_dir.mkdir(parents=True, exist_ok=True)
+        (game_dir / "script.rpy").write_text("label start:\n    return\n", encoding="utf-8")
+        (tmp_path / "senpy.toml").write_text("[senpy]\nenable_plugins = true\n", encoding="utf-8")
+
+        # Enable plugins + autoload the rogue plugin.
+        with patch("senpy.plugins.loader._get_entry_points", return_value=[ep]):
+            autoload_plugins()
+            analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
+            analyzer.run(quiet=True)
+
+        # The rogue plugin's marker message must NOT appear in diagnostics.
+        rogue_diags = [d for d in analyzer.diagnostics if d.message == marker_msg]
+        assert rogue_diags == [], (
+            f"Rogue plugin with built-in code RPY001 ran during analyzer.run() "
+            f"and emitted {len(rogue_diags)} diagnostic(s). Plugin rules with "
+            "built-in codes must be rejected at registration and never run."
+        )
+
+    def test_mixed_load_rejects_only_builtin_collision(self):
+        """When loading a mix of plugins, only the built-in-colliding
+        ones are rejected; the rest register normally.
+
+        Order of plugin rules in the registry must reflect only the
+        accepted rules.
+        """
+        from senpy.plugins.loader import _LoadedEntryPoint, register_loaded_plugins
+
+        good = _make_rule_cls("RPY901", docs="Good plugin.")
+        rogue = _make_rule_cls("RPY001", docs="Hijacks built-in.")
+        loaded = [
+            _LoadedEntryPoint(name="good-plugin", rule_cls=good),
+            _LoadedEntryPoint(name="rogue-plugin", rule_cls=rogue),
+        ]
+
+        register_loaded_plugins(loaded)
+
+        registered = get_registered_lint_rules()
+        codes = [c for c, _ in registered]
+        assert "RPY901" in codes, "Good plugin was rejected along with the rogue one."
+        assert "RPY001" not in codes, "Rogue plugin with built-in code was registered."
+
+    def test_plugin_with_non_builtin_code_actually_runs(self, tmp_path):
+        """Control for ``test_plugin_with_builtin_code_does_not_run_in_analyzer``.
+
+        Proves the end-to-end test setup actually runs plugin rules when
+        they have a valid (non-built-in) code — so the absence of the
+        rogue diagnostic in the other test is due to the rejection, not
+        due to plugins being silently disabled.
+        """
+        from senpy.core.analyzer import SenpyAnalyzer
+
+        marker_msg = "GOOD_PLUGIN_RAN_MARKER"
+
+        class _GoodRule(Rule):
+            meta = RuleMeta(
+                code="RPY901",
+                docs="Legitimate plugin rule.",
+                severity="WARNING",
+                tags=["test-plugin"],
+            )
+            PLUGIN_API_VERSION = "1.0"
+
+            def check(self, ctx):  # type: ignore[override]
+                from senpy.core.models import Diagnostic
+
+                return [
+                    Diagnostic(
+                        file_path=ctx.file_path,
+                        line_number=1,
+                        line_content="good",
+                        code="RPY901",
+                        message=marker_msg,
+                        severity="WARNING",
+                    )
+                ]
+
+        ep = _FakeEntryPoint("good-plugin", _GoodRule)
+
+        game_dir = tmp_path / "game"
+        game_dir.mkdir(parents=True, exist_ok=True)
+        (game_dir / "script.rpy").write_text("label start:\n    return\n", encoding="utf-8")
+        (tmp_path / "senpy.toml").write_text("[senpy]\nenable_plugins = true\n", encoding="utf-8")
+
+        with patch("senpy.plugins.loader._get_entry_points", return_value=[ep]):
+            autoload_plugins()
+            analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
+            analyzer.run(quiet=True)
+
+        good_diags = [d for d in analyzer.diagnostics if d.message == marker_msg]
+        assert len(good_diags) == 1, (
+            f"Expected the legitimate plugin (RPY901) to run exactly once and "
+            f"emit one diagnostic, got {len(good_diags)}. If this test fails, "
+            "the end-to-end setup is not actually invoking plugin rules — "
+            "which means test_plugin_with_builtin_code_does_not_run_in_analyzer "
+            "proves nothing (the rogue diagnostic could be absent simply "
+            "because plugins are disabled, not because it was rejected)."
+        )

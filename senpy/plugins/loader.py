@@ -329,10 +329,28 @@ def register_loaded_plugins(loaded: list[_LoadedEntryPoint]) -> None:
     After this, plugin rules appear in get_registered_lint_rules() and
     SenpyAnalyzer can instantiate + run them during analysis.
 
+    Plugin rules whose ``code`` collides with a built-in ``RULES_DATABASE``
+    entry are rejected — they are logged at WARNING and never enter the
+    registry. This is the runtime half of the "built-in code wins on
+    collision" contract: ``rule_dispatch.py`` already filters the
+    collision client-side for ``senpy rule list/show``, but without
+    this check the plugin rule would still be registered and still run
+    during ``analyzer.run()`` via ``_run_plugin_rules``, producing
+    duplicate diagnostics or shadowing the built-in behaviour.
+
+    Code range contract:
+        - ``RPY0xx``–``RPY8xx`` are reserved for built-in rules
+          (see ``RULES_DATABASE``). Plugin rules with a code in this
+          range that matches an existing built-in are rejected here.
+        - ``RPY9xx`` is reserved for plugin rules — built-in will never
+          use this range, so plugin authors can pick any ``RPY9xx``
+          code without fear of collision with a future built-in.
+
     Args:
         loaded: List of _LoadedEntryPoint (from load_all_plugins()).
     """
     from senpy.plugins.registry import _REGISTERED_LINT_RULES
+    from senpy.rules.rules_info import RULES_DATABASE
 
     for entry in loaded:
         rule_cls = entry.rule_cls
@@ -341,5 +359,20 @@ def register_loaded_plugins(loaded: list[_LoadedEntryPoint]) -> None:
             _logger.warning("Plugin %r has no meta. Skipping registration.", entry.name)
             continue
         code = rule_cls.meta.code
+        # Reject plugin rules that collide with a built-in RULES_DATABASE
+        # entry. The built-in is the canonical source for the code — a
+        # plugin cannot shadow it. This check is the runtime counterpart
+        # of the cosmetic filter in rule_dispatch.py (which only affects
+        # `senpy rule list/show` output).
+        if code in RULES_DATABASE:
+            _logger.warning(
+                "Plugin %r declares code %r, which is already a built-in rule. "
+                "Plugin rules with built-in codes are rejected to prevent "
+                "duplicate diagnostics and shadowing. Use a code in the "
+                "reserved RPY9xx plugin range instead.",
+                entry.name,
+                code,
+            )
+            continue
         # Register (same as @register_rule decorator does)
         _REGISTERED_LINT_RULES.append((code, rule_cls))

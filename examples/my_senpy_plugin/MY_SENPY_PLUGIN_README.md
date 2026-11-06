@@ -16,6 +16,19 @@ label start:
 
 ---
 
+## Rule code ranges (contract)
+
+Senpy reserves rule code ranges to prevent collisions between built-in rules and plugin rules:
+
+| Range | Owner | Notes |
+|---|---|---|
+| `RPY0xx`–`RPY8xx` | **Built-in rules only** | See `RULES.md` for the full list. Plugin rules with a code in this range that matches an existing built-in are **rejected at registration** with a WARNING — the plugin rule will not appear in `senpy rule list` and will not run during analysis. |
+| `RPY9xx` | **Plugin rules only** | Built-in will never use this range. Plugin authors should pick any `RPY9xx` code (e.g. `RPY901`, `RPY902`, ...). Two different plugins that pick the same `RPY9xx` code will collide at runtime — coordinate with other plugin authors or pick a distinctive code. |
+
+If you accidentally use a built-in code, Senpy will log a WARNING at load time and skip your rule. The fix is to switch to an unused `RPY9xx` code.
+
+---
+
 ## Installation
 
 ### From source (development mode)
@@ -190,7 +203,7 @@ senpy /path/to/game
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `code` | `str` | ✅ | Rule code, must match `RPY\d{3}` pattern (e.g. `"RPY901"`) |
+| `code` | `str` | ✅ | Rule code, must match `RPY\d{3}` pattern and be in the `RPY9xx` range reserved for plugins (e.g. `"RPY901"`). Codes `RPY001`–`RPY8xx` are reserved for built-in rules and will be rejected at registration with a WARNING. |
 | `docs` | `str` | ✅ | Human-readable description of what the rule detects |
 | `severity` | `str` | ✅ | One of: `"ERROR"`, `"WARNING"`, `"HINT"`, `"INFO"` |
 | `fixable` | `bool` | ❌ | `True` if rule provides `fix_replacement` in Diagnostics (default: `False`) |
