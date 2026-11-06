@@ -42,6 +42,15 @@ repos:
         # .github/workflows/*.yml — GitHub Actions YAML
         # senpy-vscode/package.json is JSON, not YAML, but pre-commit's
         # check-yaml is permissive enough to handle it.
+        #
+        # mkdocs.yml uses MkDocs-specific !!python/name: tags (e.g. for
+        # pymdownx.superfences Mermaid fence format) that the standard
+        # PyYAML parser in pre-commit's check-yaml can't resolve without
+        # the pymdown-extensions package installed. Excluding it here is
+        # safe: GitHub Actions' docs.yml workflow runs `mkdocs build
+        # --strict` on every push, which catches any real YAML syntax
+        # errors in mkdocs.yml (including broken !!python/name: tags).
+        exclude: ^mkdocs\.yml$
       - id: check-toml
       - id: check-merge-conflict
       - id: check-added-large-files

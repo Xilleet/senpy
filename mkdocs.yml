@@ -1,0 +1,184 @@
+# =============================================================================
+# MkDocs configuration for the Senpy documentation site.
+# =============================================================================
+# Site: https://xilleet.github.io/senpy/
+#
+# Source markdown lives in docs/. Output is built into site/ by MkDocs Material,
+# then published to the gh-pages branch by .github/workflows/docs.yml.
+#
+# The repo README.md / RULES.md / ARCHITECTURE.md / CHANGELOG.md stay where
+# they are — they are GitHub-rendered references for the repo itself. This
+# site is a separate SEO surface: each page targets one search intent
+# (cluster A-F from the SEO audit), and links into the repo references for
+# the deep technical material.
+# =============================================================================
+
+site_name: Senpy — Static Analyzer for Ren'Py
+site_url: https://xilleet.github.io/senpy/
+site_description: >-
+  Fast static analyzer, semantic linter and Language Server for Ren'Py
+  visual novels. Detects undefined variables, broken labels, control-flow
+  bugs, rollback/save issues, and translation errors — without the Ren'Py SDK.
+site_author: Xilleet
+repo_url: https://github.com/Xilleet/senpy
+repo_name: Xilleet/senpy
+edit_uri: edit/main/docs/
+
+# Use directory URLs (clean URLs: /renpy-linter/ instead of /renpy-linter.html).
+# This is the GitHub Pages convention and reads better in the address bar.
+use_directory_urls: true
+
+# docs/ folder is the source. site/ is the build output (git-ignored, generated
+# by GitHub Actions on every push to main).
+docs_dir: docs
+
+# =============================================================================
+# Theme — Material for MkDocs (same as Ruff / FastAPI / Pydantic / Typer).
+# =============================================================================
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant       # SPA-style page transitions (no full reload)
+    - navigation.instant.prefetch  # Prefetch links on hover
+    - navigation.tracking       # URL updates on anchor scroll
+    - navigation.tabs           # Top-level nav as tabs
+    - navigation.sections       # Group pages under sections in sidebar
+    - navigation.expand         # Expand all sections by default
+    - navigation.top            # "Back to top" button on long pages
+    - navigation.path           # Breadcrumbs
+    - toc.integrate             # Right-side TOC integrates with nav
+    - toc.follow                # TOC highlights current section
+    - content.code.copy         # Copy button on code blocks
+    - content.code.annotate     # Code annotations (#!  ...)
+    - content.tabs.link         # Synchronised tabs
+    - search.suggest            # Search suggestions
+    - search.highlight          # Highlight search terms in results
+    - search.share              # Shareable search links
+  palette:
+    # Light/dark/auto toggle — Material default, works on GitHub Pages.
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: pink             # Ren'Py brand pink
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: pink
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+    - media: "(prefers-color-scheme)"
+      scheme: default
+      primary: pink
+      accent: indigo
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  favicon: assets/favicon.svg
+  icon:
+    logo: material/eye-circle  # "Notice me" — Senpy pun on senpai
+
+# =============================================================================
+# Markdown extensions — match Ruff/FastAPI configuration closely.
+# =============================================================================
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: Xilleet
+      repo: senpy
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - attr_list
+  - md_in_html
+  - def_list
+  - footnotes
+  - toc:
+      permalink: "#"
+      toc_depth: 3
+
+# =============================================================================
+# Plugins — search is built-in; others are extras.
+# =============================================================================
+plugins:
+  - search:
+      lang: en
+  - tags                          # Frontmatter tags → pages can be tagged; tag index auto-generated
+
+# =============================================================================
+# Navigation — explicit (not auto-generated) so SEO landing pages are first.
+# =============================================================================
+nav:
+  - Home: index.md
+  - Install: install.md
+  - Get started:
+      - Ren'Py Linter: renpy-linter.md
+      - Static Analysis: renpy-static-analysis.md
+      - Error Checker: renpy-error-checker.md
+      - VS Code Extension: renpy-vscode-extension.md
+      - Translation Checker: renpy-translation-checker.md
+      - Story Graph: renpy-story-graph.md
+      - GitHub Actions: renpy-github-actions.md
+  - Reference:
+      - CLI reference: cli-reference.md
+      - Configuration: configuration.md
+      - Comparison: comparison.md
+      - Formatter: formatter.md
+      - Plugin development: plugin-development.md
+  - Rules:
+      - All rules: rules/index.md
+      - RPY0xx — Formatting: rules/rpy0xx-formatting.md
+      - RPY1xx — Variables & State: rules/rpy1xx-state.md
+      - RPY2xx — Screens & UI: rules/rpy2xx-screens.md
+      - RPY3xx — Story Flow: rules/rpy3xx-story.md
+      - RPY4xx — Branching: rules/rpy4xx-flow.md
+      - RPY5xx — Assets & Media: rules/rpy5xx-assets.md
+      - RPY6xx — Translations: rules/rpy6xx-translations.md
+      - RPY7xx — Dead Code: rules/rpy7xx-deadcode.md
+      - RPY8xx — Translation Quality: rules/rpy8xx-translation-quality.md
+
+# =============================================================================
+# Extra — site-wide CSS, version badge, social links.
+# =============================================================================
+extra:
+  version:
+    provider: mike   # versioned docs (when mike is added later)
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Xilleet/senpy
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/senpy-linter/
+    - icon: material/eye-check
+      link: https://open-vsx.org/extension/xilleet/senpy-vscode
+  generator: false   # hide "Made with MkDocs" footer (keep it minimal)
+
+extra_css:
+  - assets/extra.css
+
+# =============================================================================
+# Watch — rebuild on source changes during local `mkdocs serve`.
+# =============================================================================
+watch:
+  - docs/
+  - mkdocs.yml

@@ -1,0 +1,48 @@
+/* Senpy docs site — minimal extra styles.
+ *
+ * Goals:
+ *  - Tighten typography slightly (Material defaults are a bit airy for
+ *    code-heavy pages).
+ *  - Make admonition borders a touch stronger for visual separation.
+ *  - Make inline code a bit more visible (light grey background, like
+ *    FastAPI docs).
+ */
+
+/* Slightly tighter line-height for prose. */
+.md-typeset {
+  line-height: 1.55;
+}
+
+/* Inline code — light background, like FastAPI/Ruff docs. */
+.md-typeset code {
+  background-color: rgba(127, 127, 127, 0.08);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+
+/* Code blocks — keep Material default but tighten the header. */
+.md-typeset pre > code {
+  padding: 0.8em 1em;
+}
+
+/* Admonition titles — make them slightly bolder. */
+.md-typeset .admonition-title,
+.md-typeset summary {
+  font-weight: 600;
+}
+
+/* Tables — same as Material default, but ensure code in cells doesn't wrap
+ * mid-token. */
+.md-typeset table code {
+  white-space: nowrap;
+}
+
+/* Footer — hide the "Made with MkDocs" line (we already set generator: false
+ * in mkdocs.yml, but this is a belt-and-suspenders for any sub-page that
+ * might miss the config). */
+.md-footer-meta__inner {
+  display: none;
+}
+
+/* "Was this helpful?" is a future addition; for now, keep the bottom of
+ * each page clean. */

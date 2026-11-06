@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Senpy favicon: stylised eye ("Notice me, Senpy!" — a play on senpai) -->
+  <rect width="32" height="32" fill="#1f1f28"/>
+  <ellipse cx="16" cy="16" rx="12" ry="7" fill="none" stroke="#ff69b4" stroke-width="2"/>
+  <circle cx="16" cy="16" r="4" fill="#ff69b4"/>
+  <circle cx="16" cy="16" r="1.5" fill="#1f1f28"/>
+</svg>
