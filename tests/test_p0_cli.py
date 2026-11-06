@@ -64,13 +64,13 @@ def test_p0_1_output_file_writes_to_file_for_text_format(tmp_path: Path):
 
     assert "RPY" in content, f"В файле нет RPY-кодов. Содержимое:\n{content[:500]}"
 
-    assert "Diagnostics Summary" in content or "Rule" in content, (
-        f"В файле нет сводной таблицы. Содержимое:\n{content[:500]}"
-    )
+    assert (
+        "Diagnostics Summary" in content or "Rule" in content
+    ), f"В файле нет сводной таблицы. Содержимое:\n{content[:500]}"
 
-    assert "RPY101" not in result.stdout, (
-        f"Diagnostic RPY101 утёк в stdout вместо файла:\n{result.stdout}"
-    )
+    assert (
+        "RPY101" not in result.stdout
+    ), f"Diagnostic RPY101 утёк в stdout вместо файла:\n{result.stdout}"
 
 
 def test_p0_1_output_file_creates_parent_directory(tmp_path: Path):
@@ -84,9 +84,9 @@ def test_p0_1_output_file_creates_parent_directory(tmp_path: Path):
 
     result = _run_cli(["--output-file", str(nested_out)], project)
 
-    assert nested_out.exists(), (
-        f"Вложенная директория не создана.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
+    assert (
+        nested_out.exists()
+    ), f"Вложенная директория не создана.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     assert nested_out.stat().st_size > 0
 
 
@@ -99,9 +99,9 @@ def test_p0_1_stdout_works_without_output_file(tmp_path: Path):
 
     result = _run_cli([], project)
 
-    assert "RPY" in result.stdout, (
-        f"Без --output-file diagnostics не пошли в stdout:\n{result.stdout}"
-    )
+    assert (
+        "RPY" in result.stdout
+    ), f"Без --output-file diagnostics не пошли в stdout:\n{result.stdout}"
 
 
 def test_p0_2_stats_does_not_rescan_project(tmp_path: Path):
@@ -236,9 +236,9 @@ def test_p0_3_traceback_finds_errors_txt_via_default_const(tmp_path: Path):
     result = _run_cli(["--traceback"], project)
 
     # Должен найти и распарсить
-    assert "Traceback Inspector" in result.stdout, (
-        f"Не нашли errors.txt через авто-поиск.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
+    assert (
+        "Traceback Inspector" in result.stdout
+    ), f"Не нашли errors.txt через авто-поиск.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     # Должен определить правило RPY104 (NameError)
     assert "RPY104" in result.stdout
 
@@ -253,9 +253,9 @@ def test_p0_3_traceback_explicit_relative_path(tmp_path: Path):
 
     result = _run_cli(["--traceback", "errors.txt"], project)
 
-    assert "Traceback Inspector" in result.stdout, (
-        f"Явный относительный путь не отрезолвился к args.path.\nstdout:\n{result.stdout}\n"
-    )
+    assert (
+        "Traceback Inspector" in result.stdout
+    ), f"Явный относительный путь не отрезолвился к args.path.\nstdout:\n{result.stdout}\n"
 
 
 def test_p0_3_traceback_nonexistent_file_gives_helpful_hint(tmp_path: Path):
@@ -279,3 +279,88 @@ def test_p0_3_traceback_default_const_works_when_traceback_txt_exists(tmp_path: 
 
     assert "Traceback Inspector" in result.stdout
     assert "RPY104" in result.stdout
+
+
+# =============================================================================
+# --fix on read-only file must surface the failure (silent OSError regression)
+# =============================================================================
+
+
+def _write_fixable_project(tmp_path: Path) -> Path:
+    """Project whose .rpy file the formatter would rewrite (tabs → spaces)."""
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+    (game_dir / "script.rpy").write_text(
+        "label start:\n\t$x=1\n\treturn\n",
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+def _make_readonly(path: Path) -> None:
+    path.chmod(0o444)
+
+
+def _restore_writable(path: Path) -> None:
+    try:
+        path.chmod(0o644)
+    except OSError:
+        pass
+
+
+def test_fix_on_readonly_file_exits_nonzero(tmp_path: Path):
+    """``senpy --fix`` on a read-only file must exit 1, not 0.
+
+    Before the fix: ``OSError`` from ``open(..., "w")`` was silently
+    swallowed (``except OSError: pass``), the run looked successful, and
+    the user believed the fixes were applied.
+    """
+    project = _write_fixable_project(tmp_path)
+    script = project / "game" / "script.rpy"
+    _make_readonly(script)
+    try:
+        result = _run_cli(["--fix", "--no-cache"], project)
+    finally:
+        _restore_writable(script)
+
+    assert result.returncode != 0, (
+        f"--fix on a read-only file must exit non-zero, got 0.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+
+
+def test_fix_on_readonly_file_warns_in_output(tmp_path: Path):
+    """The user must be told which file could not be written."""
+    project = _write_fixable_project(tmp_path)
+    script = project / "game" / "script.rpy"
+    _make_readonly(script)
+    try:
+        result = _run_cli(["--fix", "--no-cache"], project)
+    finally:
+        _restore_writable(script)
+
+    combined = result.stdout + result.stderr
+    assert "script.rpy" in combined, (
+        f"Output must mention script.rpy as the file that could not be written.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    # Both text and "Failed to write" wording should appear in the warning.
+    assert "Failed to write" in combined or "failed to write" in combined.lower(), (
+        f"Output must contain a 'Failed to write' warning.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+
+
+def test_fix_on_writable_file_exits_zero_when_no_errors(tmp_path: Path):
+    """``senpy --fix`` on a writable file with no semantic errors → exit 0.
+
+    Regression guard: the failed-writes exit code must NOT trigger on a
+    normal successful fix. Otherwise the new check breaks every working
+    ``--fix`` invocation.
+    """
+    project = _write_fixable_project(tmp_path)
+    result = _run_cli(["--fix", "--no-cache"], project)
+    assert result.returncode == 0, (
+        f"--fix on a writable file with no errors must exit 0, got {result.returncode}.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )

@@ -101,6 +101,11 @@ class SenpyAnalyzer:
         self.total_lines: int = 0
         self.fixed_count: int = 0
         self.fixable_count: int = 0
+        # File paths that --fix could not write back (read-only / permission
+        # denied / disk full / ...). Surfaced via AnalysisResult.failed_writes
+        # so runner.main() can exit non-zero and the user is told the fixes
+        # were not applied.
+        self.failed_writes: list[str] = []
         self.file_scopes: dict[str, FileScope] = {}
         self._stage1_lines: dict[str, list[str]] = {}
         # Per-file noqa maps accumulated during _analyze_file; consumed by
@@ -240,6 +245,7 @@ class SenpyAnalyzer:
         self.total_lines = 0
         self.fixed_count = 0
         self.fixable_count = 0
+        self.failed_writes.clear()
         self._stage1_lines.clear()
         # Per-file noqa maps accumulated during _analyze_file; consumed by
         # cross-file rules (RPY701-707, RPY802) which emit diagnostics for

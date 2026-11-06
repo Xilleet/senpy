@@ -45,10 +45,7 @@ class TestDryRunCallback:
     """SenpyAnalyzer.run(dry_run_callback=cb) must capture writes, not write to disk."""
 
     def test_run_accepts_dry_run_callback_parameter(self, tmp_path: Path):
-        """run() must accept dry_run_callback as a keyword argument.
-
-        RED: TypeError before T-032 adds the parameter.
-        """
+        """run() must accept dry_run_callback as a keyword argument."""
         _make_fixable_project(tmp_path)
         analyzer = SenpyAnalyzer(str(tmp_path), fix=True, no_cache=True)
 

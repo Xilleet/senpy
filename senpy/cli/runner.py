@@ -280,22 +280,73 @@ def _handle_post_analysis(args, analyzer, result, console, is_tsundere, ignored_
     return None
 
 
-def _handle_output_format(args, active_diagnostics, result, elapsed, console, ignored_codes):
+def _force_nonzero_if_failed_writes(exit_code: int, had_failed_writes: bool) -> int:
+    """Force exit code 1 if any ``--fix`` write failed.
+
+    Without this, ``senpy --fix`` on a read-only file reports a successful
+    run (exit 0) while the file on disk is unchanged. ``_write_fixed_file``
+    already logs the warning and records the path in
+    ``AnalysisResult.failed_writes`` — this helper turns that signal into a
+    non-zero exit code so CI can detect the silent failure.
+    """
+    if had_failed_writes and exit_code == 0:
+        return 1
+    return exit_code
+
+
+def _print_failed_writes_summary(result, console, is_quiet_mode: bool) -> bool:
+    """Print a summary of files ``--fix`` could not write back.
+
+    Returns True if any failed writes were recorded. ``is_quiet_mode`` is
+    True for non-text output formats (sarif / json / junit / github /
+    rdjson / gitlab) — in that case the warning still goes to ``console``
+    but the rich-formatted summary is suppressed so machine-readable output
+    stays clean.
+    """
+    failed = list(getattr(result, "failed_writes", []))
+    if not failed:
+        return False
+    if not is_quiet_mode:
+        console.print(f"[bold red]Failed to write fixes to {len(failed)} file(s):[/bold red]")
+        for path in failed:
+            console.print(f"  [red]- {path}[/red]")
+    return True
+
+
+def _handle_output_format(
+    args,
+    active_diagnostics,
+    result,
+    elapsed,
+    console,
+    ignored_codes,
+    had_failed_writes: bool = False,
+):
     """Dispatch output by format: sarif/json/junit/github/rdjson/gitlab exit directly,
-    text format returns control to caller for further processing."""
+    text format returns control to caller for further processing.
+
+    ``had_failed_writes`` forces exit code 1 if any ``--fix`` write failed —
+    a successful fix on a read-only file is a silent data loss that CI must
+    be able to detect. The flag is OR'd with the format's own exit code so
+    that a project with diagnostics still exits 1 (not 2).
+    """
     if args.output_format == "sarif":
-        sys.exit(render_sarif(active_diagnostics, args, console))
+        exit_code = render_sarif(active_diagnostics, args, console)
     elif args.output_format == "json":
-        sys.exit(render_json(active_diagnostics, result, elapsed, args, console))
+        exit_code = render_json(active_diagnostics, result, elapsed, args, console)
     elif args.output_format == "junit":
-        sys.exit(render_junit(active_diagnostics, args, console))
+        exit_code = render_junit(active_diagnostics, args, console)
     elif args.output_format == "github":
-        sys.exit(render_github(active_diagnostics, args, console))
+        exit_code = render_github(active_diagnostics, args, console)
     elif args.output_format == "rdjson":
-        sys.exit(render_rdjson(active_diagnostics, args, console))
+        exit_code = render_rdjson(active_diagnostics, args, console)
     elif args.output_format == "gitlab":
-        sys.exit(render_gitlab(active_diagnostics, args, console))
-    # text format — caller handles output_redirect + render_text
+        exit_code = render_gitlab(active_diagnostics, args, console)
+    else:
+        # text format — caller handles output_redirect + render_text
+        return
+
+    sys.exit(_force_nonzero_if_failed_writes(exit_code, had_failed_writes))
 
 
 def _handle_check_mode(args, result, console) -> int | None:
@@ -427,6 +478,13 @@ def main():
         args, extra_rpy_files, is_quiet_mode, dry_run_callback=dry_run_callback
     )
 
+    # Surface --fix failures: if any file could not be written back (read-only,
+    # permission denied, disk full), the user must know — otherwise the run
+    # looks successful while the fixes were silently dropped. The warning
+    # is logged per-file in _write_fixed_file; here we print a concise summary
+    # and remember the flag so the final exit code can be forced to non-zero.
+    had_failed_writes = _print_failed_writes_summary(result, console, is_quiet_mode)
+
     # Post-analysis output handlers (--stats, --export-wiki, --export-html, --graph, --defaults, --stubs)
     _handle_post_analysis(args, analyzer, result, console, is_tsundere, ignored_codes, elapsed)
 
@@ -434,7 +492,15 @@ def main():
     active_diagnostics, hidden_info_count = filter_diagnostics(result, args, ignored_codes)
 
     # Output format dispatch (sarif/json/junit/github exit directly, text continues)
-    _handle_output_format(args, active_diagnostics, result, elapsed, console, ignored_codes)
+    _handle_output_format(
+        args,
+        active_diagnostics,
+        result,
+        elapsed,
+        console,
+        ignored_codes,
+        had_failed_writes=had_failed_writes,
+    )
 
     # --output-file for text format: redirect console to file
     output_redirect = (
@@ -449,19 +515,24 @@ def main():
     # --diff dry-run: print unified diff and exit
     _handle_diff_mode(args, diff_collector, result, console)
 
-    # Text output (default): render diagnostic cards + summary table + fixable report
+    # Text output (default): render diagnostic cards + summary table + fixable report.
+    # If --fix could not write some files, force exit 1 even when there are no
+    # diagnostics — a successful fix on a read-only file is silent data loss.
     with output_redirect:
         _exit_with_output_redirect(
             args,
-            render_text(
-                active_diagnostics,
-                hidden_info_count,
-                result,
-                args,
-                console,
-                is_tsundere,
-                elapsed,
-                max_errors,
+            _force_nonzero_if_failed_writes(
+                render_text(
+                    active_diagnostics,
+                    hidden_info_count,
+                    result,
+                    args,
+                    console,
+                    is_tsundere,
+                    elapsed,
+                    max_errors,
+                ),
+                had_failed_writes,
             ),
         )
 

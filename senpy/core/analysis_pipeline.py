@@ -126,6 +126,7 @@ class AnalysisPipeline:
             total_lines=a.total_lines,
             fixed_count=a.fixed_count,
             fixable_count=a.fixable_count,
+            failed_writes=list(a.failed_writes),
         )
 
     def _analyze_all_files(
@@ -522,6 +523,12 @@ class AnalysisPipeline:
         ``(file_path, lines)`` instead of writing to disk. This is used
         by ``--diff`` mode to capture what ``--fix`` would write without
         modifying files — replacing the old ``builtins.open`` monkey-patch.
+
+        On ``OSError`` (read-only file, disk full, permission denied, ...)
+        the failure is logged at WARNING level and the path is appended to
+        ``self.analyzer.failed_writes`` so ``AnalysisResult.failed_writes``
+        can surface it to the caller. The exception is NOT re-raised: a
+        single unwritable file must not abort the whole analysis run.
         """
         if self._dry_run_callback is not None:
             self._dry_run_callback(file_path, lines)
@@ -529,8 +536,9 @@ class AnalysisPipeline:
         try:
             with open(file_path, "w", encoding="utf-8", newline="") as f:
                 f.writelines(lines)
-        except OSError:
-            pass
+        except OSError as e:
+            _logger.warning("Failed to write fixes to %s: %s", file_path, e)
+            self.analyzer.failed_writes.append(file_path)
 
     def analyze_file_only(self, file_path: str) -> list[Diagnostic]:
         """Fast analysis of only the changed file for LSP without state leakage."""

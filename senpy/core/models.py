@@ -38,6 +38,7 @@ class AnalysisResult:
     total_lines: int
     fixed_count: int = 0
     fixable_count: int = 0
+    failed_writes: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
