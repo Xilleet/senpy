@@ -6,6 +6,59 @@ import * as fs from 'fs';
 
 let client: LanguageClient;
 
+/**
+ * Escape HTML special characters in a string for safe interpolation into
+ * webview HTML. Prevents XSS from user-controlled .rpy content (Character
+ * names, dialogue, label names) that flows into the Story Graph and Stats
+ * webviews.
+ *
+ * The VS Code webview has access to ``acquireVsCodeApi()`` — an XSS in a
+ * webview is a full extension compromise, not just a visual glitch. Every
+ * field interpolated from .rpy analysis must be escaped.
+ *
+ * Mirrors Python's ``html.escape``: escapes ``&``, ``<``, ``>``, ``"``,
+ * ``'``. Returns the empty string for null/undefined input.
+ */
+function escapeHtml(s: unknown): string {
+    if (s === null || s === undefined) {
+        return '';
+    }
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+/**
+ * Escape a string for safe interpolation into a Mermaid graph definition.
+ *
+ * Mermaid ``securityLevel: 'strict'`` (the default after the webview XSS
+ * fix) already sanitises HTML in node labels, but we additionally escape
+ * ``<`` and ``>`` in the raw source so that even if ``securityLevel``
+ * were hypothetically rolled back to ``'loose'``, HTML tags in label
+ * names would not execute. Mirrors the defense-in-depth approach used
+ * in ``senpy/formats/html_report.py`` for the standalone HTML report.
+ *
+ * Also escapes JS template-literal metacharacters (``\``, `` ` ``, ``$``)
+ * so the graph definition can be safely interpolated into a JS
+ * template string.
+ */
+function escapeMermaidSource(graphContent: string): string {
+    return graphContent
+        // HTML angle brackets — defense-in-depth (Mermaid strict already
+        // sanitises these, but escaping here means a securityLevel rollback
+        // cannot re-introduce the XSS).
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        // JS template-literal metacharacters (so the source can be safely
+        // interpolated into `${safeSource}` in the webview script).
+        .replace(/\\/g, '\\\\')
+        .replace(/`/g, '\\`')
+        .replace(/\$/g, '\\$');
+}
+
 export function activate(context: vscode.ExtensionContext) {
     const config = vscode.workspace.getConfiguration("senpy");
     let serverCmd = resolveServerCommand(context);
@@ -89,9 +142,9 @@ export function activate(context: vscode.ExtensionContext) {
                         'senpyGraph',
                         'Story Flow Graph',
                         vscode.ViewColumn.Beside,
-                        { 
-                            enableScripts: true, 
-                            retainContextWhenHidden: true 
+                        {
+                            enableScripts: true,
+                            retainContextWhenHidden: true
                         }
                     );
 
@@ -414,10 +467,10 @@ async function checkForUpdates(context: vscode.ExtensionContext) {
             return;
         }
 
-        const release = await response.json() as { 
-            tag_name: string; 
-            html_url: string; 
-            assets: Array<{ name: string; browser_download_url: string }> 
+        const release = await response.json() as {
+            tag_name: string;
+            html_url: string;
+            assets: Array<{ name: string; browser_download_url: string }>
         };
 
         const vsixAsset = release.assets?.find(a => a.name.endsWith(".vsix"));
@@ -447,7 +500,7 @@ async function checkForUpdates(context: vscode.ExtensionContext) {
 function resolveServerCommand(context: vscode.ExtensionContext): string {
     const config = vscode.workspace.getConfiguration("senpy");
     const customPath = config.get<string>("executablePath");
-    
+
     // 1. Приоритет: явный путь из настроек пользователя
     if (customPath && customPath.trim().length > 0) {
         return customPath.trim();
@@ -485,10 +538,7 @@ function isNewer(latest: string, current: string): boolean {
 }
 
 function getWebviewContent(graphContent: string, metaJson: string): string {
-    const safeSource = graphContent
-        .replace(/\\/g, '\\\\')
-        .replace(/`/g, '\\`')
-        .replace(/\$/g, '\\$');
+    const safeSource = escapeMermaidSource(graphContent);
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -499,14 +549,14 @@ function getWebviewContent(graphContent: string, metaJson: string): string {
     <title>Story Graph</title>
     <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
     <style>
-        body, html { 
-            margin: 0; 
-            padding: 0; 
-            width: 100%; 
-            height: 100%; 
-            overflow: hidden; 
-            background-color: var(--vscode-editor-background); 
-            color: var(--vscode-editor-foreground); 
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--vscode-editor-background);
+            color: var(--vscode-editor-foreground);
             font-family: var(--vscode-font-family);
         }
         #topbar {
@@ -529,20 +579,20 @@ function getWebviewContent(graphContent: string, metaJson: string): string {
         button:hover {
             background-color: var(--vscode-button-hoverBackground);
         }
-        #graph-container { 
-            width: 100%; 
-            height: 100%; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
+        #graph-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
-        #render-target { 
-            width: 100%; 
-            height: 100%; 
+        #render-target {
+            width: 100%;
+            height: 100%;
         }
-        svg { 
-            width: 100% !important; 
-            height: 100% !important; 
+        svg {
+            width: 100% !important;
+            height: 100% !important;
         }
 
         .node {
@@ -573,10 +623,10 @@ function getWebviewContent(graphContent: string, metaJson: string): string {
     <script id="senpy-metadata" type="application/json">
         ${metaJson}
     </script>
-    
+
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-        
+
         const vscode = acquireVsCodeApi();
         const metaElement = document.getElementById('senpy-metadata');
         let meta = { locations: {} };
@@ -585,11 +635,11 @@ function getWebviewContent(graphContent: string, metaJson: string): string {
         } catch(e) {}
 
         const isLight = document.body.classList.contains('vscode-light');
-        mermaid.initialize({ 
-            startOnLoad: false, 
+        mermaid.initialize({
+            startOnLoad: false,
             theme: isLight ? 'default' : 'dark',
             maxTextSize: 1000000,
-            securityLevel: 'loose'
+            securityLevel: 'strict'
         });
 
         const graphDefinition = \`${safeSource}\`;
@@ -603,11 +653,11 @@ function getWebviewContent(graphContent: string, metaJson: string): string {
                 const svgElement = target.querySelector('svg');
                 svgElement.setAttribute('width', '100%');
                 svgElement.setAttribute('height', '100%');
-                
+
                 target.addEventListener('click', (e) => {
                     const nodeElem = e.target.closest('.node');
                     if (!nodeElem) return;
-                    
+
                     const labelSpan = nodeElem.querySelector('.nodeLabel');
                     const nodeName = labelSpan ? labelSpan.textContent.trim() : null;
                     if (!nodeName) return;
@@ -650,14 +700,14 @@ function getWebviewContent(graphContent: string, metaJson: string): string {
 function getStatsWebviewContent(data: any): string {
     const charsRows = (data.characters || []).map((c: any) => `
         <tr>
-            <td style="font-weight: bold; color: var(--vscode-charts-blue);">${c.display_name}</td>
-            <td style="color: var(--vscode-descriptionForeground); font-family: monospace;">${c.tag}</td>
-            <td style="text-align: right;">${c.lines.toLocaleString()}</td>
-            <td style="text-align: right; font-weight: bold; color: var(--vscode-charts-green);">${c.words.toLocaleString()}</td>
-            <td style="text-align: right;">${c.percentage}%</td>
+            <td style="font-weight: bold; color: var(--vscode-charts-blue);">${escapeHtml(c.display_name)}</td>
+            <td style="color: var(--vscode-descriptionForeground); font-family: monospace;">${escapeHtml(c.tag)}</td>
+            <td style="text-align: right;">${escapeHtml(c.lines.toLocaleString())}</td>
+            <td style="text-align: right; font-weight: bold; color: var(--vscode-charts-green);">${escapeHtml(c.words.toLocaleString())}</td>
+            <td style="text-align: right;">${escapeHtml(c.percentage)}%</td>
             <td style="width: 180px;">
                 <div style="background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; height: 14px;">
-                    <div style="width: ${c.percentage}%; background: var(--vscode-progressBar-background, #007acc); height: 100%;"></div>
+                    <div style="width: ${escapeHtml(c.percentage)}%; background: var(--vscode-progressBar-background, #007acc); height: 100%;"></div>
                 </div>
             </td>
         </tr>
@@ -667,6 +717,8 @@ function getStatsWebviewContent(data: any): string {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
     <title>Story Analytics</title>
     <style>
         body {
@@ -731,7 +783,7 @@ function getStatsWebviewContent(data: any): string {
         </div>
         <div class="card">
             <div class="card-title">Estimated Reading Time</div>
-            <div class="card-value" style="color: var(--vscode-charts-purple, #b180d7);">${data.reading_time_formatted}</div>
+            <div class="card-value" style="color: var(--vscode-charts-purple, #b180d7);">${escapeHtml(data.reading_time_formatted)}</div>
         </div>
         <div class="card">
             <div class="card-title">Cast Members</div>

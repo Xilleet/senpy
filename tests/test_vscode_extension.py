@@ -369,3 +369,218 @@ class TestExtensionSynchronize:
         # Простая проверка: активация есть, deactivate есть
         assert "export function activate" in extension_src
         assert "export function deactivate" in extension_src or "deactivate()" in extension_src
+
+
+# =============================================================================
+# Webview XSS escaping — Story Graph + Stats
+# =============================================================================
+
+
+class TestWebviewXssEscaping:
+    """VS Code webview HTML must escape user-controlled .rpy content.
+
+    The Story Graph webview (``getWebviewContent``) and Stats webview
+    (``getStatsWebviewContent``) interpolate data parsed from .rpy files
+    (Character names, label names, dialogue). Without HTML-escaping, a
+    malicious .rpy with ``Character("<img src=x onerror=alert(1)>")``
+    executes JavaScript in the webview — and the webview has
+    ``acquireVsCodeApi()`` access, so this is a full extension
+    compromise, not just a visual glitch.
+
+    These tests verify the source code of ``extension.ts`` (not the
+    runtime webview output — Extension Host tests are not run in CI per
+    roadmap B5.5). The invariants checked:
+      1. Graph webview: ``securityLevel: 'strict'`` (not ``'loose'``).
+      2. Graph webview: Mermaid source is HTML-escaped (``<`` → ``&lt;``)
+         as defense-in-depth, mirroring ``html_report.py``.
+      3. Stats webview: CSP meta-tag present.
+      4. Stats webview: ``display_name``, ``tag``, ``reading_time_formatted``
+         are wrapped in ``escapeHtml(...)``.
+      5. An ``escapeHtml`` helper exists and escapes ``&``, ``<``, ``>``,
+         ``"``, ``'``.
+    """
+
+    @pytest.fixture
+    def extension_src(self) -> str:
+        """Read extension.ts source (or skip if not found)."""
+        if not _EXTENSION_TS.exists():
+            pytest.skip(f"{_EXTENSION_TS} not found — VS Code extension not built.")
+        return _EXTENSION_TS.read_text(encoding="utf-8")
+
+    def test_escape_html_helper_exists(self, extension_src):
+        """An ``escapeHtml`` helper must exist for webview interpolation."""
+        assert re.search(r"function\s+escapeHtml\s*\(", extension_src), (
+            "No `escapeHtml` function found in extension.ts. Webview HTML that "
+            "interpolates user-controlled .rpy content (Character names, label "
+            "names, dialogue) must escape HTML to prevent XSS."
+        )
+
+    def test_escape_html_escapes_all_five_chars(self, extension_src):
+        """``escapeHtml`` must escape ``&``, ``<``, ``>``, ``"``, ``'``.
+
+        These are the five characters that can break out of HTML
+        attributes or inject markup. Missing any one leaves an XSS
+        vector (e.g. ``"`` breaks out of an attribute, allowing
+        ``onerror=alert(1)`` injection).
+        """
+        # Extract the escapeHtml function body. The function contains
+        # nested braces (if-block), so we capture from the function
+        # opening brace to the end of the function (next top-level
+        # function or a line that's just `}`).
+        m = re.search(
+            r"function\s+escapeHtml\s*\([^)]*\)\s*(?::\s*\w+\s*)?{(.+?)\n}",
+            extension_src,
+            re.DOTALL,
+        )
+        assert m, "Could not find escapeHtml function body"
+        body = m.group(1)
+        # If the non-greedy match caught only the if-block (no &amp;),
+        # extend to the full function by capturing greedily to the
+        # last `}` before the next function definition.
+        if "&amp;" not in body:
+            # Find the full function span: from `function escapeHtml` to
+            # the next `function` keyword (or end of file).
+            start_match = re.search(
+                r"function\s+escapeHtml\s*\([^)]*\)\s*(?::\s*\w+\s*)?{", extension_src
+            )
+            if start_match:
+                rest = extension_src[start_match.end() :]
+                next_fn = re.search(r"\n(function|export\s+function)\s+\w+\s*\(", rest)
+                body = rest[: next_fn.start()] if next_fn else rest
+        assert (
+            "&amp;" in body
+        ), "escapeHtml does not escape `&` (the first escape — must be first to avoid double-escaping)."
+        assert "&lt;" in body, "escapeHtml does not escape `<`."
+        assert "&gt;" in body, "escapeHtml does not escape `>`."
+        assert "&quot;" in body, 'escapeHtml does not escape `"` (attribute breakout).'
+        assert (
+            "&#39;" in body or "&#x27;" in body or "&apos;" in body
+        ), "escapeHtml does not escape `'` (single-quote attribute breakout)."
+
+    def _stats_webview_body(self, extension_src: str) -> str:
+        """Extract the getStatsWebviewContent function body from extension.ts.
+
+        The function contains nested braces (template strings with
+        ``${...}``), so a simple ``{...}`` regex fails. We find the
+        function start and return everything until the next top-level
+        ``function`` keyword or end of file.
+        """
+        # Note: TypeScript function signature may have `: string` return
+        # type between `)` and `{`, so we allow optional `: <type>` here.
+        start_match = re.search(
+            r"function\s+getStatsWebviewContent\s*\([^)]*\)\s*(?::\s*\w+\s*)?{",
+            extension_src,
+        )
+        if not start_match:
+            return ""
+        start = start_match.end()
+        rest = extension_src[start:]
+        next_fn = re.search(r"\nfunction\s+\w+\s*\(", rest)
+        if next_fn:
+            return rest[: next_fn.start()]
+        return rest
+
+    def test_graph_webview_uses_strict_security_level(self, extension_src):
+        """Graph webview Mermaid ``securityLevel`` must be ``'strict'``.
+
+        ``'loose'`` allows HTML in node labels — a .rpy with
+        ``label "<img src=x onerror=alert(1)>":`` would execute JS in the
+        webview. ``'strict'`` sanitises HTML in Mermaid output, matching
+        the standalone HTML report's posture.
+        """
+        # Find securityLevel in the graph webview (not the standalone report)
+        assert re.search(r"securityLevel:\s*['\"]strict['\"]", extension_src), (
+            "Graph webview does not use `securityLevel: 'strict'`. 'loose' "
+            "allows HTML injection via Mermaid node labels — XSS with "
+            "acquireVsCodeApi() access = full extension compromise."
+        )
+        # And explicitly NOT 'loose'
+        assert "securityLevel: 'loose'" not in extension_src, (
+            "Graph webview still uses `securityLevel: 'loose'` somewhere — "
+            "this allows HTML injection via Mermaid node labels."
+        )
+
+    def test_graph_webview_escapes_html_in_source(self, extension_src):
+        """Graph webview Mermaid source must HTML-escape ``<`` and ``>``.
+
+        Even with ``securityLevel: 'strict'``, defense-in-depth requires
+        escaping angle brackets in the raw source — mirrors the
+        standalone HTML report's approach in ``html_report.py``.
+        """
+        # The escapeMermaidSource helper (or inline escapes) must exist
+        # and escape < > to &lt; &gt;
+        assert re.search(r"\.replace\(/</g,\s*['\"]&lt;['\"]\)", extension_src), (
+            "Mermaid source does not HTML-escape `<` to `&lt;`. "
+            "Defense-in-depth: even with securityLevel: 'strict', the raw "
+            "source should be escaped so a securityLevel rollback cannot "
+            "re-introduce the XSS."
+        )
+        assert re.search(
+            r"\.replace\(/>/g,\s*['\"]&gt;['\"]\)", extension_src
+        ), "Mermaid source does not HTML-escape `>` to `&gt;`."
+
+    def test_stats_webview_has_csp_meta(self, extension_src):
+        """Stats webview must have a Content-Security-Policy meta-tag.
+
+        Without CSP, any injected script (from unescaped ``display_name``
+        etc.) executes with full webview privileges. CSP ``default-src
+        'none'`` blocks all network/file/script access; ``style-src
+        'unsafe-inline'`` is needed for the inline styles.
+        """
+        # Find the stats webview function
+        stats_body = self._stats_webview_body(extension_src)
+        assert stats_body, "Could not extract getStatsWebviewContent function body"
+        assert "Content-Security-Policy" in stats_body, (
+            "Stats webview has no Content-Security-Policy meta-tag. Without "
+            "CSP, an XSS via unescaped display_name/tag executes with full "
+            "webview privileges (acquireVsCodeApi access)."
+        )
+
+    def test_stats_webview_escapes_display_name(self, extension_src):
+        """Stats webview must escape ``c.display_name``.
+
+        ``display_name`` is parsed from ``Character("...")`` in user .rpy
+        — a malicious .rpy with ``Character("<img src=x onerror=alert(1)>")``
+        would execute JS in the webview without escaping.
+        """
+        stats_body = self._stats_webview_body(extension_src)
+        assert stats_body, "Could not extract getStatsWebviewContent function body"
+        assert (
+            "escapeHtml(c.display_name)" in stats_body
+            or "escapeHtml(c?.display_name)" in stats_body
+        ), (
+            "Stats webview does not wrap c.display_name in escapeHtml(). "
+            'display_name comes from Character("...") in user .rpy and '
+            "can contain arbitrary HTML — XSS vector."
+        )
+
+    def test_stats_webview_escapes_tag(self, extension_src):
+        """Stats webview must escape ``c.tag``.
+
+        ``tag`` is the Character tag (e.g. ``e`` in ``define e = Character("Eileen", tag="e")``).
+        While typically short, it is still user-controlled and must be
+        escaped to prevent attribute breakout.
+        """
+        stats_body = self._stats_webview_body(extension_src)
+        assert stats_body, "Could not extract getStatsWebviewContent function body"
+        assert "escapeHtml(c.tag)" in stats_body or "escapeHtml(c?.tag)" in stats_body, (
+            "Stats webview does not wrap c.tag in escapeHtml(). "
+            "tag is user-controlled and can break out of HTML attributes."
+        )
+
+    def test_stats_webview_escapes_reading_time(self, extension_src):
+        """Stats webview must escape ``data.reading_time_formatted``.
+
+        ``reading_time_formatted`` is a formatted string, but it flows
+        through the same interpolation path. Escaping it is cheap and
+        prevents any future regression if the formatting changes.
+        """
+        stats_body = self._stats_webview_body(extension_src)
+        assert stats_body, "Could not extract getStatsWebviewContent function body"
+        assert (
+            "escapeHtml(data.reading_time_formatted)" in stats_body
+            or "escapeHtml(data?.reading_time_formatted)" in stats_body
+        ), (
+            "Stats webview does not wrap data.reading_time_formatted in escapeHtml(). "
+            "While currently a formatted string, escaping is cheap defense-in-depth."
+        )
