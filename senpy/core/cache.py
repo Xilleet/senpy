@@ -206,6 +206,25 @@ class CacheManager:
         runs (e.g. a label was added in file A, which means file B's
         `jump X` may now resolve differently). See compute_file_hash
         for the BLAKE2b rationale.
+
+        The hash includes every symbol field that another file's
+        diagnostics can depend on:
+          - label: name, signature, has_return, outgoing_jumps
+            (RPY306/309/706 depend on whether a label returns and
+            where it jumps).
+          - screen: name, signature.
+          - variable: name, type_name, is_constant, is_character.
+          - image: name, image_path, is_layered, attributes, body
+            (cross-file layeredimage attribute lookups depend on these).
+          - transform: name, signature (RPY706 unused-param depends on
+            the declared parameter list).
+          - registered_audio_channels.
+
+        Note: filesystem-dependent data (AssetManager.valid_images,
+        audio_dir_files, defined_audio_map target paths) is NOT part
+        of this hash. A separate ``environment_fingerprint`` will be
+        added in a follow-up task to cover asset
+        add/delete scenarios.
         """
         hasher = hashlib.blake2b()
         for lbl_name in sorted(analyzer.labels.keys()):
@@ -216,6 +235,14 @@ class CacheManager:
                 hasher.update(
                     str((sig.min_args, sig.max_args, sorted(sig.all_names))).encode("utf-8")
                 )
+            # has_return: RPY306 (call without return) and RPY309 (story
+            # islands) depend on whether a label returns. Without this,
+            # adding/removing `return` in file A would not invalidate file
+            # B's cached diagnostics.
+            hasher.update(str(lbl.has_return).encode("utf-8"))
+            # outgoing_jumps: RPY302 (broken jump) and RPY309 (story
+            # islands) depend on where a label jumps. Sorted for determinism.
+            hasher.update(str(sorted(lbl.outgoing_jumps)).encode("utf-8"))
 
         for scr_name in sorted(analyzer.screens.keys()):
             hasher.update(scr_name.encode("utf-8"))
@@ -238,9 +265,35 @@ class CacheManager:
 
         for img_name in sorted(analyzer.images.keys()):
             hasher.update(img_name.encode("utf-8"))
+            img = analyzer.images[img_name]
+            # image_path: LSP hover uses it to resolve the on-disk preview.
+            # Without this, changing the path string would not invalidate
+            # cached hover info.
+            hasher.update((img.image_path or "").encode("utf-8"))
+            # is_layered + attributes: AssetChecker uses
+            # images[base_tag].attributes for layeredimage attribute
+            # validation. Without these, cross-file layeredimage changes
+            # would not invalidate the cache.
+            hasher.update(str(img.is_layered).encode("utf-8"))
+            hasher.update(str(sorted(img.attributes)).encode("utf-8"))
+            # body: the full source of the image declaration. Captures
+            # any structural change not covered by the fields above
+            # (e.g. a layeredimage gaining a new `always` block without
+            # a named attribute).
+            hasher.update((img.body or "").encode("utf-8"))
 
         for trans_name in sorted(analyzer.transforms.keys()):
             hasher.update(trans_name.encode("utf-8"))
+            trans = analyzer.transforms[trans_name]
+            # signature: RPY706 (unused transform parameter) depends on
+            # the declared parameter list. Without this, adding/removing
+            # a parameter in file A would not invalidate file B's cached
+            # diagnostics.
+            if trans.signature:
+                sig = trans.signature
+                hasher.update(
+                    str((sig.min_args, sig.max_args, sorted(sig.all_names))).encode("utf-8")
+                )
 
         for chan in sorted(analyzer.registered_audio_channels):
             hasher.update(chan.encode("utf-8"))
