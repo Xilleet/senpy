@@ -11,11 +11,11 @@
   <br>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue" alt="Platforms: Windows | Linux | macOS">
   <img src="https://img.shields.io/badge/Plugins-API%20v1.0-teal" alt="Plugin API v1.0">
-  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/tests.json" alt="Tests (auto-updated by CI)"></a>
-  <a href="RULES.md"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/rules.json" alt="Rules (auto-updated by CI)"></a>
-  <a href="ARCHITECTURE.md"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/lsp.json" alt="LSP Handlers (auto-updated by CI)"></a>
-  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/coverage.json" alt="Coverage (auto-updated by CI)"></a>
-  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/speed.json" alt="Speed (auto-updated by CI)"></a>
+  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Xilleet/0f6886d60299e1afccce9e892db22085/raw/tests.json" alt="Tests (auto-updated by CI)"></a>
+  <a href="RULES.md"><img src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Xilleet/0f6886d60299e1afccce9e892db22085/raw/rules.json" alt="Rules (auto-updated by CI)"></a>
+  <a href="ARCHITECTURE.md"><img src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Xilleet/0f6886d60299e1afccce9e892db22085/raw/lsp.json" alt="LSP Handlers (auto-updated by CI)"></a>
+  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Xilleet/0f6886d60299e1afccce9e892db22085/raw/coverage.json" alt="Coverage (auto-updated by CI)"></a>
+  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Xilleet/0f6886d60299e1afccce9e892db22085/raw/speed.json" alt="Speed (auto-updated by CI)"></a>
   <a href="https://github.com/Xilleet/senpy/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Xilleet/senpy/ci.yml?branch=main&label=CI" alt="CI Status"></a>
 </p>
 
@@ -86,7 +86,7 @@ Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github
 |---|---|
 | **Non-interactive plugin trust** | `--trust-plugin NAME` / `--untrust-plugin NAME` CLI flags write to `~/.senpy/trusted_plugins.json` and `sys.exit(0)` without running the analyzer. Trust management is now fully scriptable. The default trust callback detects LSP mode (`--lsp` in argv) and declines untrusted plugins without prompting (no `input()` hang in LSP). |
 | **English-only codebase (Russian-to-English pass)** | All Russian comments and docstrings in `senpy/` translated to English in a single mechanical pass: 52 files, ~1057 lines changed (additions = removals, no logic changes). `senpy/domain/tsundere.py` (intentional Russian easter-egg) and `senpy/vendor/` are whitelisted. `tests/test_no_russian_comments.py` guards the invariant going forward. |
-| **Dynamic badges** | Five badges auto-updated by CI on every push to `main`: tests, rules (45), LSP handlers, coverage, speed. `scripts/update_badges.py` reads metrics and writes JSON files; README badges are shields.io `endpoint?url=...` pointing at raw JSON on `main`. |
+| **Dynamic badges** | Five badges auto-updated by CI on every push to `main`: tests, rules, LSP handlers, coverage, speed. `scripts/update_badges.py` reads metrics and writes JSON files; `scripts/push_badges_to_gist.py` then pushes them to a GitHub Gist via API (no commit-back to `main`, no merge conflicts). README badges are shields.io `endpoint?url=...` pointing at the gist's raw JSON. |
 | **6 new CLI flags** | `--statistics`, `--add-noqa`, `--respect-gitignore`, `--config FILE` (with `SENPY_CONFIG` env var), `--show-settings`, `--cache-dir`. |
 
 ### 0.7.2 — God-function splitting, DRY cleanup

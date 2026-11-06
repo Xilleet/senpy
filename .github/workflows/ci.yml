@@ -283,17 +283,23 @@ jobs:
   # Запускается ТОЛЬКО:
   #   - на push в main (не на PR, не на feature-ветках)
   #   - после test job (needs: [test, build-check] — ждёт завершения, но не его успеха)
-  #   - не запускается на badge-коммите [skip ci] — иначе цикл
   #
-  # Permissions: contents: write на уровне job (глобальный permission
-  # вверху файла = contents: read — мы повышаем только для этого job'а).
+  # Badges больше НЕ коммитятся обратно в main — раньше git-auto-commit
+  # делал `chore(badge): update dynamic badges [skip ci]` в main, что
+  # порождало merge commits при гонке с push'ами. Теперь
+  # CI пушит badge JSON в отдельный GitHub Gist через API — main не
+  # трогается, race condition исчезает. README ссылается на
+  # `https://gist.githubusercontent.com/<user>/<GIST_ID>/raw/<file>.json`.
+  #
+  # Permissions: contents: read — main не мутируется, gist-обновление
+  # идёт через PAT (GIST_TOKEN), а не через GITHUB_TOKEN.
   update-badges:
     name: Update dynamic badges
     runs-on: ubuntu-latest
     needs: [test, build-check]
     if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -316,11 +322,19 @@ jobs:
       - name: Update all badges (tests + rules + LSP + coverage + speed)
         run: python scripts/update_badges.py --run
 
-      - name: Commit badge updates
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore(badge): update dynamic badges [skip ci]"
-          file_pattern: ".github/badges/*.json"
-          commit_options: "--no-verify"
+      - name: Push badges to GitHub Gist
+        # Replaces the old "git-auto-commit back to main" step that caused
+        # merge conflicts with the maintainer's pushes. The gist is a
+        # separate storage area that CI updates via the GitHub API — it
+        # never touches the `main` branch, so there is no race condition.
+        #
+        # Requires two repo secrets:
+        #   GIST_TOKEN — a classic Personal Access Token with the `gist` scope
+        #                (the Actions-provided GITHUB_TOKEN does NOT work).
+        #   GIST_ID    — the gist ID from the gist's URL
+        #                (https://gist.github.com/<user>/<GIST_ID>).
+        # The gist must be PUBLIC so shields.io can read the raw JSON.
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+        run: python scripts/push_badges_to_gist.py

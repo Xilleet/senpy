@@ -11,11 +11,11 @@
   <br>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue" alt="Платформы: Windows | Linux | macOS">
   <img src="https://img.shields.io/badge/Plugins-API%20v1.0-teal" alt="API плагинов v1.0">
-  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/tests.json" alt="Тесты (автообновление через CI)"></a>
-  <a href="RULES.md"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/rules.json" alt="Правила (автообновление через CI)"></a>
-  <a href="ARCHITECTURE.md"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/lsp.json" alt="LSP-обработчики (автообновление через CI)"></a>
-  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/coverage.json" alt="Покрытие кода (автообновление через CI)"></a>
-  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Xilleet/senpy/main/.github/badges/speed.json" alt="Скорость (автообновление через CI)"></a>
+  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Xilleet/0f6886d60299e1afccce9e892db22085/raw/tests.json" alt="Тесты (автообновление через CI)"></a>
+  <a href="RULES.md"><img src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Xilleet/0f6886d60299e1afccce9e892db22085/raw/rules.json" alt="Правила (автообновление через CI)"></a>
+  <a href="ARCHITECTURE.md"><img src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Xilleet/0f6886d60299e1afccce9e892db22085/raw/lsp.json" alt="LSP-обработчики (автообновление через CI)"></a>
+  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Xilleet/0f6886d60299e1afccce9e892db22085/raw/coverage.json" alt="Покрытие кода (автообновление через CI)"></a>
+  <a href="https://github.com/Xilleet/senpy/actions"><img src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Xilleet/0f6886d60299e1afccce9e892db22085/raw/speed.json" alt="Скорость (автообновление через CI)"></a>
   <a href="https://github.com/Xilleet/senpy/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Xilleet/senpy/ci.yml?branch=main&label=CI" alt="Статус CI"></a>
 </p>
 
@@ -87,7 +87,7 @@ pip install senpy-linter
 |---|---|
 | **Non-interactive plugin trust** | `--trust-plugin NAME` / `--untrust-plugin NAME` CLI-флаги пишут в `~/.senpy/trusted_plugins.json` и `sys.exit(0)` без запуска анализатора. Управление доверием теперь полностью scriptable. Default trust callback определяет LSP-режим (`--lsp` в argv) и decline'ит недоверенные плагины без prompting (нет `input()` hang в LSP). |
 | **English-only codebase (pass Russian→English)** | Все русские комментарии и докстринги в `senpy/` переведены на английский одним механическим проходом: 52 файла, ~1057 строк изменено (additions = removals, без logic changes). `senpy/domain/tsundere.py` (намеренный Russian easter-egg) и `senpy/vendor/` whitelisted'ны. `tests/test_no_russian_comments.py` гарантирует инвариант. |
-| **Динамические бейджи** | Пять бейджей автообновляются CI на каждый push в `main`: tests, rules (45), LSP handlers, coverage, speed. `scripts/update_badges.py` читает метрики и пишет JSON-файлы; README-бейджи — shields.io `endpoint?url=...` на raw JSON из `main`. |
+| **Динамические бейджи** | Пять бейджей автообновляются CI на каждый push в `main`: tests, rules, LSP handlers, coverage, speed. `scripts/update_badges.py` читает метрики и пишет JSON-файлы; затем `scripts/push_badges_to_gist.py` пушит их в GitHub Gist через API (без commit-back в `main`, без merge-конфликтов). README-бейджи — shields.io `endpoint?url=...` на raw JSON из gist'а. |
 | **6 новых CLI-флагов** | `--statistics`, `--add-noqa`, `--respect-gitignore`, `--config FILE` (с env-переменной `SENPY_CONFIG`), `--show-settings`, `--cache-dir`. |
 
 ### 0.7.2 — God-function splitting, DRY cleanup

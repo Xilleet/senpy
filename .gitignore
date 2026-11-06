@@ -98,3 +98,10 @@ logs/
 pip-log.txt
 pip-delete-this-directory.txt
 .vscode-test/
+# --- Dynamic badges (now served from a GitHub Gist, not committed) ---
+# CI writes .github/badges/*.json during the update-badges job, then pushes
+# them to a Gist via scripts/push_badges_to_gist.py. The local files are a
+# build artifact and must NOT be committed back to main (that caused merge
+# conflicts with maintainer pushes). The existing committed files will be
+# removed in a follow-up commit; this rule prevents re-adding them.
+.github/badges/
