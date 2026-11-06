@@ -483,11 +483,14 @@ class TestFormattingHandler:
 
 
 class TestRangeFormattingHandler:
-    """part 2: textDocument/rangeFormatting formats selected range only.
+    """textDocument/rangeFormatting placeholder — range-only formatting not implemented.
 
-    VS Code calls this on Ctrl+K Ctrl+F ("Format Selection").
-    Currently we accept the handler exists; full range formatting is a
-    stretch goal (can return same as formatting() for now — format whole doc).
+    The ``@server.feature(TEXT_DOCUMENT_RANGE_FORMATTING)`` decorator was
+    removed from ``server.py``, so the capability is **not advertised** to
+    VS Code and "Format Selection" does not appear in the context menu.
+    The handler remains in ``handlers/diagnostics.py`` as a documented
+    placeholder (returns ``[]``) so a future implementation can re-register
+    it without re-creating the function and its tests.
     """
 
     def test_range_formatting_function_exists(self):
@@ -517,3 +520,45 @@ class TestRangeFormattingHandler:
         )
         result = range_formatting(mock_ls, params)
         assert isinstance(result, list)
+
+    def test_range_formatting_returns_empty_for_unformatted_document(self):
+        """range_formatting must return [] — range-only formatting is not implemented.
+
+        The ``textDocument/rangeFormatting`` capability is not advertised
+        to the client (the ``@server.feature`` decorator was removed from
+        ``server.py``), so VS Code does not show "Format Selection" in
+        the context menu. This handler is a documented placeholder for
+        future implementation.
+
+        Pre-fix code formatted the whole document and returned a single
+        TextEdit covering the entire file (ignoring ``params.range``).
+        That was misleading: the user selects a 5-line range, invokes
+        "Format Selection", and the entire file gets reformatted —
+        silently changing lines outside the selection.
+        """
+        from lsprotocol import types as lsp
+
+        from senpy.lsp.handlers.diagnostics import range_formatting
+
+        # Document with tabs — clearly needs formatting. Pre-fix code
+        # would format the whole document and return a TextEdit.
+        mock_doc = MockDocument("file:///test.rpy", 'label start:\n\t"Hello"\n\treturn\n')
+        mock_workspace = MockWorkspace({"file:///test.rpy": mock_doc})
+        mock_ls = MagicMock()
+        mock_ls.workspace = mock_workspace
+
+        params = lsp.DocumentRangeFormattingParams(
+            text_document=lsp.TextDocumentIdentifier(uri="file:///test.rpy"),
+            range=lsp.Range(
+                start=lsp.Position(line=0, character=0),
+                end=lsp.Position(line=2, character=0),
+            ),
+            options=lsp.FormattingOptions(tab_size=4, insert_spaces=True),
+        )
+        result = range_formatting(mock_ls, params)
+        assert result == [], (
+            f"range_formatting must return [] — range-only formatting is "
+            f"not implemented and the capability is not advertised. "
+            f"Got {len(result)} TextEdit(s) — the handler is still "
+            f"returning whole-document edits."
+        )

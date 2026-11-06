@@ -189,8 +189,6 @@ Run the Senpy formatter (8 rules: indent, blank lines, trailing
 whitespace, smart quotes, op/comma/colon spacing, string consistency).
 See [Formatter](formatter.md) for the full style guide.
 
-`Ctrl+K Ctrl+F` formats just the selected range.
-
 ### Story Graph (`Ctrl+Shift+P` → "Senpy: Show Story Graph")
 
 Opens a webview with an interactive **Mermaid.js flowchart** of all

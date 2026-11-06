@@ -7,7 +7,7 @@ Handlers:
   - document_color     ← TEXT_DOCUMENT_DOCUMENT_COLOR (, 0.6.0 Sub-sprint 3)
   - color_presentation ← TEXT_DOCUMENT_COLOR_PRESENTATION
   - formatting         ← TEXT_DOCUMENT_FORMATTING
-  - range_formatting   ← TEXT_DOCUMENT_RANGE_FORMATTING
+  - range_formatting   ← placeholder, NOT registered (returns [])
 
 All functions accept (ls, params) and access shared state via
 server_mod._X (lazy import breaks the import cycle).
@@ -270,11 +270,13 @@ def color_presentation(
 
 
 # =============================================================================
-# textDocument/formatting + rangeFormatting
+# textDocument/formatting
 # =============================================================================
 # Integrates senpy.formatter (from Sub-sprint 1) into VS Code.
 # Shift+Alt+F in VS Code calls formatting() to format the whole document.
-# Ctrl+K Ctrl+F calls range_formatting() for selected range only.
+#
+# range_formatting() below is a placeholder — range-only formatting is
+# not implemented and the capability is not advertised to the client.
 
 
 def formatting(ls: LanguageServer, params: lsp.DocumentFormattingParams) -> list[lsp.TextEdit]:
@@ -315,35 +317,26 @@ def formatting(ls: LanguageServer, params: lsp.DocumentFormattingParams) -> list
 def range_formatting(
     ls: LanguageServer, params: lsp.DocumentRangeFormattingParams
 ) -> list[lsp.TextEdit]:
-    """part 2: Format selected range only.
+    """Range-only formatting is not implemented — returns no edits.
 
-    For MVP, we format the whole document and return a single TextEdit
-    replacing the entire file. This is acceptable — VS Code applies the
-    edit and the user sees the formatted result. Proper range-only
-    formatting is complex (need to preserve indentation context outside
-    the range) and is a stretch goal.
+    The ``textDocument/rangeFormatting`` capability is **not advertised**
+    to the client: the ``@server.feature`` decorator for
+    ``TEXT_DOCUMENT_RANGE_FORMATTING`` was removed from ``server.py`` so
+    VS Code does not show "Format Selection" in the context menu. This
+    handler remains as a documented placeholder so that a future
+    implementation (building ``Formatter.format_range(code, start_line,
+    end_line)`` that preserves indentation context outside the range)
+    can re-register it without re-creating the function and its tests.
+
+    Why not format the whole document and return one TextEdit (the
+    pre-fix MVP behaviour)? Because that silently reformatted lines
+    outside the user's selection. The user selects a 5-line range,
+    invokes "Format Selection", and the entire file changes — including
+    lines they did not intend to touch. That is a misrepresentation of
+    the feature, not a usable MVP.
+
+    Returns ``[]`` so that if the handler is ever called directly (e.g.
+    by a test or a future re-registration before the real implementation
+    lands), it does not produce misleading whole-document edits.
     """
-    from senpy.formatter import FormatConfig, Formatter
-
-    uri = params.text_document.uri
-    doc = ls.workspace.get_text_document(uri)
-    if not doc:
-        return []
-
-    original = doc.source
-    fmt = Formatter(FormatConfig())
-    formatted = fmt.format_code(original, filename=uri)
-
-    if formatted == original:
-        return []
-
-    line_count = len(original.splitlines())
-    return [
-        lsp.TextEdit(
-            range=lsp.Range(
-                start=lsp.Position(line=0, character=0),
-                end=lsp.Position(line=line_count, character=0),
-            ),
-            new_text=formatted,
-        )
-    ]
+    return []

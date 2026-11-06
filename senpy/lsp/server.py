@@ -776,25 +776,22 @@ def color_presentation(
 
 
 # =============================================================================
-# textDocument/formatting + rangeFormatting — Shift+Alt+F / Ctrl+K Ctrl+F
+# textDocument/formatting — Shift+Alt+F
 # =============================================================================
 # Integrates senpy.formatter (from Sub-sprint 1) into VS Code.
 # Shift+Alt+F → formatting() — formats whole document
-# Ctrl+K Ctrl+F → range_formatting() — formats selected range
+#
+# textDocument/rangeFormatting (Ctrl+K Ctrl+F) is intentionally NOT
+# registered: range-only formatting is not implemented, and advertising
+# the capability without a real implementation would mislead users into
+# thinking "Format Selection" works. The placeholder handler remains
+# in senpy/lsp/handlers/diagnostics.py:range_formatting (returns []) so
+# a future implementation can re-register it without re-creating the
+# function and its tests.
 @server.feature(lsp.TEXT_DOCUMENT_FORMATTING)
 def formatting(ls: LanguageServer, params: lsp.DocumentFormattingParams) -> list[lsp.TextEdit]:
     """0.6.0 Sub-sprint 3: delegates to handlers.diagnostics."""
     from senpy.lsp.handlers.diagnostics import formatting as _impl
-
-    return _impl(ls, params)
-
-
-@server.feature(lsp.TEXT_DOCUMENT_RANGE_FORMATTING)
-def range_formatting(
-    ls: LanguageServer, params: lsp.DocumentRangeFormattingParams
-) -> list[lsp.TextEdit]:
-    """0.6.0 Sub-sprint 3: delegates to handlers.diagnostics."""
-    from senpy.lsp.handlers.diagnostics import range_formatting as _impl
 
     return _impl(ls, params)
 

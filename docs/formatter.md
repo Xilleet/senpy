@@ -184,12 +184,15 @@ Use these for:
 
 ## VS Code integration
 
-The Senpy VS Code extension exposes two formatter commands:
+The Senpy VS Code extension exposes one formatter command:
 
 - **Format Document** — `Shift+Alt+F` — runs the formatter on the
   current file.
-- **Format Selection** — `Ctrl+K Ctrl+F` — runs the formatter on the
-  selected range.
+
+Range-only formatting (`Ctrl+K Ctrl+F`, "Format Selection") is not yet
+implemented. The placeholder handler exists in
+`senpy/lsp/handlers/diagnostics.py` but is not registered as an LSP
+capability, so VS Code does not offer the command.
 
 The formatter also runs automatically on save if you enable
 `editor.formatOnSave` in your VS Code settings:
