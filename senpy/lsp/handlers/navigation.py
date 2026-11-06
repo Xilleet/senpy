@@ -834,24 +834,37 @@ def incoming_calls(
     target_name = params.item.name
     labels = server_mod._symbol_snapshot.get("labels", {})
     jump_sources = server_mod._symbol_snapshot.get("jump_sources", {})
+    labels_by_file = server_mod._symbol_snapshot.get("labels_by_file", {})
     # Fallback: if not in snapshot, check analyzer directly
     if not jump_sources and server_mod._active_analyzer is not None:
         jump_sources = server_mod._active_analyzer.jump_sources
     if not labels and server_mod._active_analyzer is not None:
         labels = server_mod._active_analyzer.labels
+    # Build labels_by_file on-the-fly if the snapshot is stale or empty —
+    # keeps the handler correct even before the first _refresh_symbol_snapshot.
+    if not labels_by_file and labels:
+        labels_by_file = {}
+        for name, lbl in labels.items():
+            labels_by_file.setdefault(lbl.file_path, []).append((name, lbl.line_number))
+        for file_labels in labels_by_file.values():
+            file_labels.sort(key=lambda item: item[1])
 
     incoming: list[lsp.CallHierarchyIncomingCall] = []
 
     # jump_sources maps: target_label → list of (file_path, line_number)
     for caller_path, caller_line in jump_sources.get(target_name, []):
-        # Find the label that contains this call site
-        # (label whose line_number <= caller_line and is in the same file)
+        # Find the label that contains this call site using the per-file
+        # index — O(labels_in_file) instead of O(all_labels). The index
+        # is sorted by line_number, so the last entry with line <= caller_line
+        # is the containing label.
         caller_label = None
-        for name, lbl in labels.items():
-            if lbl.file_path == caller_path and lbl.line_number <= caller_line:  # noqa: SIM102
-                if caller_label is None or lbl.line_number > caller_label.line_number:
-                    caller_label = lbl
-                    caller_name = name
+        caller_name = "<anonymous>"
+        for name, line in labels_by_file.get(caller_path, []):
+            if line <= caller_line:
+                caller_label = labels.get(name)
+                caller_name = name
+            else:
+                break  # sorted — no more labels <= caller_line
 
         if caller_label is None:
             # Fallback: use the file/line without a label name
@@ -906,14 +919,34 @@ def outgoing_calls(
 
     source_name = params.item.name
     labels = server_mod._symbol_snapshot.get("labels", {})
+    jump_sources = server_mod._symbol_snapshot.get("jump_sources", {})
+    labels_by_file = server_mod._symbol_snapshot.get("labels_by_file", {})
     # Fallback: if not in snapshot, check analyzer directly
     if source_name not in labels and server_mod._active_analyzer is not None:
         labels = server_mod._active_analyzer.labels
+    if not jump_sources and server_mod._active_analyzer is not None:
+        jump_sources = server_mod._active_analyzer.jump_sources
+    if not labels_by_file and labels:
+        labels_by_file = {}
+        for name, lbl in labels.items():
+            labels_by_file.setdefault(lbl.file_path, []).append((name, lbl.line_number))
+        for file_labels in labels_by_file.values():
+            file_labels.sort(key=lambda item: item[1])
 
     if source_name not in labels:
         return []
 
     source_label = labels[source_name]
+    # Determine the source label's body range: [source_label.line_number + 1,
+    # next_label_line_in_same_file). Jumps inside this range belong to source.
+    # Without this bound, a jump to the same target from a LATER label in the
+    # same file would be misattributed to source.
+    source_end_line = float("inf")
+    for _name, line in labels_by_file.get(source_label.file_path, []):
+        if line > source_label.line_number:
+            source_end_line = line
+            break  # sorted — first label after source is the next sibling
+
     outgoing: list[lsp.CallHierarchyOutgoingCall] = []
 
     # outgoing_jumps is a set of target label names
@@ -938,17 +971,46 @@ def outgoing_calls(
             ),
         )
 
-        # fromRanges: where the call happens in the source label
-        # We don't track exact line of each jump, so use the label's range
-        from_range = lsp.Range(
-            start=lsp.Position(line=max(0, source_label.line_number - 1), character=0),
-            end=lsp.Position(line=max(0, source_label.line_number - 1), character=80),
-        )
+        # fromRanges: where the call happens in the source label's body.
+        # jump_sources maps target → list of (file, line) for every jump to
+        # that target across the project. Filter to entries that originate
+        # from THIS source label's body (same file, line between source
+        # declaration and the next sibling label). Each matching entry
+        # becomes one Range in from_ranges — the LSP spec explicitly allows
+        # multiple ranges when the same target is called multiple times.
+        jump_lines = [
+            line
+            for file_path, line in jump_sources.get(target_name, [])
+            if file_path == source_label.file_path
+            and source_label.line_number < line < source_end_line
+        ]
+
+        if jump_lines:
+            from_ranges = [
+                lsp.Range(
+                    start=lsp.Position(line=max(0, line - 1), character=0),
+                    end=lsp.Position(line=max(0, line - 1), character=80),
+                )
+                for line in jump_lines
+            ]
+        else:
+            # Fallback: jump line not tracked (dynamic jump via
+            # renpy.jump() in a string, or jump_sources not populated).
+            # Fall back to the source label's declaration line rather
+            # than dropping the outgoing call entirely — the user still
+            # sees that source calls target, even if the exact line is
+            # unknown.
+            from_ranges = [
+                lsp.Range(
+                    start=lsp.Position(line=max(0, source_label.line_number - 1), character=0),
+                    end=lsp.Position(line=max(0, source_label.line_number - 1), character=80),
+                )
+            ]
 
         outgoing.append(
             lsp.CallHierarchyOutgoingCall(
                 to=target_item,
-                from_ranges=[from_range],
+                from_ranges=from_ranges,
             )
         )
 

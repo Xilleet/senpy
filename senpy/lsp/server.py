@@ -269,6 +269,11 @@ _symbol_snapshot: dict[str, dict] = {
     "variables": {},
     "images": set(),
     "jump_sources": {},
+    # Per-file index of labels sorted by line_number — used by
+    # incoming_calls for O(log N) containing-label lookup instead of
+    # O(N) scan of every label in the project per jump source.
+    # Structure: {file_path: [(label_name, line_number), ...]}
+    "labels_by_file": {},
 }
 
 
@@ -289,6 +294,16 @@ def _refresh_symbol_snapshot() -> None:
     _symbol_snapshot["jump_sources"] = {
         k: list(v) for k, v in _active_analyzer.jump_sources.items()
     }
+    # Per-file index of labels sorted by line_number. incoming_calls uses
+    # this to find the label containing a jump site in O(labels_in_file)
+    # instead of O(all_labels) — for a project with 500 labels across 10
+    # files, that's ~50 iterations per jump source instead of 500.
+    labels_by_file: dict[str, list[tuple[str, int]]] = {}
+    for name, lbl in _active_analyzer.labels.items():
+        labels_by_file.setdefault(lbl.file_path, []).append((name, lbl.line_number))
+    for file_labels in labels_by_file.values():
+        file_labels.sort(key=lambda item: item[1])
+    _symbol_snapshot["labels_by_file"] = labels_by_file
 
 
 SEVERITY_MAP = {

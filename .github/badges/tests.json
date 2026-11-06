@@ -2,5 +2,5 @@
   "schemaVersion": 1,
   "label": "tests",
   "message": "1411 passed, 6 skipped",
-  "color": "yellow"
+  "color": "brightgreen"
 }
