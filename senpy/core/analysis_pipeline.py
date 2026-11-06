@@ -109,7 +109,7 @@ class AnalysisPipeline:
 
         a._rebuild_aggregates()
 
-        current_global_hash = a.cache_manager.compute_global_hash(a)
+        current_global_hash = a.cache_manager.compute_combined_hash(a)
         is_global_unchanged = (
             old_manifest is not None and old_manifest.global_symbol_hash == current_global_hash
         )

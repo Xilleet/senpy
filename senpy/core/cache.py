@@ -299,3 +299,84 @@ class CacheManager:
             hasher.update(chan.encode("utf-8"))
 
         return hasher.hexdigest()
+
+    @staticmethod
+    def compute_environment_fingerprint(analyzer: SenpyAnalyzer) -> str:
+        """Compute a BLAKE2b fingerprint of filesystem-dependent state.
+
+        Covers the asset/audio state that the symbol hash
+        (``compute_global_hash``) does NOT include — the on-disk file
+        sets and audio alias target paths that ``AssetChecker`` and
+        LSP hover depend on:
+
+          - ``AssetManager.valid_images`` (built from ``os.walk`` over
+            ``images/`` — changes when a ``.png`` is added/deleted).
+          - ``AssetManager.known_assets`` (built from ``os.walk`` over
+            the project — changes when any asset file is added/deleted).
+          - ``AssetManager.audio_dir_files`` (built from ``os.walk``
+            over ``audio/`` — changes when an ``.ogg`` is added/deleted).
+          - ``defined_audio_map`` target paths (parsed from ``.rpy``
+            ``define audio.X = "path"`` — the *target* path, not the
+            alias name, which is already in the symbol hash).
+
+        Without this fingerprint, a warm run after adding/removing a
+        ``.png`` or ``.ogg`` file would serve stale ``RPY501``/``RPY502``/
+        ``RPY503`` from the Tier-2 cache (the ``.rpy`` files are
+        byte-identical, so the symbol hash is unchanged).
+
+        The fingerprint hashes the AssetManager state (already built
+        by ``_index_disk_files`` during ``analyzer.run()``) — no
+        additional ``os.walk`` is performed.
+        """
+        hasher = hashlib.blake2b()
+
+        # valid_images: set of tokenized image names (e.g. "bg town").
+        # Changes when a .png is added/removed in images/.
+        for img in sorted(analyzer.valid_images):
+            hasher.update(img.encode("utf-8"))
+
+        # known_assets: set of all on-disk asset relative paths.
+        # Changes when any asset file (image, audio, video) is
+        # added/removed anywhere in the project.
+        for asset in sorted(analyzer.known_assets):
+            hasher.update(asset.encode("utf-8"))
+
+        # audio_dir_files: dict stem→relative_path for audio files.
+        # Changes when an .ogg/.mp3/.wav is added/removed in audio/.
+        for stem, rel_path in sorted(analyzer.audio_dir_files.items()):
+            hasher.update(stem.encode("utf-8"))
+            hasher.update(rel_path.encode("utf-8"))
+
+        # defined_audio_map: dict alias→target_path, parsed from .rpy
+        # ``define audio.X = "path"``. The alias name (X) is in the
+        # symbol hash, but the target path is not — it's a
+        # filesystem-dependent value. Changes when the user renames
+        # an audio file and updates the alias target.
+        for alias, target_path in sorted(analyzer.defined_audio_map.items()):
+            hasher.update(alias.encode("utf-8"))
+            hasher.update(target_path.encode("utf-8"))
+
+        return hasher.hexdigest()
+
+    @staticmethod
+    def compute_combined_hash(analyzer: SenpyAnalyzer) -> str:
+        """Compute the combined global cache hash.
+
+        Combines the symbol hash (``compute_global_hash`` — labels,
+        screens, variables, images, transforms, audio channels) with
+        the environment fingerprint (``compute_environment_fingerprint``
+        — on-disk asset sets, audio alias target paths) into a single
+        BLAKE2b hash. This is the hash stored in
+        ``CacheManifest.global_symbol_hash`` and compared across runs
+        to decide whether the Tier-2 cache is still valid.
+
+        Old manifests (pre-B.2) store only the symbol hash without the
+        environment fingerprint — they will mismatch on the next run
+        (env fingerprint is now appended) and trigger a cache rebuild.
+        """
+        symbol_hash = CacheManager.compute_global_hash(analyzer)
+        env_fp = CacheManager.compute_environment_fingerprint(analyzer)
+        combined = hashlib.blake2b()
+        combined.update(symbol_hash.encode("utf-8"))
+        combined.update(env_fp.encode("utf-8"))
+        return combined.hexdigest()
