@@ -24,7 +24,13 @@ senpy/
 │
 ├── cli/                     # Command-line interface
 │   ├── __main__.py          # Entry point (calls main())
-│   ├── main.py              # CLI orchestration: parse_args, run, render output
+│   ├── main.py              # Thin back-compat shim — re-exports public API
+│   ├── _console.py          # Shared Rich Console instance (leaf module)
+│   ├── args.py              # argparse builders (parse_args + 5 _add_*_args)
+│   ├── filters.py           # Diagnostic filtering (--ignore, --select, --tag)
+│   ├── renderers.py         # 7 output renderers (text, json, sarif, junit, github, rdjson, gitlab)
+│   ├── early_exits.py       # --version, --help, --check, --diff validation
+│   ├── runner.py            # main() orchestrator + analysis run + post-analysis handlers
 │   ├── format_dispatch.py   # `senpy format` subcommand handler
 │   ├── inspect_dispatch.py  # `senpy inspect` subcommand handler (0.7.4+)
 │   ├── rule_dispatch.py     # `senpy rule list/show` subcommand (0.7.4+)
@@ -46,7 +52,7 @@ senpy/
 │   ├── progress.py          # progress_print helper (0.7.2+)
 │   ├── scope.py             # ScopeStack, ScopeType (LABEL, SCREEN, etc.)
 │   ├── signature.py         # parse_signature(), validate_call_arguments()
-│   ├── sink.py              # DiagnosticSink Protocol (decouples checkers from analyzer)
+│   ├── sink.py              # DiagnosticSink re-export (decouples checkers from analyzer)
 │   └── symbols.py           # VariableSymbol, LabelSymbol, ScreenSymbol, etc.
 │
 ├── domain/                  # Ren'Py domain knowledge
@@ -181,6 +187,10 @@ For each `.rpy` file:
 
 Each checker receives a `DiagnosticSink` (Protocol) — it doesn't know
 about `SenpyAnalyzer` directly, only the interface for adding diagnostics.
+This Protocol split is wired in runtime (not just type hints): each
+checker's `__init__` declares which Protocol intersection it needs
+(`DiagnosticSinkAndSymbols`, `DiagnosticSinkAndSymbolsAndFlow`, etc.),
+verified via `@runtime_checkable` in `tests/test_protocols_runtime.py`.
 
 ### Stage 3: Finalization (`_finalize_results`)
 
@@ -233,6 +243,8 @@ Rules are organized by domain prefix:
 Each checker inherits from `BaseChecker` and implements `check_line()`.
 The `DiagnosticSink` Protocol decouples checkers from `SenpyAnalyzer` —
 checkers only see the `_add_diagnostic()` and `_get_utf16_range()` methods.
+This is now enforced at runtime via Protocol intersections (see
+`senpy/core/protocols.py`), not just type hints.
 
 ### Python AST Analysis
 

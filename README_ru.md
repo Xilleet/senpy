@@ -75,7 +75,7 @@ pip install senpy-linter
 | **`senpy inspect` subcommand** | Дампит все символы, которые Senpy видит в проекте, как JSON: labels, screens, variables, transforms, images, jump_sources (reverse index), used_assets, diagnostics, unresolved (broken jumps / missing screens / unreferenced labels / unused assets), per-section stats. Заточен под дебаг hover/asset resolution и авторинг плагинов. Сокращения: `--summary`, `--unresolved`, `--label X`, `--screen X`, `--transform X`. |
 | **Форматы вывода: rdjson + gitlab** | `--output-format rdjson` (Reviewdog NDJSON — по JSON-объекту на строку, пайпится в `reviewdog -f=rdjson`) и `--output-format gitlab` (GitLab Code Quality JSON array — fingerprint-stable для аннотаций в MR). Всего форматов: 7 (`text`, `json`, `sarif`, `junit`, `github`, `rdjson`, `gitlab`). |
 | **`senpy rule` subcommand** | Просмотр метаданных правил без запуска анализатора: `senpy rule list [--format json] [--tag T] [--severity S]`, `senpy rule show CODE`. Флаги `--rules` и `--rule CODE` в основном CLI работают как alias'ы. |
-| **Теги у правил** | У каждого правила в `RULES_DATABASE` теперь поле `tags` (28 тегов на 45 правил: `formatting`, `variables`, `state`, `rollback`, `deprecated`, `screen`, `assets`, `audio`, `translations`, `dead-code`, и т.д.). `senpy rule list --tag rollback` фильтрует по тегу (union-семантика). |
+| **Теги у правил** | У каждого правила в `RULES_DATABASE` теперь поле `tags` (28 тегов на 51 правило: `formatting`, `variables`, `state`, `rollback`, `deprecated`, `screen`, `assets`, `audio`, `translations`, `dead-code`, и т.д.). `senpy rule list --tag rollback` фильтрует по тегу (union-семантика). |
 | **`--tag` / `--ignore-tag` фильтры** | Lint-режим принимает `--tag rollback state` (только эти правила) и `--ignore-tag dead-code` (заглушить эти правила). Сопоставление тегов case-insensitive; правило проходит `--tag`, если ЛЮБОЙ из его тегов совпал. |
 | **`strict = true` config** | Поле `strict` в `SenpyConfig` теперь соблюдается (было задокументировано с 0.6.0, но не использовалось). С `strict = true` каждый диагностик, чей код НЕявно не переопределён в `[tool.senpy.severity]`, повышается до `ERROR`. Явные severity-override'ы выигрывают над strict. |
 | **FMT-STRING-CONSISTENCY** | 8-е правило форматтера (7-е в коде, 8-е по ID). Нормализует внешние кавычки однострочных строковых литералов в CODE-строках к единому стилю. По умолчанию: `'hi'` → `"hi"` (конвенция Ren'Py). Настраивается через `string_style = "double" | "single" | "preserve"`. Диалоги и triple-quoted строки намеренно не трогаются. |
@@ -260,7 +260,7 @@ translate russian welcome_1:
 Senpy ловит их на этапе линтера — ещё до того, как они дойдут до игроков.
 **Вот почему вам это нужно.**
 
-Полный список из 45+ правил с примерами — см.  **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**.
+Полный список из 51 правила с примерами — см.  **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**.
 
 ---
 
@@ -479,7 +479,7 @@ senpy "path/to/game" --tsundere
 
 ## Справочник диагностик
 
-Senpy включает **45 специализированных семантических правил** в 8 категориях:
+Senpy включает **51 специализированное семантическое правило** с 28 тегами:
 
 | Серия | Категория | Описание |
 | :--- | :--- | :--- |
@@ -583,7 +583,7 @@ Senpy поставляет [pre-commit](https://pre-commit.com) хук, кото
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.7.5   # используйте последний тег
+    rev: v0.7.7   # используйте последний тег
     hooks:
       - id: senpy
 ```

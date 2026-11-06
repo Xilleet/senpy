@@ -74,7 +74,7 @@ Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github
 | **`senpy inspect` subcommand** | Dumps all symbols Senpy sees in a project as JSON: labels, screens, variables, transforms, images, jump_sources (reverse index), used_assets, diagnostics, unresolved (broken jumps / missing screens / unreferenced labels / unused assets), and per-section stats. Designed for debugging hover/asset resolution and for plugin authoring. Shortcuts: `--summary`, `--unresolved`, `--label X`, `--screen X`, `--transform X`. |
 | **Output formats: rdjson + gitlab** | `--output-format rdjson` (Reviewdog NDJSON — one JSON object per line, pipe into `reviewdog -f=rdjson`) and `--output-format gitlab` (GitLab Code Quality JSON array — fingerprint-stable for MR annotations). Total output formats: 7 (`text`, `json`, `sarif`, `junit`, `github`, `rdjson`, `gitlab`). |
 | **`senpy rule` subcommand** | Browse rule metadata without running the analyzer: `senpy rule list [--format json] [--tag T] [--severity S]`, `senpy rule show CODE`. `--rules` and `--rule CODE` flags on the main CLI continue to work as aliases. |
-| **Tags on rules** | Every rule in `RULES_DATABASE` now has a `tags` field (28 tags across 45 rules: `formatting`, `variables`, `state`, `rollback`, `deprecated`, `screen`, `assets`, `audio`, `translations`, `dead-code`, etc.). `senpy rule list --tag rollback` filters by tag (union semantics). |
+| **Tags on rules** | Every rule in `RULES_DATABASE` now has a `tags` field (28 tags across 51 rules: `formatting`, `variables`, `state`, `rollback`, `deprecated`, `screen`, `assets`, `audio`, `translations`, `dead-code`, etc.). `senpy rule list --tag rollback` filters by tag (union semantics). |
 | **`--tag` / `--ignore-tag` filters** | Lint mode accepts `--tag rollback state` (run only those rules) and `--ignore-tag dead-code` (silence those rules). Tag matching is case-insensitive; a rule passes `--tag` if ANY of its tags matches. |
 | **`strict = true` config** | The `strict` field on `SenpyConfig` is now enforced (was documented since 0.6.0 but never read). With `strict = true`, every diagnostic whose code is NOT explicitly overridden in `[tool.senpy.severity]` is promoted to `ERROR`. Explicit severity overrides win over strict. |
 | **FMT-STRING-CONSISTENCY** | 8th formatter rule (7th in code, 8th by ID). Normalizes the outer quotes of single-line string literals in CODE lines to a consistent style. Default: `'hi'` → `"hi"` (Ren'Py convention). Configurable via `string_style = "double" | "single" | "preserve"`. Dialogue and triple-quoted strings are intentionally not touched. |
@@ -252,7 +252,7 @@ Every bug above:
 
 Senpy catches them at lint time — before they ship. **That's why you need it.**
 
-For the full list of 45+ rules with examples, see **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**.
+For the full list of 51 rules with examples, see **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**.
 
 ---
 
@@ -470,7 +470,7 @@ senpy "path/to/game" --tsundere
 
 ## Rules Overview
 
-Senpy includes **45 specialized semantic rules** across 8 categories:
+Senpy includes **51 specialized semantic rules** across 28 tags:
 
 | Series | Category | Description |
 | :--- | :--- | :--- |
@@ -571,7 +571,7 @@ Senpy ships a [pre-commit](https://pre-commit.com) hook that runs
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.7.5   # use the latest tag
+    rev: v0.7.7   # use the latest tag
     hooks:
       - id: senpy
 ```

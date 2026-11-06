@@ -404,21 +404,32 @@ python -c "from senpy.rules.rules_info import RULES_DATABASE; print(len(RULES_DA
 ## How to add a new formatter rule
 
 Formatter rules live in `senpy/formatter/rules/`. Each is a small module with
-a `@register_rule` decorator:
+a `@register_rule` decorator over a **function** (not a class):
 
 ```python
 # senpy/formatter/rules/comment_align.py
-from senpy.formatter.core import FormatterRule, register_rule
+from __future__ import annotations
+
+from senpy.formatter.core import FormatConfig, FormatContext, register_rule
 
 
 @register_rule("FMT-COMMENT-ALIGN")
-class CommentAlignRule(FormatterRule):
+def align_comments(
+    contexts: list[FormatContext], config: FormatConfig
+) -> list[FormatContext]:
     """Align inline comments with the surrounding code."""
-
-    def apply(self, lines: list[str]) -> list[str]:
-        # Your formatting logic
-        return transformed_lines
+    for ctx in contexts:
+        if ctx.skip:
+            continue
+        # Your formatting logic — mutate ctx.raw / ctx.indent as needed
+        # ...
+    return contexts
 ```
+
+The function receives a list of `FormatContext` objects (one per line)
+and a `FormatConfig`. It mutates the contexts in place and returns the
+same list. Rules are applied in registration order (order matters — see
+`senpy/formatter/core.py` module docstring).
 
 Add idempotency tests in `tests/test_formatter_idempotency.py` — formatting
 already-formatted code must produce zero changes.
