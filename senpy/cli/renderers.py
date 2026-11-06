@@ -190,12 +190,13 @@ def render_junit(active_diagnostics, args, console) -> int:
             if diag.severity == "ERROR":
                 lines.append(
                     f'      <failure message="{_xml_escape(diag.message)}" '
-                    f'type="{diag.code}">line {diag.line_number}: {diag.line_content.strip()}</failure>'
+                    f'type="{_xml_escape(diag.code)}">line {diag.line_number}: '
+                    f"{_xml_escape(diag.line_content.strip())}</failure>"
                 )
             elif diag.severity == "WARNING":
                 lines.append(
                     f'      <skipped message="{_xml_escape(diag.message)}" '
-                    f'type="{diag.code}">line {diag.line_number}</skipped>'
+                    f'type="{_xml_escape(diag.code)}">line {diag.line_number}</skipped>'
                 )
             lines.append("    </testcase>")
         lines.append("  </testsuite>")

@@ -527,6 +527,86 @@ class TestRenderJunit:
         assert "<testsuites" in content
         assert "RPY101" in content
 
+    def test_xml_special_chars_in_failure_do_not_break_parse(self, capsys):
+        """``<failure>`` must escape ``<``, ``>``, ``&`` in code/line_content.
+
+        Regression: a diagnostic whose ``line_content`` contains XML-special
+        characters (e.g. ``if x < 5 and y > 3 and z & w:``) used to make the
+        whole JUnit report unparseable by Jenkins / GitLab CI / TeamCity.
+        """
+        import xml.etree.ElementTree as ET
+
+        from rich.console import Console
+
+        from senpy.cli.main import render_junit
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [
+            MockDiagnostic(
+                code="RPY101",
+                severity="ERROR",
+                file_path="test.rpy",
+                line_number=3,
+                message='condition uses "quotes" & angle brackets',
+                line_content="if x < 5 and y > 3 and z & w:",
+            )
+        ]
+        args = _make_args(output_format="junit")
+        render_junit(diags, args, console)
+        captured = capsys.readouterr()
+        # The whole document must parse as well-formed XML.
+        root = ET.fromstring(captured.out)
+        failures = root.findall(".//failure")
+        assert len(failures) == 1
+        # Raw ``<``/``>``/``&`` (unescaped) must never appear inside the
+        # failure element — they break every standard XML parser.
+        failure_xml = ET.tostring(failures[0], encoding="unicode")
+        assert "if x < 5" not in failure_xml
+        assert "y > 3" not in failure_xml
+        assert "z & w" not in failure_xml
+        # The escaped representation must round-trip back to the original text.
+        assert (failures[0].text or "")[
+            -len("if x < 5 and y > 3 and z & w:") :
+        ] == "if x < 5 and y > 3 and z & w:"
+        # The ``type`` attribute (rule code) must also survive intact.
+        assert failures[0].get("type") == "RPY101"
+        assert failures[0].get("message") == 'condition uses "quotes" & angle brackets'
+
+    def test_xml_special_chars_in_skipped_do_not_break_parse(self, capsys):
+        """``<skipped>`` must escape ``<``/``>``/``&`` in the rule ``code``.
+
+        WARNING diagnostics render as ``<skipped>``, and their ``type``
+        attribute is ``diag.code``. If a plugin rule code contains XML-special
+        characters (or a malicious plugin injects them), the report must still
+        parse.
+        """
+        import xml.etree.ElementTree as ET
+
+        from rich.console import Console
+
+        from senpy.cli.main import render_junit
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [
+            MockDiagnostic(
+                code='PLUGIN<X>&"rule"',
+                severity="WARNING",
+                file_path="test.rpy",
+                line_number=7,
+                message="warn < & > test",
+            )
+        ]
+        args = _make_args(output_format="junit")
+        render_junit(diags, args, console)
+        captured = capsys.readouterr()
+        # Must still parse as well-formed XML.
+        root = ET.fromstring(captured.out)
+        skipped = root.findall(".//skipped")
+        assert len(skipped) == 1
+        # The original (unescaped) code must round-trip through the attribute.
+        assert skipped[0].get("type") == 'PLUGIN<X>&"rule"'
+        assert skipped[0].get("message") == "warn < & > test"
+
 
 # =============================================================================
 # render_github() — characterization safety net for T-017 split
