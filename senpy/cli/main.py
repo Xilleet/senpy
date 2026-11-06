@@ -69,7 +69,6 @@ from senpy.cli.runner import (  # noqa: F401 — re-exported for backward compat
     _replace_console,
     _ReplaceConsole,
     _run_analysis,
-    _setup_diff_interception,
     _setup_rule_filters,
     main,
 )

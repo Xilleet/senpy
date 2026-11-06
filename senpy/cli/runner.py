@@ -29,7 +29,6 @@ from __future__ import annotations
 import os
 import sys
 import time
-from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -75,7 +74,6 @@ __all__ = [
     "_null_redirect",
     "_setup_rule_filters",
     "_print_scan_banner",
-    "_setup_diff_interception",
     "_run_analysis",
     "_handle_post_analysis",
     "_handle_output_format",
@@ -218,67 +216,20 @@ def _print_scan_banner(args, console, is_tsundere: bool) -> None:
             console.print()
 
 
-def _setup_diff_interception(args) -> tuple[dict[str, str], Any]:
-    """Set up builtins.open monkey-patch for --diff mode.
-
-    TODO(0.6.6): Move this into analyzer.run() via dry-run callback.
-    The monkey-patch is a hack — analyzer writes to disk via open(), and we
-    intercept to capture what would be written without actually writing.
-    After analyzer refactor (0.6.6,..15), analyzer should accept a
-    dry_run_callback parameter and call it instead of open().
-
-    Returns:
-        Tuple of (diff_collector dict, real_open function).
-    """
-    diff_collector: dict[str, str] = {}
-    _real_open = open
-    if not args.diff:
-        return diff_collector, _real_open
-
-    import builtins
-
-    _real_open = builtins.open
-
-    def _intercept_open(file, mode="r", *a, **kw):
-        if "w" in mode and isinstance(file, str) and file.endswith(".rpy"):
-
-            class _DiffCapture:
-                def __init__(self):
-                    self._buf = []
-
-                def write(self, s):
-                    self._buf.append(s)
-
-                def writelines(self, lines):
-                    self._buf.extend(lines)
-
-                def close(self):
-                    pass
-
-                def flush(self):
-                    pass
-
-                def __enter__(self):
-                    return self
-
-                def __exit__(self, *a):
-                    diff_collector[file] = "".join(self._buf)
-
-            return _DiffCapture()
-        return _real_open(file, mode, *a, **kw)
-
-    builtins.open = _intercept_open
-    return diff_collector, _real_open
-
-
-def _run_analysis(args, extra_rpy_files, is_quiet_mode: bool):
+def _run_analysis(args, extra_rpy_files, is_quiet_mode: bool, dry_run_callback=None):
     """Run SenpyAnalyzer with appropriate fix/no_cache settings.
 
+    Args:
+        dry_run_callback: If set, passed to ``analyzer.run()`` so that
+            ``_write_fixed_file`` calls the callback instead of writing
+            to disk. Used by ``--diff`` mode (T-032/T-033) to capture
+            what ``--fix`` would write without modifying files.
+
     Returns:
-        Tuple of (result, elapsed_seconds).
+        Tuple of (result, analyzer, elapsed_seconds).
     """
     # --check: fix=False (don't modify, just count fixable_count)
-    # --diff: fix=True (analyzer prepares changes, but open() intercepted)
+    # --diff: fix=True (analyzer prepares changes, dry_run_callback captures)
     # --fix: fix=True
     # no flags: fix=False
     should_apply_fix = args.fix or args.diff
@@ -291,7 +242,7 @@ def _run_analysis(args, extra_rpy_files, is_quiet_mode: bool):
     analyzer = SenpyAnalyzer(
         args.path, extra_files=extra_rpy_files, fix=should_apply_fix, no_cache=no_cache
     )
-    result = analyzer.run(quiet=is_quiet_mode)
+    result = analyzer.run(quiet=is_quiet_mode, dry_run_callback=dry_run_callback)
     elapsed = time.perf_counter() - start_time
     return result, analyzer, elapsed
 
@@ -362,7 +313,7 @@ def _handle_check_mode(args, result, console) -> int | None:
         sys.exit(0)
 
 
-def _handle_diff_mode(args, diff_collector, result, console, _real_open) -> int | None:
+def _handle_diff_mode(args, diff_collector, result, console) -> int | None:
     """Handle --diff dry-run mode: print unified diff, exit 0 or 1."""
     if not args.diff:
         return None
@@ -376,7 +327,7 @@ def _handle_diff_mode(args, diff_collector, result, console, _real_open) -> int 
     has_changes = False
     for file_path, new_content in diff_collector.items():
         try:
-            with _real_open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 original = f.read()
         except OSError:
             continue
@@ -461,18 +412,20 @@ def main():
     if not is_quiet_mode:
         _print_scan_banner(args, console, is_tsundere)
 
-    # --diff: monkey-patch builtins.open to capture what --fix would write
-    # TODO(0.6.6): move into analyzer.run() via dry-run callback
-    diff_collector, _real_open = _setup_diff_interception(args)
+    # --diff: capture what --fix would write via dry_run_callback (T-032).
+    # The analyzer calls the callback instead of open(), so files on disk
+    # are NOT modified. This replaces the old builtins.open monkey-patch.
+    diff_collector: dict[str, str] = {}
+    dry_run_callback = None
+    if args.diff:
+
+        def dry_run_callback(file_path: str, lines: list[str]) -> None:
+            diff_collector[file_path] = "".join(lines)
 
     # Run analysis
-    result, analyzer, elapsed = _run_analysis(args, extra_rpy_files, is_quiet_mode)
-
-    # Restore open() after --diff monkey-patch
-    if args.diff:
-        import builtins
-
-        builtins.open = _real_open
+    result, analyzer, elapsed = _run_analysis(
+        args, extra_rpy_files, is_quiet_mode, dry_run_callback=dry_run_callback
+    )
 
     # Post-analysis output handlers (--stats, --export-wiki, --export-html, --graph, --defaults, --stubs)
     _handle_post_analysis(args, analyzer, result, console, is_tsundere, ignored_codes, elapsed)
@@ -494,7 +447,7 @@ def main():
     _handle_check_mode(args, result, console)
 
     # --diff dry-run: print unified diff and exit
-    _handle_diff_mode(args, diff_collector, result, console, _real_open)
+    _handle_diff_mode(args, diff_collector, result, console)
 
     # Text output (default): render diagnostic cards + summary table + fixable report
     with output_redirect:

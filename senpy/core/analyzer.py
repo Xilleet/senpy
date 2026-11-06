@@ -228,8 +228,9 @@ class SenpyAnalyzer:
     def _check_unused_assets(self) -> None:
         self.diagnostics.extend(self.assets.check_unused())
 
-    def run(self, quiet: bool = False) -> AnalysisResult:
-        return self._pipeline.run(quiet)
+    def run(self, quiet: bool = False, dry_run_callback=None) -> AnalysisResult:
+        """Run analysis. See AnalysisPipeline.run for parameter docs."""
+        return self._pipeline.run(quiet, dry_run_callback=dry_run_callback)
 
     def _run_reset(self) -> None:
         """Reset all analyzer state for a fresh run."""

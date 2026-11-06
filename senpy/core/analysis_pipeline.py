@@ -18,6 +18,7 @@ Before this extraction, SenpyAnalyzer was 855 lines. After: ~400 lines
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -75,10 +76,26 @@ class AnalysisPipeline:
 
     def __init__(self, analyzer: SenpyAnalyzer) -> None:
         self.analyzer = analyzer
+        # When set, ``_write_fixed_file`` calls this instead of ``open()``.
+        # Used by ``--diff`` mode (T-032) to capture what ``--fix`` would
+        # write without modifying disk — replaces the old
+        # ``builtins.open`` monkey-patch in ``runner.py``.
+        self._dry_run_callback: Callable[[str, list[str]], None] | None = None
 
-    def run(self, quiet: bool = False) -> AnalysisResult:
-        """Top-level orchestrator: reset → collect → analyze → finalize."""
+    def run(
+        self, quiet: bool = False, dry_run_callback: Callable[[str, list[str]], None] | None = None
+    ) -> AnalysisResult:
+        """Top-level orchestrator: reset → collect → analyze → finalize.
+
+        Args:
+            quiet: Suppress progress output.
+            dry_run_callback: If set, called with ``(file_path, lines)``
+                instead of writing to disk when ``--fix`` mode would write.
+                The file on disk is NOT modified. Default ``None`` = normal
+                write behavior (back-compat).
+        """
         a = self.analyzer
+        self._dry_run_callback = dry_run_callback
         a._run_reset()
 
         a._index_assets()
@@ -499,7 +516,16 @@ class AnalysisPipeline:
                 a._add_diagnostic_by_file(diag)
 
     def _write_fixed_file(self, file_path: str, lines: list[str]) -> None:
-        """Write modified lines back to file (for --fix mode)."""
+        """Write modified lines back to file (for --fix mode).
+
+        If ``self._dry_run_callback`` is set (T-032), calls it with
+        ``(file_path, lines)`` instead of writing to disk. This is used
+        by ``--diff`` mode to capture what ``--fix`` would write without
+        modifying files — replacing the old ``builtins.open`` monkey-patch.
+        """
+        if self._dry_run_callback is not None:
+            self._dry_run_callback(file_path, lines)
+            return
         try:
             with open(file_path, "w", encoding="utf-8", newline="") as f:
                 f.writelines(lines)
