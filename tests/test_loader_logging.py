@@ -37,7 +37,14 @@ def _make_entry_point(name: str, rule_cls=None, raises: type | None = None):
 
 
 def test_load_plugin_failed_import_logs_warning(capsys, caplog):
-    """Если плагин падает при импорте — логируется warning, не print()."""
+    """If the plugin crashes during import, a warning should be logged—do not use print().
+
+    Note: trust_callback approves here so that ``load()`` is actually
+    called (after the trust-before-load fix, a declined trust skips
+    ``load()`` entirely, so no import-error warning would be logged).
+    This test verifies the logging path for a trusted plugin that fails
+    to import — the trust decision is orthogonal to the import failure.
+    """
     from senpy.plugins.base import Rule
 
     class _GoodRule(Rule):
@@ -46,7 +53,7 @@ def test_load_plugin_failed_import_logs_warning(capsys, caplog):
     ep = _make_entry_point("bad_plugin", raises=ImportError)
 
     with caplog.at_level(logging.WARNING, logger="senpy.plugins"):
-        result = loader_mod.load_plugin(ep, trust_callback=lambda _: False)
+        result = loader_mod.load_plugin(ep, trust_callback=lambda _: True)
 
     assert result is None
     # НЕ должно быть print() в stderr
@@ -60,11 +67,18 @@ def test_load_plugin_failed_import_logs_warning(capsys, caplog):
 
 
 def test_load_plugin_not_rule_subclass_logs_warning(capsys, caplog):
-    """Если entry_point указывает не на Rule subclass — логируется warning."""
+    """If `entry_point` does not point to a `Rule` subclass, a warning is logged.
+
+    Note: trust_callback approves here so that ``load()`` is actually
+    called (after the trust-before-load fix, a declined trust skips
+    ``load()`` entirely, so the "not a Rule subclass" warning would
+    never be reached). This test verifies the logging path for a
+    trusted plugin that returns a non-Rule class.
+    """
     ep = _make_entry_point("not_a_rule", rule_cls=str)  # str — не Rule
 
     with caplog.at_level(logging.WARNING, logger="senpy.plugins"):
-        result = loader_mod.load_plugin(ep, trust_callback=lambda _: False)
+        result = loader_mod.load_plugin(ep, trust_callback=lambda _: True)
 
     assert result is None
     captured = capsys.readouterr()

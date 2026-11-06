@@ -77,16 +77,13 @@ reporting:
   on the unrpyc download endpoint.
 - **Plugin trust store** (`~/.senpy/trusted_plugins.json`):
   trust-on-first-use model. CI environments (non-TTY) auto-skip untrusted
-  plugins (fail-safe).
-
-  > **Known limitation (planned fix):** the trust check currently runs
-  > **after** `entry_point.load()` — meaning the plugin's top-level
-  > Python code (`__init__.py`, module body, class decorators) executes
-  > before the trust decision is made. Trust only gates whether the
-  > rule class enters `_REGISTERED_LINT_RULES`, not whether the plugin
-  > module is imported. This is a known gap scheduled to be fixed
-  > before 0.8.0 — trust-check will move **before** load. Plugin
-  > authors should not rely on import-time side effects.
+  plugins (fail-safe). The trust check runs **before** `entry_point.load()`
+  — a declined plugin's top-level Python code (`__init__.py`, `rules.py`,
+  `@register_rule` decorators, class body) never executes. This means
+  `@register_rule` import-time side effects do not mutate
+  `_REGISTERED_LINT_RULES` when trust is declined, and a malicious
+  plugin cannot run arbitrary code at load time. Plugin authors should
+  not rely on import-time side effects for trust-gated behaviour.
 - **HTML report CSP** (`senpy/formats/html_report.py`):
   `Content-Security-Policy: default-src 'self'; script-src 'self'
   'unsafe-inline' https://cdn.jsdelivr.net/npm/mermaid@10/

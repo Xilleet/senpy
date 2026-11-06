@@ -148,13 +148,21 @@ def _resolve_plugin_api_version(rule_cls: type) -> str | None:
 def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
     """Load a single plugin entry point with security checks.
 
-    Pipeline:
-        1. Load entry_point value (the Rule subclass)
-        2. Verify it's a Rule subclass (skip if not, with warning)
-        3. Check plugin's api_version (class attribute OR module-level
+    Pipeline (trust BEFORE load — see TOFU fix):
+        1. Trust check: call trust_callback (or default) — skip if declined.
+           This runs BEFORE ``entry_point.load()`` so that a declined
+           plugin's top-level Python code (``__init__.py``, ``rules.py``,
+           ``@register_rule`` decorators, class body) never executes.
+           Previously load() ran first, then trust was checked — meaning
+           a malicious plugin's top-level code ran on every Senpy start
+           (including CI/LSP), and ``@register_rule`` import-time side
+           effects mutated ``_REGISTERED_LINT_RULES`` even when trust
+           was declined.
+        2. Load entry_point value (the Rule subclass) — only if trust approved.
+        3. Verify it's a Rule subclass (skip if not, with warning).
+        4. Check plugin's api_version (class attribute OR module-level
            constant — see _resolve_plugin_api_version). Skip if incompatible.
-        4. Trust check: call trust_callback (or default) — skip if declined
-        5. Return _LoadedEntryPoint(name, rule_cls), or None if skipped
+        5. Return _LoadedEntryPoint(name, rule_cls), or None if skipped.
 
     Isolation: any exception during loading is caught and logged. Returns None.
 
@@ -169,14 +177,31 @@ def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
     """
     plugin_name = getattr(entry_point, "name", "<unknown>")
 
-    # Step 1: Load entry_point value (catch import errors)
+    # Step 1: Trust check (SEC-P2) — MUST run before entry_point.load().
+    # The trust decision is based solely on the plugin name (a string),
+    # so it does not require loading the plugin module. Running trust
+    # first guarantees that a declined plugin's top-level code never
+    # executes — no import-time side effects, no registry mutation,
+    # no network calls, no file writes.
+    if trust_callback is None:
+        trust_callback = _default_trust_callback
+
+    if not trust_callback(plugin_name):
+        # Trust declined — skip silently (don't warn, this is expected in CI).
+        # CRITICAL: return here, before entry_point.load(), so the plugin
+        # module is never imported.
+        return None
+
+    # Step 2: Load entry_point value (catch import errors).
+    # Only reached after trust is approved — the plugin module is now
+    # allowed to execute its top-level code.
     try:
         rule_cls = entry_point.load()
     except Exception as e:
         _logger.warning("Failed to load plugin %r: %s", plugin_name, e)
         return None
 
-    # Step 2: Verify it's a Rule subclass
+    # Step 3: Verify it's a Rule subclass
     from senpy.plugins.base import Rule
 
     if not isinstance(rule_cls, type) or not issubclass(rule_cls, Rule):
@@ -187,7 +212,7 @@ def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
         )
         return None
 
-    # Step 3: Check plugin's api_version (SEC-P1)
+    # Step 4: Check plugin's api_version (SEC-P1)
     # Plugins may declare PLUGIN_API_VERSION either as a class attribute on
     # the Rule subclass or as a module-level constant. Both shipped example
     # plugins (examples/my_senpy_plugin/rules.py:22,
@@ -215,14 +240,6 @@ def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
             "(neither class nor module attribute). Loading without version check.",
             plugin_name,
         )
-
-    # Step 4: Trust check (SEC-P2)
-    if trust_callback is None:
-        trust_callback = _default_trust_callback
-
-    if not trust_callback(plugin_name):
-        # Trust declined — skip silently (don't warn, this is expected in CI)
-        return None
 
     # All checks passed
     return _LoadedEntryPoint(name=plugin_name, rule_cls=rule_cls)
