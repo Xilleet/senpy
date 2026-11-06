@@ -216,6 +216,131 @@ def _print_scan_banner(args, console, is_tsundere: bool) -> None:
             console.print()
 
 
+def _apply_noqa_comments(diagnostics, analyzer) -> list[str]:
+    """Append ``# noqa: RPYxxx`` comments to source files for every diagnostic.
+
+    For each diagnostic in ``diagnostics``, appends ``# noqa: RPYxxx``
+    (where ``xxx`` is the diagnostic's rule code) to the end of the
+    offending line in the source ``.rpy`` file. Multiple diagnostics on
+    the same line are merged into one ``# noqa: RPY101, RPY104``
+    directive.
+
+    Idempotent: lines that already have a ``# noqa`` directive for a
+    given code are not duplicated — the code is added to the existing
+    directive if missing.
+
+    Files are written back via the analyzer's ``_write_fixed_file``
+    pipeline (same path as ``--fix``), so OSError on read-only files is
+    logged at WARNING and recorded in ``analyzer.failed_writes`` — the
+    caller (``runner.main``) surfaces failed writes via the existing
+    ``_print_failed_writes_summary`` + ``_force_nonzero_if_failed_writes``
+    path added in the ``--fix`` OSError fix.
+
+    Args:
+        diagnostics: List of ``Diagnostic`` objects from
+            ``AnalysisResult.diagnostics``. Only ``file_path``,
+            ``line_number`` and ``code`` are used.
+        analyzer: ``SenpyAnalyzer`` instance — used to access
+            ``_pipeline._write_fixed_file`` and ``failed_writes``.
+
+    Returns:
+        List of file paths that were written to disk. Empty list if
+        no diagnostics (no-op).
+    """
+    if not diagnostics:
+        return []
+
+    # Group diagnostics by (file_path, line_number) → set of codes.
+    # Using a set avoids duplicate codes on the same line.
+    import re
+    from collections import defaultdict
+
+    from senpy.core.file_collector import parse_noqa
+    from senpy.core.logging import get_logger
+
+    logger = get_logger("cli")
+    noqa_re = re.compile(r"#\s*noqa:\s*([^\n#]*)", re.IGNORECASE)
+
+    # {file_path: {line_number: set of codes}}
+    by_file: dict[str, dict[int, set[str]]] = defaultdict(lambda: defaultdict(set))
+    for diag in diagnostics:
+        if not diag.code or not diag.file_path or diag.line_number < 1:
+            continue
+        by_file[diag.file_path][diag.line_number].add(diag.code)
+
+    written_files: list[str] = []
+    for file_path, lines_to_codes in by_file.items():
+        try:
+            with open(file_path, encoding="utf-8", newline="") as f:
+                lines = f.readlines()
+        except OSError as e:
+            logger.warning("Failed to read %s for --add-noqa: %s", file_path, e)
+            analyzer.failed_writes.append(file_path)
+            continue
+
+        modified = False
+        for line_no, codes in lines_to_codes.items():
+            # line_no is 1-indexed; lines is 0-indexed.
+            idx = line_no - 1
+            if idx >= len(lines):
+                continue
+            original_line = lines[idx]
+
+            # Check if the line already has a # noqa directive.
+            # parse_noqa is imported at the top of this function.
+            has_noqa, existing_codes = parse_noqa(original_line)
+            codes_to_add = codes if existing_codes is None else codes - existing_codes
+            if not codes_to_add:
+                # All codes already present in the existing directive.
+                continue
+
+            # Strip the trailing newline so we can append the directive
+            # before re-adding the newline.
+            stripped = original_line.rstrip("\r\n")
+            line_ending = original_line[len(stripped) :]
+
+            if has_noqa and existing_codes is not None:
+                # Merge into the existing directive: append the new codes
+                # to the comma-separated list inside `# noqa: ...`.
+                # noqa_re is compiled once at the top of this function.
+                merged_codes = sorted(existing_codes | codes_to_add)
+                merged_str = ", ".join(merged_codes)
+                # Use a lambda with default argument to bind merged_str at
+                # definition time (avoids B023: closure over loop variable).
+                new_line = (
+                    noqa_re.sub(
+                        lambda _m, s=merged_str: f"# noqa: {s}",
+                        stripped,
+                        count=1,
+                    )
+                    + line_ending
+                )
+            elif has_noqa and existing_codes is None:
+                # Bare `# noqa` (suppress all) — nothing to add, it
+                # already suppresses everything. Skip.
+                continue
+            else:
+                # No existing noqa — append a new directive.
+                # Format: `  # noqa: RPY101` (two spaces before # for
+                # readability, matching the convention used in the
+                # project's own source files).
+                # Sort codes for deterministic output.
+                codes_str = ", ".join(sorted(codes_to_add))
+                # Preserve any trailing whitespace before the newline by
+                # appending after the stripped content.
+                new_line = f"{stripped}  # noqa: {codes_str}{line_ending}"
+
+            if new_line != original_line:
+                lines[idx] = new_line
+                modified = True
+
+        if modified:
+            analyzer._pipeline._write_fixed_file(file_path, lines)
+            written_files.append(file_path)
+
+    return written_files
+
+
 def _run_analysis(args, extra_rpy_files, is_quiet_mode: bool, dry_run_callback=None):
     """Run SenpyAnalyzer with appropriate fix/no_cache settings.
 
@@ -484,6 +609,20 @@ def main():
     # is logged per-file in _write_fixed_file; here we print a concise summary
     # and remember the flag so the final exit code can be forced to non-zero.
     had_failed_writes = _print_failed_writes_summary(result, console, is_quiet_mode)
+
+    # --add-noqa: append `# noqa: RPYxxx` comments to source files for every
+    # diagnostic, so the next run suppresses them. Writes files back via the
+    # same _write_fixed_file pipeline as --fix, so failed writes surface
+    # through the existing failed_writes path (already handled above + the
+    # exit-code force below). Runs BEFORE --check/--diff/text output so the
+    # output reflects the pre-suppression state (user sees what was suppressed).
+    if args.add_noqa:
+        _apply_noqa_comments(result.diagnostics, analyzer)
+        # Refresh had_failed_writes — _apply_noqa_comments may have added
+        # new failures (read-only files, etc.) via _write_fixed_file.
+        had_failed_writes = (
+            _print_failed_writes_summary(result, console, is_quiet_mode) or had_failed_writes
+        )
 
     # Post-analysis output handlers (--stats, --export-wiki, --export-html, --graph, --defaults, --stubs)
     _handle_post_analysis(args, analyzer, result, console, is_tsundere, ignored_codes, elapsed)
