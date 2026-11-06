@@ -1377,11 +1377,15 @@ def _run_analysis(args, extra_rpy_files, is_quiet_mode: bool):
     return result, analyzer, elapsed
 
 
-def _handle_post_analysis(args, analyzer, result, console, is_tsundere, ignored_codes):
+def _handle_post_analysis(args, analyzer, result, console, is_tsundere, ignored_codes, elapsed):
     """Handle post-analysis output flags: --stats, --export-wiki, --export-html,
     --graph, --defaults, --stubs.
 
     Returns exit code if any handler exited, None otherwise.
+
+    ``elapsed`` is the wall-clock analysis time, threaded through to
+    ``handle_export_html`` so the HTML report's "Analysis time" line
+    shows the real measurement instead of a hardcoded 0.0.
     """
     _ec = handle_stats(args, analyzer, console, is_tsundere)
     if _ec is not None:
@@ -1389,7 +1393,9 @@ def _handle_post_analysis(args, analyzer, result, console, is_tsundere, ignored_
     _ec = handle_export_wiki(args, analyzer, console, is_tsundere)
     if _ec is not None:
         sys.exit(_ec)
-    _ec = handle_export_html(args, result, analyzer, console, is_tsundere, ignored_codes)
+    _ec = handle_export_html(
+        args, result, analyzer, console, is_tsundere, ignored_codes, elapsed=elapsed
+    )
     if _ec is not None:
         sys.exit(_ec)
     _ec = handle_graph(args, analyzer, console, is_tsundere)
@@ -1550,7 +1556,7 @@ def main():
         builtins.open = _real_open
 
     # Post-analysis output handlers (--stats, --export-wiki, --export-html, --graph, --defaults, --stubs)
-    _handle_post_analysis(args, analyzer, result, console, is_tsundere, ignored_codes)
+    _handle_post_analysis(args, analyzer, result, console, is_tsundere, ignored_codes, elapsed)
 
     # Filter diagnostics by --ignore/--select/--errors-only/--info
     active_diagnostics, hidden_info_count = filter_diagnostics(result, args, ignored_codes)

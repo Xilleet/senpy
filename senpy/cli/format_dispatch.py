@@ -22,6 +22,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from senpy.cli.main import console
 from senpy.formatter.core import FormatConfig, Formatter
 
 
@@ -42,7 +43,7 @@ def dispatch_format(argv: list[str]) -> int:
 
     rpy_files = _collect_rpy_files(args.paths)
     if not rpy_files:
-        print("[yellow]No .rpy files found.[/yellow]")
+        console.print("[yellow]No .rpy files found.[/yellow]")
         return 0
 
     stats = _process_files(rpy_files, formatter, check=args.check, diff=args.diff)
@@ -101,7 +102,7 @@ def _collect_rpy_files(paths: list[str]) -> list[Path]:
         elif p.is_dir():
             rpy_files.extend(p.rglob("*.rpy"))
         else:
-            print(f"[yellow]Skipping (not a .rpy file/dir): {p}[/yellow]")
+            console.print(f"[yellow]Skipping (not a .rpy file/dir): {p}[/yellow]")
     return rpy_files
 
 
@@ -124,7 +125,7 @@ def _process_files(
         try:
             original = f.read_text(encoding="utf-8")
         except OSError as e:
-            print(f"[red]Error reading {f}: {e}[/red]")
+            console.print(f"[red]Error reading {f}: {e}[/red]")
             continue
 
         formatted = formatter.format_code(original, filename=str(f))
@@ -133,7 +134,7 @@ def _process_files(
 
         if check:
             stats.would_change += 1
-            print(f"[yellow]Would reformat:[/yellow] {f}")
+            console.print(f"[yellow]Would reformat:[/yellow] {f}")
         elif diff:
             _print_diff(original, formatted, f)
             stats.would_change += 1
@@ -141,9 +142,9 @@ def _process_files(
             try:
                 f.write_text(formatted, encoding="utf-8")
                 stats.changed += 1
-                print(f"[green]Formatted:[/green] {f}")
+                console.print(f"[green]Formatted:[/green] {f}")
             except OSError as e:
-                print(f"[red]Error writing {f}: {e}[/red]")
+                console.print(f"[red]Error writing {f}: {e}[/red]")
     return stats
 
 
@@ -166,15 +167,15 @@ def _print_format_summary(stats: _FormatStats, *, check: bool, diff: bool) -> in
     """
     if check or diff:
         if stats.would_change > 0:
-            print(
+            console.print(
                 f"\n[bold yellow]{stats.would_change} file(s) would be reformatted.[/bold yellow]"
             )
             return 1
-        print("\n[bold green]All files are already formatted![/bold green]")
+        console.print("\n[bold green]All files are already formatted![/bold green]")
         return 0
 
     if stats.changed > 0:
-        print(f"\n[bold green]{stats.changed} file(s) formatted.[/bold green]")
+        console.print(f"\n[bold green]{stats.changed} file(s) formatted.[/bold green]")
     else:
-        print("\n[bold green]All files are already formatted![/bold green]")
+        console.print("\n[bold green]All files are already formatted![/bold green]")
     return 0

@@ -232,3 +232,84 @@ def test_dispatch_format_importable_from_cli_main():
     # After : _dispatch_format in main.py should be re-export from format_dispatch
     # (we'll verify exact equality after extraction)
     assert callable(f1)
+
+
+# =============================================================================
+# 8. Rich markup rendering — no raw tags in user-facing output
+# =============================================================================
+
+
+def test_format_output_has_no_raw_rich_markup_tags(tmp_path, capsys):
+    """`senpy format` output must not leak raw Rich markup tags.
+
+    Tags like ``[yellow]...[/yellow]`` are Rich markup that ``console.print``
+    renders to ANSI escape codes (in a tty) or strips (in a pipe). Calling
+    bare ``print(...)`` on the same string prints the tags literally —
+    the user sees ``[yellow]Formatted:[/yellow] path/to/file.rpy`` instead
+    of coloured text. Every other CLI module routes its styled output
+    through ``console.print``; ``format_dispatch.py`` is the outlier and
+    must match the convention.
+    """
+    # Trigger every code path that prints styled output: success path
+    # (Formatted:), no-files path ([yellow]No .rpy files found.[/yellow]),
+    # and the summary line.
+    f = tmp_path / "test.rpy"
+    f.write_text("label start:\n\t$x=1\n", encoding="utf-8")  # needs formatting
+
+    _exit, out, _ = _run_format([str(f)], capsys)
+
+    # The success path must still report the file was formatted — but
+    # through rendered Rich output, not raw tags.
+    assert "Formatted" in out
+
+    # Raw Rich markup tags must not appear in user-facing stdout. The
+    # full set used by format_dispatch.py: [yellow], [red], [green],
+    # [bold yellow], [bold green]. We check the bracket-prefix forms
+    # because closing tags (e.g. [/yellow]) imply an opening tag too.
+    raw_tags = [
+        "[yellow]",
+        "[/yellow]",
+        "[red]",
+        "[/red]",
+        "[green]",
+        "[/green]",
+        "[bold yellow]",
+        "[/bold yellow]",
+        "[bold green]",
+        "[/bold green]",
+    ]
+    leaked = [tag for tag in raw_tags if tag in out]
+    assert not leaked, (
+        f"Raw Rich markup tags leaked into stdout: {leaked}. "
+        "Use console.print() from senpy.cli.main instead of bare print() — "
+        "every other CLI module already does."
+    )
+
+
+def test_format_check_mode_output_has_no_raw_rich_markup_tags(tmp_path, capsys):
+    """`senpy format --check` output must also be free of raw Rich tags.
+
+    The --check and --diff paths print '[yellow]Would reformat:[/yellow]'
+    and the '[bold yellow]N file(s) would be reformatted.[/bold yellow]'
+    summary — same bug, same fix.
+    """
+    f = tmp_path / "test.rpy"
+    f.write_text("label start:\n\t$x=1\n", encoding="utf-8")
+
+    _exit, out, _ = _run_format(["--check", str(f)], capsys)
+
+    assert "Would reformat" in out  # behavior preserved
+    raw_tags = [
+        "[yellow]",
+        "[/yellow]",
+        "[red]",
+        "[/red]",
+        "[green]",
+        "[/green]",
+        "[bold yellow]",
+        "[/bold yellow]",
+        "[bold green]",
+        "[/bold green]",
+    ]
+    leaked = [tag for tag in raw_tags if tag in out]
+    assert not leaked, f"Raw Rich markup tags leaked into --check output: {leaked}."

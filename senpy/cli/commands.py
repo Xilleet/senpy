@@ -241,9 +241,21 @@ def handle_export_wiki(args, analyzer, console: Console, is_tsundere: bool) -> i
 
 
 def handle_export_html(
-    args, result, analyzer, console: Console, is_tsundere: bool, ignored_codes: set
+    args,
+    result,
+    analyzer,
+    console: Console,
+    is_tsundere: bool,
+    ignored_codes: set,
+    elapsed: float = 0.0,
 ) -> int | None:
-    """--export-html: standalone HTML report."""
+    """--export-html: standalone HTML report.
+
+    ``elapsed`` is the wall-clock analysis time measured at the CLI
+    entry point (``senpy/cli/main.py``). The HTML template renders it
+    as ``Analysis time: <b>{elapsed:.3f}s</b>`` — passing 0.0 here
+    silently hides the real number from the report.
+    """
     if not args.export_html:
         return None
 
@@ -261,7 +273,7 @@ def handle_export_html(
         graph_mermaid=analyzer.export_graph(),
         file_count=result.file_count,
         total_lines=result.total_lines,
-        elapsed=0.0,
+        elapsed=elapsed,
         out_path=args.export_html,
     )
     if is_tsundere:
