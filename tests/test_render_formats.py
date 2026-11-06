@@ -420,3 +420,199 @@ class TestRenderGitlab:
         assert "saved to" in captured.out
         data = json.loads(out_file.read_text(encoding="utf-8"))
         assert data[0]["check_name"] == "RPY104"
+
+
+# =============================================================================
+# render_junit() — characterization safety net for T-017 split
+# =============================================================================
+
+
+class TestRenderJunit:
+    """Characterization tests for ``render_junit`` — JUnit XML output.
+
+    Safety net before the ``cli/main.py`` god-file split (T-017).
+    Verifies the JUnit renderer's public contract: returns int exit code,
+    exit 1 on ERROR diagnostics, exit 0 otherwise, produces well-formed
+    XML with the expected structure, writes to --output-file when set.
+    """
+
+    def test_render_junit_exists(self):
+        """render_junit must be importable from senpy.cli.main."""
+        from senpy.cli.main import render_junit
+
+        assert callable(render_junit)
+
+    def test_returns_int_exit_code(self):
+        from rich.console import Console
+
+        from senpy.cli.main import render_junit
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="junit")
+        exit_code = render_junit(diags, args, console)
+        assert isinstance(exit_code, int)
+
+    def test_exit_1_when_errors_present(self):
+        from rich.console import Console
+
+        from senpy.cli.main import render_junit
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="junit")
+        exit_code = render_junit(diags, args, console)
+        assert exit_code == 1
+
+    def test_exit_0_when_no_errors(self):
+        from rich.console import Console
+
+        from senpy.cli.main import render_junit
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY104", severity="WARNING")]
+        args = _make_args(output_format="junit")
+        exit_code = render_junit(diags, args, console)
+        assert exit_code == 0
+
+    def test_exit_0_when_empty(self):
+        from rich.console import Console
+
+        from senpy.cli.main import render_junit
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        args = _make_args(output_format="junit")
+        exit_code = render_junit([], args, console)
+        assert exit_code == 0
+
+    def test_stdout_contains_junit_xml(self, capsys):
+        """Without --output-file: JUnit XML written to stdout."""
+        import xml.etree.ElementTree as ET
+
+        from rich.console import Console
+
+        from senpy.cli.main import render_junit
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [
+            MockDiagnostic(code="RPY101", severity="ERROR", file_path="test.rpy", line_number=5),
+            MockDiagnostic(code="RPY104", severity="WARNING", file_path="test.rpy", line_number=10),
+        ]
+        args = _make_args(output_format="junit")
+        render_junit(diags, args, console)
+        captured = capsys.readouterr()
+        # Must be parseable XML
+        root = ET.fromstring(captured.out)
+        assert root.tag == "testsuites"
+        assert root.get("name") == "senpy"
+        assert int(root.get("tests")) == 2
+        assert int(root.get("failures")) == 1  # one ERROR
+        assert int(root.get("skipped")) == 1  # one WARNING
+
+    def test_output_file_written(self, tmp_path, capsys):
+        from rich.console import Console
+
+        from senpy.cli.main import render_junit
+
+        out_file = tmp_path / "report.xml"
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="junit", output_file=str(out_file))
+        exit_code = render_junit(diags, args, console)
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        assert "saved to" in captured.out
+        content = out_file.read_text(encoding="utf-8")
+        assert "<?xml" in content
+        assert "<testsuites" in content
+        assert "RPY101" in content
+
+
+# =============================================================================
+# render_github() — characterization safety net for T-017 split
+# =============================================================================
+
+
+class TestRenderGithub:
+    """Characterization tests for ``render_github`` — GitHub Actions format.
+
+    Safety net before the ``cli/main.py`` god-file split (T-017).
+    Verifies the GitHub renderer's public contract: returns int exit code,
+    exit 1 on ERROR diagnostics, exit 0 otherwise, emits ``::error`` /
+    ``::warning`` workflow commands, writes to --output-file when set.
+    """
+
+    def test_render_github_exists(self):
+        from senpy.cli.main import render_github
+
+        assert callable(render_github)
+
+    def test_returns_int_exit_code(self):
+        from rich.console import Console
+
+        from senpy.cli.main import render_github
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="github")
+        exit_code = render_github(diags, args, console)
+        assert isinstance(exit_code, int)
+
+    def test_exit_1_when_errors_present(self):
+        from rich.console import Console
+
+        from senpy.cli.main import render_github
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="github")
+        exit_code = render_github(diags, args, console)
+        assert exit_code == 1
+
+    def test_exit_0_when_no_errors(self):
+        from rich.console import Console
+
+        from senpy.cli.main import render_github
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY104", severity="WARNING")]
+        args = _make_args(output_format="github")
+        exit_code = render_github(diags, args, console)
+        assert exit_code == 0
+
+    def test_stdout_contains_workflow_commands(self, capsys):
+        """stdout must contain ``::error`` and ``::warning`` workflow commands."""
+        from rich.console import Console
+
+        from senpy.cli.main import render_github
+
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [
+            MockDiagnostic(code="RPY101", severity="ERROR", file_path="test.rpy", line_number=5),
+            MockDiagnostic(code="RPY104", severity="WARNING", file_path="test.rpy", line_number=10),
+        ]
+        args = _make_args(output_format="github", path=".")
+        render_github(diags, args, console)
+        captured = capsys.readouterr()
+        # GitHub Actions format: ::error file=X,line=N,col=C::CODE: msg
+        assert "::error" in captured.out
+        assert "::warning" in captured.out
+        assert "RPY101" in captured.out
+        assert "RPY104" in captured.out
+
+    def test_output_file_written(self, tmp_path, capsys):
+        from rich.console import Console
+
+        from senpy.cli.main import render_github
+
+        out_file = tmp_path / "annotations.txt"
+        console = Console(force_terminal=False, legacy_windows=False)
+        diags = [MockDiagnostic(code="RPY101", severity="ERROR")]
+        args = _make_args(output_format="github", output_file=str(out_file), path=".")
+        exit_code = render_github(diags, args, console)
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        assert "saved to" in captured.out
+        content = out_file.read_text(encoding="utf-8")
+        assert "::error" in content
+        assert "RPY101" in content
