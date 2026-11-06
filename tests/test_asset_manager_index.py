@@ -204,3 +204,119 @@ class TestNonAssetExtensionsExcluded:
         am.index()
         unused = set(am.known_assets)
         assert "images/bg_real.png" in unused or "game/images/bg_real.png" in unused
+
+
+# =============================================================================
+# Cache invalidation — deleted/added assets between index() calls
+# =============================================================================
+
+
+class TestCacheInvalidation:
+    """AssetManager must reflect the current state of disk on every index()
+    call — not stale data from a previous scan.
+
+    The pre-fix code stored ``known_assets`` and ``valid_images`` in a
+    class-level ``_asset_cache`` dict keyed by project path. The cache
+    was restored at the start of every ``index()`` call, and the disk
+    scan only ADDED to ``known_assets`` (never removed). So a file
+    deleted between two scans stayed in ``known_assets`` forever — the
+    LSP (long-lived process) kept showing hover / asset-reference data
+    for files that no longer existed on disk.
+    """
+
+    def test_deleted_asset_not_in_known_assets_after_reindex(self, tmp_path):
+        """File deleted from disk between two index() calls must NOT
+        appear in the second scan's known_assets.
+        """
+        project = tmp_path / "proj"
+        project.mkdir()
+        game = project / "game"
+        game.mkdir()
+        images = game / "images"
+        images.mkdir()
+        img = images / "bg_deleteme.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n fake png")
+
+        am1 = AssetManager(str(project))
+        am1.index()
+        assert (
+            "images/bg_deleteme.png" in am1.known_assets
+            or "game/images/bg_deleteme.png" in am1.known_assets
+        )
+
+        img.unlink()  # delete the file from disk
+
+        # New AssetManager instance, same project — simulates LSP re-run
+        # where the analyzer is recreated but the process is still alive.
+        am2 = AssetManager(str(project))
+        am2.index()
+
+        assert (
+            "images/bg_deleteme.png" not in am2.known_assets
+        ), "deleted file persists in known_assets — stale cache data"
+        assert "game/images/bg_deleteme.png" not in am2.known_assets
+
+    def test_added_asset_appears_in_known_assets_after_reindex(self, tmp_path):
+        """File added to disk between two index() calls must appear in the
+        second scan. Regression guard — the disk scan already picks up
+        additions, but verify the fix does not break this.
+        """
+        project = tmp_path / "proj"
+        project.mkdir()
+        game = project / "game"
+        game.mkdir()
+        images = game / "images"
+        images.mkdir()
+
+        am1 = AssetManager(str(project))
+        am1.index()
+        # No images yet — known_assets should not contain any PNG
+        assert not any(a.endswith(".png") for a in am1.known_assets)
+
+        img = images / "new_bg.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n fake png")
+
+        am2 = AssetManager(str(project))
+        am2.index()
+
+        assert (
+            "images/new_bg.png" in am2.known_assets or "game/images/new_bg.png" in am2.known_assets
+        )
+
+    def test_class_level_cache_does_not_leak_between_projects(self, tmp_path):
+        """Two different projects must not share cached asset state.
+
+        The pre-fix ``_asset_cache`` was a ``ClassVar`` — shared across
+        all AssetManager instances in the same process. If two projects
+        had the same abspath (impossible with pytest tmp_path, but
+        possible in LSP workspace switches), cache from project A would
+        leak into project B. After the fix (cache removed), each
+        index() call does a fresh disk scan with no cross-project
+        contamination.
+        """
+        proj_a = tmp_path / "proj_a"
+        proj_a.mkdir()
+        (proj_a / "game").mkdir()
+        (proj_a / "game" / "images").mkdir()
+        (proj_a / "game" / "images" / "only_in_a.png").write_bytes(b"\x89PNG fake")
+
+        proj_b = tmp_path / "proj_b"
+        proj_b.mkdir()
+        (proj_b / "game").mkdir()
+        (proj_b / "game" / "images").mkdir()
+        (proj_b / "game" / "images" / "only_in_b.png").write_bytes(b"\x89PNG fake")
+
+        am_a = AssetManager(str(proj_a))
+        am_a.index()
+
+        am_b = AssetManager(str(proj_b))
+        am_b.index()
+
+        # Project B must not see project A's assets
+        assert "images/only_in_a.png" not in am_b.known_assets
+        assert "game/images/only_in_a.png" not in am_b.known_assets
+        # Project B must see its own assets
+        assert (
+            "images/only_in_b.png" in am_b.known_assets
+            or "game/images/only_in_b.png" in am_b.known_assets
+        )

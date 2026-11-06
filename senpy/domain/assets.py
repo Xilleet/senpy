@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import pickle
 import zlib
-from typing import ClassVar
 
 from senpy.core.constants import (
     AUDIO_EXTENSIONS,
@@ -115,8 +114,6 @@ def find_orphaned_rpyc(project_path: str) -> list[str]:
 
 
 class AssetManager:
-    _asset_cache: ClassVar[dict[str, tuple[set[str], set[str]]]] = {}
-
     def __init__(self, project_path: str):
         self.project_path = os.path.abspath(project_path)
         self.known_assets: set[str] = set()
@@ -137,18 +134,19 @@ class AssetManager:
         self.used_asset_keys: set[str] = set()
 
     def index(self) -> None:
-        """Scans the project directory and RPA archives, indexing all media files."""
+        """Scans the project directory and RPA archives, indexing all media files.
+
+        Each call does a fresh disk scan — there is no cache. The previous
+        class-level ``_asset_cache`` was removed because it accumulated
+        stale entries: the disk scan only ADDED to ``known_assets``
+        (never removed), so files deleted between two ``index()`` calls
+        persisted in the cache forever. In the LSP (long-lived process)
+        this meant hover / asset-reference data showed files that no
+        longer existed on disk.
+        """
         self._reset_asset_state()
-
-        if self.project_path in self._asset_cache:
-            cached_assets, cached_images = self._asset_cache[self.project_path]
-            self.known_assets = set(cached_assets)
-            self.valid_images = set(cached_images)
-
         self._index_disk_files()
         self._index_valid_images()
-
-        self._asset_cache[self.project_path] = (set(self.known_assets), set(self.valid_images))
 
     def _reset_asset_state(self) -> None:
         """Clear all asset indexes before re-indexing."""
