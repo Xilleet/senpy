@@ -1,6 +1,6 @@
 ---
 title: Ren'Py Linter — Find Bugs in Visual Novel Scripts Before Release
-description: A Ren'Py linter finds script bugs before your players do. The built-in renpy lint only catches syntax errors. Senpy is a semantic linter that detects undefined variables, broken labels, save corruption, rollback desync, translation errors, and dead code — without requiring the Ren'Py SDK.
+description: A Ren'Py linter finds script bugs before your players do. The built-in renpy lint catches syntax and reference errors, but does not specialize in deep semantic bugs. Senpy is a semantic linter that detects undefined variables, broken labels, save corruption, rollback desync, translation errors, and dead code — without requiring the Ren'Py SDK.
 tags:
   - linter
   - renpy
@@ -12,8 +12,8 @@ tags:
 
 A Ren'Py linter checks your visual novel scripts for bugs before you
 ship them to players. Ren'Py ships with its own `renpy.exe lint` command,
-but it only catches syntax errors and broken `jump`/`call` targets. A
-**semantic linter** like Senpy goes further — it understands Ren'Py's
+but it focuses on syntax errors, broken `jump`/`call` targets, and
+image/sprite references. A **semantic linter** like Senpy goes further — it understands Ren'Py's
 domain model (variables, screens, translations, save persistence,
 rollback) and catches the class of bugs that survive `renpy lint` and
 only surface after release, when a player picks the wrong route or
@@ -40,7 +40,7 @@ The built-in `renpy lint` covers layers 1 and 2. Senpy covers all five.
 
 ---
 
-## Why `renpy lint` is not enough
+## Where `renpy lint` stops and Senpy continues
 
 The built-in `renpy lint` command launches the entire Pygame runtime and
 executes `init python:` blocks. This gives it access to the full Ren'Py
@@ -59,7 +59,8 @@ project) and blind to anything that happens at runtime after init:
   original was `"Hello, [player_name]!"`. `renpy lint` doesn't compare
   old/new string variables.
 - **Dead code** — unused `define`/`transform`/`screen`. `renpy lint`
-  doesn't have a "used" definition.
+  checks unused images, but does not report unused defines, transforms,
+  screens, or parameters.
 - **Init order violations** — `NameError` at game launch because
   `configure_interface()` is called in `a_setup.rpy` but defined in
   `z_helpers.rpy`. `renpy lint` runs *after* the alphabetical file load,

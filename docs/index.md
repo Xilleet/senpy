@@ -22,7 +22,7 @@ tags:
 **Senpy** finds bugs in your Ren'Py visual novel before your players do —
 without requiring the Ren'Py SDK. It is a fast, standalone static analyzer,
 semantic linter, control-flow analyzer, and Language Server that catches
-the class of bugs `renpy lint` cannot see:
+the class of bugs that go beyond `renpy lint`'s scope:
 
 - **Undefined variables** that crash on save/load or alternate routes
 - **Broken labels** from `jump`/`call` typos
@@ -58,7 +58,7 @@ See [Install](install.md) for all three installation paths (Python CLI, VS Code 
 ## What can Senpy detect?
 
 Senpy includes **51 rules** across 8 categories. Each rule maps to a
-real Ren'Py runtime failure that `renpy lint` does not catch:
+real Ren'Py runtime failure that goes beyond `renpy lint`'s scope:
 
 | Category | Rules | Example caught bug |
 |---|---|---|

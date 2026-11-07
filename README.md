@@ -64,8 +64,8 @@ Full changelog: [CHANGELOG.md](https://github.com/Xilleet/senpy/blob/main/CHANGE
 
 ## Why You Need This
 
-`renpy lint` catches syntax errors, but does not catch the bugs that actually
-ship to players. These are real bugs that Senpy would have caught before
+`renpy lint` catches syntax and reference errors, but the bugs that actually
+ship to players go beyond its scope. These are real bugs that Senpy would have caught before
 release:
 
 ### Bug 1 — Save-breaking `define` mutation
@@ -184,7 +184,7 @@ translate russian welcome_1:
 
 Every bug above:
 
-1. Slips past `renpy lint` (which only checks syntax + label targets).
+1. Slips past `renpy lint` (which focuses on syntax and references).
 2. Survives dev playtesting (devs always pick the "interesting" branch).
 3. Surfaces only after release — via Steam reviews, Discord screenshots,
    or itch.io bug reports.
@@ -199,7 +199,7 @@ For the full list of 51 rules with examples, see **[RULES.md](https://github.com
 
 ## Why Senpy?
 
-The standard built-in `renpy lint` command only checks for basic syntax errors and broken label targets. It is blind to deep runtime Python execution issues, rollback desynchronizations, and save-file corruptions. Consequently, critical `NameError` and `KeyError` crashes often slip into production builds and are only discovered after dozens of hours of manual playtesting.
+The standard built-in `renpy lint` command checks for syntax errors, broken references, and image/sprite issues. However, it does not cover deep runtime Python execution issues, rollback desynchronizations, or save-file corruptions. Consequently, critical `NameError` and `KeyError` crashes often slip into production builds and are only discovered after dozens of hours of manual playtesting.
 
 **Senpy** provides comprehensive static semantic analysis without requiring the Ren'Py SDK runtime:
 

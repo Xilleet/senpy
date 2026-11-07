@@ -1,6 +1,6 @@
 ---
 title: Ren'Py Static Analysis — Five Levels of Bug Detection
-description: Static analysis for Ren'Py visual novels means more than syntax checking. Five levels exist — syntax, references, semantics, control flow, and save/rollback safety. Senpy is the only Ren'Py static analyzer that covers all five. Learn what each level catches and why the built-in renpy lint only covers the first two.
+description: Static analysis for Ren'Py visual novels means more than syntax checking. Five levels exist — syntax, references, semantics, control flow, and save/rollback safety. Senpy is the only Ren'Py static analyzer that covers all five. Learn what each level catches and why the built-in renpy lint focuses on the first two.
 tags:
   - static-analysis
   - renpy
@@ -13,7 +13,7 @@ Static analysis for Ren'Py visual novels means checking your `.rpy`
 scripts for bugs **without running the game**. There are five distinct
 levels of static analysis, each catching a different class of bug.
 Senpy is the only Ren'Py static analyzer that covers all five — the
-built-in `renpy lint` covers only the first two.
+built-in `renpy lint` focuses on the first two.
 
 This page explains each level, what it catches, and why level 5 (save
 and rollback safety) is the difference between "the game runs on my
@@ -60,7 +60,7 @@ that violate Ren'Py's indentation rules.
 ```renpy
 # Bad (RPY001)
 label start:
-	"Hello, world!"   # ← that's a TAB, not 4 spaces
+        "Hello, world!"   # ← that's a TAB, not 4 spaces
 
 # Bad (RPY301)
 "Warning: {b}Hazard!"   # ← {b} never closed — bold leaks into next lines
@@ -189,7 +189,7 @@ save file is fresh. Players find them: a player who takes a different
 route, loads an old save after a game update, or hits rollback at the
 wrong moment will see `NameError`, `KeyError`, or a corrupted save.
 
-`renpy lint` does **not** catch these. It runs *after* the alphabetical
+These are beyond `renpy lint`'s scope. It runs *after* the alphabetical
 file load and inside the full Ren'Py environment, so it can't model
 "what if the player skips `intro` and goes straight to
 `continue_story`?"
