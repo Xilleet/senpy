@@ -14,7 +14,7 @@ tags:
 <p align="center">
   <a href="https://pypi.org/project/senpy-linter/"><img src="https://img.shields.io/pypi/v/senpy-linter.svg?logo=python&logoColor=white" alt="PyPI version"></a>
   <a href="https://pypi.org/project/senpy-linter/"><img src="https://img.shields.io/pypi/dm/senpy-linter.svg?label=PyPI%20downloads" alt="PyPI downloads"></a>
-  <a href="https://open-vsx.org/extension/xilleet/senpy-vscode"><img src="https://img.shields.io/badge/Open%20VSX-0.8.0-success?logo=eclipse&logoColor=white" alt="Open VSX"></a>
+  <a href="https://open-vsx.org/extension/xilleet/senpy-vscode"><img src="https://img.shields.io/badge/Open%20VSX-0.8.1-success?logo=eclipse&logoColor=white" alt="Open VSX"></a>
   <a href="https://github.com/Xilleet/senpy/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Xilleet/senpy/ci.yml?branch=main&label=CI" alt="CI Status"></a>
   <a href="https://github.com/Xilleet/senpy"><img src="https://img.shields.io/github/stars/Xilleet/senpy?style=social" alt="GitHub stars"></a>
 </p>

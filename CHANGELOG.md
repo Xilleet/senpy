@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.8.x)**: [0.8.0](#080)
+- **Current (0.8.x)**: [0.8.1](#081) | [0.8.0](#080)
 
 - **0.7.x**: [0.7.7](#077) | [0.7.6](#076) | [0.7.5](#075) | [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
 
@@ -20,6 +20,219 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.5.x**: [0.5.8](#058) | [0.5.7](#057) | [0.5.6](#056) | [0.5.5](#055) | [0.5.4 ⚠️](#054) | [0.5.3](#053) | [0.5.2](#052) | [0.5.1](#051) | [0.5.0](#050)
 
 - **0.4.x**: [0.4.8](#048) | [0.4.7](#047)
+
+---
+
+<a id="081"></a>
+
+## [0.8.1] — Hotfix release: 5 architectural bug-pattern clusters closed
+
+Patch release closing 19 P1/P2 bugs identified in the post-0.8.0 external
+audit and reconnaissance report. 1646 tests (up from 1487 in 0.8.0, +159).
+No new rules; the release is purely correctness fixes plus three
+architectural investments that automatically catch future regressions of
+the same bug classes.
+
+### Background — five architectural bug patterns
+
+The auditor identified five recurring patterns behind most of the
+bugs. Each pattern was closed by a single architectural fix, not by
+patching the individual bugs one at a time:
+
+- **String literals confused with code** — substring checks and regex
+  scans on raw Ren'Py lines matched identifiers that lived inside
+  dialogue text, Python string constants, or image names. Closed by
+  the `strip_string_literals()` helper applied at every checker call
+  site.
+- **Cache incomplete restore** — Tier 1/Tier 2 cache hits restored
+  `diagnostics` and `scope` but silently dropped `noqa_maps`,
+  `missing_defaults`, `has_dynamic_jumps`, and the `enable_plugins`
+  config flag. Closed by per-file persistence plus
+  `test_cold_warm_equivalence` — any future forget-to-restore bug
+  fails the test automatically.
+- **QuickFix range ≠ replacement** — `fix_replacement` included the
+  line indent while the LSP `TextEdit` range did not, or the range
+  covered only the prefix of a call expression while the replacement
+  dropped the rest. Closed by an explicit range/replacement contract
+  enforced by `test_quickfix_preserves_validity`.
+- **State not propagated** — `did_close` did not cancel pending
+  per-URI timers; `analyze_menu_flow` did not forward
+  `already_guaranteed` from `StateChecker.guaranteed_vars`;
+  `_rename_symbol_via_text_search` ignored its `symbol_kind`
+  parameter. Closed by plugging each propagation path with
+  `test_run_idempotency` as the catch-all guard.
+- **Rename precision** — LSP rename of a variable rewrote every
+  whole-word occurrence, including label declarations, jump targets,
+  and natural-language mentions in dialogue. Closed by kind-specific
+  predicates that filter raw text-search matches by context.
+
+### Cache soundness (cold/warm equivalence)
+
+- **Tier 2 cache restores `# noqa` directives**: `analyzer._noqa_maps`
+  is now recomputed via `build_noqa_map(lines)` on every Tier 2 cache
+  hit. Previously, suppressed cross-file diagnostics (RPY701-707,
+  RPY802) re-fired on warm runs because `_noqa_maps[path]` was empty.
+- **Tier 2 cache restores `missing_defaults`**: per-file snapshot
+  persisted in the new `CachedFileEntry.missing_defaults` field and
+  re-merged on cache hit. `generate_defaults_file()` now produces the
+  same output on cold and warm runs.
+- **Tier 1 cache restores `has_dynamic_jumps`**: per-file flag added
+  to `FileScope.has_dynamic_jumps`, aggregated in
+  `SymbolTable.rebuild_from_scopes()`. Warm runs no longer lose the
+  flag and re-enable RPY701-707 on projects with dynamic jumps.
+- **Environment fingerprint includes `enable_plugins`**: toggling the
+  `enable_plugins` config flag now invalidates the Tier 2 cache. A
+  warm run after enabling plugins no longer serves stale
+  no-plugins-run results.
+- **Cache backward compatibility hardened**: loading a manifest
+  written by an older Senpy version (one that lacks the new
+  `fixable_count`/`fixed_count`/`missing_defaults` fields on
+  `CachedFileEntry`) no longer crashes. The `getattr(entry, ...)` fallback
+  applies silently via `test_cache_backward_compat_missing_fixable_count`.
+- **Malformed RPA archives no longer crash `_read_rpa_index`**: the
+  except clause now catches `TypeError` (non-dict pickle root) and
+  `AttributeError` (non-str dict keys) in addition to the previous
+  set. Activation of `_read_rpa_index` from the production path is
+  tracked separately for 0.8.2.
+
+### QuickFix correctness (no more broken source after `--fix` or LSP)
+
+- **RPY401 QuickFix no longer destroys menu choices**: the fix now
+  inserts a new line in the missing branch's body (with proper
+  indentation) instead of replacing the choice text with
+  `$ var = 0` — the choice line stays intact, the trailing `:` is
+  preserved.
+- **RPY002 QuickFix no longer duplicates indent**: the LSP `TextEdit`
+  range now covers the entire line (matching the replacement), so the
+  editor no longer preserves the leading indent outside the range and
+  then prepends the indent included in the replacement. Trailing
+  newline also stripped from the replacement.
+- **RPY206 QuickFix no longer drops `action` prefix or args**: the
+  range now extends to the matching closing `)` of the call
+  (depth-counted to handle nested parens), and the replacement
+  preserves the `action ` prefix and original arguments:
+  `action Function(myfunc, arg1, arg2)` instead of
+  `Function(myfunc)arg1, arg2)`.
+- **`test_quickfix_preserves_validity`** runs on every `bad_*.rpy`
+  fixture that produces a fixable diagnostic, asserting the resulting
+  source parses as Python (for `$`/`python:` lines) or has balanced
+  quotes and brackets (for Ren'Py screen/menu lines). Future
+  QuickFix-damage bugs fail this test before they ship.
+
+### LSP precision (rename and asset refresh)
+
+- **`did_close` cancels pending per-URI change timer**: a stale
+  timer that was scheduled before `did_close` no longer fires 150ms
+  later and re-adds the closed document to `in_memory_files`.
+- **`did_change_watched_files` refreshes `AssetManager`**: external
+  additions/removals of `.png`/`.ogg`/`.mp3`/`.wav` (via file
+  manager, git pull, asset pipeline) now trigger a debounced
+  `AssetManager.index()` refresh. Hover cards and RPY501-503 stay
+  accurate across long-lived LSP sessions.
+- **LSP rename respects `symbol_kind`**: `_rename_symbol_via_text_search`
+  now filters raw text-search matches by context before emitting
+  `TextEdit`s. Renaming a variable no longer touches label
+  declarations, jump targets, screen actions, or natural-language
+  mentions in dialogue that happen to share the same textual token.
+  Renaming a transform no longer touches variables; renaming a
+  screen no longer touches transforms.
+
+### Static analysis precision (no more false positives on dialogue)
+
+- **`strip_string_literals()` helper introduced** in
+  `senpy/text_utils.py`: masks the content of `"..."` and `'...'`
+  literals with spaces, preserving column positions of code outside
+  literals. Applied before every substring check and regex scan in
+  `file_collector._collect_misc`, `dialogue._check_dynamic_jump_targets`,
+  `screen._check_screen_variable_actions`, and
+  `screen._check_screen_action_targets`. Future rules that match
+  identifiers via substring or regex must apply the helper first.
+- **RPY302 no longer fires on dialogue mentioning `Jump('foo')`**: a
+  dialogue line like `"The syntax Jump('missing_label') is
+  interesting."` no longer triggers a false positive for a
+  non-existent label.
+- **RPY204 no longer fires on `Show(...)` in screen text dialog**:
+  `text "Press Show('missing_screen') to continue."` no longer
+  triggers a false positive for a non-existent screen.
+- **RPY202 no longer fires on `SetVariable(...)` in screen text
+  dialog**: `text "Press SetVariable('undeclared_var', 1) to
+  debug."` no longer triggers a false positive for an undeclared
+  variable.
+- **RPY303 no longer masked by quoted identifiers in Python strings**:
+  `$ config.label_overrides = "unused_label"` no longer adds
+  `unused_label` to `referenced_labels` — the label is correctly
+  flagged as unused.
+- **`has_dynamic_jumps` no longer flipped by dialogue mentions of
+  `renpy.jump()`**: a dialogue line like
+  `e "Use renpy.jump() to switch scenes."` no longer suppresses
+  RPY701-707 across the entire project.
+- **Menu flow honours pre-menu `guaranteed_vars`**: a variable
+  assigned before `menu:` is no longer flagged as MAYBE_SET after the
+  menu — `merge_flow_branches` now receives `already_guaranteed`
+  from `StateChecker.guaranteed_vars`, matching the existing `if`
+  block path.
+
+### Architectural investments (regression guards)
+
+Three infrastructure tests added in 0.8.1 automatically catch future
+bugs of the same class without manual auditing:
+
+- **`test_cold_warm_equivalence`**: cold and warm runs on the same
+  project must produce identical diagnostic sets and identical
+  analyzer state (`missing_defaults`, `referenced_labels`,
+  `has_dynamic_jumps`, `user_symbols`, `total_lines`,
+  `fixable_count`, `fixed_count`). Any future forget-to-restore bug
+  fails this test.
+- **`test_run_idempotency`**: two consecutive `run()` calls on the
+  same analyzer instance must produce identical state. Any future
+  forget-to-reset bug in `_run_reset` fails this test.
+- **`test_quickfix_preserves_validity`**: every QuickFix in the
+  project must produce syntactically valid source after the LSP
+  `TextEdit` is applied. Any future QuickFix-damage bug fails this
+  test.
+
+### Known limitations carried to 0.8.2
+
+The following audit findings are NOT closed in 0.8.1 and are tracked
+for 0.8.2:
+
+- **Python AST analyses assignments without conditionality** —
+  `extract_assigned_names` uses `ast.walk` and treats conditional
+  assignments (inside `if`/`for`/`while`) as guaranteed. Requires
+  proper SSA-style flow analysis, planned for 0.9+.
+- **`collect_from_python_block` via `ast.walk`** — same root cause as
+  the AST conditionality issue. Same target release.
+- **`_read_rpa_index` activation** — the hardening (TypeError /
+  AttributeError handling) is in 0.8.1, but the function itself is
+  still dead code (`.rpa` is in `NON_ASSET_EXTENSIONS`). Decision
+  about whether Senpy should index RPA archives at all is tracked as
+  A18 for 0.8.2.
+
+### wontfix
+
+- **`_consume_block` aborts on top-level comment** — investigated
+  but found NOT to be reproducible on syntactically valid Python
+  code. Any top-level comment inside an indent-0 `init python:`
+  block immediately followed by body-level code is a Python syntax
+  error (RPY110) — the current behaviour (breaking on such
+  comments) is therefore defensible. Marked wontfix with explicit
+  justification in the roadmap.
+
+### Test suite
+
+- **1646 tests pass** (up from 1487 in 0.8.0, +159). Test count growth:
+  - 22 unit tests for the `strip_string_literals()` helper.
+  - 16 regression tests for the dialogue false-positive cluster.
+  - 5 regression tests for the QuickFix damage cluster.
+  - 16 fixture-parametrised tests for QuickFix validity.
+  - 6 regression tests for cache state restoration.
+  - 3 regression tests for RPA malformed archive handling.
+  - 3 infrastructure tests (idempotency, backward compat, cold/warm
+    equivalence).
+  - 5 regression tests for LSP event handling (did_close timer,
+    watched_files refresh).
+  - 2 regression tests for menu flow `guaranteed_vars` propagation.
+  - 7 regression tests for rename precision + severity overrides.
 
 ---
 

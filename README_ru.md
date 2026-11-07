@@ -42,6 +42,20 @@ pip install senpy-linter
 
 ## Что нового
 
+### 0.8.1 — Хотфикс: закрыты 5 архитектурных кластеров багов
+
+Patch-релиз, закрывающий 19 багов, выявленных после 0.8.0. **1646 тестов** (было 1487 в 0.8.0). Новых правил нет — только исправления корректности и три инфраструктурных теста, которые автоматически ловят регрессии тех же классов в будущем.
+
+| Кластер | Что было сломано | Что изменилось |
+|---|---|---|
+| **Ложные срабатывания на строковых литералах** | Substring-проверки и regex-сканирования на сырых Ren'Py-строках матчили идентификаторы внутри диалогов или Python-строк. RPY302/202/204 срабатывали на строках вида `"The Jump('foo') action is interesting."`. | Новый хелпер `strip_string_literals()` применяется в каждой точке вызова checker'а — маскирует содержимое литералов пробелами, сохраняя позиции колонок. |
+| **Неполное восстановление кэша** | Tier 1/Tier 2 cache hits молча теряли `noqa_maps`, `missing_defaults`, `has_dynamic_jumps` и флаг `enable_plugins`. Cold и warm запуски выдавали разные диагностики. | Per-file персистентность + `enable_plugins` в environment fingerprint. Тест `test_cold_warm_equivalence` навсегда закрепляет контракт. |
+| **Поломка исходника QuickFix'ом** | `--fix` и LSP QuickFix создавали невалидный код: RPY401 уничтожал пункты меню, RPY002 дублировал indent, RPY206 терял `action` префикс и аргументы. | Явный контракт range/replacement; `test_quickfix_preserves_validity` прогоняется на всех `bad_*.rpy` фикстурах. |
+| **Пробелы в propagation состояния** | `did_close` не отменял pending timers; `analyze_menu_flow` игнорировал pre-menu `guaranteed_vars`; LSP rename переписывал все whole-word вхождения независимо от symbol kind. | Каждый propagation path закрыт; `test_run_idempotency` работает как catch-all guard. |
+| **Точность LSP rename** | Rename переменной `score` переписывал и `label score:`, и `jump score`, и natural-language упоминания в диалогах. | Kind-specific predicates фильтруют raw text-search матчи по контексту перед эмиссией `TextEdit`. |
+
+---
+
 ### 0.8.0 — Production-stable: security hardening, soundness fixes, plugin API contract
 
 | Функция | Описание |
@@ -524,7 +538,7 @@ Senpy поставляет [pre-commit](https://pre-commit.com) хук, кото
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.8.0   # используйте последний тег
+    rev: v0.8.1   # используйте последний тег
     hooks:
       - id: senpy
 ```

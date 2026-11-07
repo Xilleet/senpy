@@ -41,6 +41,20 @@ Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github
 ---
 ## What's New
 
+### 0.8.1 — Hotfix: 5 Architectural Bug Clusters Resolved
+
+A patch release that fixes 19 bugs discovered after the 0.8.0 release. **1,646 tests** are now included (up from 1,487 in 0.8.0). No new rules have been added — this release focuses strictly on correctness fixes and introduces three infrastructure tests designed to automatically catch future regressions of the same classes.
+
+| Cluster | What Was Broken | What Changed |
+|---|---|---|
+| **False Positives on String Literals** | Substring checks and regex scanning on raw Ren'Py strings incorrectly matched identifiers inside dialogues or Python strings. RPY302/202/204 triggered on strings like `"The Jump('foo') action is interesting."`. | A new `strip_string_literals()` helper is now applied at every checker invocation point. It masks literal contents with spaces while preserving column positions. |
+| **Incomplete Cache Restoration** | Tier 1/Tier 2 cache hits silently lost `noqa_maps`, `missing_defaults`, `has_dynamic_jumps`, and the `enable_plugins` flag. Cold and warm runs produced inconsistent diagnostics. | Per-file persistence has been implemented, and `enable_plugins` is now included in the environment fingerprint. The `test_cold_warm_equivalence` test permanently enforces this contract. |
+| **Source Corruption by QuickFix** | `--fix` and LSP QuickFix generated invalid code: RPY401 destroyed menu items, RPY002 duplicated indentation, and RPY206 dropped the `action` prefix along with its arguments. | A strict range/replacement contract was introduced; `test_quickfix_preserves_validity` is now executed against all `bad_*.rpy` fixtures. |
+| **State Propagation Gaps** | `did_close` failed to cancel pending timers; `analyze_menu_flow` ignored pre-menu `guaranteed_vars`; LSP rename modified all whole-word occurrences regardless of the symbol kind. | Every propagation path is now properly closed; `test_run_idempotency` acts as a catch-all guard. |
+| **LSP Rename Precision** | Renaming a variable named `score` would erroneously overwrite `label score:`, `jump score`, and natural-language mentions within dialogues. | Kind-specific predicates now filter raw text-search matches based on context before issuing a `TextEdit`. |
+
+---
+
 ### 0.8.0 — Production-stable: security hardening, soundness fixes, plugin API contract
 
 | Feature | Description |
@@ -512,7 +526,7 @@ Senpy ships a [pre-commit](https://pre-commit.com) hook that runs
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.7.7   # use the latest tag
+    rev: v0.8.1   # use the latest tag
     hooks:
       - id: senpy
 ```

@@ -9,7 +9,7 @@ is **idempotent** output: `senpy format format(x) == senpy format(x)`.
 
 > **Status:** This is a stub covering the 9 formatter rules shipped
 > in Senpy 0.7.4+. The full style guide (with before/after examples
-> for every rule, edge cases, and rationale) is scheduled for 0.7.6.
+> for every rule, edge cases, and rationale) is tracked separately.
 > The current document is enough to understand what `senpy format` will
 > do to your `.rpy` files, but does not yet cover every edge case.
 
@@ -124,7 +124,7 @@ echo 'label start:\n\t"Hi"\n' | senpy format --stdin-filename test.rpy
 
 ## Future work
 
-The following are planned for 0.7.6+:
+The following are tracked for a future release (not yet scheduled):
 
 - **FMT-LABEL-ALIGN** — align `label X:` declarations in a column.
 - **FMT-ATL-ALIGN** — align ATL statement blocks.
@@ -137,5 +137,5 @@ The following are planned for 0.7.6+:
 
 These alignment rules are more invasive than the current whitespace
 rules and will need careful design to avoid breaking hand-aligned
-code. They will be **off by default** in 0.7.6 and **on by default**
+code. They will be **off by default** and **on by default**
 after a feedback period.
