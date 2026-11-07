@@ -39,6 +39,9 @@ _WHITELIST = {
     # docstring example showing what the script scrubs. It's part of
     # the documentation, not a real Russian comment.
     "scripts/clean_internal_ids.py",
+    # sync_rule_count.py has Russian words in regex patterns (правил, правила)
+    # — they are functional patterns for matching Russian text in README_ru.md.
+    "scripts/sync_rule_count.py",
 }
 
 # Directories to skip entirely.

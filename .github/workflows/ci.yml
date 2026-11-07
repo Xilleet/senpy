@@ -95,6 +95,12 @@ jobs:
       - name: Ruff check (blocking)
         run: ruff check .
 
+      - name: Rule count sync check (blocking)
+        # Verifies that all documentation files have the correct rule count
+        # (matching RULES_DATABASE). If a new rule was added but docs were not
+        # updated, this fails. Run `python scripts/sync_rule_count.py` to fix.
+        run: python scripts/sync_rule_count.py --check
+
       - name: Ruff format check (non-blocking for now)
         # ruff format wants to reformat ~105 files. Making this blocking
         # would force a one-shot reformat of the entire codebase, which
