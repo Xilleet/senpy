@@ -41,6 +41,26 @@ Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github
 ---
 ## What's New
 
+### 0.8.2 — False-positive cleanup + CRLF/Windows fix
+
+A patch release that closes **9 false-positive classes** discovered by running Senpy 0.8.1 on a 5-project corpus of real open-source Ren'Py games (~174k LOC): DDLC, LearnToCodeRPG, cross_channel localization, DDLCModTemplate, renpy-template. **1777 tests** (up from 1646 in 0.8.1). No new rules — all changes are correctness fixes. Corpus verification: 8968 → 8485 diagnostics (-483 false positives, -5.4%).
+
+| Rule | What Was Broken | What Changed |
+|---|---|---|
+| **RPY309** | Labels reached from `start` via fall-through (no `return` between adjacent labels) were reported as "story islands unreachable from start". | New `fall_through_to` edge on `LabelSymbol`, followed in the reachability BFS. 515 false positives eliminated in cross_channel alone. |
+| **RPY503** | Assets referenced via `gui.button_properties("X")` style calls and `[prefix_]` state-prefix patterns were reported as unused. | Every line is now scanned for media-asset string literals; `[prefix_]` is expanded to the 8 standard state prefixes. 101 false positives eliminated. |
+| **RPY206** | `FilePagePrevious()`, `FilePageNext()`, `InvertSelected()` and 44 other built-in screen action factories were flagged as "executes immediately". | `BUILTIN_ACTIONS` allowlist extended from 42 to 91 entries, covering the complete Ren'Py screen action library. |
+| **RPY102** | A variable assigned inside an `if` body and used in the SAME body (e.g. in a nested `for` loop) was flagged as "undeclared before declaration". | Each `if`/`while`/`for`/`try` body now gets its own copy of `local_scope`; assigned names are added as they are visited. |
+| **RPY109** | Variables defined in `init python:` (priority 0) were reported as "init phase dependency violation" when referenced in `init 998 python:` blocks in alphabetically earlier files. | The init priority is now extracted and the alphabetical-order check is skipped when the referencing block has priority > 0. |
+| **RPY110** | A `$` statement opening a triple-quoted string on one line and closing it on another triggered "Python syntax error". | `_get_logical_line` now joins physical lines while a triple-quoted string is open, with cumulative state tracking. |
+| **RPY103** | Screen parameters declared via `init -501 screen game_menu(title, scroll=None):` were not registered in the local scope. | `RE_SCREEN_START` extended to optionally match the `init <N> ` prefix. |
+| **RPY502** | Images registered via `renpy.image(NAME, ...)` calls in `init python:` blocks were not visible to the static analyzer. | A static evaluator walks the init-python AST, evaluates the name argument (string literals, loop variables, simple concatenation), and registers the image. 88 false positives eliminated in learntocode. |
+| **LSP snapshot** | After `did_change` → `analyze_file_only`, hover/completion/rename/references read from a stale snapshot — newly added symbols were invisible until `did_save`. | `_refresh_symbol_snapshot()` is now called after `analyze_file_only`. |
+
+Also fixes: CRLF line endings breaking `textwrap.dedent` on Windows (new `dedent_python()` helper), RPA `_read_rpa_index` activated (was dead code), and the tests badge no longer turns yellow on expected skips.
+
+---
+
 ### 0.8.1 — Hotfix: 5 Architectural Bug Clusters Resolved
 
 A patch release that fixes 19 bugs discovered after the 0.8.0 release. **1,646 tests** are now included (up from 1,487 in 0.8.0). No new rules have been added — this release focuses strictly on correctness fixes and introduces three infrastructure tests designed to automatically catch future regressions of the same classes.
@@ -526,7 +546,7 @@ Senpy ships a [pre-commit](https://pre-commit.com) hook that runs
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.8.1   # use the latest tag
+    rev: v0.8.2   # use the latest tag
     hooks:
       - id: senpy
 ```

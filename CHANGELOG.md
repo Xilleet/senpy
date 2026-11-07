@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.8.x)**: [0.8.1](#081) | [0.8.0](#080)
+- **Current (0.8.x)**: [0.8.2](#082) | [0.8.1](#081) | [0.8.0](#080)
 
 - **0.7.x**: [0.7.7](#077) | [0.7.6](#076) | [0.7.5](#075) | [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
 
@@ -20,6 +20,137 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.5.x**: [0.5.8](#058) | [0.5.7](#057) | [0.5.6](#056) | [0.5.5](#055) | [0.5.4 ⚠️](#054) | [0.5.3](#053) | [0.5.2](#052) | [0.5.1](#051) | [0.5.0](#050)
 
 - **0.4.x**: [0.4.8](#048) | [0.4.7](#047)
+
+---
+
+<a id="082"></a>
+
+## [0.8.2] — False-positive cleanup + CRLF/Windows fix
+
+Patch release closing 9 false-positive classes discovered by running
+Senpy 0.8.1 on a 5-project corpus of real open-source Ren'Py games
+(~174k LOC): DDLC, LearnToCodeRPG, cross_channel localization,
+DDLCModTemplate, renpy-template. **1777 tests** (up from 1646 in
+0.8.1, +131). No new rules; all changes are correctness fixes that
+eliminate false positives without weakening true-positive coverage.
+
+Corpus verification: 8968 → 8485 diagnostics (-483 false positives,
+-5.4%) across the 5 projects. The remaining diagnostics are confirmed
+true positives.
+
+### False-positive fixes (from corpus findings)
+
+- **RPY309 fall-through reachability**: labels reached from `start`
+  via fall-through (no `return` between adjacent labels) were reported
+  as "story islands unreachable from start". Fixed by adding a
+  `fall_through_to` edge to `LabelSymbol` and following it in the
+  reachability BFS. The edge is computed at collection time by
+  checking the last non-blank line before each new label declaration.
+  Empirical scope: 515 false positives eliminated in cross_channel
+  alone.
+- **RPY503 GUI auto-discovery + `[prefix_]` substitution**: assets
+  referenced via `gui.button_properties("X")` style calls and
+  `[prefix_]` state-prefix patterns (e.g.
+  `"gui/button/check_[prefix_]foreground.png"`) were reported as
+  unused. Fixed by scanning every line (not just `$`/`python:` blocks)
+  for media-asset string literals and expanding `[prefix_]` to the
+  8 standard state prefixes. Empirical scope: 101 false positives
+  eliminated.
+- **RPY206 incomplete allowlist**: `FilePagePrevious()`,
+  `FilePageNext()`, `InvertSelected()` and 44 other Ren'Py built-in
+  screen action factories were flagged as "executes immediately during
+  screen render". Fixed by extending `BUILTIN_ACTIONS` from 42 to 91
+  entries, covering the complete screen action library documented at
+  https://www.renpy.org/doc/html/screen_actions.html.
+- **RPY102 intra-branch sequencing**: a variable assigned inside an
+  `if` body and used in the SAME body (e.g. in a nested `for` loop)
+  was flagged as "undeclared before declaration". Fixed by giving
+  each `if`/`while`/`for`/`try` body its own copy of `local_scope`
+  and adding assigned names to it as they are visited, so subsequent
+  statements in the same branch see them.
+- **RPY109 init priority ignored**: variables defined in
+  `init python:` (priority 0) were reported as "init phase dependency
+  violation" when referenced in `init 998 python:` blocks in
+  alphabetically earlier files. Fixed by extracting the init priority
+  from `RE_INIT_PYTHON_START` and skipping the alphabetical-order
+  check when the referencing block has priority > 0 (it runs after
+  default-priority blocks).
+- **RPY110 multi-line triple-quoted strings**: a `$` statement opening
+  a triple-quoted string on one line and closing it on another
+  triggered "Python syntax error: invalid syntax". Fixed by extending
+  `_get_logical_line` to join physical lines while a triple-quoted
+  string is open, with cumulative state tracking via the new
+  `_has_unclosed_string()` helper.
+- **RPY103 screen params in `init <N>` blocks**: screen parameters
+  declared via `init -501 screen game_menu(title, scroll=None):` were
+  not registered in the local scope, causing RPY103 to fire on every
+  use inside the screen body. Fixed by extending `RE_SCREEN_START` to
+  optionally match the `init <N> ` prefix.
+- **RPY502 dynamic `renpy.image()` registration**: images registered
+  via `renpy.image(NAME, ...)` calls in `init python:` blocks were
+  not visible to the static analyzer, causing RPY502 to fire on every
+  `show`/`scene` reference. Fixed by a static evaluator that walks the
+  init-python AST, finds `renpy.image(X, ...)` calls, and evaluates X
+  when it is a string literal, a loop variable from a list-literal
+  iterable, or a simple concatenation of these. Empirical scope: 88
+  false positives eliminated in learntocode alone.
+- **LSP snapshot staleness after `analyze_file_only`**: after
+  `did_change` → `analyze_file_only`, the live `analyzer.labels` was
+  updated for the edited file but `_symbol_snapshot` was NOT refreshed
+  (only `run_full_project_diagnostics` refreshed it). Hover,
+  completion, rename, and references read from the snapshot → newly
+  added symbols were invisible until `did_save` triggered a full scan.
+  Fixed by calling `_refresh_symbol_snapshot()` after
+  `analyze_file_only` in `run_single_file_diagnostics`.
+
+### Infrastructure fixes
+
+- **CRLF line endings break `textwrap.dedent`**: on Windows, files
+  opened with `newline=""` (which `file_collector.py` does to preserve
+  original line endings) keep `\r\n`. When joined init-python block
+  lines are fed to `textwrap.dedent`, the `\r`-only lines (empty lines
+  on CRLF) make the common margin collapse to `''` — dedent removes
+  nothing, `ast.parse` fails with "unexpected indent", and every
+  init-python-dependent check (RPY109, RPY110, RPY502 dynamic
+  `renpy.image()` extraction) silently skips the block. Fixed by the
+  `dedent_python()` helper in `senpy/text_utils.py` which normalizes
+  `\r\n` / `\r` → `\n` before `textwrap.dedent`. Applied in 3 call
+  sites. Regression test `test_crlf_line_endings.py` covers both the
+  helper (unit-level, platform-independent) and the full analyzer path.
+- **RPA `_read_rpa_index` activated**: the function existed with
+  correct exception handling (`TypeError`, `AttributeError`,
+  `zlib.error`, `pickle.UnpicklingError`, `OSError`, `ValueError`) but
+  was unreachable — the `.rpa` extension was in
+  `NON_ASSET_EXTENSIONS` and the call site sat after the skip filter.
+  Fixed by moving the `_read_rpa_index` call BEFORE the
+  `NON_ASSET_EXTENSIONS` skip. The `.rpa` file itself stays in the
+  skip list (it's a build artifact, not a directly-used asset) but its
+  contents are now registered as known assets.
+- **Badge yellow-on-skip policy removed**: the tests badge turned
+  yellow whenever any test was skipped, even if all real tests passed.
+  The Senpy suite has ~50 expected skips by design (POSIX-only tests
+  on Windows, encoding-error fixtures, QuickFix-validity fixtures for
+  rules without QuickFixes). Fixed by changing the badge color policy:
+  `failed > 0` → red; `failed == 0` → brightgreen. Skips are never
+  mentioned in the message and never affect color.
+
+### Architectural additions
+
+- `LabelSymbol.fall_through_to: str | None` — new field on the
+  slotted dataclass, persisted in the cache hash
+  (`compute_global_hash`) so that adding/removing a `return` between
+  two labels in file A invalidates file B's cached RPY309 diagnostics.
+- `senpy.text_utils.dedent_python(code)` — public helper that
+  normalizes CRLF/LF before `textwrap.dedent`. Used everywhere
+  `textwrap.dedent` was previously called on file content.
+- `senpy.text_utils._has_unclosed_string(s)` — helper used by
+  `_get_logical_line` to detect multi-line string constructs.
+- `senpy.core.constants.BUILTIN_ACTIONS` — extended from 42 to 91
+  entries, covering the complete Ren'Py screen action library.
+- `senpy.core.constants.RE_SCREEN_START` — extended to optionally
+  match `init <N> screen NAME(params):`.
+- `senpy.core.constants.RE_INIT_PYTHON_START` — now captures the
+  priority number as group 2.
 
 ---
 
