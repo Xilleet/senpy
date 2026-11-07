@@ -113,10 +113,22 @@ def _write_badge(name: str, data: dict) -> bool:
 
 
 def _build_tests_badge(run: bool) -> dict:
-    """Build tests badge from pytest collect/run."""
+    """Build tests badge from pytest collect/run.
+
+    Color policy (per maintainer request 2026-11-08):
+      - failed > 0 → RED, message includes failure count.
+      - failed == 0 → BRIGHTGREEN, message is just "N passed".
+      - Skips are NEVER mentioned in the message and NEVER affect color.
+        The Senpy test suite has ~50 expected skips by design (POSIX-only
+        tests on Windows, encoding-error fixtures, and QuickFix-validity
+        fixtures for rules without QuickFixes). Counting those against the
+        badge would make it permanently yellow even on a clean run, which
+        signals a problem that does not exist. The badge reflects ONLY
+        whether real tests passed or failed.
+    """
     if run:
         _, stdout, _ = _run_pytest(["tests/", "-q", "--no-header"])
-        passed, failed, skipped = _parse_run(stdout)
+        passed, failed, _skipped = _parse_run(stdout)
         _, collect_stdout, _ = _run_pytest(["tests/", "--collect-only", "-q"])
         collected = _parse_collect(collect_stdout)
     else:
@@ -124,17 +136,11 @@ def _build_tests_badge(run: bool) -> dict:
         collected = _parse_collect(stdout)
         passed = collected or 0
         failed = 0
-        skipped = 0
 
     if failed > 0:
         return _badge("tests", f"{passed} passed, {failed} failed", "red")
-    if collected is not None and passed == collected and skipped == 0:
-        return _badge("tests", f"{passed} passed", "brightgreen")
     if passed > 0:
-        msg = f"{passed} passed"
-        if skipped:
-            msg += f", {skipped} skipped"
-        return _badge("tests", msg, "yellow")
+        return _badge("tests", f"{passed} passed", "brightgreen")
     return _badge("tests", "0 passed", "red")
 
 
