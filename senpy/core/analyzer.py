@@ -426,8 +426,16 @@ class SenpyAnalyzer:
         menu_indent: int,
         file_path: str = "",
         noqa_map: dict | None = None,
+        already_guaranteed: set[str] | None = None,
     ) -> tuple[int, dict[str, tuple[str, ...]], set[str], bool]:
-        return self.flow.analyze_menu_flow(lines, start_idx, menu_indent, file_path, noqa_map)
+        return self.flow.analyze_menu_flow(
+            lines,
+            start_idx,
+            menu_indent,
+            file_path,
+            noqa_map,
+            already_guaranteed=already_guaranteed,
+        )
 
     def export_graph(self) -> str:
         """Returns a Mermaid.js diagram of the story."""

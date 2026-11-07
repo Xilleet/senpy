@@ -58,10 +58,26 @@ def did_close(ls, params: lsp.DidCloseTextDocumentParams) -> None:
     us from a torn struct). The contract is: any mutation of
     ``in_memory_files`` goes through the write lock, so ``did_close``
     must too.
+
+    Also cancels any pending per-URI change-diagnostics timer for this
+    URI. Without this cancel, a stale timer that was scheduled before
+    ``did_close`` would fire 150 ms later and re-add the (now-closed)
+    document to ``in_memory_files`` via ``run_single_file_diagnostics``,
+    resurrecting the closed file and influencing the next full-project
+    analysis.
     """
     from senpy.lsp import server as server_mod
 
     uri = params.text_document.uri
+    # Cancel the pending per-URI change timer BEFORE acquiring the write
+    # lock — the timer's callback also acquires the write lock, so
+    # cancelling it first avoids a guaranteed wait. After cancel, pop
+    # the URI from the dict so future did_change events start clean.
+    existing = _lsp_server_change_timers().get(uri)
+    if existing is not None:
+        existing.cancel()
+        _lsp_server_change_timers().pop(uri, None)
+
     if server_mod._active_analyzer is not None:
         norm_file = server_mod._normalize_path(server_mod._uri_to_path(uri))
         with server_mod._lsp_server.rw_lock.write_lock():
@@ -75,10 +91,101 @@ def did_close(ls, params: lsp.DidCloseTextDocumentParams) -> None:
                 current.in_memory_files.pop(norm_file, None)
 
 
-def did_change_watched_files(ls, params: lsp.DidChangeWatchedFilesParams) -> None:
-    """WORKSPACE_DID_CHANGE_WATCHED_FILES: stub to prevent spam in the Output log.
+def _lsp_server_change_timers() -> dict:
+    """Lazy access to ``_lsp_server.change_timers``.
 
-    VS Code sends these events on any .rpy file change on disk. If we don't
-    stub them out — the LSP server's Output log grows to megabytes over a
-    session. Real analysis is triggered via did_save / did_change.
+    Encapsulated as a helper so ``did_close`` can cancel the per-URI
+    timer without reaching into ``server_mod._lsp_server`` (which can
+    be ``None`` during early LSP init, before any document is opened).
+    Returns an empty dict-like object when the server is not yet up —
+    in that case there is nothing to cancel anyway.
     """
+    from senpy.lsp import server as server_mod
+
+    lsp_server = getattr(server_mod, "_lsp_server", None)
+    if lsp_server is None:
+        return {}
+    return getattr(lsp_server, "change_timers", {}) or {}
+
+
+def did_change_watched_files(ls, params: lsp.DidChangeWatchedFilesParams) -> None:
+    """WORKSPACE_DID_CHANGE_WATCHED_FILES: refresh asset index on external file changes.
+
+    VS Code sends these events when files change on disk outside the
+    editor (file manager, git pull, asset pipeline). Without this handler
+    the LSP server (long-lived) keeps stale asset data: hover cards
+    show non-existent files, RPY501-503 fire on assets that were added
+    since the server started.
+
+    Filter events by media extensions (images, audio, video). For other
+    files (text, source) we ignore the event — those go through
+    ``did_save`` / ``did_change`` which already trigger per-file
+    re-analysis.
+
+    A 300ms debounce avoids spamming ``AssetManager.index()`` on bulk
+    operations like ``git checkout`` (which can produce dozens of
+    file-change events in a few ms).
+    """
+    from senpy.core.constants import MEDIA_EXTENSIONS
+    from senpy.lsp import server as server_mod
+
+    # Quick exit: if there are no media events, do nothing.
+    has_media_event = False
+    for change in params.changes:
+        uri = change.uri
+        # URI is typically `file:///path/to/file.png`. Use os.path.splitext
+        # to extract the extension; ignore query/fragment.
+        path = uri
+        for prefix in ("file://", "file:"):
+            if path.startswith(prefix):
+                path = path[len(prefix) :]
+                break
+        # Strip query string if present.
+        if "?" in path:
+            path = path.split("?", 1)[0]
+        ext = ""
+        if "." in path:
+            ext = "." + path.rsplit(".", 1)[1].lower()
+        if ext in MEDIA_EXTENSIONS:
+            has_media_event = True
+            break
+
+    if not has_media_event:
+        return
+
+    # Debounce: cancel any pending asset-refresh timer, schedule a new one.
+    # We piggy-back on the same timer dict as did_change (per-URI) — using
+    # a synthetic URI so it does not collide with real document URIs.
+    asset_refresh_uri = "__senpy_asset_refresh__"
+    timers = _lsp_server_change_timers()
+    existing = timers.get(asset_refresh_uri)
+    if existing is not None:
+        existing.cancel()
+
+    import threading
+
+    def _refresh_assets():
+        a = getattr(server_mod, "_active_analyzer", None)
+        if a is None or not getattr(server_mod, "_is_initialized", False):
+            return
+        # AssetManager.index() does a fresh disk scan; call under the
+        # write lock so readers see a consistent snapshot.
+        try:
+            with server_mod._lsp_server.rw_lock.write_lock():
+                a.assets.index()
+        except Exception:
+            # Defensive: an asset refresh failure must not crash the LSP
+            # server. Log via the server module logger if available.
+            import logging
+
+            logging.getLogger("senpy.lsp.watched_files").debug(
+                "AssetManager refresh failed during did_change_watched_files",
+                exc_info=True,
+            )
+        finally:
+            timers.pop(asset_refresh_uri, None)
+
+    new_timer = threading.Timer(0.3, _refresh_assets)
+    new_timer.daemon = True
+    timers[asset_refresh_uri] = new_timer
+    new_timer.start()

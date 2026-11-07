@@ -482,11 +482,20 @@ class StoryFlowAnalyzer:
         start_idx: int,
         file_path: str,
         noqa_map: dict,
+        already_guaranteed: set[str] | None = None,
     ) -> tuple[set[str], dict[str, tuple[str, ...]], bool]:
         """Merge menu branches + RPY401 diagnostics. Returns (guaranteed, uninit, all_terminates).
 
         Extracted from analyze_menu_flow in Phase 4 Step 2 (0.5.7).
         """
+        # Variables guaranteed-set BEFORE the menu starts. These must be
+        # excluded from RPY401 asymmetry diagnostics (they are not "missing
+        # in branch X" — they were already set above). Without this,
+        # `$ score = 0` before `menu:` would still trigger RPY401 on
+        # branches that don't re-assign `score`, even though `score` is
+        # guaranteed-set on every code path.
+        already_guaranteed = already_guaranteed or set()
+
         merging_choices = [c for c in choices if not c.terminates]
 
         # RPY401: Diagnostics of asymmetry between non-terminating menu branches
@@ -494,6 +503,11 @@ class StoryFlowAnalyzer:
             all_defined = set().union(*(c.defined_vars for c in merging_choices))
             for var in all_defined:
                 if var in self.analyzer.user_symbols or var in self.analyzer.declared_symbols:
+                    continue
+                # Skip variables already guaranteed-set before the menu —
+                # they are not "missing in branch X", they were initialised
+                # above the menu and remain guaranteed on every code path.
+                if var in already_guaranteed:
                     continue
 
                 missing_b = next((c for c in merging_choices if var not in c.defined_vars), None)
@@ -547,7 +561,7 @@ class StoryFlowAnalyzer:
             block_line=start_idx,
             has_else=True,
             known_symbols=self.analyzer.user_symbols,
-            already_guaranteed=set(),
+            already_guaranteed=already_guaranteed,
         )
 
         return guaranteed_vars, merged_uninit, all_terminates
@@ -563,10 +577,17 @@ class StoryFlowAnalyzer:
         menu_indent: int,
         file_path: str = "",
         noqa_map: dict | None = None,
+        already_guaranteed: set[str] | None = None,
     ) -> tuple[int, dict[str, tuple[str, ...]], set[str], bool]:
         """Analyzes a menu block: parses choices, analyzes bodies, merges branches.
 
         Phase 4 Step 2 (0.5.7): split from 152 lines into 3 methods + dispatcher.
+
+        ``already_guaranteed`` is the set of variables that were guaranteed-set
+        BEFORE the menu started (e.g. ``$ score = 0`` immediately above).
+        These are excluded from RPY401 asymmetry diagnostics — they are not
+        "missing in branch X", they were initialised above the menu and remain
+        guaranteed on every code path through the menu.
         """
         noqa_map = noqa_map or {}
 
@@ -575,7 +596,7 @@ class StoryFlowAnalyzer:
         )
 
         guaranteed_vars, merged_uninit, all_terminates = self._merge_menu_branches(
-            choices, start_idx, file_path, noqa_map
+            choices, start_idx, file_path, noqa_map, already_guaranteed=already_guaranteed
         )
 
         uninitialized_vars.update(merged_uninit)

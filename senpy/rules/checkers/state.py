@@ -182,6 +182,7 @@ class StateChecker(BaseChecker):
                 menu_indent,
                 file_path=file_path,
                 noqa_map=noqa_map,
+                already_guaranteed=self.guaranteed_vars,
             )
         )
         self.branch_uninitialized.update(uninit_vars)
