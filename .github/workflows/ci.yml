@@ -92,6 +92,9 @@ jobs:
       - name: Install ruff and mypy
         run: pip install ruff mypy
 
+      - name: Install Senpy (for sync_rule_count.py)
+        run: pip install -e .
+
       - name: Ruff check (blocking)
         run: ruff check .
 
