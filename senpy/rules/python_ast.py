@@ -480,18 +480,87 @@ def extract_assigned_names(py_code: str) -> set[str]:
       - Walrus: ``(x := 5)`` (and nested ``(x := (y := 5))``)
       - AnnAssign: ``x: int = 5`` (and ``x: int`` without value)
       - AugAssign: ``x += 1`` (and ``-=``, ``*=``, etc.)
+
+    Only top-level assignments are returned — assignments inside
+    ``if``/``for``/``while``/``try``/``with``/function bodies are
+    conditional (they may not execute) and must NOT be reported as
+    guaranteed. The previous implementation used ``ast.walk`` which
+    recursed into all nested bodies; this is incorrect for
+    guaranteed-assignment tracking because it treated conditional
+    assignments as if they were unconditional.
+
+    Walrus inside an ``if`` condition expression (e.g.
+    ``if (y := compute()):``) IS returned — the walrus evaluates when
+    the ``if`` statement evaluates, which is unconditional at the top
+    level.
     """
     assigned: set[str] = set()
     try:
         tree = ast.parse(py_code)
-        for node in ast.walk(tree):
+        # Iterate top-level statements only. ``ast.walk`` would recurse
+        # into If/For/While/Try/With/FunctionDef/ClassDef bodies and
+        # collect conditional assignments as if they were guaranteed.
+        # This matches the contract of ``clear_safe_cfg_vars`` which
+        # already iterates ``tree.body`` for the same reason.
+        for node in tree.body:
             # Plain and chained assignment: a = b = 5
             if isinstance(node, ast.Assign):
                 for target in node.targets:
                     _collect_target_names(target, assigned)
+                # Walrus inside the RHS value: `result = (x := 5) + 10`.
+                # The walrus evaluates when the RHS evaluates, which is
+                # unconditional at the top level — so `x` IS guaranteed.
+                for child in ast.walk(node.value):
+                    if isinstance(child, ast.NamedExpr):
+                        _collect_target_names(child.target, assigned)
             # Annotated, augmented, and walrus: all have a single .target
             elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
                 _collect_target_names(node.target, assigned)
+                # For AnnAssign/AugAssign, the value may also contain walrus.
+                value = getattr(node, "value", None)
+                if value is not None:
+                    for child in ast.walk(value):
+                        if isinstance(child, ast.NamedExpr):
+                            _collect_target_names(child.target, assigned)
+            elif isinstance(node, ast.Expr):
+                # Walrus inside an expression statement: `(x := 5)` or
+                # `if (y := compute()):` (the latter as a standalone
+                # expression). Walk only the expression node (not into
+                # nested If/For bodies) to find NamedExpr.
+                for child in ast.walk(node):
+                    if isinstance(child, ast.NamedExpr):
+                        _collect_target_names(child.target, assigned)
+            elif isinstance(node, ast.If):
+                # The `if` statement itself runs unconditionally. The
+                # walrus inside its CONDITION expression evaluates when
+                # the condition evaluates — that's guaranteed. Walk
+                # only the test (condition), not the body/orelse.
+                for child in ast.walk(node.test):
+                    if isinstance(child, ast.NamedExpr):
+                        _collect_target_names(child.target, assigned)
+                # Bodies (node.body, node.orelse) are conditional — skip.
+            elif isinstance(node, (ast.While,)):
+                # Same as If: walrus in the condition is guaranteed;
+                # body/orelse are conditional.
+                for child in ast.walk(node.test):
+                    if isinstance(child, ast.NamedExpr):
+                        _collect_target_names(child.target, assigned)
+            elif isinstance(node, ast.For):
+                # Loop target binding is top-level (the loop variable
+                # is assigned when the for-statement evaluates, even
+                # if the iterable is empty the binding still happens
+                # via StopIteration cleanup — but in practice an
+                # empty iterable means the loop body never runs, so
+                # the loop variable may be unbound. We treat the
+                # loop target as guaranteed (matches Ren'Py's typical
+                # `$ for i in [1,2,3]:` usage where the iterable is
+                # known at lint time) but skip the body assignments.
+                _collect_target_names(node.target, assigned)
+                # Body and orelse are conditional — skip.
+            # With/Try/FunctionDef/ClassDef: their bodies are
+            # conditional (with-exit may not run cleanup, try may
+            # not reach the body, function may not be called). Skip
+            # entirely.
     except SyntaxError as e:
         _logger.debug("extract_assigned_names: ast.parse failed: %s", e)
     return assigned
@@ -540,25 +609,43 @@ class PythonAstChecker:
         self.analyzer = analyzer
 
     def collect_from_python_block(self, code_lines: list[str]) -> tuple[dict[str, int], set[str]]:
-        """Collects functions, classes, and variables from init python blocks along with line numbers."""
+        """Collects functions, classes, and variables from init python blocks along with line numbers.
+
+        Only top-level declarations are returned — assignments inside
+        ``if``/``for``/``while``/``try``/``with`` bodies are conditional
+        (they may not execute) and must NOT be registered as top-level
+        symbols. The previous implementation used ``ast.walk`` which
+        recursed into all nested bodies; this is incorrect because it
+        registered conditional assignments as if they were top-level
+        declarations, polluting ``user_symbols`` and ``missing_defaults``
+        with variables that may never exist at runtime.
+        """
         names: dict[str, int] = {}
         refs: set[str] = set()
         code = textwrap.dedent("".join(code_lines))
         try:
             tree = ast.parse(code)
-            for node in ast.walk(tree):
+            # Iterate top-level statements only. ``ast.walk`` would recurse
+            # into If/For/While/Try/With/FunctionDef/ClassDef bodies and
+            # register conditional assignments as top-level declarations.
+            for node in tree.body:
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                     names[node.name] = getattr(node, "lineno", 1)
                 elif isinstance(node, ast.Assign):
                     for target in node.targets:
                         if isinstance(target, ast.Name):
                             names[target.id] = getattr(node, "lineno", 1)
+                elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+                    if isinstance(node.target, ast.Name):
+                        names[node.target.id] = getattr(node, "lineno", 1)
                 elif (
                     isinstance(node, ast.Constant)
                     and isinstance(node.value, str)
                     and node.value.isidentifier()
                 ):
                     refs.add(node.value)
+                # If/For/While/Try/With bodies are conditional — skip.
+                # Their inner assignments are not top-level declarations.
         except SyntaxError as e:
             # log debug instead of silent suppress.
             _logger.debug("collect_from_python_block: ast.parse failed: %s", e)
@@ -1686,84 +1773,160 @@ class PythonAstChecker:
         line_content: str,
         noqa_map: dict,
     ) -> None:
-        """RPY403: Always-false, always-true, contradiction, tautology checks."""
+        """RPY403: Always-false, always-true, contradiction, tautology checks.
+
+        Dispatches to one of four sub-checks based on the AST node type
+        of the condition body. Each sub-check emits at most one RPY403
+        diagnostic. The dispatcher itself does no diagnostic emission —
+        it only routes to the appropriate handler.
+        """
         body = cond_tree.body
 
-        # Always-False: `if False:`, `if 0:`, `if "":`, `if []:`, `if None:`
-        if isinstance(body, ast.Constant) and not bool(body.value):
-            self.analyzer._add_diagnostic(
-                Diagnostic(
-                    file_path=file_path,
-                    line_number=line_idx,
-                    line_content=line_content,
-                    code="RPY403",
-                    message=f"Condition '{expr}' is always False. This block will never execute.",
-                ),
+        if isinstance(body, ast.Constant):
+            self._check_rpy403_constant(body, expr, file_path, line_idx, line_content, noqa_map)
+        elif isinstance(body, ast.BoolOp):
+            self._check_rpy403_boolop(body, expr, file_path, line_idx, line_content, noqa_map)
+
+    def _check_rpy403_constant(
+        self,
+        body: ast.Constant,
+        expr: str,
+        file_path: str,
+        line_idx: int,
+        line_content: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY403 for Constant conditions: always-False (False/0/""/None)
+        and always-True (True/1/"non-empty" — with the bare True/1 skip).
+        """
+        value = bool(body.value)
+        is_none = isinstance(body.value, type(None))
+
+        if not value:
+            # Always-False: `if False:`, `if 0:`, `if "":`, `if None:`
+            self._emit_rpy403(
+                file_path,
+                line_idx,
+                line_content,
                 noqa_map,
+                f"Condition '{expr}' is always False. This block will never execute.",
             )
-        # Always-True: `if True:`, `if 1:`, `if "non-empty":` (skip bare True/1)
-        elif (
-            isinstance(body, ast.Constant)
-            and bool(body.value)
-            and not isinstance(body.value, type(None))
-        ):
-            if expr.strip() not in ("True", "1"):
-                self.analyzer._add_diagnostic(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=line_idx,
-                        line_content=line_content,
-                        code="RPY403",
-                        message=f"Condition '{expr}' is always True. The condition is redundant — remove it or simplify the logic.",
-                    ),
-                    noqa_map,
-                )
-        # Contradiction in AND: `if x and not x:` (always False)
-        elif isinstance(body, ast.BoolOp) and isinstance(body.op, ast.And):
-            names = {n.id for n in body.values if isinstance(n, ast.Name)}
-            not_names = {
-                n.operand.id
-                for n in body.values
-                if isinstance(n, ast.UnaryOp)
-                and isinstance(n.op, ast.Not)
-                and isinstance(n.operand, ast.Name)
-            }
-            contradictions = names.intersection(not_names)
-            if contradictions:
-                var_c = next(iter(contradictions))
-                self.analyzer._add_diagnostic(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=line_idx,
-                        line_content=line_content,
-                        code="RPY403",
-                        message=f"Condition contains mutually exclusive contradiction: '{var_c} and not {var_c}'. Always evaluates to False.",
-                    ),
-                    noqa_map,
-                )
-        # Tautology in OR: `if x or not x:` (always True)
-        elif isinstance(body, ast.BoolOp) and isinstance(body.op, ast.Or):
-            names = {n.id for n in body.values if isinstance(n, ast.Name)}
-            not_names = {
-                n.operand.id
-                for n in body.values
-                if isinstance(n, ast.UnaryOp)
-                and isinstance(n.op, ast.Not)
-                and isinstance(n.operand, ast.Name)
-            }
-            tautologies = names.intersection(not_names)
-            if tautologies:
-                var_t = next(iter(tautologies))
-                self.analyzer._add_diagnostic(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=line_idx,
-                        line_content=line_content,
-                        code="RPY403",
-                        message=f"Condition contains tautology: '{var_t} or not {var_t}'. Always evaluates to True.",
-                    ),
-                    noqa_map,
-                )
+        elif value and not is_none and expr.strip() not in ("True", "1"):
+            # Always-True: skip bare `True` and `1` (treated as intentional).
+            self._emit_rpy403(
+                file_path,
+                line_idx,
+                line_content,
+                noqa_map,
+                f"Condition '{expr}' is always True. The condition is redundant — remove it or simplify the logic.",
+            )
+
+    def _check_rpy403_boolop(
+        self,
+        body: ast.BoolOp,
+        expr: str,
+        file_path: str,
+        line_idx: int,
+        line_content: str,
+        noqa_map: dict,
+    ) -> None:
+        """RPY403 for BoolOp conditions: contradiction in AND (`x and not x`),
+        tautology in OR (`x or not x`).
+        """
+        if isinstance(body.op, ast.And):
+            self._check_rpy403_contradiction(body, file_path, line_idx, line_content, noqa_map)
+        elif isinstance(body.op, ast.Or):
+            self._check_rpy403_tautology(body, file_path, line_idx, line_content, noqa_map)
+
+    def _check_rpy403_contradiction(
+        self,
+        body: ast.BoolOp,
+        file_path: str,
+        line_idx: int,
+        line_content: str,
+        noqa_map: dict,
+    ) -> None:
+        """Contradiction in AND: `if x and not x:` (always False).
+
+        Collects plain ``Name`` nodes and ``UnaryOp(Not, Name)`` nodes from
+        the AND operands, then finds the intersection — any name that
+        appears both directly and negated is a contradiction.
+        """
+        names, not_names = self._collect_boolop_names(body)
+        contradictions = names.intersection(not_names)
+        if contradictions:
+            var_c = next(iter(contradictions))
+            self._emit_rpy403(
+                file_path,
+                line_idx,
+                line_content,
+                noqa_map,
+                f"Condition contains mutually exclusive contradiction: '{var_c} and not {var_c}'. Always evaluates to False.",
+            )
+
+    def _check_rpy403_tautology(
+        self,
+        body: ast.BoolOp,
+        file_path: str,
+        line_idx: int,
+        line_content: str,
+        noqa_map: dict,
+    ) -> None:
+        """Tautology in OR: `if x or not x:` (always True).
+
+        Same name/negated-name intersection as contradiction, but the
+        OR of a variable and its negation is always True.
+        """
+        names, not_names = self._collect_boolop_names(body)
+        tautologies = names.intersection(not_names)
+        if tautologies:
+            var_t = next(iter(tautologies))
+            self._emit_rpy403(
+                file_path,
+                line_idx,
+                line_content,
+                noqa_map,
+                f"Condition contains tautology: '{var_t} or not {var_t}'. Always evaluates to True.",
+            )
+
+    def _collect_boolop_names(self, body: ast.BoolOp) -> tuple[set[str], set[str]]:
+        """Extract plain names and negated names from a BoolOp's operands.
+
+        Returns ``(names, not_names)`` where ``names`` is the set of
+        ``Name`` ids that appear directly, and ``not_names`` is the set
+        of ``Name`` ids that appear as ``UnaryOp(Not, Name)``.
+        """
+        names = {n.id for n in body.values if isinstance(n, ast.Name)}
+        not_names = {
+            n.operand.id
+            for n in body.values
+            if isinstance(n, ast.UnaryOp)
+            and isinstance(n.op, ast.Not)
+            and isinstance(n.operand, ast.Name)
+        }
+        return names, not_names
+
+    def _emit_rpy403(
+        self,
+        file_path: str,
+        line_idx: int,
+        line_content: str,
+        noqa_map: dict,
+        message: str,
+    ) -> None:
+        """Emit a single RPY403 diagnostic. Centralised so all four
+        sub-checks share the same Diagnostic construction logic.
+        """
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=line_idx,
+                line_content=line_content,
+                code="RPY403",
+                message=message,
+            ),
+            noqa_map,
+        )
 
     def _check_undeclared_vars_in_condition(
         self,

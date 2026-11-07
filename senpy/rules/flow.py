@@ -77,22 +77,58 @@ def merge_flow_branches(
     if not non_terminating:
         return set(), {}, True
 
-    if block_kind == "menu":
-        guaranteed = (
-            set.intersection(*(b.defined_vars for b in non_terminating))
-            if non_terminating
-            else set()
-        )
-    else:  # "if"
-        if has_else and len(branches) > 1:
-            guaranteed = set.intersection(*(b.defined_vars for b in non_terminating))
-        else:
-            guaranteed = set()
+    guaranteed = _compute_guaranteed(branches, non_terminating, block_kind, has_else)
+    uninitialized = _compute_uninitialized(
+        branches, guaranteed, block_kind, block_line, has_else, known_symbols, already_guaranteed
+    )
 
+    return guaranteed, uninitialized, False
+
+
+def _compute_guaranteed(
+    branches: list[FlowBranch],
+    non_terminating: list[FlowBranch],
+    block_kind: str,
+    has_else: bool,
+) -> set[str]:
+    """Compute the set of variables guaranteed to be set on all
+    non-terminating paths through the block.
+
+    For menu: intersection of non-terminating branches.
+    For if: intersection only when has_else and >1 branches; otherwise
+    empty (an if without else may skip the body entirely).
+    """
+    if block_kind == "menu":
+        if not non_terminating:
+            return set()
+        return set.intersection(*(b.defined_vars for b in non_terminating))
+
+    # block_kind == "if"
+    if has_else and len(branches) > 1:
+        return set.intersection(*(b.defined_vars for b in non_terminating))
+    return set()
+
+
+def _compute_uninitialized(
+    branches: list[FlowBranch],
+    guaranteed: set[str],
+    block_kind: str,
+    block_line: int,
+    has_else: bool,
+    known_symbols: set[str],
+    already_guaranteed: set[str],
+) -> dict[str, tuple[str, ...]]:
+    """Compute the MAYBE_SET variables with metadata about the missing branch.
+
+    A variable is MAYBE_SET when it is defined in at least one branch
+    but not in all non-terminating branches (i.e. not in ``guaranteed``),
+    AND it is not in ``known_symbols`` (default/define declared) or
+    ``already_guaranteed`` (set before the block).
+    """
     all_defined = set().union(*(b.defined_vars for b in branches))
     maybe_set = all_defined - guaranteed
-    uninitialized: dict[str, tuple[str, ...]] = {}
 
+    uninitialized: dict[str, tuple[str, ...]] = {}
     for var in sorted(maybe_set):
         if var in known_symbols or var in already_guaranteed:
             continue
@@ -100,25 +136,46 @@ def merge_flow_branches(
         missing_b = next((b for b in branches if var not in b.defined_vars), None)
         defined_b = next((b for b in branches if var in b.defined_vars), None)
 
-        if block_kind == "if":
-            if not has_else:
-                missing_desc = "condition is False (no else branch)"
-                missing_line = block_line
-            elif missing_b:
-                missing_desc = f"{missing_b.kind} branch was taken"
-                missing_line = missing_b.line
-            else:
-                missing_desc = "alternate branch was taken"
-                missing_line = block_line
-            defined_desc = f"{defined_b.kind} branch" if defined_b else "if branch"
-        else:
-            missing_desc = missing_b.name if missing_b else "alternate choice"
-            defined_desc = defined_b.name if defined_b else "menu choice"
-            missing_line = missing_b.line if missing_b else block_line
-
+        missing_desc, defined_desc, missing_line = _build_metadata(
+            missing_b, defined_b, block_kind, block_line, has_else
+        )
         uninitialized[var] = (missing_desc, defined_desc, str(missing_line))
 
-    return guaranteed, uninitialized, False
+    return uninitialized
+
+
+def _build_metadata(
+    missing_b: FlowBranch | None,
+    defined_b: FlowBranch | None,
+    block_kind: str,
+    block_line: int,
+    has_else: bool,
+) -> tuple[str, str, int]:
+    """Build the (missing_desc, defined_desc, missing_line) metadata tuple
+    for a MAYBE_SET variable.
+
+    For ``if`` blocks without else: missing_desc = "condition is False
+    (no else branch)", missing_line = block_line.
+    For ``if`` blocks with else or for ``menu`` blocks: missing_desc
+    names the missing branch, missing_line is the missing branch's line.
+    """
+    if block_kind == "if":
+        if not has_else:
+            missing_desc = "condition is False (no else branch)"
+            missing_line = block_line
+        elif missing_b:
+            missing_desc = f"{missing_b.kind} branch was taken"
+            missing_line = missing_b.line
+        else:
+            missing_desc = "alternate branch was taken"
+            missing_line = block_line
+        defined_desc = f"{defined_b.kind} branch" if defined_b else "if branch"
+    else:  # block_kind == "menu"
+        missing_desc = missing_b.name if missing_b else "alternate choice"
+        defined_desc = defined_b.name if defined_b else "menu choice"
+        missing_line = missing_b.line if missing_b else block_line
+
+    return missing_desc, defined_desc, missing_line
 
 
 class StoryFlowAnalyzer:
