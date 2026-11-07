@@ -58,7 +58,7 @@ from senpy.core.symbols import (
     VariableSymbol,
 )
 from senpy.rules.python_ast import infer_expr_type
-from senpy.text_utils import _get_logical_line, _strip_comment, strip_string_literals
+from senpy.text_utils import _get_logical_line, _strip_comment, dedent_python, strip_string_literals
 
 if TYPE_CHECKING:
     pass
@@ -1057,9 +1057,7 @@ class FileCollector:
         next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
         if block_lines:
             self.analyzer._scan_python_assets(block_lines)
-            import textwrap
-
-            code = textwrap.dedent("".join(block_lines))
+            code = dedent_python("".join(block_lines))
             self.analyzer.python_ast.check_init_dependency(
                 code, file_path, idx + 2, noqa_map, lines, init_priority=init_priority
             )

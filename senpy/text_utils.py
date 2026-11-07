@@ -27,8 +27,30 @@ Public API:
 from __future__ import annotations
 
 import difflib
+import textwrap
 
 from senpy.core.constants import SUGGESTION_CUTOFF
+
+
+def dedent_python(code: str) -> str:
+    """Normalize line endings to LF and then ``textwrap.dedent``.
+
+    ``textwrap.dedent`` has a long-standing limitation: it treats ``\\r``
+    (carriage return) as a non-whitespace character when computing the
+    common leading whitespace. On Windows, files opened with
+    ``newline=""`` preserve ``\\r\\n`` line endings — the joined block
+    lines carry ``\\r`` at the end of each line. When ``\\r``-only lines
+    (the empty lines between code, which on CRLF are ``\\r\\n``) are
+    split by ``\\n``, they become ``\\r``. ``textwrap.dedent`` sees the
+    ``\\r`` as a non-whitespace character at column 0, sets the common
+    margin to ``''``, and removes nothing — leaving the code indented
+    and causing ``ast.parse`` to fail with "unexpected indent".
+
+    This helper normalizes ``\\r\\n`` and lone ``\\r`` to ``\\n`` before
+    calling ``textwrap.dedent``, so the dedent works correctly on all
+    platforms regardless of how the file was opened.
+    """
+    return textwrap.dedent(code.replace("\r\n", "\n").replace("\r", "\n"))
 
 
 def _strip_comment(line: str) -> str:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import textwrap
 from typing import TYPE_CHECKING
 
 from senpy.core.constants import (
@@ -12,6 +11,7 @@ from senpy.core.constants import (
     RE_PYTHON_BLOCK_START,
 )
 from senpy.core.scope import ScopeStack
+from senpy.text_utils import dedent_python
 
 if TYPE_CHECKING:
     from senpy.core.protocols import DiagnosticSinkAndSymbolsAndFlow
@@ -259,7 +259,7 @@ class StateChecker(BaseChecker):
         consumed_idx, block_lines = self.analyzer._consume_block(lines, idx + 1, indent)
         if block_lines:
             self.analyzer._scan_python_assets(block_lines)
-            code = textwrap.dedent("".join(block_lines))
+            code = dedent_python("".join(block_lines))
             if is_in_screen:
                 self.analyzer._check_screen_mutation(
                     code,

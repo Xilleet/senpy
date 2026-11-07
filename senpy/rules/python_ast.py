@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import ast
 import difflib
-import textwrap
 from typing import TYPE_CHECKING, Any
 
 from senpy.core.constants import BUILTIN_SYMBOLS, SCREEN_LOCAL_IGNORE
 from senpy.core.logging import get_logger
 from senpy.core.models import Diagnostic
 from senpy.domain.text_tags import get_utf16_range, suggest_similar_symbol
+from senpy.text_utils import dedent_python
 
 if TYPE_CHECKING:
     from senpy.core.protocols import FullAnalyzer
@@ -622,7 +622,7 @@ class PythonAstChecker:
         """
         names: dict[str, int] = {}
         refs: set[str] = set()
-        code = textwrap.dedent("".join(code_lines))
+        code = dedent_python("".join(code_lines))
         try:
             tree = ast.parse(code)
             # Iterate top-level statements only. ``ast.walk`` would recurse
