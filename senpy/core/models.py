@@ -61,6 +61,16 @@ class FileScope:
     used_screens: set[str] = field(default_factory=set)
     screen_uses: dict[str, set[str]] = field(default_factory=dict)
 
+    # Per-file flag: True if this file contains any dynamic-jump construct
+    # (`renpy.jump(...)`, `renpy.call(...)`, `jump expression`, `call
+    # expression`). Aggregated into `SymbolTable.has_dynamic_jumps` during
+    # `_collect_all_symbols` (cold) and `rebuild_from_scopes` (warm). On
+    # Tier 1 cache hit, the FileScope is restored from disk, and this
+    # flag is what allows `has_dynamic_jumps` to be re-aggregated without
+    # re-running `_collect_misc`. Without it, warm runs would lose the
+    # flag and RPY701-707 would re-fire on suppressed code.
+    has_dynamic_jumps: bool = False
+
 
 # RULE_SEVERITY is derived from RULES_DATABASE.
 # Each rule's severity is declared once in senpy/rules/rules_info.py and

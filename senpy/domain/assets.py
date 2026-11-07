@@ -332,10 +332,24 @@ class AssetManager:
                         self.known_assets.add(os.path.basename(clean_fn))
                         if clean_fn.startswith("game/"):
                             self.known_assets.add(clean_fn[5:])
-        except (OSError, zlib.error, pickle.UnpicklingError, ValueError) as e:
+        except (
+            OSError,
+            zlib.error,
+            pickle.UnpicklingError,
+            ValueError,
+            TypeError,
+            AttributeError,
+        ) as e:
             # log debug instead of silent suppress. RPA index read
             # failure is non-critical (assets from this archive just not
             # registered); but tracking it helps spot corrupt .rpa files.
+            # TypeError: safe_load_rpa_index raises it when the pickle root
+            #   is not a dict (e.g. a list or None).
+            # AttributeError: `for filename in index:` with non-str keys
+            #   crashes on `filename.replace(...)` because int/None has no
+            #   `.replace`. Catching here prevents a malformed .rpa from
+            #   crashing the analyzer if `_read_rpa_index` is ever activated
+            #   from the production path.
             _logger.debug("failed to read RPA index %s: %s", rpa_path, e)
 
     def mark_used(self, asset_ref: str) -> None:

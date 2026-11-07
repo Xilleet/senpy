@@ -47,6 +47,11 @@ class CachedFileEntry:
     # "[*] N fixable with the --fix option" footer.
     fixable_count: int = 0
     fixed_count: int = 0
+    # Per-file `missing_defaults` snapshot (var_name → suggested default
+    # value). Populated during `_visit_assign` (python_ast.py) on cache
+    # miss, restored on Tier 2 cache hit so `generate_defaults_file()`
+    # produces the same output on warm runs as on cold runs.
+    missing_defaults: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -361,6 +366,15 @@ class CacheManager:
         for alias, target_path in sorted(analyzer.defined_audio_map.items()):
             hasher.update(alias.encode("utf-8"))
             hasher.update(target_path.encode("utf-8"))
+
+        # Plugin execution flag: toggling `enable_plugins` in senpy.toml
+        # must invalidate the Tier 2 cache, because cold run with plugins
+        # off skips plugin rule check() calls (no plugin diagnostics) but
+        # warm run with plugins on would serve the same cached diagnostics
+        # (still no plugin diagnostics). Hashing the flag here forces a
+        # Tier 2 miss when the user flips the setting.
+        hasher.update(b"enable_plugins=")
+        hasher.update(str(getattr(analyzer, "enable_plugins", False)).encode("utf-8"))
 
         return hasher.hexdigest()
 

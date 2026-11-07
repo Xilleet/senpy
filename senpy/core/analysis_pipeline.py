@@ -174,6 +174,30 @@ class AnalysisPipeline:
                     # footer on cached runs.
                     a.fixable_count += getattr(entry, "fixable_count", 0)
                     a.fixed_count += getattr(entry, "fixed_count", 0)
+                    # Restore per-file missing_defaults so warm runs produce
+                    # the same `senpy_defaults.rpy` as cold runs. Without
+                    # this, `missing_defaults` stays empty after a Tier 2
+                    # cache hit (because `_analyze_file` is skipped and
+                    # `_visit_assign` is never called) and
+                    # `generate_defaults_file()` writes an empty file.
+                    a.missing_defaults.update(getattr(entry, "missing_defaults", {}) or {})
+                    # Restore per-file noqa_map so cross-file rules
+                    # (RPY701-707, RPY802) honour `# noqa` directives on
+                    # warm runs. Without this, `_add_diagnostic_by_file`
+                    # falls back to an empty dict and re-emits diagnostics
+                    # the user explicitly suppressed on the cold run.
+                    # `build_noqa_map` is a cheap single-pass scan; we
+                    # recompute rather than persist to keep the cache
+                    # payload small and avoid staleness if the user edits
+                    # `# noqa` directives between runs (Tier 2 cache
+                    # invalidation already covers `.rpy` edits via the
+                    # mtime/size/content_hash checks).
+                    try:
+                        with open(file_path, encoding="utf-8") as f:
+                            cached_lines = f.readlines()
+                    except OSError:
+                        cached_lines = []
+                    a._noqa_maps[norm_path] = build_noqa_map(cached_lines)
                     new_cached_entries[norm_path] = entry
                     is_tier2_hit = True
 
@@ -183,6 +207,12 @@ class AnalysisPipeline:
                 used_start = set(a.assets.used_asset_keys)
                 fixable_start = a.fixable_count
                 fixed_start = a.fixed_count
+                # Snapshot missing_defaults keys before analysis so we can
+                # capture the delta added by this file. Used to persist
+                # per-file missing_defaults into CachedFileEntry for
+                # restoration on Tier 2 cache hit (without it, warm runs
+                # produce an empty `senpy_defaults.rpy`).
+                missing_defaults_start = dict(a.missing_defaults)
 
                 self._analyze_file(file_path)
 
@@ -191,6 +221,12 @@ class AnalysisPipeline:
                 new_used = a.assets.used_asset_keys - used_start
                 fixable_added = a.fixable_count - fixable_start
                 fixed_added = a.fixed_count - fixed_start
+                # Capture the missing_defaults entries this file added.
+                missing_defaults_added = {
+                    k: v
+                    for k, v in a.missing_defaults.items()
+                    if k not in missing_defaults_start or missing_defaults_start[k] != v
+                }
 
                 if norm_path in a.file_scopes and not a.fix:
                     f_hash = file_hashes.get(norm_path) or compute_file_hash(file_path)
@@ -205,6 +241,7 @@ class AnalysisPipeline:
                         collect_diagnostics=stage1_diags_map.get(norm_path, []),
                         fixable_count=fixable_added,
                         fixed_count=fixed_added,
+                        missing_defaults=missing_defaults_added,
                     )
 
         if not quiet:

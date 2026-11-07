@@ -650,6 +650,9 @@ class FileCollector:
             or "jump expression" in clean_for_check
         ):
             self.analyzer.has_dynamic_jumps = True
+            # Persist per-file flag so Tier 1 cache hit can re-aggregate
+            # `has_dynamic_jumps` without re-running `_collect_misc`.
+            scope.has_dynamic_jumps = True
 
         if '"' in clean_for_check or "'" in clean_for_check:
             for str_match in RE_QUOTED_IDENTIFIER.finditer(clean_for_check):

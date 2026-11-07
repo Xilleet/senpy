@@ -147,6 +147,16 @@ class SymbolTable:
         for targets in self.screen_action_jumps.values():
             self.referenced_labels.update(targets)
 
+        # Re-aggregate has_dynamic_jumps from per-file FileScope flags.
+        # Cold run sets this via `_collect_misc` (which also sets
+        # `scope.has_dynamic_jumps`). Warm run (Tier 1 cache hit) restores
+        # FileScope from disk and reaches this rebuild path — without
+        # aggregating here, warm runs would lose the flag and RPY701-707
+        # would re-fire on dynamic-jump projects.
+        self.has_dynamic_jumps = any(
+            getattr(scope, "has_dynamic_jumps", False) for scope in file_scopes.values()
+        )
+
     def purge_object_registries(
         self, old_scope: FileScope, file_scopes: dict[str, FileScope]
     ) -> None:
