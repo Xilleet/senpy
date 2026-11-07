@@ -58,7 +58,7 @@ from senpy.core.symbols import (
     VariableSymbol,
 )
 from senpy.rules.python_ast import infer_expr_type
-from senpy.text_utils import _get_logical_line, _strip_comment
+from senpy.text_utils import _get_logical_line, _strip_comment, strip_string_literals
 
 if TYPE_CHECKING:
     pass
@@ -635,16 +635,24 @@ class FileCollector:
             scope.registered_audio_channels.add(chan_name)
             self.analyzer.registered_audio_channels.add(chan_name)
 
+        # Mask string-literal contents before substring/regex matching so
+        # that dialogue text and Python string constants cannot trigger
+        # false positives (see `strip_string_literals` docstring).
+        # Columns of code outside literals are preserved, so UTF-16 ranges
+        # computed downstream remain valid for tokens that live outside
+        # string literals.
+        clean_for_check = strip_string_literals(clean)
+
         if (
-            "renpy.call(" in clean
-            or "renpy.jump(" in clean
-            or "call expression" in clean
-            or "jump expression" in clean
+            "renpy.call(" in clean_for_check
+            or "renpy.jump(" in clean_for_check
+            or "call expression" in clean_for_check
+            or "jump expression" in clean_for_check
         ):
             self.analyzer.has_dynamic_jumps = True
 
-        if '"' in clean or "'" in clean:
-            for str_match in RE_QUOTED_IDENTIFIER.finditer(clean):
+        if '"' in clean_for_check or "'" in clean_for_check:
+            for str_match in RE_QUOTED_IDENTIFIER.finditer(clean_for_check):
                 candidate = str_match.group(1)
                 if candidate.isidentifier():
                     scope.referenced_labels.add(candidate)

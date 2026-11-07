@@ -78,7 +78,7 @@ jobs:
   # PR, но сообщает о проблемах с типами. Когда QUA-7 (95% типизация) будет
   # закрыт, можно сделать mypy блокирующим.
   lint:
-    name: Ruff + mypy
+    name: Ruff + mypy + Rule count sync
     runs-on: ubuntu-latest
     needs: [check-cycles]
     steps:

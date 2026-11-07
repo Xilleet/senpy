@@ -20,6 +20,7 @@ For backward compatibility _strip_comment is re-exported from analyzer.py
 
 Public API:
     _strip_comment(line: str) -> str
+    strip_string_literals(line: str) -> str
     suggest_similar(target, candidates, cutoff) -> str
 """
 
@@ -89,6 +90,101 @@ def _strip_comment(line: str) -> str:
             return line[:i]
         i += 1
     return line
+
+
+def strip_string_literals(line: str) -> str:
+    """Mask the *content* of string literals with spaces, preserving column positions.
+
+    Returns a copy of ``line`` where every character inside a ``"..."`` or
+    ``'...'`` literal is replaced with a space (one space per source
+    character). The quote characters themselves, escape backslashes, and
+    every character outside string literals are preserved verbatim.
+
+    Why this exists:
+        Several checkers do a substring check or regex scan on an
+        arbitrary Ren'Py line and accidentally match text that lives
+        inside a string literal — dialogue text, Python string constants,
+        image names. This produces false positives where a diagnostic
+        fires on a line like ``"The Jump('foo') action is documented
+        here."`` or ``text "Press Show('x') to continue."``.
+
+        Applying this helper before the substring check guarantees that
+        literal contents are invisible to the matcher, while column
+        positions of code outside literals stay intact (so ``_get_utf16_range``
+        on the masked line still returns correct offsets for code tokens).
+
+    Contract:
+        - Length of the returned string equals length of the input.
+        - Quote characters and escape backslashes are preserved.
+        - An unclosed literal is handled defensively: every character
+          from the opening quote to end of line is masked, no exception.
+        - Triple-quoted strings (``\"\"\"``, ``'''``) are recognised.
+        - A line with no quotes is returned unchanged (cheap fast-path).
+
+    Args:
+        line: A single Ren'Py source line (already comment-stripped is
+            fine — comments are not affected by this helper).
+
+    Returns:
+        The line with literal contents replaced by spaces.
+
+    Examples:
+        >>> strip_string_literals('jump start')
+        'jump start'
+        >>> strip_string_literals('action Jump("foo")')
+        'action Jump("   ")'
+        >>> strip_string_literals('e "Use renpy.jump() here."')
+        'e "                       "'
+    """
+    if '"' not in line and "'" not in line:
+        return line
+
+    out = list(line)
+    n = len(line)
+    in_quote: str | None = None
+    i = 0
+    while i < n:
+        ch = line[i]
+        if ch == "\\":
+            # Escaped char: keep both backslash and the next char verbatim.
+            i += 2
+            continue
+        if in_quote in ('"""', "'''"):
+            if line[i : i + 3] == in_quote:
+                # Closing triple quote — preserve the quote chars, exit literal.
+                in_quote = None
+                i += 3
+                continue
+            # Inside triple-quoted literal — mask with space, preserve newline.
+            if ch != "\n":
+                out[i] = " "
+            i += 1
+            continue
+        if in_quote:
+            if ch == in_quote:
+                # Closing single quote — preserve, exit literal.
+                in_quote = None
+                i += 1
+                continue
+            # Inside single-quoted literal — mask with space, preserve newline.
+            if ch != "\n":
+                out[i] = " "
+            i += 1
+            continue
+        # Not inside a literal.
+        if line[i : i + 3] in ('"""', "'''"):
+            in_quote = line[i : i + 3]
+            i += 3
+            continue
+        if ch in ('"', "'"):
+            in_quote = ch
+            i += 1
+            continue
+        i += 1
+    # If in_quote is still set here, the literal was unclosed — every char
+    # between the opening quote and end of line has already been masked
+    # in the loop above. That is the documented defensive behaviour.
+    return "".join(out)
 
 
 def suggest_similar(

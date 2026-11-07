@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from senpy.core.protocols import DiagnosticSinkAndSymbols
 
 from senpy.rules.base import BaseChecker
+from senpy.text_utils import strip_string_literals
 
 
 class DialogueChecker(BaseChecker):
@@ -281,12 +282,28 @@ class DialogueChecker(BaseChecker):
         noqa_map: dict[int, set[str] | None],
     ) -> None:
         """RPY302: Check Jump/Call UI actions and renpy.jump/renpy.call for non-existent labels."""
-        if not any(kw in stripped for kw in ("Jump", "Call", "renpy.jump", "renpy.call")):
+        # Mask string-literal contents before substring/regex matching so
+        # that dialogue text mentioning `Jump('foo')` cannot trigger false
+        # positives (see `strip_string_literals` docstring). The masked
+        # copy is used for two purposes:
+        #   1. Fast-path early return — if no call keyword exists outside
+        #      any string literal, skip the regex scan entirely.
+        #   2. Per-match filtering — a regex match found on the original
+        #      `stripped` line is dropped when its start column lands on a
+        #      space in `masked`, i.e. when it lives inside a string literal
+        #      rather than in real code. This preserves the real target
+        #      string (e.g. `"missing_label"`) for the diagnostic message.
+        masked = strip_string_literals(stripped)
+        if not any(kw in masked for kw in ("Jump", "Call", "renpy.jump", "renpy.call")):
             return
 
         for m_dyn in re.finditer(
             r'\b(?:Jump|Call|renpy\.jump|renpy\.call)\s*\(\s*["\']([^"\']+)["\']', stripped
         ):
+            # Drop matches that begin inside a string literal — they are
+            # dialogue/Python text mentions, not real action calls.
+            if m_dyn.start() < len(masked) and masked[m_dyn.start()] == " ":
+                continue
             raw_target = m_dyn.group(1)
             if raw_target.startswith("."):
                 target_label = (

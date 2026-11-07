@@ -18,6 +18,7 @@ from senpy.core.models import Diagnostic
 from senpy.core.scope import ScopeStack
 from senpy.core.signature import validate_call_arguments
 from senpy.rules.base import BaseChecker
+from senpy.text_utils import strip_string_literals
 
 
 class ScreenChecker(BaseChecker):
@@ -63,12 +64,22 @@ class ScreenChecker(BaseChecker):
         noqa_map: dict[int, set[str] | None],
     ) -> None:
         """RPY202 & RPY208: Check SetVariable/ToggleVariable screen actions."""
-        if "SetVariable" not in stripped and "ToggleVariable" not in stripped:
+        # Mask string-literal contents before substring/regex matching so
+        # that dialogue text mentioning `SetVariable('foo', 1)` cannot
+        # trigger false positives (see `strip_string_literals` docstring).
+        # Per-match filtering drops any match that lands inside a string
+        # literal, preserving real action calls.
+        masked = strip_string_literals(stripped)
+        if "SetVariable" not in masked and "ToggleVariable" not in masked:
             return
 
         for m_var_act in re.finditer(
             r'\b(SetVariable|ToggleVariable)\s*\(\s*["\']([^\W\d]\w*)["\']', stripped
         ):
+            # Drop matches that begin inside a string literal — they are
+            # dialogue/Python text mentions, not real screen actions.
+            if m_var_act.start() < len(masked) and masked[m_var_act.start()] == " ":
+                continue
             act_name = m_var_act.group(1)
             target_var = m_var_act.group(2)
             local_syms = scope_stack.get_local_symbols()
@@ -140,12 +151,20 @@ class ScreenChecker(BaseChecker):
         noqa_map: dict[int, set[str] | None],
     ) -> None:
         """RPY204: Check Show/ShowMenu/Hide screen actions for non-existent screens."""
-        if not any(act in stripped for act in ("Show", "ShowMenu", "Hide")):
+        # Mask string-literal contents before substring/regex matching so
+        # that dialogue text mentioning `Show('foo')` cannot trigger false
+        # positives. Per-match filtering drops matches inside literals,
+        # preserving real action calls.
+        masked = strip_string_literals(stripped)
+        if not any(act in masked for act in ("Show", "ShowMenu", "Hide")):
             return
 
         for m_scr_act in re.finditer(
             r'\b(?:Show|ShowMenu|Hide)\s*\(\s*["\']([^\W\d]\w*)["\']', stripped
         ):
+            # Drop matches that begin inside a string literal.
+            if m_scr_act.start() < len(masked) and masked[m_scr_act.start()] == " ":
+                continue
             target_scr = m_scr_act.group(1)
             if target_scr not in self.analyzer.screens and target_scr not in BUILTIN_SCREENS:
                 all_screens = list(self.analyzer.screens.keys()) + list(BUILTIN_SCREENS)
