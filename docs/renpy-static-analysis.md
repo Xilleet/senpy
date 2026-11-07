@@ -361,6 +361,6 @@ comparison.
 - [**Ren'Py Error Checker**](renpy-error-checker.md) — map runtime
   error messages (`NameError`, `KeyError`, `AttributeError`,
   `ScriptError`) to the Senpy rule that catches them.
-- [**All 51 rules**](rules/index.md) — browse by category.
+- [**All 52 rules**](rules/index.md) — browse by category.
 - [**Configuration**](configuration.md) — `senpy.toml`, `.senpy-ignore`,
   `--select`, `--tag` filters, strict mode.

@@ -317,7 +317,7 @@ by subgraph. (Open an issue if you'd find this useful.)
 - [**Ren'Py VS Code Extension**](renpy-vscode-extension.md) — view the
   story graph inside VS Code with `Ctrl+Shift+P` → "Senpy: Show Story
   Graph".
-- [**All 51 rules**](rules/index.md) — including `RPY309` (story
+- [**All 52 rules**](rules/index.md) — including `RPY309` (story
   islands), `RPY303` (dead labels), `RPY308` (fallthrough), `RPY403`
   (always-false branches).
 - [**CLI reference**](cli-reference.md) — `--graph`, `--graph-file`,

@@ -257,5 +257,5 @@ Safe — `SafeCacheUnpickler` blocks dangerous modules (`os`, `sys`,
   `ScriptError`) to the Senpy rule that catches them.
 - [**Senpy vs `renpy lint`**](comparison.md) — the full 12-row
   comparison.
-- [**All 51 rules**](rules/index.md) — browse the rule reference.
+- [**All 52 rules**](rules/index.md) — browse the rule reference.
 - [**CLI reference**](cli-reference.md) — every flag and subcommand.

@@ -261,6 +261,6 @@ senpy /path/to/game --ignore-tag screen   # skip screen rules
 - [RPY1xx — Variables & State](rpy1xx-state.md) — `default` vs
   `define` for variables used in screens.
 - [RPY3xx — Story Flow](rpy3xx-story.md) — labels, jumps, fallthrough.
-- [All 51 rules](index.md) — back to the navigator.
+- [All 52 rules](index.md) — back to the navigator.
 - [RULES.md in repo](https://github.com/Xilleet/senpy/blob/main/RULES.md)
   — canonical reference.

@@ -236,6 +236,6 @@ senpy /path/to/game --tag branching   # only branching rules
   `define`, the underlying mechanism for `RPY401` / `RPY404`.
 - [RPY3xx — Story Flow](rpy3xx-story.md) — story islands and
   fallthrough.
-- [All 51 rules](index.md) — back to the navigator.
+- [All 52 rules](index.md) — back to the navigator.
 - [RULES.md in repo](https://github.com/Xilleet/senpy/blob/main/RULES.md)
   — canonical reference.

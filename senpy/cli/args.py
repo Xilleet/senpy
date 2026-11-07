@@ -74,7 +74,7 @@ def _add_rules_args(parser: argparse.ArgumentParser) -> None:
     g.add_argument(
         "--rules",
         action="store_true",
-        help="List all 40 available Senpy rules and their descriptions",
+        help="List all 52 available Senpy rules and their descriptions",
     )
     g.add_argument(
         "--rule",

@@ -111,7 +111,7 @@ senpy/
 │   ├── deprecated.py        # RPY107 (deprecated Ren'Py API)
 │   ├── flow.py              # RPY4xx (branch dataflow, Mermaid graph builder)
 │   ├── python_ast.py        # Python AST checker ($-statements, init python blocks)
-│   └── rules_info.py        # RULES_DATABASE (51 rules + 28 tags), --rules output
+│   └── rules_info.py        # RULES_DATABASE (52 rules + 28 tags), --rules output
 │
 ├── vendor/                  # Vendored dependencies (do not modify)
 │   └── unrpyc/              # .rpyc decompiler (pinned commit, SHA256-verified)

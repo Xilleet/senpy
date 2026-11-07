@@ -926,8 +926,28 @@ class PythonAstChecker:
                         )
 
         except SyntaxError as e:
-            # log debug instead of silent suppress.
             _logger.debug("check_python_ast: ast.parse failed: %s", e)
+            # Emit RPY110: report Python syntax errors in $-statements and
+            # init python blocks instead of silently swallowing them.
+            # Ren'Py would crash with a traceback at this line — Senpy
+            # should catch it before runtime.
+            error_line = start_line + (e.lineno - 1) if e.lineno else start_line
+            error_col = e.offset or 0
+            line_content = ""
+            if lines and error_line >= 1 and error_line <= len(lines):
+                line_content = lines[error_line - 1].rstrip("\r\n")
+            self.analyzer._add_diagnostic(
+                Diagnostic(
+                    file_path=file_path,
+                    line_number=error_line,
+                    line_content=line_content,
+                    code="RPY110",
+                    message=f"Python syntax error: {e.msg}",
+                    severity="ERROR",
+                    col=error_col,
+                ),
+                noqa_map,
+            )
 
     def _visit_import(
         self,

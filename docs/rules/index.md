@@ -1,6 +1,6 @@
 ---
-title: All Senpy Rules — 51 Rules Across 8 Categories
-description: Senpy includes 51 specialized lint rules for Ren'Py visual novels, organized into 8 categories by prefix (RPY0xx through RPY8xx). Browse by category or search for a specific rule. Each rule links to the canonical RULES.md reference in the repository.
+title: All Senpy Rules — 52 Rules Across 8 Categories
+description: Senpy includes 52 specialized lint rules for Ren'Py visual novels, organized into 8 categories by prefix (RPY0xx through RPY8xx). Browse by category or search for a specific rule. Each rule links to the canonical RULES.md reference in the repository.
 tags:
   - rules
   - reference
@@ -20,7 +20,7 @@ in the terminal:
 
 ```bash
 senpy rule show RPY104    # show one rule in detail
-senpy rule list           # table of all 51 rules
+senpy rule list           # table of all 52 rules
 senpy rule list --tag rollback    # filter by tag
 ```
 
@@ -31,7 +31,7 @@ senpy rule list --tag rollback    # filter by tag
 | Category | Rules | Page |
 |---|---|---|
 | **RPY0xx** — Indentation & syntax | RPY001, RPY002, RPY100 | [RPY0xx — Formatting](rpy0xx-formatting.md) |
-| **RPY1xx** — Variables & state | RPY101–RPY109 (9 rules) | [RPY1xx — State](rpy1xx-state.md) |
+| **RPY1xx** — Variables & state | RPY101–RPY110 (10 rules) | [RPY1xx — State](rpy1xx-state.md) |
 | **RPY2xx** — Screens & UI | RPY201–RPY208 (8 rules) | [RPY2xx — Screens](rpy2xx-screens.md) |
 | **RPY3xx** — Story flow & dialogue | RPY301–RPY310 (10 rules) | [RPY3xx — Story](rpy3xx-story.md) |
 | **RPY4xx** — Branching & logic | RPY401–RPY404 (4 rules) | [RPY4xx — Flow](rpy4xx-flow.md) |
@@ -58,6 +58,7 @@ These rules fail the build in CI (unless `--exit-zero` or
 - `RPY105` — Direct mutation of `define` constant
 - `RPY108` — Type taint conflict or incompatible augmented assignment
 - `RPY109` — Init phase dependency graph violation
+- `RPY110` — Python syntax error in $-statement or init python block
 - `RPY204` — Call/Show to non-existent screen
 - `RPY206` — Direct function call in button action
 - `RPY207` — Invalid parameters in screen call / use

@@ -201,7 +201,7 @@ translate russian welcome_1:
 Senpy ловит их на этапе линтера — ещё до того, как они дойдут до игроков.
 **Вот почему вам это нужно.**
 
-Полный список из 51 правила с примерами — см.  **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**.
+Полный список из 52 правила с примерами — см.  **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**.
 
 ---
 

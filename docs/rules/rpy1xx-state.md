@@ -1,6 +1,6 @@
 ---
 title: RPY1xx — Variables, State & API Rules
-description: RPY1xx rules cover Ren'Py variable declarations and state management — undefined variables (RPY101-RPY103), default vs define (RPY104-RPY105), non-revertable types (RPY106), deprecated APIs (RPY107), type taint conflicts (RPY108), and init phase load order (RPY109). These are the rules that catch save corruption and rollback desync.
+description: RPY1xx rules cover Ren'Py variable declarations and state management — undefined variables (RPY101-RPY103), default vs define (RPY104-RPY105), non-revertable types (RPY106), deprecated APIs (RPY107), type taint conflicts (RPY108), init phase load order (RPY109), and Python syntax errors (RPY110). These are the rules that catch save corruption and rollback desync.
 tags:
   - rules
   - state
@@ -286,6 +286,13 @@ caused by Ren'Py's alphabetical file load order interacting with
 developer's machine loads them in a particular order, but a fresh
 checkout on a new machine might load them differently.
 
+### Python syntax errors
+
+`RPY110` catches invalid Python syntax in `$`-statements and
+`init python:` blocks — e.g. `$ x = )` would crash Ren'Py with a
+`SyntaxError` traceback. Without Senpy, this bug only surfaces when
+the player reaches the affected line.
+
 ---
 
 ## Auto-fix summary
@@ -313,6 +320,6 @@ senpy /path/to/game --ignore-tag deprecated   # skip deprecated API checks
 
 - [RPY2xx — Screens & UI](rpy2xx-screens.md) — screen actions, UI prediction.
 - [RPY4xx — Branching](rpy4xx-flow.md) — `MAYBE_SET` reads after menu branches.
-- [All 51 rules](index.md) — back to the navigator.
+- [All 52 rules](index.md) — back to the navigator.
 - [RULES.md in repo](https://github.com/Xilleet/senpy/blob/main/RULES.md)
   — canonical reference with full examples for every RPY1xx rule.

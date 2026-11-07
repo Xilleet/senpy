@@ -506,7 +506,7 @@ diagnostics.
 ## What's next?
 
 - [**CLI reference**](cli-reference.md) — every flag and subcommand.
-- [**All 51 rules**](rules/index.md) — to choose which rules to
+- [**All 52 rules**](rules/index.md) — to choose which rules to
   enable / disable / downgrade.
 - [**Ren'Py GitHub Actions**](renpy-github-actions.md) — wire this
   config into a CI workflow.

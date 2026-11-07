@@ -34,7 +34,7 @@ the in-editor search — install the VSIX from GitHub Releases instead
 
 Every keystroke triggers an incremental analysis (~0.04s with the
 two-tier disk cache) and updates the squiggles in your editor. You
-see the same 51 rules the CLI runs, in real time.
+see the same 52 rules the CLI runs, in real time.
 
 - **Red squiggle** — `ERROR` severity (e.g. `RPY105` define mutation)
 - **Yellow squiggle** — `WARNING` (e.g. `RPY104` missing `default`)
@@ -246,7 +246,7 @@ and translation files, not just text.
 | Syntax highlighting | ✅ | ✅ (TextMate grammar copied from renpy-magic, MIT) |
 | Language configuration (brackets, comments) | ✅ | ✅ |
 | Snippets | ✅ basic | ❌ |
-| **Real-time diagnostics** | ❌ | ✅ 51 rules, runs on every keystroke |
+| **Real-time diagnostics** | ❌ | ✅ 52 rules, runs on every keystroke |
 | **Go-to-definition** | ❌ | ✅ labels, screens, transforms, defines |
 | **Find references** | ❌ | ✅ across the whole project |
 | **Hover docs** | ❌ | ✅ 975 Ren'Py API entries + asset previews |

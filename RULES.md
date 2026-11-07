@@ -6,7 +6,7 @@ Comprehensive guide to all semantic and static rules implemented in the **Senpy*
 
 ### Navigation
 - **Indentation & Code (RPY0xx)**: [RPY001](#rpy001) | [RPY002](#rpy002)
-- **Variables & State (RPY1xx)**: [RPY100](#rpy100) | [RPY101](#rpy101) | [RPY102](#rpy102) | [RPY103](#rpy103) | [RPY104](#rpy104) | [RPY105](#rpy105) | [RPY106](#rpy106) | [RPY107](#rpy107) | [RPY108](#rpy108) | [RPY109](#rpy109)
+- **Variables & State (RPY1xx)**: [RPY100](#rpy100) | [RPY101](#rpy101) | [RPY102](#rpy102) | [RPY103](#rpy103) | [RPY104](#rpy104) | [RPY105](#rpy105) | [RPY106](#rpy106) | [RPY107](#rpy107) | [RPY108](#rpy108) | [RPY109](#rpy109) | [RPY110](#rpy110)
 - **Screens & UI (RPY2xx)**: [RPY201](#rpy201) | [RPY202](#rpy202) | [RPY203](#rpy203) | [RPY204](#rpy204) | [RPY205](#rpy205) | [RPY206](#rpy206) | [RPY207](#rpy207) | [RPY208](#rpy208)
 - **Story Flow & Dialogue (RPY3xx)**: [RPY301](#rpy301) | [RPY302](#rpy302) | [RPY303](#rpy303) | [RPY304](#rpy304) | [RPY305](#rpy305) | [RPY306](#rpy306) | [RPY307](#rpy307) | [RPY308](#rpy308) | [RPY309](#rpy309) | [RPY310](#rpy310)
 - **Branching & Conditions (RPY4xx)**: [RPY401](#rpy401) | [RPY402](#rpy402) | [RPY403](#rpy403) | [RPY404](#rpy404)
@@ -246,6 +246,23 @@ init python:
 # game/z_setup.rpy
 init python:
     configure_interface()
+```
+
+---
+
+<a id="rpy110"></a>
+### RPY110: Python syntax error in $-statement or init python block
+- **Severity**: `ERROR`
+- **Why**: Invalid Python syntax in a `$`-statement or `init python:` block will cause a `SyntaxError` at runtime, crashing the game. Catching this at lint time prevents a crash that would only surface when the player reaches that line.
+
+```renpy
+# Bad
+label start:
+    $ x = )   # SyntaxError: unexpected ')'
+
+# Good
+label start:
+    $ x = 1
 ```
 
 ---

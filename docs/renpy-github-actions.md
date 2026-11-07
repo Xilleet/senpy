@@ -455,5 +455,5 @@ can save seconds.
 - [**Configuration**](configuration.md) — `senpy.toml`, `.senpy-ignore`,
   severity overrides, strict mode.
 - [**Install**](install.md) — `pip install senpy-linter`.
-- [**All 51 rules**](rules/index.md) — to choose which rules to enable
+- [**All 52 rules**](rules/index.md) — to choose which rules to enable
   or disable in CI.

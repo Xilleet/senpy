@@ -193,7 +193,7 @@ Every bug above:
 
 Senpy catches them at lint time — before they ship. **That's why you need it.**
 
-For the full list of 51 rules with examples, see **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**.
+For the full list of 52 rules with examples, see **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**.
 
 ---
 

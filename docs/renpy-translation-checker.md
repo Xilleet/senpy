@@ -314,7 +314,7 @@ the source.
 
 ## What's next?
 
-- [**All 51 rules**](rules/rpy6xx-translations.md) — RPY6xx family
+- [**All 52 rules**](rules/rpy6xx-translations.md) — RPY6xx family
   reference page.
 - [**Configuration**](configuration.md) — how to silence noisy rules,
   configure severity overrides, set up `--tag translations` for CI.

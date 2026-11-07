@@ -106,6 +106,14 @@ RULES_DATABASE = {
         "bad": "# a_setup.rpy\ninit python:\n    setup_gui()  # Crashes!\n\n# z_helpers.rpy\ninit python:\n    def setup_gui(): ...",
         "good": "# a_helpers.rpy\ninit python:\n    def setup_gui(): ...\n\n# z_setup.rpy\ninit python:\n    setup_gui()",
     },
+    "RPY110": {
+        "title": "Python syntax error in $-statement or init python block",
+        "severity": "ERROR",
+        "tags": ["python", "syntax"],
+        "why": "Invalid Python syntax in a `$`-statement or `init python:` block will cause a SyntaxError at runtime, crashing the game. Catching this at lint time prevents a crash that would only surface when the player reaches that line.",
+        "bad": "label start:\n    $ x = )  # SyntaxError!",
+        "good": "label start:\n    $ x = 1  # Valid",
+    },
     # ---------------- 200: Screen Language & UI ----------------
     "RPY201": {
         "title": "Direct state mutation inside screen",

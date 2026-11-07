@@ -213,6 +213,6 @@ that touch `game/tl/`:
   duplicates and inconsistencies across files.
 - [Ren'Py Translation Checker](../renpy-translation-checker.md) —
   the full `--coverage` documentation and worked examples.
-- [All 51 rules](index.md) — back to the navigator.
+- [All 52 rules](index.md) — back to the navigator.
 - [RULES.md in repo](https://github.com/Xilleet/senpy/blob/main/RULES.md)
   — canonical reference.

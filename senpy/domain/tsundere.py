@@ -59,6 +59,9 @@ TSUNDERE_FLAVORS = {
     "RPY109": "(；￣Д￣) «Ты вызываешь функцию в init python раньше, чем загрузился файл с ней! Ren'Py грузит файлы по алфавиту, слепой!»"
     if IS_RU
     else "(；￣Д￣) «Calling a function in init python before its file even loaded?! Ren'Py loads alphabetically, blind idiot!»",
+    "RPY110": "(ﾉ´д｀) «Синтаксическая ошибка в Python-коде?! Ты вообще проверял, что написал?! Ren'Py бы просто упал, идиот!»"
+    if IS_RU
+    else "(ﾉ´д｀) «Python syntax error in your code?! Did you even check what you wrote?! Ren'Py would just crash, idiot!»",
     "RPY201": "(╯°□°)╯︵ ┻━┻ «Ты меняешь переменную ПРЯМО ВНУТРИ ЭКРАНА?! Экраны так не работают, тупица!»"
     if IS_RU
     else "(╯°□°)╯︵ ┻━┻ «Mutating variables DIRECTLY INSIDE A SCREEN?! Screens don't work like that, dummy!»",

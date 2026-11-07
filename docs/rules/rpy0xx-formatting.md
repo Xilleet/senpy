@@ -131,6 +131,6 @@ senpy /path/to/game --ignore-tag formatting   # skip these rules
 
 - [RPY1xx — Variables & State](rpy1xx-state.md) — `default`/`define`,
   init order, type taint.
-- [All 51 rules](index.md) — back to the navigator.
+- [All 52 rules](index.md) — back to the navigator.
 - [RULES.md in repo](https://github.com/Xilleet/senpy/blob/main/RULES.md)
   — canonical reference with full examples.
