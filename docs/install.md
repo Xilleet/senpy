@@ -9,8 +9,7 @@ tags:
 # Install Senpy
 
 Senpy is distributed through three channels. Pick the one that matches
-your workflow — they all use the same analyzer engine and the same 51
-rules.
+your workflow — they all use the same analyzer engine and the same 52 rules.
 
 | Channel | Best for | Setup |
 |---|---|---|
