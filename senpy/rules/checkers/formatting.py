@@ -76,6 +76,19 @@ class FormattingChecker(BaseChecker):
                 file_modified = True
                 self.analyzer.fixed_count += 1
             else:
+                # Replacement is the entire fixed line (smart quotes replaced),
+                # WITHOUT the trailing newline — LSP editors manage line
+                # endings separately, and including `\n` here would create
+                # a spurious empty line after the fix.
+                # Range must cover the entire line too — otherwise the LSP
+                # handler falls back to lsp_diag.range (typically
+                # `[indent, end_of_line)`) and the indent ends up duplicated:
+                # the editor preserves the leading indent that lives outside
+                # the range, then prepends the indent included in the
+                # replacement.
+                line_no_newline = new_raw_line.rstrip("\r\n")
+                replacement_line = "".join(SMART_QUOTES.get(c, c) for c in line_no_newline)
+                line_utf16_len = len(line_no_newline.encode("utf-16-le")) // 2
                 self.analyzer._add_diagnostic(
                     Diagnostic(
                         file_path=file_path,
@@ -84,7 +97,9 @@ class FormattingChecker(BaseChecker):
                         code="RPY002",
                         message="Smart/curly quotes (“ ” ‘ ’ « ») detected in code statement. Will cause Python SyntaxError.",
                         fix_title="Replace smart quotes with standard quotes",
-                        fix_replacement="".join(SMART_QUOTES.get(c, c) for c in new_raw_line),
+                        fix_replacement=replacement_line,
+                        fix_start_col=0,
+                        fix_end_col=line_utf16_len,
                     ),
                     noqa_map,
                 )

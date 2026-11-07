@@ -354,7 +354,12 @@ class StoryFlowAnalyzer:
                     kind="choice",
                     name=m_choice.group(2).strip("\"'"),  # type: ignore[union-attr]
                     line=idx + 1,
-                    raw=stripped,
+                    # Store the line WITH leading indent so QuickFix UTF-16
+                    # offsets and LSP diagnostic ranges land on the actual
+                    # source coordinates. Trailing comments and whitespace
+                    # (including newline) are stripped; leading indent and
+                    # the choice text are preserved.
+                    raw=_strip_comment(raw_line).rstrip(),
                 )
                 statement_counts[id(current_choice)] = 0
                 idx += 1
@@ -495,11 +500,23 @@ class StoryFlowAnalyzer:
                 defined_b = next((c for c in merging_choices if var in c.defined_vars), None)
 
                 if missing_b and defined_b and file_path:
-                    start_c, end_c = get_utf16_range(missing_b.raw, missing_b.name)
-                    # Improvement (0.7.6): suggest a concrete fix — add the
-                    # variable assignment to the missing branch. This is
-                    # more actionable than just "it's missing".
+                    # QuickFix design: INSERT a new line in the body of the
+                    # missing branch, do NOT replace the choice text.
+                    # Replacing the choice text with `$ {var} = 0` (the old
+                    # behaviour) produced broken source like `$ route = 0:`
+                    # — the choice text was destroyed and the trailing `:`
+                    # was left dangling.
+                    #
+                    # The fix uses an insertion at end-of-line (zero-length
+                    # range) so the LSP editor inserts the assignment as a
+                    # new line below the choice, indented one level deeper
+                    # than the choice (typical Ren'Py 4-space indent step).
                     suggested_value = "0"  # safe default for int/bool types
+                    choice_raw = missing_b.raw.rstrip("\r\n")
+                    choice_indent = len(choice_raw) - len(choice_raw.lstrip(" "))
+                    body_indent = " " * (choice_indent + 4)
+                    line_utf16_len = len(choice_raw.encode("utf-16-le")) // 2
+                    fix_replacement = "\n" + body_indent + f"$ {var} = {suggested_value}"
                     fix_title = f"Add '{var} = {suggested_value}' to this branch"
                     self.analyzer._add_diagnostic(
                         Diagnostic(
@@ -513,12 +530,12 @@ class StoryFlowAnalyzer:
                                 f"but missing in '{missing_b.name}'. "
                                 f"Add '$ {var} = {suggested_value}' to this branch or use 'default {var}' at top level."
                             ),
-                            col=start_c,
-                            end_col=end_c,
+                            col=line_utf16_len,
+                            end_col=line_utf16_len,
                             fix_title=fix_title,
-                            fix_replacement=f"$ {var} = {suggested_value}",
-                            fix_start_col=start_c,
-                            fix_end_col=end_c,
+                            fix_replacement=fix_replacement,
+                            fix_start_col=line_utf16_len,
+                            fix_end_col=line_utf16_len,
                         ),
                         noqa_map,
                     )

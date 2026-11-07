@@ -221,7 +221,41 @@ class ScreenChecker(BaseChecker):
         if m_act:
             fn_name = m_act.group(1)
             if fn_name not in BUILTIN_ACTIONS:
-                start_c, end_c = self.analyzer._get_utf16_range(raw_line, f"action {fn_name}(")
+                # Find the matching closing paren of the call so the
+                # QuickFix range covers `action myfunc(arg1, arg2)` as a
+                # whole, not just `action myfunc(`. Without this, the LSP
+                # TextEdit replaces only the prefix and leaves `arg1, arg2)`
+                # dangling after the replacement — broken Ren'Py screen code.
+                paren_open_pos = m_act.end() - 1  # index of '(' in stripped
+                depth = 1
+                i = paren_open_pos + 1
+                while i < len(stripped) and depth > 0:
+                    if stripped[i] == "(":
+                        depth += 1
+                    elif stripped[i] == ")":
+                        depth -= 1
+                    i += 1
+                if depth == 0:
+                    close_paren_pos = i - 1  # index of matching ')'
+                else:
+                    # Unclosed call — fall back to end of stripped content.
+                    close_paren_pos = len(stripped) - 1
+                args_content = stripped[paren_open_pos + 1 : close_paren_pos].strip()
+                # Build the full call substring to locate it in raw_line
+                # (raw_line and stripped differ by leading indent and any
+                # trailing comment, but the call expression itself is the
+                # same in both).
+                full_call_substring = stripped[m_act.start() : close_paren_pos + 1]
+                start_c, end_c = self.analyzer._get_utf16_range(raw_line, full_call_substring)
+                # Replacement keeps the `action ` prefix and wraps the call
+                # in `Function(...)`, preserving the original args. If args
+                # are empty (`myfunc()`), the replacement is `action Function(myfunc)`.
+                if args_content:
+                    replacement = f"action Function({fn_name}, {args_content})"
+                    fix_title = f"Wrap with Function({fn_name}, ...)"
+                else:
+                    replacement = f"action Function({fn_name})"
+                    fix_title = f"Wrap with Function({fn_name})"
                 self.analyzer._add_diagnostic(
                     Diagnostic(
                         file_path=file_path,
@@ -231,8 +265,10 @@ class ScreenChecker(BaseChecker):
                         message=f"Direct function call '{fn_name}()' in action. It executes immediately during screen render! Use 'action Function({fn_name}, ...)' instead.",
                         col=start_c,
                         end_col=end_c,
-                        fix_title=f"Wrap with Function({fn_name})",
-                        fix_replacement=f"Function({fn_name})",
+                        fix_title=fix_title,
+                        fix_replacement=replacement,
+                        fix_start_col=start_c,
+                        fix_end_col=end_c,
                     ),
                     noqa_map,
                 )
