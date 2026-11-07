@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY110",
+    "severity": "ERROR",
+    "line": 6,
+    "message_fragment": "Python syntax error: invalid syntax"
+  }
+]

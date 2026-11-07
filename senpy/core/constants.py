@@ -124,6 +124,7 @@ BUILTIN_SYMBOLS = {
 }
 
 BUILTIN_ACTIONS = {
+    # Original set (kept as-is — historical and still valid).
     "SetVariable",
     "SetField",
     "SetScreenVariable",
@@ -167,6 +168,58 @@ BUILTIN_ACTIONS = {
     "Language",
     "ShowTransient",
     "FilePage",
+    # Extended to cover the complete screen action library documented at
+    # https://www.renpy.org/doc/html/screen_actions.html. Without these,
+    # RPY206 fires false positives on legitimate Ren'Py patterns like
+    # `action FilePagePrevious()`. Each entry is a callable that returns
+    # an Action object — calling it with `()` in the `action` slot is
+    # the documented usage, not "executes immediately during screen
+    # render".
+    "FilePageNext",
+    "FilePagePrevious",
+    "FileTakeScreenshot",
+    "ToggleScreen",
+    "SetLocalVariable",
+    "ToggleLocalVariable",
+    "CycleDict",
+    "CycleField",
+    "CycleLocalVariable",
+    "CycleScreenVariable",
+    "CycleVariable",
+    "IncrementDict",
+    "IncrementField",
+    "IncrementLocalVariable",
+    "IncrementScreenVariable",
+    "IncrementVariable",
+    "SetDict",
+    "ToggleDict",
+    "AddToSet",
+    "RemoveFromSet",
+    "ToggleSetMembership",
+    "Continue",
+    "DownloadSync",
+    "UploadSync",
+    "GetMixer",
+    "SetMixer",
+    "SetMute",
+    "ToggleMute",
+    "CaptureFocus",
+    "ClearFocus",
+    "GetFocusRect",
+    "ToggleFocus",
+    "InvertSelected",
+    "CopyToClipboard",
+    "DisableAllInputValues",
+    "EditFile",
+    "ExecJS",
+    "MouseMove",
+    "OpenDirectory",
+    "QueueEvent",
+    "RestartStatement",
+    "RollForward",
+    "RollbackToIdentifier",
+    "Screenshot",
+    "Scroll",
 }
 
 # Single source of truth for the version — senpy/__version__.py.
@@ -368,9 +421,13 @@ RE_STOP_STATEMENT = re.compile(r"^\s*stop\s+([^\W\d]\w*)")
 RE_INTERPOLATION = re.compile(r"\[([^\W\d]\w*)[^\]]*\]")
 RE_CONDITION = re.compile(r"^\s*(?:if|elif|while)\s+(.+):$")
 RE_PYTHON_BLOCK_START = re.compile(r"^(\s*)python(?:\s+early)?\s*:\s*(?:#.*)?$")
-RE_INIT_PYTHON_START = re.compile(r"^(\s*)init(?:\s+-?\d+)?\s+python(?:\s+early)?\s*:\s*(?:#.*)?$")
+RE_INIT_PYTHON_START = re.compile(
+    r"^(\s*)init(?:\s+(-?\d+))?\s+python(?:\s+early)?\s*:\s*(?:#.*)?$"
+)
 RE_TRANSFORM = re.compile(r"^\s*transform\s+([^\W\d]\w*)(?:\s*\((.*?)\))?\s*:")
-RE_SCREEN_START = re.compile(r"^(\s*)screen\s+([^\W\d]\w*)(?:\((.*?)\))?\s*:\s*(?:#.*)?$")
+RE_SCREEN_START = re.compile(
+    r"^(\s*)(?:init(?:\s+-?\d+)?\s+)?screen\s+([^\W\d]\w*)(?:\((.*?)\))?\s*:\s*(?:#.*)?$"
+)
 RE_SCREEN_CALL = re.compile(r"^\s*(?:show\s+screen|call\s+screen|use)\s+([^\W\d]\w*)")
 RE_SCREEN_JUMP_ACTION = re.compile(
     r'\b(?:Jump|Call|renpy\.jump|renpy\.call)\s*\(\s*["\']([^\W\d][\w\.]*)["\']'

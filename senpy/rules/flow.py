@@ -264,7 +264,17 @@ class StoryFlowAnalyzer:
         root_labels: set[str],
         screen_targets: set[str],
     ) -> set[str]:
-        """BFS from root labels through outgoing_jumps; screen bridges inject extra seeds."""
+        """BFS from root labels through outgoing_jumps and fall-through edges; screen bridges inject extra seeds.
+
+        The graph models two edge kinds:
+          - explicit ``jump``/``call`` targets via ``LabelSymbol.outgoing_jumps``
+          - implicit fall-through to the next label in the same file via
+            ``LabelSymbol.fall_through_to`` (set when the previous label's
+            body does not terminate with ``return``/``jump``/``call``/
+            ``renpy.quit()``/``renpy.full_restart()``). Without this edge,
+            labels reached only via fall-through from ``start`` were
+            misreported as unreachable (RPY309 false positive).
+        """
         reachable: set[str] = set(root_labels)
         queue: deque[str] = deque(root_labels)
 
@@ -277,11 +287,18 @@ class StoryFlowAnalyzer:
         while queue:
             curr = queue.popleft()
             lbl_sym = labels.get(curr)
-            outgoing = lbl_sym.outgoing_jumps if lbl_sym else set()
-            for target in outgoing:
+            if lbl_sym is None:
+                continue
+            # Explicit jump/call edges.
+            for target in lbl_sym.outgoing_jumps:
                 if target in labels and target not in reachable:
                     reachable.add(target)
                     queue.append(target)
+            # Implicit fall-through edge to the next label in the same file.
+            ft = lbl_sym.fall_through_to
+            if ft and ft in labels and ft not in reachable:
+                reachable.add(ft)
+                queue.append(ft)
 
         return reachable
 

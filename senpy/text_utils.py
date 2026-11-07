@@ -281,6 +281,50 @@ def _count_bracket_delta(s: str) -> int:
     return delta
 
 
+def _has_unclosed_string(s: str) -> bool:
+    """Returns True if ``s`` opens a triple-quoted or single-quoted
+    string literal that is not closed within ``s``.
+
+    Used by :func:`_get_logical_line` to detect multi-line string
+    constructs that must be joined with subsequent physical lines
+    before being fed to ``ast.parse``. Without this, a ``$`` statement
+    that opens a triple-quoted string on one line and closes it on a
+    later line would be parsed as just the first physical line,
+    producing a false RPY110 "Python syntax error" because the
+    triple-quoted string is unclosed on that single line.
+    """
+    in_quote: str | None = None
+    i = 0
+    n = len(s)
+    while i < n:
+        ch = s[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if in_quote in ('"""', "'''"):
+            if s[i : i + 3] == in_quote:
+                in_quote = None
+                i += 3
+                continue
+            i += 1
+            continue
+        if in_quote:
+            if ch == in_quote:
+                in_quote = None
+            i += 1
+            continue
+        if s[i : i + 3] in ('"""', "'''"):
+            in_quote = s[i : i + 3]
+            i += 3
+            continue
+        if ch in ('"', "'"):
+            in_quote = ch
+            i += 1
+            continue
+        i += 1
+    return in_quote is not None
+
+
 def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     """
     Joins multi-line constructs (line continuation via '\\' or unclosed brackets).
@@ -294,13 +338,34 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     bracket_depth = _count_bracket_delta(first_clean)
     ends_with_backslash = stripped.endswith("\\")
 
-    # The line needs joining ONLY if there is an explicit '\' continuation or an unclosed bracket outside quotes
+    # The line needs joining ONLY if there is an explicit '\' continuation
+    # OR an unclosed bracket outside quotes. We do NOT check for an
+    # unclosed string on the first line, because a line like
+    # ``Not all good times must come to an end."""`` (which CLOSES a
+    # triple-quoted string opened on a previous line) would be
+    # incorrectly detected as opening a new string — causing the joiner
+    # to swallow every subsequent line until it finds another ``"""``.
+    # The string state is tracked CUMULATIVELY in the joining loop
+    # below (via ``inside_string = _has_unclosed_string(joined_so_far)``),
+    # which correctly handles the case where the first line opens a
+    # string inside an open bracket (e.g. ``$ x = _p("""`` — the ``(``
+    # triggers joining, and the loop's cumulative string tracking
+    # extends the join through the closing ``"""`` and ``)``).
     if not ends_with_backslash and bracket_depth <= 0:
         return idx + 1, first_raw, first_clean
 
     raw_parts = [first_raw]
     clean_parts = [first_clean]
     curr_idx = idx
+    # Compute the initial inside_string state from the first line. This
+    # is correct because we only reach here if bracket_depth > 0 or
+    # ends_with_backslash — meaning the line opens a construct that
+    # requires joining. The string state computed here is the state
+    # AFTER processing the first line. If the first line opens a
+    # triple-quoted string (e.g. ``$ x = _p("""``), inside_string will
+    # be True, and the loop will continue joining until the string
+    # closes (cumulative tracking in the loop body).
+    inside_string = _has_unclosed_string(first_clean)
 
     max_lookahead = 50  # Protection against infinite line swallowing
     lookahead_count = 0
@@ -308,7 +373,11 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     while curr_idx + 1 < len(lines):
         clean_stripped = clean_parts[-1].rstrip()
         ends_with_backslash = clean_stripped.endswith("\\")
-        if not ends_with_backslash and bracket_depth <= 0:
+        # Continue joining while: explicit '\' continuation, OR unclosed
+        # bracket, OR we're inside a multi-line string literal. The string
+        # case must be checked on the accumulated content so far — we
+        # recompute it from the joined clean parts each iteration.
+        if not ends_with_backslash and bracket_depth <= 0 and not inside_string:
             break
 
         lookahead_count += 1
@@ -318,12 +387,17 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
         peek_raw = lines[curr_idx + 1]
         peek_clean = _strip_comment(peek_raw).strip()
 
-        # Block boundary: if there is no explicit backslash '\', and the next line is
-        # a new top-level keyword construct (label, screen, init, define, default, transform, image, style, layeredimage),
-        # force-stop so we don't swallow another scene on a broken bracket.
+        # Block boundary: if there is no explicit backslash '\', we are NOT
+        # inside a multi-line string, and the next line is a new top-level
+        # keyword construct (label, screen, init, define, default,
+        # transform, image, style, layeredimage), force-stop so we don't
+        # swallow another scene on a broken bracket. When inside a string,
+        # lines starting with these keywords are just string content — not
+        # real block boundaries.
         peek_indent = len(peek_raw) - len(peek_raw.lstrip(" "))
         if (
             not ends_with_backslash
+            and not inside_string
             and peek_indent == 0
             and peek_clean.startswith(
                 (
@@ -347,7 +421,16 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
 
         raw_parts.append(next_raw)
         clean_parts.append(next_clean)
-        bracket_depth += _count_bracket_delta(next_clean)
+        # Recompute bracket_depth and inside_string from the JOINED content
+        # so far. Per-line accumulation is wrong here: ``_count_bracket_delta``
+        # treats each line as starting outside any string, so a line that
+        # closes a multi-line string opened earlier (e.g. ``""")``) would
+        # have its ``)`` masked by what the per-line scan thinks is an
+        # open triple-quoted string. Recomputing on the joined content
+        # gives the correct cumulative state.
+        joined_so_far = "".join(clean_parts)
+        bracket_depth = _count_bracket_delta(joined_so_far)
+        inside_string = _has_unclosed_string(joined_so_far)
 
     if len(raw_parts) == 1:
         return idx + 1, first_raw, first_clean

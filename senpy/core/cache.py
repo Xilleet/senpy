@@ -248,6 +248,13 @@ class CacheManager:
             # outgoing_jumps: RPY302 (broken jump) and RPY309 (story
             # islands) depend on where a label jumps. Sorted for determinism.
             hasher.update(str(sorted(lbl.outgoing_jumps)).encode("utf-8"))
+            # fall_through_to: RPY309 reachability uses this implicit edge
+            # to model control flow between adjacent labels in a file.
+            # Without hashing it, adding/removing a `return` between two
+            # labels in file A (which toggles whether the first falls
+            # through to the second) would not invalidate file B's cached
+            # RPY309 diagnostics.
+            hasher.update(str(lbl.fall_through_to).encode("utf-8"))
 
         for scr_name in sorted(analyzer.screens.keys()):
             hasher.update(scr_name.encode("utf-8"))

@@ -463,6 +463,16 @@ def run_single_file_diagnostics(ls: LanguageServer, uri: str, content: str):
         _active_analyzer.in_memory_files[norm_file] = content
         diags = _active_analyzer.analyze_file_only(file_path)
 
+        # Refresh the symbol snapshot so handlers (hover, completion,
+        # rename, references) see the just-analyzed file's new symbols.
+        # Without this, adding a new label/variable/screen and hovering
+        # over a reference BEFORE did_save fires would return None —
+        # the snapshot was only refreshed by run_full_project_diagnostics
+        # and stayed stale for the entire did_change → did_save window.
+        # The refresh is cheap (shallow dict copies) compared to the
+        # analyze_file_only work that just ran.
+        _refresh_symbol_snapshot()
+
         lsp_diags: list[lsp.Diagnostic] = []
         pairs: list[tuple[Diagnostic, lsp.Diagnostic]] = []
 

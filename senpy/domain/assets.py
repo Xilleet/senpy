@@ -63,7 +63,15 @@ NON_ASSET_EXTENSIONS: frozenset[str] = frozenset(
         ".rpyc",  # Compiled Ren'Py bytecode
         ".rpyb",  # Compiled Ren'Py bytecode (older format)
         ".rpymc",  # Compiled Ren'Py module bytecode
-        ".rpa",  # Ren'Py archive (Ren'Py loads contents at runtime), but this is temporary.
+        # Note: `.rpa` IS in this set — the archive file itself is a
+        # build artifact, NOT a directly-used asset. However, its
+        # CONTENTS need to be registered as known assets. The RPA
+        # index reader (`_read_rpa_index`) is therefore called BEFORE
+        # the `NON_ASSET_EXTENSIONS` skip in `_index_disk_files`. The
+        # previous implementation had the reader AFTER the skip, which
+        # made the reader unreachable for the entire 0.7.x / 0.8.0 /
+        # 0.8.1 line.
+        ".rpa",  # Ren'Py archive — contents read separately, file itself skipped
         ".rpy",  # Ren'Py source (not an asset, it's code)
         ".rpym",  # Ren'Py module source
         # Documentation and notes
@@ -175,6 +183,16 @@ class AssetManager:
                 # (e.g. "senpy.toml is an unused asset" on every project).
                 if f.lower() in SENPY_OWN_FILES:
                     continue
+                # RPA archives are read BEFORE the non-asset skip below,
+                # because `.rpa` is in `NON_ASSET_EXTENSIONS` (the archive
+                # file itself is a build artifact, not a directly-used
+                # asset) but its CONTENTS need to be registered as known
+                # assets. Previously this call sat AFTER the skip and was
+                # unreachable — `_read_rpa_index` was effectively dead
+                # code for the entire 0.7.x / 0.8.0 / 0.8.1 line.
+                full_path = os.path.join(root, f)
+                if f.lower().endswith(".rpa"):
+                    self._read_rpa_index(full_path)
                 # Skip files with non-asset extensions (.rpyc, .rpa, .md,
                 # .txt, .psd, .exe, .sh, .zip, etc.). These are build
                 # artifacts, documentation, archives, or design sources —
@@ -183,7 +201,6 @@ class AssetManager:
                 _, ext = os.path.splitext(f.lower())
                 if ext in NON_ASSET_EXTENSIONS:
                     continue
-                full_path = os.path.join(root, f)
                 rel_path = os.path.relpath(full_path, self.project_path).replace("\\", "/").lower()
                 self.known_assets.add(rel_path)
                 self.known_assets.add(f.lower())
@@ -213,9 +230,6 @@ class AssetManager:
                     # + `show intro` the same way as static images.
                     if ext in IMAGE_EXTENSIONS or ext in VIDEO_EXTENSIONS:
                         self._register_image_for_hover(clean_rel, full_path)
-
-                if f.lower().endswith(".rpa"):
-                    self._read_rpa_index(full_path)
 
     def _index_valid_images(self) -> None:
         """Populate `valid_images` with tokenized names from `known_assets`.

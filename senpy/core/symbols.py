@@ -32,6 +32,14 @@ class LabelSymbol:
     has_return: bool = False
     outgoing_jumps: set[str] = field(default_factory=set)
     jump_sources: list[tuple[str, int]] = field(default_factory=list)
+    # Name of the next label in the same file that this label falls
+    # through to, when its body does not terminate with ``return``,
+    # ``jump``, ``call`` (with ``from``), ``renpy.quit()``, or
+    # ``renpy.full_restart()``. ``None`` means no fall-through edge
+    # (either the label terminates or there is no next label in the
+    # same file). Used by RPY309 reachability to model the implicit
+    # fall-through edge between adjacent labels in a file.
+    fall_through_to: str | None = None
 
 
 @dataclass(slots=True)

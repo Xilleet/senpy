@@ -437,10 +437,19 @@ class FileCollector:
         idx: int,
         scope: FileScope,
         current_global_label: str | None,
+        lines: list[str] | None = None,
+        previous_label: str | None = None,
     ) -> tuple[str, str, str | None]:
         """Handle `label name(params):` — RPY307, LabelSymbol.
 
         Returns (label_name, current_global_label, current_label).
+
+        If ``lines`` and ``previous_label`` are provided, also populates
+        ``fall_through_to`` on the previous label in the same file when
+        the line just before this new label is not a terminator
+        (``return``, ``jump``, ``call``, ``renpy.quit``,
+        ``renpy.full_restart``) and does not end with ``:``. This models
+        the implicit fall-through edge used by RPY309 reachability.
         """
         raw_name = m_label.group(1)
         if raw_name.startswith("."):
@@ -475,6 +484,102 @@ class FileCollector:
         # one of the declarations is removed.
         scope.labels[label_name] = lbl_sym
         self.analyzer.labels[label_name] = lbl_sym
+
+        # Populate fall_through_to on the previous label in the same file.
+        #
+        # Algorithm:
+        #   1. Walk back from idx-1 to find the last non-blank, non-comment
+        #      line. That's the candidate "last statement of previous
+        #      label's body".
+        #   2. Walk back further from that line to the previous label's
+        #      declaration line. If any indent-0 statement appears in
+        #      between that is NOT a label declaration, the previous
+        #      label's body ended earlier (e.g. with a `return`) and a
+        #      new top-level construct (screen/style/transform/etc.)
+        #      was declared — no fall-through to this new label.
+        #   3. If no intervening top-level construct exists AND the last
+        #      non-blank line is not a terminator (return/jump/call/
+        #      renpy.quit/renpy.full_restart) and does not end with ':',
+        #      then the previous label falls through to this new label.
+        #
+        # The intervening-construct check is critical: a `screen` block
+        # between two labels is NOT a fall-through path — labels and
+        # screens are separate top-level constructs in Ren'Py. Without
+        # this check, `label A: ... return` followed by `screen X(): ...`
+        # followed by `label B:` would incorrectly set A.fall_through_to
+        # = B (the last non-blank line before B is the screen body, which
+        # is not a terminator), making B appear reachable from A.
+        if lines is not None and previous_label is not None and previous_label in scope.labels:
+            from senpy.text_utils import _strip_comment
+
+            prev_label_line = scope.labels[previous_label].line_number - 1  # 0-indexed
+
+            # Step 1: walk back to find last non-blank line.
+            last_nb_idx = idx - 1
+            while last_nb_idx > prev_label_line and not lines[last_nb_idx].strip():
+                last_nb_idx -= 1
+            if last_nb_idx <= prev_label_line:
+                # No body lines between previous label and this one —
+                # previous label has empty body, no fall-through.
+                pass
+            else:
+                # Step 2: walk back from last_nb_idx-1 to prev_label_line,
+                # checking for any intervening indent-0 construct that's
+                # not a label.
+                has_intervening_top_level = False
+                walk_idx = last_nb_idx - 1
+                while walk_idx > prev_label_line:
+                    line_text = lines[walk_idx]
+                    if not line_text.strip():
+                        walk_idx -= 1
+                        continue
+                    stripped_line = line_text.lstrip(" ")
+                    indent = len(line_text) - len(stripped_line)
+                    if indent == 0:
+                        clean_at_zero = _strip_comment(stripped_line).strip()
+                        if clean_at_zero and clean_at_zero.startswith(
+                            (
+                                "label ",
+                                "screen ",
+                                "style ",
+                                "transform ",
+                                "init ",
+                                "image ",
+                                "layeredimage ",
+                                "define ",
+                                "default ",
+                            )
+                        ):
+                            # A top-level construct declaration between
+                            # the previous label and this one breaks
+                            # the fall-through chain.
+                            has_intervening_top_level = True
+                            break
+                    walk_idx -= 1
+
+                if not has_intervening_top_level:
+                    # Step 3: check the last non-blank line for terminator.
+                    prev_clean = _strip_comment(lines[last_nb_idx]).strip()
+                    if (
+                        prev_clean
+                        and not prev_clean.startswith(
+                            (
+                                "return",
+                                "jump ",
+                                "jump\t",
+                                "call ",
+                                "call\t",
+                                "renpy.full_restart",
+                                "renpy.quit",
+                                "pass",
+                            )
+                        )
+                        and not prev_clean.endswith(":")
+                    ):
+                        prev_sym = scope.labels[previous_label]
+                        prev_sym.fall_through_to = label_name
+                        if previous_label in self.analyzer.labels:
+                            self.analyzer.labels[previous_label].fall_through_to = label_name
 
         return label_name, current_global_label, label_name
 
@@ -738,11 +843,33 @@ class FileCollector:
                 if len(line) - len(line.lstrip(" ")) == 0:
                     current_screen = m_screen_def.group(2) if m_screen_def else None
 
+                # Scan every line for media-asset string literals. This
+                # catches references inside `style` blocks (e.g.
+                # `foreground "gui/button/check_[prefix_]foreground.png"`)
+                # which are not handled by the `$`/`python:`-only
+                # `_scan_python_assets` calls in state.py. Without this,
+                # RPY503 fires false positives on assets referenced via
+                # the standard Ren'Py GUI auto-discovery pattern.
+                # The fast-path (`if '"' in line or "'" in line`) makes
+                # this cheap for the common case of label/jump/return
+                # lines that have no quotes.
+                self._scan_python_assets(line)
+
                 # --- label ---
                 m_label = RE_LABEL.match(clean)
                 if m_label:
+                    # Capture the previous label in this file before
+                    # _collect_label reassigns current_label to the new one.
+                    previous_label_in_file = current_label
                     label_name, current_global_label, current_label = self._collect_label(
-                        m_label, clean, file_path, idx, scope, current_global_label
+                        m_label,
+                        clean,
+                        file_path,
+                        idx,
+                        scope,
+                        current_global_label,
+                        lines=lines,
+                        previous_label=previous_label_in_file,
                     )
                     idx = next_idx
                     continue
@@ -853,7 +980,18 @@ class FileCollector:
         return idx, block
 
     def _scan_python_assets(self, code_lines: list[str] | str) -> None:
-        """Targeted search for media files in Python blocks (protection against false RPY503 without overhead)."""
+        """Targeted search for media files in Python blocks (protection against false RPY503 without overhead).
+
+        Also expands the Ren'Py ``[prefix_]`` substitution token: when a
+        string literal like ``"gui/button/check_[prefix_]foreground.png"``
+        is found, the standard prefix list ("", "idle_", "hover_",
+        "selected_", "selected_hover_", "selected_idle_", "insensitive_",
+        "selected_insensitive_") is substituted and each expansion is
+        marked as used. Without this, files like ``check_foreground.png``
+        (the empty-prefix case) and ``check_idle_foreground.png`` would
+        be reported as unused despite the style block clearly referencing
+        them via the substitution pattern.
+        """
         if isinstance(code_lines, str):
             code_lines = [code_lines]
         for line in code_lines:
@@ -862,8 +1000,33 @@ class FileCollector:
                     inner = match.group(0).strip("\"'")
                     val_clean = inner.replace("\\", "/").lower().strip()
                     if any(val_clean.endswith(ext) for ext in MEDIA_EXTENSIONS):
-                        self.analyzer._mark_asset_used(val_clean)
-                        self.analyzer._mark_asset_used(os.path.basename(val_clean))
+                        self._mark_asset_used_with_prefix_expansion(val_clean)
+
+    def _mark_asset_used_with_prefix_expansion(self, val_clean: str) -> None:
+        """Mark ``val_clean`` as used, expanding ``[prefix_]`` if present.
+
+        Ren'Py's standard state-prefix substitution expands ``[prefix_]``
+        to one of: "", "idle_", "hover_", "selected_", "selected_hover_",
+        "selected_idle_", "insensitive_", "selected_insensitive_". Each
+        expansion is registered as a used asset key.
+        """
+        if "[prefix_]" not in val_clean:
+            self.analyzer._mark_asset_used(val_clean)
+            self.analyzer._mark_asset_used(os.path.basename(val_clean))
+            return
+        for prefix in (
+            "",
+            "idle_",
+            "hover_",
+            "selected_",
+            "selected_hover_",
+            "selected_idle_",
+            "insensitive_",
+            "selected_insensitive_",
+        ):
+            expanded = val_clean.replace("[prefix_]", prefix)
+            self.analyzer._mark_asset_used(expanded)
+            self.analyzer._mark_asset_used(os.path.basename(expanded))
 
     def _handle_init_python_block(
         self, lines: list[str], idx: int, file_path: str, noqa_map: dict
@@ -881,6 +1044,16 @@ class FileCollector:
             return None
 
         indent = len(m_init.group(1))
+        # Extract the init priority. Ren'Py default is 0 (e.g.
+        # ``init python:``). ``init 998 python:`` → priority 998.
+        # ``init -1 python:`` → priority -1. The priority determines
+        # load order: lower number runs first; same priority falls back
+        # to alphabetical by filename. RPY109 uses this to avoid firing
+        # when a higher-priority block references a variable defined at
+        # a lower-priority block in an alphabetically later file.
+        priority_str = m_init.group(2)
+        init_priority = int(priority_str) if priority_str else 0
+
         next_idx, block_lines = self._consume_block(lines, idx + 1, indent)
         if block_lines:
             self.analyzer._scan_python_assets(block_lines)
@@ -888,7 +1061,167 @@ class FileCollector:
 
             code = textwrap.dedent("".join(block_lines))
             self.analyzer.python_ast.check_init_dependency(
-                code, file_path, idx + 2, noqa_map, lines
+                code, file_path, idx + 2, noqa_map, lines, init_priority=init_priority
             )
             self.analyzer.python_ast.check_python_ast(code, file_path, idx + 2, noqa_map, lines)
+            # Statically extract image names registered via
+            # `renpy.image(NAME, ...)` calls. Without this, references
+            # to dynamically-registered images (e.g. `scene bg_room night`
+            # where `bg_room night` was registered in an init python
+            # loop) fire false RPY502. The static evaluator handles
+            # string literals, list-literal loop iterables, and simple
+            # string concatenation with loop variables — anything more
+            # complex remains a known limitation (users `# noqa`).
+            self._collect_dynamic_renpy_images(code, file_path, idx + 2)
         return next_idx
+
+    def _collect_dynamic_renpy_images(self, code: str, file_path: str, start_line: int) -> None:
+        """Walk the AST of an ``init python:`` block and register image
+        names declared via ``renpy.image(NAME, ...)`` calls.
+
+        Handles:
+          - Plain string literals: ``renpy.image("bg_static", ...)``
+          - Loop variables from list-literal iterables:
+            ``for x in ["a", "b"]: renpy.image(x, ...)``
+          - String concatenation with loop variables:
+            ``renpy.image(x + " night", ...)``
+
+        Anything more complex (function calls as name, f-strings with
+        non-literal interpolation, list comprehensions as iterable,
+        ``os.listdir()`` iterables, etc.) is left as a known limitation —
+        users can ``# noqa: RPY502`` for those.
+        """
+        import ast as _ast
+
+        try:
+            tree = _ast.parse(code)
+        except SyntaxError:
+            return
+
+        # Walk the tree, tracking loop variable bindings from enclosing
+        # `for` statements whose iterable is a list/tuple literal of
+        # string constants.
+        def _eval_name_expr(node, loop_vars):
+            """Evaluate an AST expression to a list of possible string values.
+
+            Returns ``None`` if the expression cannot be statically
+            evaluated. Returns a list of strings (one or more) if it can.
+            """
+            # String constant → single value.
+            if isinstance(node, _ast.Constant) and isinstance(node.value, str):
+                return [node.value]
+            # Name → look up in loop_vars. Each variable may have
+            # multiple possible values (the iterable's elements).
+            if isinstance(node, _ast.Name) and node.id in loop_vars:
+                vals = loop_vars[node.id]
+                return list(vals) if vals is not None else None
+            # BinOp(Add, X, Y) → concatenate each X value with each Y value.
+            if (
+                isinstance(node, _ast.BinOp)
+                and isinstance(node.op, _ast.Add)
+                and node.left is not None
+                and node.right is not None
+            ):
+                left_vals = _eval_name_expr(node.left, loop_vars)
+                right_vals = _eval_name_expr(node.right, loop_vars)
+                if left_vals is None or right_vals is None:
+                    return None
+                return [lv + rv for lv in left_vals for rv in right_vals]
+            # JoinedStr (f-string) — only handle the case where every
+            # FormattedValue is a statically-evaluable Name and the
+            # literal parts are constants. This is rare in practice;
+            # most dynamic image registration uses BinOp(Add).
+            if isinstance(node, _ast.JoinedStr):
+                # Collect possible values per part, then cross-product.
+                parts = []
+                for v in node.values:
+                    if isinstance(v, _ast.Constant) and isinstance(v.value, str):
+                        parts.append([v.value])
+                    elif isinstance(v, _ast.FormattedValue):
+                        vals = _eval_name_expr(v.value, loop_vars)
+                        if vals is None:
+                            return None
+                        parts.append(vals)
+                    else:
+                        return None
+                # Cross-product concatenation.
+                results = [""]
+                for part_vals in parts:
+                    results = [r + pv for r in results for pv in part_vals]
+                return results
+            return None
+
+        def _visit(nodes, loop_vars):
+            for node in nodes:
+                if isinstance(node, _ast.For):
+                    # Track loop variable bindings if iterable is a
+                    # list/tuple literal of string constants.
+                    new_loop_vars = dict(loop_vars)
+                    iter_node = node.iter
+                    if isinstance(iter_node, (_ast.List, _ast.Tuple)):
+                        iter_vals = []
+                        for elt in iter_node.elts:
+                            if isinstance(elt, _ast.Constant) and isinstance(elt.value, str):
+                                iter_vals.append(elt.value)
+                            else:
+                                iter_vals = None
+                                break
+                        if iter_vals is not None:
+                            if isinstance(node.target, _ast.Name):
+                                new_loop_vars[node.target.id] = iter_vals
+                            elif isinstance(node.target, (_ast.Tuple, _ast.List)):
+                                # Tuple unpacking in for — too complex
+                                # for this simple evaluator. Skip.
+                                new_loop_vars = dict(loop_vars)
+                    _visit(node.body, new_loop_vars)
+                elif isinstance(node, _ast.If):
+                    _visit(node.body, loop_vars)
+                    _visit(node.orelse, loop_vars)
+                elif isinstance(node, _ast.While):
+                    _visit(node.body, loop_vars)
+                elif isinstance(node, _ast.Try):
+                    _visit(node.body, loop_vars)
+                    for handler in node.handlers:
+                        _visit(handler.body, loop_vars)
+                    _visit(node.finalbody, loop_vars)
+                elif isinstance(node, _ast.With):
+                    _visit(node.body, loop_vars)
+                elif isinstance(node, _ast.Expr) and isinstance(node.value, _ast.Call):
+                    self._maybe_register_renpy_image(
+                        node.value, loop_vars, _eval_name_expr, file_path, start_line
+                    )
+
+        _visit(tree.body, {})
+
+    def _maybe_register_renpy_image(
+        self, call_node, loop_vars, eval_fn, file_path: str, start_line: int
+    ) -> None:
+        """If ``call_node`` is a ``renpy.image(NAME, ...)`` call, register NAME."""
+        import ast as _ast
+
+        func = call_node.func
+        # Match renpy.image(...) — Attribute(Name('renpy'), attr='image').
+        if not (
+            isinstance(func, _ast.Attribute)
+            and isinstance(func.value, _ast.Name)
+            and func.value.id == "renpy"
+            and func.attr == "image"
+        ):
+            return
+        if not call_node.args:
+            return
+        name_vals = eval_fn(call_node.args[0], loop_vars)
+        if not name_vals:
+            return
+        for name_val in name_vals:
+            # Register as a known image. Use a synthetic ImageSymbol so
+            # downstream checks (RPY502, hover, completion) see it.
+            # The `body` field is left empty — we don't track layered
+            # attributes from dynamic registration.
+            img_sym = ImageSymbol(
+                name=name_val,
+                file_path=file_path,
+                line_number=start_line,
+                body="",
+            )
+            self.analyzer.images[name_val] = img_sym

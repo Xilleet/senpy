@@ -658,8 +658,34 @@ class PythonAstChecker:
         start_line: int,
         noqa_map: dict,
         lines: list[str] | None = None,
+        init_priority: int = 0,
     ) -> None:
-        """RPY109: Checks function calls in init python for alphabetical file order."""
+        """RPY109: Checks function calls in init python for alphabetical file order.
+
+        ``init_priority`` is the Ren'Py init priority of the current block
+        (default 0). Ren'Py runs init blocks in priority order — lower
+        number first; same priority falls back to alphabetical filename
+        order. RPY109 uses this to avoid firing when the current block
+        runs AFTER the defining block (higher priority number) even if
+        the current file is alphabetically before the defining file.
+
+        We do not track per-variable init priorities — a variable defined
+        in another file could be at any priority. Conservative heuristic:
+        - If ``init_priority > 0``: the current block runs after the
+          default ``init python:`` (priority 0). Assume any variable
+          from another file was defined at priority 0 — no violation.
+          (May miss real violations where both blocks have positive
+          priorities in wrong order; users can ``# noqa`` if hit.)
+        - If ``init_priority <= 0``: apply the existing alphabetical
+          check (it correctly catches same-priority violations, and
+          is conservative for the negative-priority case where the
+          current block runs before any default-priority block).
+        """
+        if init_priority > 0:
+            # Current block runs after default-priority init blocks —
+            # references to variables defined elsewhere are safe.
+            return
+
         try:
             tree = ast.parse(py_code)
         except SyntaxError as e:
@@ -1288,6 +1314,17 @@ class PythonAstChecker:
                 self._check_assign_name_target(
                     target, node.value, file_path, real_line, raw_l, noqa_map, local_scope
                 )
+                # Record the assignment in the current branch's scope so
+                # subsequent statements in the SAME body see the variable
+                # (intra-branch sequencing). Without this, a pattern like
+                #   if cond:
+                #       args = []
+                #       args.extend(...)
+                # would fire RPY102 on the .extend() call because `args`
+                # was treated as undeclared. The scope copy made in
+                # _visit_if_while / _visit_for / _visit_try ensures this
+                # does not leak to the parent scope.
+                local_scope.add(target.id)
             elif isinstance(target, ast.Subscript):
                 self._check_assign_subscript_target(
                     target, file_path, real_line, raw_l, noqa_map, local_scope
@@ -1296,6 +1333,9 @@ class PythonAstChecker:
                 self._check_assign_tuple_target(
                     target, node.value, file_path, real_line, raw_l, noqa_map, local_scope
                 )
+                # Tuple/list unpacking also introduces new names into
+                # the current branch's scope (e.g. `a, b = 1, 2`).
+                _collect_target_names(target, local_scope)
 
     def _check_assign_set_usage(
         self, node: ast.Assign, file_path: str, real_line: int, raw_l: str, noqa_map: dict
@@ -1457,9 +1497,26 @@ class PythonAstChecker:
     ) -> None:
         """RPY105/RPY102/RPY108: mutation of constants via methods (list.append, etc.).
 
-        Runs for ALL non-function nodes (Import, Assign, If, etc.).
-        Uses ast.walk to find Call nodes within statement.
+        Runs for non-function, non-control-flow nodes (Import, Assign,
+        Expr, etc.). Control-flow nodes (If/While/For/Try) are skipped
+        here — their bodies are visited separately by ``_visit_if_while``
+        / ``_visit_for`` / ``_visit_try``, which create the correct
+        branch-local scope before recursing. Walking a control-flow node
+        here would check Call nodes inside its body against the OUTER
+        scope, missing variables assigned earlier in the same branch
+        (false RPY102 on patterns like::
+
+            if cond:
+                args = []
+                args.extend(...)   # walker saw this with outer scope → false positive
+
+        ). The dispatcher in ``_walk_python_nodes`` calls this on every
+        node, then recurses into control-flow bodies separately — so
+        skipping control-flow nodes here avoids both double-checking
+        and the scope-mismatch false positive.
         """
+        if isinstance(node, (ast.If, ast.While, ast.For, ast.Try)):
+            return
         for sub in ast.walk(node):
             if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute):
                 self._check_mutating_method_call(
@@ -1589,9 +1646,22 @@ class PythonAstChecker:
         lines: list[str] | None,
         local_scope: set[str],
     ) -> None:
-        """Recursive traversal of body and orelse for if/while."""
-        self._walk_python_nodes(node.body, file_path, start_line, noqa_map, lines, local_scope)
-        self._walk_python_nodes(node.orelse, file_path, start_line, noqa_map, lines, local_scope)
+        """Recursive traversal of body and orelse for if/while.
+
+        Each branch gets its own copy of ``local_scope`` so that
+        variables assigned inside the body are visible to subsequent
+        statements in the SAME body (intra-branch sequencing) but do
+        not leak to the parent scope (correct conditional scoping).
+        Without this copy, an assignment like ``args = []`` inside an
+        ``if`` body would either be invisible to a later ``args.extend()``
+        in the same body (false RPY102) — if we never added it — or
+        leak outside the if (incorrect scoping) — if we added it to the
+        parent's local_scope. The copy gives us the right semantics.
+        """
+        body_scope = set(local_scope)
+        self._walk_python_nodes(node.body, file_path, start_line, noqa_map, lines, body_scope)
+        orelse_scope = set(local_scope)
+        self._walk_python_nodes(node.orelse, file_path, start_line, noqa_map, lines, orelse_scope)
 
     def _visit_for(
         self,

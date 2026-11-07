@@ -583,6 +583,63 @@ init python:
     assert not any(d.code == "RPY109" for d in clean_result.diagnostics)
 
 
+def test_init_dependency_rpy109_respects_init_priority(tmp_path: Path):
+    """RPY109 must NOT fire when the referencing init block has a HIGHER
+    priority number than the defining init block, even if the referencing
+    file is alphabetically before the defining file.
+
+    Ren'Py runs init blocks in priority order (lower number first). The
+    alphabetical-order tiebreaker only applies within the same priority.
+    Originally found as a false positive in corpus/learntocode where
+    ``job_posting.rpy`` (init 998) used variables from ``variables.rpy``
+    (default init python, priority 0) — alphabetical check fired
+    RPY109 because ``job_posting.rpy`` < ``variables.rpy``, but priority
+    998 runs AFTER priority 0 so the reference is safe.
+    """
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+
+    # job_posting.rpy — alphabetically BEFORE variables.rpy, but at
+    # priority 998 (runs last). References a variable defined at the
+    # default priority 0 (runs first).
+    (game_dir / "job_posting.rpy").write_text(
+        "init 998 python:\n" "    skill_map = {'coffee': plot_skill_coffee}\n",
+        encoding="utf-8",
+    )
+    # variables.rpy — alphabetically AFTER job_posting.rpy, but at
+    # priority 0 (runs first). Defines the variable.
+    (game_dir / "variables.rpy").write_text(
+        "init python:\n" "    plot_skill_coffee = 'skill'\n",
+        encoding="utf-8",
+    )
+
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    result = analyzer.run(quiet=True)
+
+    rpy109_diags = [d for d in result.diagnostics if d.code == "RPY109"]
+    assert rpy109_diags == [], (
+        f"RPY109 must not fire when the referencing init block has higher "
+        f"priority than the defining block. Got: {rpy109_diags}"
+    )
+
+    # Sanity check: the same setup WITHOUT priority on the referencing
+    # block (default 0) MUST still fire RPY109 — alphabetical order
+    # matters within the same priority.
+    (game_dir / "job_posting.rpy").unlink()
+    (game_dir / "job_posting.rpy").write_text(
+        "init python:\n" "    skill_map = {'coffee': plot_skill_coffee}\n",
+        encoding="utf-8",
+    )
+    analyzer2 = SenpyAnalyzer(str(tmp_path))
+    result2 = analyzer2.run(quiet=True)
+    rpy109_diags_2 = [d for d in result2.diagnostics if d.code == "RPY109"]
+    assert len(rpy109_diags_2) == 1, (
+        f"RPY109 must still fire when both blocks are at default priority "
+        f"and the referencing file is alphabetically before the defining "
+        f"file. Got: {rpy109_diags_2}"
+    )
+
+
 def test_init_ci_generates_workflow_file(tmp_path: Path):
     """Verify --init-ci generates a valid .github/workflows/senpy.yml workflow"""
     from senpy.formats.ci import init_ci_workflow
