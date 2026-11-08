@@ -300,6 +300,7 @@ the player reaches the affected line.
 | Rule | Auto-fixable | How |
 |---|---|---|
 | `RPY104` | ✅ | `senpy --defaults` generates a `senpy_defaults.rpy` with all missing `default` declarations |
+| `RPY106` | ✅ | QuickFix in VS Code (`Ctrl+.`) replaces `import random` with `from renpy import random` (the `import random` form only; `from random import ...` is not auto-fixable) |
 | `RPY107` | ✅ | QuickFix in VS Code (`Ctrl+.`) suggests the modern replacement API |
 
 ---

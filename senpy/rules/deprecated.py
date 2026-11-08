@@ -73,7 +73,13 @@ class DeprecationChecker:
 
     @staticmethod
     def _is_in_quotes(s: str, pos: int) -> bool:
-        """Checks whether position pos is inside a string literal."""
+        """Checks whether position pos is inside a string literal.
+
+        Handles single/double quotes and triple-quoted strings.
+        Previously only single-line ``"..."`` and ``'...'`` were checked —
+        deprecated API names inside ``\"\"\"docstrings\"\"\"`` or
+        ``'''multiline strings'''`` triggered false positives.
+        """
         in_quote = None
         i = 0
         while i < pos:
@@ -85,6 +91,16 @@ class DeprecationChecker:
                 if ch == in_quote:
                     in_quote = None
             elif ch in ('"', "'"):
+                # Check for triple-quoted string start.
+                if s[i : i + 3] == ch * 3:
+                    # Triple-quote — skip to the closing triple-quote.
+                    end = s.find(ch * 3, i + 3)
+                    if end == -1 or end >= pos:
+                        # No closing triple-quote before pos, or none at all
+                        # — pos is inside the triple-quoted string.
+                        return True
+                    i = end + 3
+                    continue
                 in_quote = ch
             i += 1
         return in_quote is not None

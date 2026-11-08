@@ -121,6 +121,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unrpyc (`senpy.vendor.unrpyc.decompile_rpyc`), not an external module.
   Removed the probe + the now-unused `import subprocess`.
 
+- **RPY106 auto-fix now documented.** `docs/rules/rpy1xx-state.md` auto-fix
+  summary table listed RPY104 and RPY107 as auto-fixable, but not RPY106.
+  RPY106 (`import random` → `from renpy import random`) has had a QuickFix
+  since 0.7.x. Added RPY106 to the table with a note that only the
+  `import random` form is auto-fixable (not `from random import ...`).
+
+- **RPY107 `_is_in_quotes` now handles triple-quoted strings.**
+  `deprecated.py:75` — `_is_in_quotes` only checked single/double quotes.
+  Deprecated API names inside `"""docstrings"""` or `'''multiline strings'''`
+  triggered false positives. Added triple-quote detection: when a triple
+  quote is encountered, skip to the closing triple-quote.
+
+- **LSP mode detection in plugin loader now uses regex.**
+  `loader.py:314` — `"--lsp" in sys.argv` was a substring check that missed
+  `--lsp=foo` (hypothetical future form) and could match `--no-lsp`
+  (hypothetical). Replaced with `re.match(r"--lsp(?:=|$)", arg)` that
+  matches `--lsp` as a standalone argument or with `=value`.
+
 ---
 
 <a id="083"></a>

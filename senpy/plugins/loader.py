@@ -311,7 +311,12 @@ def _default_trust_callback(plugin_name: str) -> bool:
 
     # Step 2: If running as LSP server, never prompt — input() would
     # hang the process (LSP communicates via stdio, not interactive TTY).
-    if "--lsp" in sys.argv:
+    # use regex instead of substring check. `"--lsp" in sys.argv`
+    # missed `--lsp=foo` and matched `--no-lsp` (hypothetical).
+    # The regex matches `--lsp` as a standalone argument or with `=value`.
+    import re as _re
+
+    if any(_re.match(r"--lsp(?:=|$)", arg) for arg in sys.argv):
         _logger.warning(
             "Plugin %r is not trusted. In LSP mode, untrusted plugins are "
             "skipped (no interactive prompt). Use 'senpy --trust-plugin %r' "
