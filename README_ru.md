@@ -42,6 +42,33 @@ pip install senpy-linter
 
 ## Что нового
 
+### 0.8.4 — Очистка edge-cases: string-literal masking, thread safety, checker isolation
+
+Patch-релиз, закрывающий **19 задач** (edge cases, code quality, partial features) + 2 post-0.8.3 follow-up фикса. **1836 тестов** (было 1816 в 0.8.3, +20). Новых правил нет — все изменения это correctness fixes, isolation hardening, и dead-code removal.
+
+| Область | Что было сломано | Что изменилось |
+|---|---|---|
+| **`--show-settings` / `--cache-dir`** | N1: `--show-settings` игнорировал `--config`. N2: `--cache-dir` не покрывал sandbox dirs. | Оба wired (P1-5 follow-up). |
+| **RPY701 `is_character`** | Substring `"Character" in clean` матчил `NotCharacterRelated()` и string literals. | Regex `\b(?:Character\|DynamicCharacter)\s*\(`. |
+| **RPY505 voice loop** | `\bloop\b` матчился внутри `"my loop song.ogg"`. | `strip_string_literals` перед regex. |
+| **RPY707 channel** | `register_channel` regex матчился внутри dialogue strings. | `strip_string_literals` перед regex. |
+| **RPY707 tie-breaker** | Multi-file channel: declaration line зависел от dict iteration order. | Детерминированный: sort по `(file_path, line_idx)`. |
+| **RPY107 triple-quotes** | `_is_in_quotes` не обрабатывал `"""docstrings"""`. | Triple-quote detection. |
+| **Plugin `PLUGIN_API_VERSION`** | Без декларации загружался с DEBUG (opt-out). | WARNING + skip (opt-in, fail-safe). |
+| **Plugin `_PLUGINS_LOADED`** | Module-level boolean без lock — race condition. | `threading.Lock` вокруг check-and-set. |
+| **`SecurityError(ValueError)`** | Наследование от `ValueError` нарушает design principle. | `DeprecationWarning`; будет убрано в 1.0. |
+| **Built-in checker isolation** | `_analyze_file` без `try/except` — один баг крашил весь run. | `try/except` + synthesized `RPY000` + continue. |
+| **`check_line` signature** | `BaseChecker` (7 args, `tuple[str, bool]`) vs `StateChecker` (8 args, `tuple[int, bool]`). | Унифицировано: 8 args, `tuple[int, bool]`. |
+| **GitHub Actions `%`** | `render_github` не экранировал `%` → `%25`. | Добавлен escape. |
+| **`render_github` double-print** | Аннотации печатались в stdout AND `--output-file`. | Stdout suppressed when `--output-file` set. |
+| **Warnings via stdout** | `console.print` загрязнял JSON/SARIF output. | Роутинг в `stderr`. |
+| **Dead unrpyc probe** | `subprocess.run([python, "-m", "unrpyc", "--help"])` — dead code. | Удалён + `import subprocess`. |
+| **LSP mode detection** | `"--lsp" in sys.argv` substring check. | `re.match(r"--lsp(?:=\|$)", arg)`. |
+| **`--check`/`--diff` doc** | Non-text formats `sys.exit()` до `--check`/`--diff` — недокументировано. | Документировано. |
+| **RPA index regression** | `_read_rpa_index` activation ordering — нет regression test. | Regression test добавлен. |
+
+---
+
 ### 0.8.3 — Hotfix: сломанные контракты, мёртвые CLI-флаги, консистентность LSP snapshot
 
 Patch-релиз, закрывающий **15 багов** (сломанные контракты, реальные баги с юзер-импактом, edge cases). **1816 тестов** (было 1777 в 0.8.2, +39). Новых правил нет — все изменения это correctness fixes и enforcement CLI-контрактов.
@@ -581,7 +608,7 @@ Senpy поставляет [pre-commit](https://pre-commit.com) хук, кото
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.8.3   # используйте последний тег
+    rev: v0.8.4   # используйте последний тег
     hooks:
       - id: senpy
 ```

@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.8.x)**: [Unreleased](#unreleased) | [0.8.3](#083) | [0.8.2](#082) | [0.8.1](#081) | [0.8.0](#080)
+- **Current (0.8.x)**: [Unreleased](#unreleased) | [0.8.4](#084) | [0.8.3](#083) | [0.8.2](#082) | [0.8.1](#081) | [0.8.0](#080)
 
 - **0.7.x**: [0.7.7](#077) | [0.7.6](#076) | [0.7.5](#075) | [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
 
@@ -26,6 +26,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <a id="unreleased"></a>
 
 ## [Unreleased]
+
+_No changes yet. See the [0.8.4](#084) release below for the latest._
+
+---
+
+<a id="084"></a>
+
+## [0.8.4] — Edge-case cleanup: string-literal masking, thread safety, checker isolation
+
+A patch release closing **19 P2 tasks** (edge cases, code quality, partial
+features). All P0, P1, and P2 tasks from the post-0.8.2 audit are now
+closed. **1836 tests** (up from 1816 in 0.8.3, +20). No new rules — all
+changes are correctness fixes, isolation hardening, and dead-code removal.
+Also includes 2 post-0.8.3 follow-up fixes (N1: `--show-settings` honors
+`--config`; N2: `--cache-dir` covers decompiled/rpa_extracted sandbox).
 
 ### Fixed
 

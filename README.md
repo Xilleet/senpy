@@ -41,6 +41,36 @@ Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github
 ---
 ## What's New
 
+### 0.8.4 — Edge-case cleanup: string-literal masking, thread safety, checker isolation
+
+A patch release closing **19 tasks** (edge cases, code quality, partial features) + 2 post-0.8.3 follow-up fixes. **1836 tests** (up from 1816 in 0.8.3, +20). No new rules — all changes are correctness fixes, isolation hardening, and dead-code removal.
+
+| Area | What Was Broken | What Changed |
+|---|---|---|
+| **`--show-settings` / `--cache-dir`** | N1: `--show-settings` ignored `--config FILE`. N2: `--cache-dir` didn't cover decompiled/rpa_extracted sandbox dirs. | Both wired (P1-5 follow-up). |
+| **RPY701 `is_character`** | `"Character" in clean` substring matched `NotCharacterRelated()` and string literals. | `_RE_CHARACTER_CALL` regex (`\b(?:Character\|DynamicCharacter)\s*\(`). |
+| **RPY308/309 terminators** | Already fixed in 0.8.3 (P1-1+P2-7). | — |
+| **RPY502 GIF/BMP** | Already fixed in 0.8.3 (P1-2). | — |
+| **RPY505 voice loop** | `re.search(r"\bloop\b", rest)` matched `"my loop song.ogg"` inside a string. | `strip_string_literals(rest)` before regex. |
+| **RPY707 channel** | `register_channel` regex matched inside dialogue strings → false channel registration. | `strip_string_literals(clean)` before regex. |
+| **RPY707 tie-breaker** | Multi-file channel registration: declaration line depended on dict iteration order. | Deterministic: sort by `(file_path, line_idx)`, take lowest. |
+| **RPY107 triple-quotes** | `_is_in_quotes` only checked `"..."`/`'...'` — deprecated APIs inside `"""docstrings"""` triggered false positives. | Triple-quote detection: skip to closing `"""`/`'''`. |
+| **Plugin `PLUGIN_API_VERSION`** | Plugins without declaration loaded with DEBUG log (opt-out). | WARNING + skip (opt-in, fail-safe). |
+| **Plugin `_PLUGINS_LOADED`** | Module-level boolean without lock — concurrent autoload race. | `threading.Lock` around check-and-set. |
+| **Plugin `check()` return-type** | Already fixed in 0.8.3 (P1-9). | — |
+| **`SecurityError(ValueError)`** | Inherited from `ValueError` — violates design principle. | `DeprecationWarning` on instantiation; will be removed in 1.0. |
+| **Built-in checker isolation** | `_analyze_file` had no `try/except` — one checker bug killed the entire run. | `try/except Exception` + synthesized `RPY000` diagnostic + continue. |
+| **`check_line` signature** | `BaseChecker` (7 args, `tuple[str, bool]`) vs `StateChecker` (8 args, `tuple[int, bool]`) — Liskov violation. | Unified: all checkers take 8 args, return `tuple[int, bool]`. |
+| **GitHub Actions `%`** | `render_github` didn't escape `%` → `%25` (workflow command spec). | Added `%` → `%25` escape. |
+| **`render_github` double-print** | Annotations printed to stdout AND `--output-file`. | Stdout suppressed when `--output-file` set. |
+| **`_validate_flag_combinations` warnings** | Warnings via `console.print` (stdout) — polluted JSON/SARIF output. | Routed to `stderr`. |
+| **`find_unrpyc_executable` probe** | `subprocess.run([python, "-m", "unrpyc", "--help"])` — dead code since 0.8.x. | Removed + unused `import subprocess`. |
+| **LSP mode detection** | `"--lsp" in sys.argv` substring check — missed `--lsp=foo`, matched `--no-lsp`. | `re.match(r"--lsp(?:=\|$)", arg)`. |
+| **`--check`/`--diff` limitations** | Non-text formats `sys.exit()` before `--check`/`--diff` — undocumented. | Documented in `docs/cli-reference.md`. |
+| **RPA index ordering** | `_read_rpa_index` activation before `NON_ASSET_EXTENSIONS` skip — no regression test. | Regression test added. |
+
+---
+
 ### 0.8.3 — Hotfix: broken contracts, dead CLI flags, LSP snapshot consistency
 
 A patch release closing **15 bugs** across (broken contracts, real user-impact bugs, edge cases). **1816 tests** (up from 1777 in 0.8.2, +39). No new rules — all changes are correctness fixes and CLI contract enforcement.
@@ -569,7 +599,7 @@ Senpy ships a [pre-commit](https://pre-commit.com) hook that runs
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.8.3   # use the latest tag
+    rev: v0.8.4   # use the latest tag
     hooks:
       - id: senpy
 ```
