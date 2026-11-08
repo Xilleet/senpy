@@ -242,8 +242,27 @@ class TestCacheBehavior:
         _make_project(tmp_path, {"script.rpy": SIMPLE_SCRIPT})
         analyzer = SenpyAnalyzer(str(tmp_path), no_cache=False)
         analyzer.run(quiet=True)
-        # .senpy_cache/ should exist after run with cache
-        assert (tmp_path / ".senpy_cache").exists() or True  # cache may be in different location
+        # .senpy_cache/ must exist after a cached run. CacheManager
+        # hardcodes cache_dir = <project>/.senpy_cache (cache.py:145) and
+        # ensure_cache_dir() creates it via save_manifest() → save_manifest
+        # is called from analysis_pipeline.py:294 when new_cached_entries
+        # is non-empty. SIMPLE_SCRIPT triggers symbol collection, so the
+        # cache MUST be created. Previously this assertion was
+        # `... or True` which made it vacuous — a regression that silently
+        # passed even if cache creation broke.
+        assert (tmp_path / ".senpy_cache").exists(), (
+            ".senpy_cache/ was not created after a cached run. CacheManager."
+            "ensure_cache_dir() should create it via save_manifest() — "
+            "check that analysis_pipeline.py still calls save_manifest() "
+            "for projects with simple scripts."
+        )
+        # The manifest file must exist too — proves save_manifest ran,
+        # not just ensure_cache_dir (which would only create the dir).
+        assert (tmp_path / ".senpy_cache" / "cache.pkl").exists(), (
+            "cache.pkl manifest was not written. save_manifest() creates "
+            "the dir AND writes the manifest atomically — if only the dir "
+            "exists, the atomic rename in save_manifest failed silently."
+        )
 
     def test_differential_purge_removes_symbols(self, tmp_path):
         """When a file is re-analyzed, old symbols are purged before new collection."""

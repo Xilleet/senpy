@@ -88,6 +88,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.senpy-ignore` file, added a regression test that asserts
   `.senpy-ignore` does not leak into `known_assets`.
 
+- **Vacuous `or True` assertion removed from cache characterization test.**
+  `tests/test_analyzer_characterization.py::test_cache_enabled_creates_cache_dir`
+  had `assert (tmp_path / ".senpy_cache").exists() or True` with a misleading
+  comment "cache may be in different location". CacheManager hardcodes
+  `cache_dir = <project>/.senpy_cache` (cache.py:145) — there is no
+  "different location". The `or True` made the assertion always pass,
+  silently masking any regression that broke cache creation. Removed
+  `or True`, replaced with a real assertion + an additional check that
+  `cache.pkl` manifest exists (proves `save_manifest` ran, not just
+  `ensure_cache_dir`). Updated the comment to explain the cache creation
+  path: `analysis_pipeline.py:294` → `save_manifest` → `ensure_cache_dir`.
+
 ---
 
 <a id="082"></a>
