@@ -65,6 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **server.py stale "removed in 0.7.0".** Removed deadline.
 - **`__version__.py` docstring inaccurate.** Updated to list actual
   files bump_version.py touches vs. dynamic readers.
+- **Dead code: `_purge_file_symbols` removed (P3-B2).** The method on
+  `SenpyAnalyzer` had zero callers in production or tests. Removed the
+  method and cleaned up docstring references in `symbol_table.py`.
+- **UTF-8 BOM handling fixed (P3-B9).** `file_collector.py` opened files
+  with `encoding="utf-8"` — this does NOT strip the BOM, leaving a `\ufeff`
+  prefix on the first line. The first `label`/`define`/`screen` declaration
+  was silently skipped (regexes didn't match BOM-prefixed lines). Changed
+  to `encoding="utf-8-sig"` (strips BOM). New test module
+  `tests/test_utf8_bom.py` (2 tests).
 
 ---
 

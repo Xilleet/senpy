@@ -180,7 +180,7 @@ def read_file_lines(
         elif norm_path in stage1_lines:
             return stage1_lines.pop(norm_path)
         else:
-            with open(file_path, encoding="utf-8", newline="") as f:
+            with open(file_path, encoding="utf-8-sig", newline="") as f:
                 return f.readlines()
     except (UnicodeDecodeError, OSError):
         return None
@@ -810,7 +810,7 @@ class FileCollector:
             if norm_path in self.analyzer.in_memory_files:
                 lines = self.analyzer.in_memory_files[norm_path].splitlines(keepends=True)
             else:
-                with open(file_path, encoding="utf-8", newline="") as f:
+                with open(file_path, encoding="utf-8-sig", newline="") as f:
                     lines = f.readlines()
                 self.analyzer._stage1_lines[norm_path] = lines
 

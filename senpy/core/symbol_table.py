@@ -5,7 +5,7 @@ images, and aggregate sets (user_symbols, declared_symbols, etc.).
 
 Before this extraction, SenpyAnalyzer held 15+ symbol-related attributes
 directly in __init__ and managed them via _rebuild_aggregates,
-_differential_purge_file, _purge_file_symbols, and _run_reset.
+_differential_purge_file, and _run_reset.
 SymbolTable encapsulates all of that — SenpyAnalyzer becomes a facade
 that delegates symbol access to SymbolTable.
 
@@ -106,8 +106,8 @@ class SymbolTable:
     def rebuild_from_scopes(self, file_scopes: dict[str, FileScope]) -> None:
         """Rebuild all global symbol sets from per-file FileScope objects.
 
-        Called after _collect_all_symbols and after _purge_file_symbols
-        (full rebuild path).
+        Called after _collect_all_symbols and after
+        _differential_purge_file (full rebuild path).
         """
         self.declared_symbols = set(BUILTIN_SYMBOLS)
         self.user_symbols.clear()

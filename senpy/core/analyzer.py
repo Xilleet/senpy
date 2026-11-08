@@ -308,12 +308,6 @@ class SenpyAnalyzer:
         self._symbols.purge_jump_sources(old_scope, file_path)
         self._symbols.purge_shared_sets(old_scope, self.file_scopes)
 
-    def _purge_file_symbols(self, norm_path: str) -> None:
-        """Full removal of a file's symbols followed by a global rebuild."""
-        if norm_path in self.file_scopes:
-            del self.file_scopes[norm_path]
-            self._rebuild_aggregates()
-
     def _rebuild_aggregates(self) -> None:
         """Rebuilds global symbol sets — delegates to SymbolTable."""
         self._symbols.rebuild_from_scopes(self.file_scopes)
