@@ -59,6 +59,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wired (planned follow-up). The `senpy.core.logging` module docstring
   updated to reflect the actual wiring.
 
+- **`--strict` and `--fail-on-error` CLI flags now declared.** Both flags
+  were documented (`docs/cli-reference.md`, `docs/configuration.md`,
+  `docs/renpy-github-actions.md`) but absent from `args.py` — running
+  `senpy /path --strict` exited with `argparse: error: unrecognized
+  arguments: --strict` (exit 2). `--strict` promotes every diagnostic
+  to ERROR severity (except those explicitly downgraded via
+  `[tool.senpy.severity]` in `senpy.toml`); the CLI flag overrides the
+  config value. `--fail-on-error` makes the default behavior (exit 1 on
+  any ERROR) explicit for self-documenting CI scripts — it is a no-op
+  by itself, but pairs with `--strict` to make the CI contract obvious.
+  `--fail-on-error` + `--exit-zero` is now rejected with exit code 2
+  (the flags contradict each other). New constructor argument
+  `SenpyAnalyzer(strict=bool|None)` — `None` (default) uses config,
+  `True`/`False` overrides. `docs/cli-reference.md` extended with an
+  "Explicit fail-on-error" section.
+
 ---
 
 <a id="082"></a>

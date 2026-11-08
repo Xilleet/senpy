@@ -210,6 +210,19 @@ def _validate_flag_combinations(args, console: Console) -> int | None:
         )
         return 2
 
+    # --fail-on-error says "exit 1 on ERROR"; --exit-zero says "always exit 0".
+    # They contradict — the user almost certainly meant one or the other.
+    # Default behavior (neither flag) is already "exit 1 on ERROR", so
+    # --fail-on-error only makes the contract explicit; --exit-zero opts out.
+    if getattr(args, "fail_on_error", False) and getattr(args, "exit_zero", False):
+        console.print(
+            "[bold red]Error:[/bold red] --fail-on-error and --exit-zero cannot be "
+            "used together. --fail-on-error exits 1 on any ERROR; --exit-zero always "
+            "exits 0. The default behavior (no flags) is already 'fail on ERROR' — "
+            "use --exit-zero only for non-blocking runs."
+        )
+        return 2
+
     # --select must come with at least one code. argparse `nargs='+'`
     # rejects `--select` with no values, but a config-injected empty
     # list could slip through. Be defensive.

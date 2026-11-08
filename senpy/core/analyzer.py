@@ -51,6 +51,7 @@ class SenpyAnalyzer:
         in_memory_files: dict[str, str] | None = None,
         no_cache: bool = False,
         severity_overrides: dict[str, str] | None = None,
+        strict: bool | None = None,
     ):
         self.project_path = os.path.abspath(project_path)
         self.cache_manager = CacheManager(self.project_path, enabled=not no_cache)
@@ -85,7 +86,10 @@ class SenpyAnalyzer:
             # strict=True promotes every diagnostic to ERROR (after the
             # explicit severity_overrides have been applied, so overrides
             # still win — see _apply_severity).
-            self.strict = bool(cfg.get("strict", False))
+            # The `strict` constructor argument (CLI --strict) overrides
+            # the config value: --strict forces strict=True even if
+            # senpy.toml says strict=false. None (default) = use config.
+            self.strict = bool(strict) if strict is not None else bool(cfg.get("strict", False))
             # Plugin rule execution is opt-in for 0.8.0 (default False).
             # When True, registered Rule subclasses are invoked per-file
             # during _analyze_file (see T-003 in WORKLOG).

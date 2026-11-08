@@ -365,7 +365,11 @@ def _run_analysis(args, extra_rpy_files, is_quiet_mode: bool, dry_run_callback=N
 
     start_time = time.perf_counter()
     analyzer = SenpyAnalyzer(
-        args.path, extra_files=extra_rpy_files, fix=should_apply_fix, no_cache=no_cache
+        args.path,
+        extra_files=extra_rpy_files,
+        fix=should_apply_fix,
+        no_cache=no_cache,
+        strict=args.strict if args.strict else None,
     )
     result = analyzer.run(quiet=is_quiet_mode, dry_run_callback=dry_run_callback)
     elapsed = time.perf_counter() - start_time

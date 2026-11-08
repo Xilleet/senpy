@@ -255,6 +255,26 @@ senpy /path/to/game --exit-zero --statistics
 # always exits 0, prints summary table for review
 ```
 
+### Explicit fail-on-error (CI contract)
+
+```bash
+senpy /path/to/game --fail-on-error
+# exits 1 if any ERROR found (default behavior, made explicit for self-documenting CI)
+```
+
+`--fail-on-error` makes the CI contract obvious in the command line. It is
+the default behavior (no flags needed — senpy exits 1 on ERROR by default),
+but spelling it out helps reviewers who don't know senpy's defaults. Often
+combined with `--strict`:
+
+```bash
+senpy /path/to/game --strict --fail-on-error
+# every non-downgraded rule is ERROR; exit 1 on any ERROR
+```
+
+`--fail-on-error` and `--exit-zero` contradict each other and are rejected
+with exit code 2 if passed together.
+
 ### Generate Python type stubs
 
 ```bash

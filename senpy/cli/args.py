@@ -117,6 +117,14 @@ def _add_lint_args(parser: argparse.ArgumentParser) -> None:
         help="Display informational notices (e.g. unreferenced labels RPY303)",
     )
     g.add_argument(
+        "--strict",
+        action="store_true",
+        help="Promote every diagnostic to ERROR severity, except those explicitly "
+        "downgraded via [tool.senpy.severity] in senpy.toml. Same as setting "
+        "`strict = true` in senpy.toml; the CLI flag overrides the config value. "
+        "Useful for CI runs that must fail on any non-downgraded rule.",
+    )
+    g.add_argument(
         "--ignore",
         nargs="+",
         metavar="CODE",
@@ -198,6 +206,13 @@ def _add_lint_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Always exit 0, even if errors found. Useful for non-blocking CI runs "
         "(e.g. nightly reports). Still prints diagnostics to stdout.",
+    )
+    g.add_argument(
+        "--fail-on-error",
+        action="store_true",
+        help="Exit 1 if any ERROR-severity diagnostic is found (default behavior, "
+        "made explicit for self-documenting CI scripts). Conflicts with --exit-zero. "
+        "Useful alongside --strict to make the CI contract obvious in the command line.",
     )
     g.add_argument(
         "--show-fixes",
