@@ -548,6 +548,25 @@ class AnalysisPipeline:
                 continue
 
             for diag in returned:
+                # Validate that the plugin returned a Diagnostic object.
+                # The contract (base.py:161) says check() returns
+                # list[Diagnostic], but a buggy or malicious plugin may
+                # return [None] or ["string"]. Without this check,
+                # _add_diagnostic_by_file crashes with AttributeError on
+                # diag.file_path — killing the entire analysis run and
+                # violating plugin isolation (one bad plugin must not
+                # stop the analyzer). Skip non-Diagnostic elements with
+                # a WARNING so the plugin author can fix their code,
+                # but keep the valid diagnostics from the same plugin
+                # and from other plugins.
+                if not isinstance(diag, Diagnostic):
+                    _logger.warning(
+                        "Plugin rule %s.check() returned non-Diagnostic "
+                        "element %r. Skipping this element.",
+                        rule_cls.__name__,
+                        diag,
+                    )
+                    continue
                 # Plugin diagnostics flow through _add_diagnostic_by_file
                 # so that # noqa directives on the offending line are
                 # honoured the same way as built-in rules (T-004).

@@ -263,6 +263,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scope present (happy path), does not populate `file_scopes` (no
   side-effect mutation).
 
+- **Plugin `check()` return-type now validated.** `analysis_pipeline.py`
+  iterated over the list returned by a plugin's `check()` and called
+  `_add_diagnostic_by_file(diag)` on each element without type
+  validation. If a plugin returned `[None]`, `["string"]`, or any list
+  with non-`Diagnostic` elements, `_add_diagnostic_by_file` crashed with
+  `AttributeError: 'NoneType'/'str' object has no attribute 'file_path'`.
+  The crash happened OUTSIDE the `try/except` around `check()` — that
+  try/except only catches exceptions raised BY `check()`, not exceptions
+  raised while iterating its return value. The result: one bad plugin
+  killed the entire analysis run, violating the "plugin isolation"
+  contract. Added `isinstance(diag, Diagnostic)` check inside the loop:
+  non-`Diagnostic` elements are logged as WARNING and skipped; valid
+  diagnostics from the same plugin and from other plugins are preserved.
+  New test module `tests/test_plugin_check_return_validation.py`
+  (5 tests): `[None]` does not crash, `["string"]` does not crash,
+  `[None, "str", Diagnostic]` keeps the valid Diagnostic, good plugin
+  still works (sanity), bad plugin does not kill other plugins
+  (isolation).
+
 ---
 
 <a id="082"></a>
