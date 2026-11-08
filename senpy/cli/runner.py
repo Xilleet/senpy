@@ -534,6 +534,18 @@ def main():
     """CLI entry point. Orchestrates subcommand dispatch, early exits,
     config loading, file discovery, analysis, and output rendering.
     """
+    # Initialize logging BEFORE anything else. autoload_plugins (next)
+    # emits WARNING records for broken/skipped plugins, and config
+    # loading logs TOMLDecodeError warnings — without setup_logging,
+    # these hit Python's lastResort handler (a _StderrHandler at
+    # WARNING level) and write to stderr. In LSP mode stderr is the
+    # JSON-RPC transport, so unsilenced WARNINGs corrupt the protocol.
+    # verbose=False installs a NullHandler: records are swallowed
+    # silently. Use --verbose (when wired, see P3-1) for stderr output.
+    from senpy.core.logging import setup_logging
+
+    setup_logging(verbose=False)
+
     # Load installed-and-trusted plugins once per process. Done before
     # subcommand dispatch so plugin rules are visible to `senpy rule list`,
     # `senpy inspect`, and the main lint loop alike. Idempotent: subsequent

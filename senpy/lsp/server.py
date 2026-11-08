@@ -859,4 +859,15 @@ def outgoing_calls(
 
 
 def start_lsp():
+    # Initialize logging before the LSP I/O loop starts. LSP uses
+    # stderr as the JSON-RPC transport — any unsilenced WARNING+ log
+    # record would corrupt the protocol. setup_logging(verbose=False)
+    # installs a NullHandler on the 'senpy' logger so records are
+    # swallowed silently. Idempotent: if main() already called it
+    # (e.g. `senpy --lsp` path), this is a no-op that replaces handlers.
+    # Defense-in-depth: start_lsp may be called directly by an embedded
+    # host without going through main().
+    from senpy.core.logging import setup_logging
+
+    setup_logging(verbose=False)
     server.start_io()

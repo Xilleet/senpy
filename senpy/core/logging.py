@@ -17,11 +17,20 @@ Public API:
   - `get_logger(name: str) -> logging.Logger` — for submodules,
     returns child logger `"senpy.<name>"` with `propagate=True`.
 
-Usage in cli/main.py:
-  from senpy.core.logging import setup_logging
-  setup_logging(verbose=args.verbose)
-  logger = get_logger("cli")
-  logger.info("analyzing %d files", n)
+Wired in production:
+  - `cli.runner.main()` calls `setup_logging(verbose=False)` at the very
+    top, before `autoload_plugins()` (which emits WARNING records for
+    broken/skipped plugins). This prevents Python's `lastResort` handler
+    from writing WARNING+ records to stderr — in LSP mode that would
+    corrupt the JSON-RPC transport.
+  - `lsp.server.start_lsp()` calls `setup_logging(verbose=False)` again
+    as defense-in-depth (idempotent — replaces handlers, no duplication).
+    This covers the case where `start_lsp` is invoked directly by an
+    embedded host without going through `main()`.
+  - `--verbose` / `--log-file` CLI flags are NOT yet wired (planned in
+    P3-1). Until then, callers wanting verbose output must call
+    `setup_logging(verbose=True)` explicitly before invoking senpy as
+    a library.
 
 Usage in plugins/loader.py:
   from senpy.core.logging import get_logger

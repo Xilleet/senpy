@@ -44,6 +44,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flag itself is unchanged (still a dry-run for `--fix`); only the
   pre-commit hook entry was switched.
 
+- **Production logging now initialized.** `setup_logging()` was
+  implemented and documented but never called from production code.
+  As a result, WARNING+ log records (broken plugins, invalid config
+  TOML, analysis warnings) hit Python's `lastResort` handler — a
+  `_StderrHandler` at WARNING level — and wrote unformatted messages
+  to stderr. In LSP mode stderr is the JSON-RPC transport, so any
+  WARNING corrupted the protocol. Wired `setup_logging(verbose=False)`
+  into `cli.runner.main()` (at the very top, before `autoload_plugins`
+  which emits plugin-loading warnings) and into
+  `lsp.server.start_lsp()` (defense-in-depth for direct invocation).
+  The `verbose=False` default installs a `NullHandler` that swallows
+  records silently; `--verbose` / `--log-file` CLI flags are not yet
+  wired (planned follow-up). The `senpy.core.logging` module docstring
+  updated to reflect the actual wiring.
+
 ---
 
 <a id="082"></a>
