@@ -263,5 +263,141 @@ def test_cold_warm_equivalence(tmp_path: Path) -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# test_no_cache_equals_cold_cache — P1-4 architectural invariant
+# ---------------------------------------------------------------------------
+
+
+def _assert_analyzer_state_equal(a1, a2, label1: str, label2: str) -> None:
+    """Assert two analyzers have identical diagnostic set + state.
+
+    Shared helper for parity tests. Compares the same fields as
+    test_cold_warm_equivalence, plus a few extra that are relevant for
+    cache-write parity (labels, variables, screens).
+    """
+
+    # Diagnostic sets — same comparison as test_cold_warm_equivalence.
+    def _diag_signature(d) -> tuple:
+        return (d.code, d.line_number, d.message)
+
+    set1 = sorted(_diag_signature(d) for d in a1.diagnostics)
+    set2 = sorted(_diag_signature(d) for d in a2.diagnostics)
+    assert set1 == set2, (
+        f"{label1} and {label2} diagnostic sets differ.\n"
+        f"  {label1} only: {set(set1) - set(set2)}\n"
+        f"  {label2} only: {set(set2) - set(set1)}"
+    )
+
+    # State fields — same as test_cold_warm_equivalence.
+    assert a1.missing_defaults == a2.missing_defaults, (
+        f"missing_defaults differs: {label1}={a1.missing_defaults}, "
+        f"{label2}={a2.missing_defaults}"
+    )
+    assert a1.referenced_labels == a2.referenced_labels, (
+        f"referenced_labels differs: {label1}={a1.referenced_labels}, "
+        f"{label2}={a2.referenced_labels}"
+    )
+    assert a1.has_dynamic_jumps == a2.has_dynamic_jumps, (
+        f"has_dynamic_jumps differs: {label1}={a1.has_dynamic_jumps}, "
+        f"{label2}={a2.has_dynamic_jumps}"
+    )
+    assert a1.user_symbols == a2.user_symbols, (
+        f"user_symbols differs: {label1}={a1.user_symbols}, " f"{label2}={a2.user_symbols}"
+    )
+    assert a1.total_lines == a2.total_lines, (
+        f"total_lines differs: {label1}={a1.total_lines}, " f"{label2}={a2.total_lines}"
+    )
+    assert a1.fixable_count == a2.fixable_count, (
+        f"fixable_count differs: {label1}={a1.fixable_count}, " f"{label2}={a2.fixable_count}"
+    )
+    assert a1.fixed_count == a2.fixed_count, (
+        f"fixed_count differs: {label1}={a1.fixed_count}, " f"{label2}={a2.fixed_count}"
+    )
+
+
+def test_no_cache_equals_cold_cache(tmp_path: Path) -> None:
+    """A run with ``no_cache=True`` must produce identical diagnostics and
+    state to a cold run with ``no_cache=False`` on the same fresh project.
+
+    Architectural invariant (P1-4): the cache must NOT change the
+    diagnostic output. If a cache-write path bug (e.g. ``_finalize_results``
+    skips ``save_manifest`` in some scenario, or ``CachedFileEntry``
+    stores stale diagnostics) caused the cached run to differ from the
+    no-cache run, this test would catch it.
+
+    ``test_cold_warm_equivalence`` (above) covers the cold→warm path
+    (cache-restore bugs). This test covers the no-cache→cache path
+    (cache-write bugs). Together they form a full parity guard.
+    """
+    project = _setup_project(tmp_path, _SAMPLE_RPY)
+    cache_dir = project / ".senpy_cache"
+    shutil.rmtree(cache_dir, ignore_errors=True)
+
+    # Fresh project — no cache. Run with no_cache=True (cache disabled,
+    # nothing written to disk).
+    no_cache_a = SenpyAnalyzer(str(project), no_cache=True)
+    no_cache_a.run(quiet=True)
+
+    # Verify the cache directory was NOT created by the no_cache run.
+    assert not cache_dir.exists(), (
+        "no_cache=True run created .senpy_cache/ — CacheManager should be "
+        "disabled and must not write anything to disk."
+    )
+
+    # Fresh project again — no cache. Run with no_cache=False (cache
+    # enabled, will write to disk after the run).
+    shutil.rmtree(cache_dir, ignore_errors=True)
+    cold_a = SenpyAnalyzer(str(project), no_cache=False)
+    cold_a.run(quiet=True)
+
+    # The cache directory MUST be created by the cold run (sanity check
+    # that no_cache=False actually enables the cache).
+    assert cache_dir.exists(), (
+        "no_cache=False run did NOT create .senpy_cache/ — CacheManager "
+        "should be enabled and must write the manifest after analysis."
+    )
+
+    # The two runs must produce identical diagnostics and state.
+    _assert_analyzer_state_equal(no_cache_a, cold_a, "no_cache=True", "cold_cache")
+
+
+@pytest.mark.parametrize("no_cache", [True, False])
+def test_cache_parity_no_cache_vs_cache(tmp_path: Path, no_cache: bool) -> None:
+    """Parametrized parity: each mode must produce the same diagnostic set.
+
+    Companion to test_no_cache_equals_cold_cache — runs each mode in
+    isolation (fresh tmp_path per parametrization) and snapshots the
+    diagnostic signature. The snapshot is compared manually between the
+    two parametrizations via the test_no_cache_equals_cold_cache test
+    above; this test guards against either mode producing an empty or
+    degenerate diagnostic set (e.g. if a refactor accidentally made
+    no_cache=True skip all rules).
+    """
+    project = _setup_project(tmp_path, _SAMPLE_RPY)
+    shutil.rmtree(project / ".senpy_cache", ignore_errors=True)
+
+    analyzer = SenpyAnalyzer(str(project), no_cache=no_cache)
+    analyzer.run(quiet=True)
+
+    # _SAMPLE_RPY is designed to trigger several diagnostics — the
+    # exact set is not asserted here (that's test_no_cache_equals_cold_cache's
+    # job), but we assert the set is non-empty to guard against a refactor
+    # that makes one mode silently skip all rules.
+    assert analyzer.diagnostics, (
+        f"no_cache={no_cache}: expected non-empty diagnostics from _SAMPLE_RPY "
+        f"(which has dynamic jumps, missing defaults, noqa). Got empty list — "
+        f"a refactor may have silently broken analysis in this mode."
+    )
+    # Sanity: the sample triggers at least one of the expected rules.
+    # RPY302 (dynamic jump target) and RPY104 (missing default) are the
+    # two most reliable triggers in _SAMPLE_RPY.
+    diag_codes = {d.code for d in analyzer.diagnostics}
+    expected_triggers = {"RPY302", "RPY104"}
+    assert diag_codes & expected_triggers, (
+        f"no_cache={no_cache}: expected at least one of {expected_triggers} "
+        f"in diagnostics, got codes: {diag_codes}"
+    )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

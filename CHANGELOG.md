@@ -161,6 +161,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   picking them up as one-file positive fixtures — `test_rule_fixture`
   cannot test multi-file rules.
 
+- **`--no-cache` parity test added.** `tests/test_cache_lifecycle.py`
+  had `test_cold_warm_equivalence` (cold vs warm run, both with cache
+  enabled) but no test comparing `no_cache=True` vs `no_cache=False` on
+  the same fresh project. A bug in the cache-write path (e.g.
+  `_finalize_results` skipping `save_manifest`, or `CachedFileEntry`
+  storing stale diagnostics) would have passed all existing tests
+  silently. Added two tests to `test_cache_lifecycle.py`:
+  `test_no_cache_equals_cold_cache` — runs the same project with
+  `no_cache=True` (cache disabled, nothing written to disk) and
+  `no_cache=False` (cold run, cache written), asserts identical
+  diagnostics + analyzer state (missing_defaults, referenced_labels,
+  has_dynamic_jumps, user_symbols, total_lines, fixable_count,
+  fixed_count). Also asserts the cache directory is created by
+  `no_cache=False` and NOT created by `no_cache=True` (sanity check
+  that the flag actually controls the cache). Plus
+  `test_cache_parity_no_cache_vs_cache` (parametrized) — guards against
+  either mode silently producing empty/degenerate diagnostics. Together
+  with `test_cold_warm_equivalence` they form a full parity guard:
+  cold→warm (cache-restore bugs) + no-cache→cache (cache-write bugs).
+
 ---
 
 <a id="082"></a>
