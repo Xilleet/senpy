@@ -71,11 +71,32 @@ def _capture_console() -> tuple[Console, str]:
 
 
 def _validate(**args) -> tuple[int | None, str]:
-    """Run _validate_flag_combinations with the given args. Returns (rc, output)."""
+    """Run _validate_flag_combinations with the given args. Returns (rc, output).
+
+    Captures both console (stdout) and stderr. Warnings are printed to
+    stderr (P2-11), so callers checking for warning text should use
+    _validate_with_stderr instead.
+    """
     console, buf = _capture_console()
     ns = _make_args(**args)
     rc = _validate_flag_combinations(ns, console)
     return rc, buf.getvalue()
+
+
+def _validate_with_stderr(**args) -> tuple[int | None, str, str]:
+    """Run _validate_flag_combinations. Returns (rc, stdout, stderr).
+
+    Use this for warning tests — warnings go to stderr.
+    """
+    console, buf = _capture_console()
+    ns = _make_args(**args)
+    import contextlib
+    import io
+
+    err_buf = io.StringIO()
+    with contextlib.redirect_stderr(err_buf):
+        rc = _validate_flag_combinations(ns, console)
+    return rc, buf.getvalue(), err_buf.getvalue()
 
 
 # ---------------------------------------------------------------------------
@@ -128,23 +149,23 @@ class TestWarnings:
     """
 
     def test_extend_select_without_select_warns(self):
-        rc, out = _validate(extend_select=["RPY102"])
+        rc, _stdout, stderr = _validate_with_stderr(extend_select=["RPY102"])
         assert rc is None
-        assert "--extend-select" in out
-        assert "no effect without --select" in out
+        assert "--extend-select" in stderr
+        assert "no effect without --select" in stderr
 
     def test_extend_ignore_without_ignore_warns(self):
-        rc, out = _validate(extend_ignore=["RPY102"])
+        rc, _stdout, stderr = _validate_with_stderr(extend_ignore=["RPY102"])
         assert rc is None
-        assert "--extend-ignore" in out
-        assert "no effect without --ignore" in out
+        assert "--extend-ignore" in stderr
+        assert "no effect without --ignore" in stderr
 
     def test_add_noqa_plus_fix_warns(self):
-        rc, out = _validate(add_noqa=True, fix=True)
+        rc, _stdout, stderr = _validate_with_stderr(add_noqa=True, fix=True)
         assert rc is None
-        assert "--add-noqa" in out
-        assert "--fix" in out
-        assert "fight each other" in out or "Did you mean" in out
+        assert "--add-noqa" in stderr
+        assert "--fix" in stderr
+        assert "fight each other" in stderr or "Did you mean" in stderr
 
 
 # ---------------------------------------------------------------------------

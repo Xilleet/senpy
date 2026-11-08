@@ -102,6 +102,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   + skip (return None). Plugins without the declaration are now rejected
   fail-safe. Both shipped example plugins already declare it.
 
+- **`_validate_flag_combinations` warnings now go to stderr.**
+  `early_exits.py` — warning messages (`--extend-select` without `--select`,
+  `--extend-ignore` without `--ignore`, `--add-noqa` + `--fix`) were printed
+  via `console.print` (rich → stdout). With `--output-format json`/`sarif`,
+  the warning text polluted the machine-readable output. Routed to stderr
+  via `print(..., file=sys.stderr)`. Updated `test_flag_combinations.py`
+  to capture stderr.
+
+- **`render_github` no longer double-prints when `--output-file` is set.**
+  `render_github` printed annotations to stdout AND wrote them to
+  `--output-file`. Now: when `--output-file` is set, stdout is suppressed —
+  annotations go to the file only.
+
+- **`find_unrpyc_executable` subprocess probe removed (dead code).**
+  `unrpyc.py` had a `subprocess.run([sys.executable, "-m", "unrpyc", "--help"])`
+  probe that was unreachable since 0.8.x — decompilation uses vendored
+  unrpyc (`senpy.vendor.unrpyc.decompile_rpyc`), not an external module.
+  Removed the probe + the now-unused `import subprocess`.
+
 ---
 
 <a id="083"></a>

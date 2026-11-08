@@ -237,9 +237,12 @@ def render_github(active_diagnostics, args, console) -> int:
         # - % → %25 (per workflow command spec — unescaped % truncates/mangles)
         # P2-13: added % escape.
         msg = diag.message.replace("%", "%25").replace("\n", " ").replace("::", " ")
-        print(
-            f"::{level} file={file_rel},line={diag.line_number},col={diag.col}::{diag.code}: {msg}"
-        )
+        # When --output-file is set, suppress stdout output —
+        # GitHub annotations go to the file only, not both.
+        if not args.output_file:
+            print(
+                f"::{level} file={file_rel},line={diag.line_number},col={diag.col}::{diag.code}: {msg}"
+            )
 
     if args.output_file:
         # Also save to file if requested

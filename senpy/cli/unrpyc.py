@@ -11,7 +11,6 @@ import hashlib
 import os
 import pickle
 import shutil
-import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -213,19 +212,11 @@ def find_unrpyc_executable(
     if which_unrpyc:
         return [which_unrpyc]
 
-    try:
-        res = subprocess.run(
-            [sys.executable, "-m", "unrpyc", "--help"],
-            capture_output=True,
-            check=False,
-            timeout=30,  # : protection against a hung unrpyc
-        )
-        if res.returncode == 0:
-            return [sys.executable, "-m", "unrpyc"]
-    except (subprocess.SubprocessError, OSError, subprocess.TimeoutExpired) as e:
-        # log debug instead of silent suppress. Probe failure means
-        # unrpyc module is not installed; we fall through to find_in_directory_tree.
-        _logger.debug("unrpyc --help probe failed: %s", e)
+    # Removed subprocess probe (`python -m unrpyc --help`) — dead code
+    # since 0.8.x. Decompression uses vendored unrpyc
+    # (senpy.vendor.unrpyc.decompile_rpyc), not an external module.
+    # The probe was reachable but never returned a useful result: if unrpyc
+    # was installed as a module, the vendored version is used anyway.
 
     search_dirs = [os.getcwd()]
     if project_path:

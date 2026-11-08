@@ -239,12 +239,15 @@ def _validate_flag_combinations(args, console: Console) -> int | None:
         return 2
 
     # Warnings: combinations that have no effect or fight each other,
-    # but don't make the run incorrect. Print and continue.
+    # but don't make the run incorrect. Print to stderr and continue.
+    # Warnings via stdout polluted JSON/SARIF/other format output;
+    # routed to stderr so machine-readable output stays clean.
     if args.extend_select and not args.select:
-        console.print(
-            "[yellow]Warning:[/yellow] --extend-select has no effect without --select. "
+        print(
+            "Warning: --extend-select has no effect without --select. "
             "--extend-select adds rules to the --select list; without --select, "
-            "all rules run by default. Did you mean --select?"
+            "all rules run by default. Did you mean --select?",
+            file=sys.stderr,
         )
 
     if args.extend_ignore and not args.ignore and not args.select:
@@ -252,18 +255,20 @@ def _validate_flag_combinations(args, console: Console) -> int | None:
         # --ignore base (CLI or config), it's a no-op extension.
         # Note: --select + --extend-ignore is fine (select defines a
         # whitelist, extend-ignore removes from it).
-        console.print(
-            "[yellow]Warning:[/yellow] --extend-ignore has no effect without --ignore "
+        print(
+            "Warning: --extend-ignore has no effect without --ignore "
             "(or config.ignore). --extend-ignore adds rules to the ignore list; "
-            "without a base ignore list, nothing changes. Did you mean --ignore?"
+            "without a base ignore list, nothing changes. Did you mean --ignore?",
+            file=sys.stderr,
         )
 
     if args.add_noqa and args.fix:
-        console.print(
-            "[yellow]Warning:[/yellow] --add-noqa and --fix both target fixable "
+        print(
+            "Warning: --add-noqa and --fix both target fixable "
             "diagnostics. --add-noqa suppresses them with # noqa comments; "
             "--fix applies code changes. --fix will win (applied first), "
-            "leaving nothing for --add-noqa to suppress. Did you mean one or the other?"
+            "leaving nothing for --add-noqa to suppress. Did you mean one or the other?",
+            file=sys.stderr,
         )
 
     return None
