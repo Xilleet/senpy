@@ -61,6 +61,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   → False (substring false positive eliminated), string literal with
   "Character" → False.
 
+- **`_PLUGINS_LOADED` now protected by `threading.Lock`.** `autoload.py`
+  had a module-level boolean `_PLUGINS_LOADED` without a lock. Two
+  concurrent `autoload_plugins()` calls could both see `False` and both
+  load plugins (race condition). LSP doesn't call autoload from worker
+  threads now, but the lock is cheap insurance against future changes.
+  Added `_PLUGINS_LOADED_LOCK` and wrapped the check-and-set in `with`.
+
+- **GitHub Actions `%` now escaped to `%25` in `render_github`.**
+  `render_github` escaped `\n` → space and `::` → space, but did NOT
+  escape `%` → `%25` per the workflow command spec. Messages like
+  `RPY104: 50% complete` were truncated/mangled at the `%`. Added `%`
+  escape in both stdout and `--output-file` paths.
+
+- **RPY707 declaration line now deterministic for multi-file channels.**
+  `_emit_unused_channel_diagnostic` in `dead_code.py` iterated
+  `register_lines.items()` — dict insertion order, which is not
+  contracted as deterministic for multi-file channel registration.
+  If one channel was registered in multiple files, the chosen declaration
+  line depended on file processing order. Added deterministic tie-breaker:
+  sort candidates by `(file_path, line_idx)` and take the first match
+  (lowest lexicographically).
+
 ---
 
 <a id="083"></a>

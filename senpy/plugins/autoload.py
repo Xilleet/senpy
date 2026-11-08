@@ -32,6 +32,7 @@ What this does NOT do:
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 
 from senpy.core.logging import get_logger
@@ -40,7 +41,12 @@ _logger = get_logger("plugins.autoload")
 
 # Module-level guard: once plugins are loaded for this process, don't load
 # them again. Tests that need a fresh load can call `reset_autoload_state()`.
+# Protected by _PLUGINS_LOADED_LOCK — without it, two threads could both
+# see _PLUGINS_LOADED=False and both call the loader (race condition).
+# LSP doesn't call autoload from worker threads now, but the lock is cheap
+# insurance against future changes (P2-9 fix).
 _PLUGINS_LOADED: bool = False
+_PLUGINS_LOADED_LOCK = threading.Lock()
 
 
 def autoload_plugins(
@@ -73,24 +79,29 @@ def autoload_plugins(
     """
     global _PLUGINS_LOADED
 
-    if _PLUGINS_LOADED and not force:
-        return
+    # P2-9: Lock protects the check-and-set. Without it, concurrent
+    # autoload_plugins() calls race — both see False, both load. The lock
+    # is held for the entire load (not just the flag check) to ensure the
+    # second caller sees _PLUGINS_LOADED=True after the first completes.
+    with _PLUGINS_LOADED_LOCK:
+        if _PLUGINS_LOADED and not force:
+            return
 
-    try:
-        # Import locally so this module has no top-level dependency on
-        # loader.py — keeps import cycles impossible and lets tests mock
-        # internals without triggering real plugin discovery at import time.
-        from senpy.plugins.loader import load_all_plugins, register_loaded_plugins
+        try:
+            # Import locally so this module has no top-level dependency on
+            # loader.py — keeps import cycles impossible and lets tests mock
+            # internals without triggering real plugin discovery at import time.
+            from senpy.plugins.loader import load_all_plugins, register_loaded_plugins
 
-        loaded = load_all_plugins(trust_callback=trust_callback)
-        if loaded:
-            register_loaded_plugins(loaded)
-            names = ", ".join(ep.name for ep in loaded)
-            _logger.info("Loaded %d plugin(s): %s", len(loaded), names)
-    except Exception as e:  # noqa: BLE001 — autoload must never crash callers
-        _logger.warning("Plugin autoload failed: %s. Continuing without plugins.", e)
+            loaded = load_all_plugins(trust_callback=trust_callback)
+            if loaded:
+                register_loaded_plugins(loaded)
+                names = ", ".join(ep.name for ep in loaded)
+                _logger.info("Loaded %d plugin(s): %s", len(loaded), names)
+        except Exception as e:  # noqa: BLE001 — autoload must never crash callers
+            _logger.warning("Plugin autoload failed: %s. Continuing without plugins.", e)
 
-    _PLUGINS_LOADED = True
+        _PLUGINS_LOADED = True
 
 
 def reset_autoload_state() -> None:

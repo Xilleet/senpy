@@ -231,8 +231,12 @@ def render_github(active_diagnostics, args, console) -> int:
             if diag.severity == "WARNING"
             else "notice"
         )
-        # Escape message: newlines and special chars
-        msg = diag.message.replace("\n", " ").replace("::", " ")
+        # Escape message per GitHub Actions workflow command spec:
+        # - newlines → space (GitHub Actions does not support multi-line messages)
+        # - :: → space (would break the command syntax)
+        # - % → %25 (per workflow command spec — unescaped % truncates/mangles)
+        # P2-13: added % escape.
+        msg = diag.message.replace("%", "%25").replace("\n", " ").replace("::", " ")
         print(
             f"::{level} file={file_rel},line={diag.line_number},col={diag.col}::{diag.code}: {msg}"
         )
@@ -251,7 +255,7 @@ def render_github(active_diagnostics, args, console) -> int:
                     if diag.severity == "WARNING"
                     else "notice"
                 )
-                msg = diag.message.replace("\n", " ").replace("::", " ")
+                msg = diag.message.replace("%", "%25").replace("\n", " ").replace("::", " ")
                 f.write(
                     f"::{level} file={file_rel},line={diag.line_number},col={diag.col}::{diag.code}: {msg}\n"
                 )

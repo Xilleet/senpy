@@ -316,23 +316,31 @@ def _emit_unused_channel_diagnostic(
     """Find the declaration line for an unused channel and emit RPY707."""
     decl_file = "<unknown>"
     decl_line = 0
+    # deterministic tie-breaker. When a channel is registered in
+    # multiple files, the chosen declaration line must be deterministic —
+    # lowest (file_path, line_idx) lexicographically. Previously the
+    # iteration order of register_lines.items() (dict insertion order,
+    # CPython 3.7+ but not contracted as deterministic) determined the
+    # pick, which made the diagnostic line non-reproducible across runs
+    # if file processing order changed.
+    # Sort candidates by (file_path, line_idx) and take the first match.
+    candidates: list[tuple[str, int]] = []
     for file_path, line_idxs in register_lines.items():
-        if not line_idxs:
-            continue
+        for li in line_idxs:
+            candidates.append((file_path, li))
+    candidates.sort()
+    for file_path, li in candidates:
         try:
             with open(file_path, encoding="utf-8", errors="replace") as f:
                 all_lines = f.readlines()
         except OSError:
             continue
-        for li in line_idxs:
-            if li >= len(all_lines):
-                continue
-            m = _RE_REGISTER_CHANNEL.search(all_lines[li])
-            if m and m.group(1) == chan:
-                decl_file = file_path
-                decl_line = li + 1  # 1-based
-                break
-        if decl_file != "<unknown>":
+        if li >= len(all_lines):
+            continue
+        m = _RE_REGISTER_CHANNEL.search(all_lines[li])
+        if m and m.group(1) == chan:
+            decl_file = file_path
+            decl_line = li + 1  # 1-based
             break
     analyzer._add_diagnostic_by_file(
         Diagnostic(
