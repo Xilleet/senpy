@@ -733,13 +733,18 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
 
     locations: list[lsp.Location] = []
 
-    # The jump_sources reverse index [(file, 1-based line)]
-    # is built by the analyzer for jump AND call targets, maintained by
-    # differential cleanup (_differential_purge_file) and survives
-    # cache rebuilds (_rebuild_aggregates).
-    if word in server_mod._active_analyzer.labels:
+    # references for labels: use _symbol_snapshot, not _active_analyzer.
+    # After did_change → analyze_file_only, the live analyzer's label
+    # registry is rebuilt for the edited file only — labels from other
+    # files disappear from the live registry. _symbol_snapshot is
+    # refreshed on did_open / did_save / did_change_watched_files and
+    # retains labels from all files. Other handlers (rename,
+    # prepare_rename, incoming_calls, outgoing_calls, workspace_symbol)
+    # already use the snapshot — references must be consistent (P1-7).
+    snapshot = server_mod._symbol_snapshot
+    if word in snapshot["labels"]:
         if params.context.include_declaration:
-            lbl = server_mod._active_analyzer.labels[word]
+            lbl = snapshot["labels"][word]
             locations.append(
                 lsp.Location(
                     uri=server_mod._path_to_uri(lbl.file_path),
@@ -749,7 +754,7 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
                     ),
                 )
             )
-        for ref_path, ref_line in server_mod._active_analyzer.jump_sources.get(word, []):
+        for ref_path, ref_line in snapshot["jump_sources"].get(word, []):
             locations.append(
                 lsp.Location(
                     uri=server_mod._path_to_uri(ref_path),

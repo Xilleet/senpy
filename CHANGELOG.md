@@ -227,6 +227,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `define` constant, `transform` declaration, non-symbol word → None,
   label still works (regression guard).
 
+- **LSP `references` for labels now uses symbol snapshot, not live analyzer.**
+  `references` in `senpy/lsp/handlers/navigation.py` (lines 740-752) read
+  `server_mod._active_analyzer.labels` and `_active_analyzer.jump_sources`
+  (live analyzer state). After `did_change → analyze_file_only`, the live
+  analyzer's label registry is rebuilt for the edited file only — labels
+  from other files disappear from the live registry until the next full
+  analysis. `_symbol_snapshot` is refreshed on `did_open`, `did_save`, and
+  `did_change_watched_files` and retains labels from all files. Other
+  handlers (`rename`, `prepare_rename`, `incoming_calls`, `outgoing_calls`,
+  `workspace_symbol`) already used the snapshot — `references` was the
+  outlier. Replaced `_active_analyzer.labels` →
+  `_symbol_snapshot["labels"]` and `_active_analyzer.jump_sources` →
+  `_symbol_snapshot["jump_sources"]`. New test module
+  `tests/test_references_snapshot.py` (3 tests): references finds label
+  jump sites after simulated `analyze_file_only` (the bug scenario),
+  declaration included/excluded per `context.include_declaration`.
+
 ---
 
 <a id="082"></a>
