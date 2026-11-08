@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.8.x)**: [0.8.2](#082) | [0.8.1](#081) | [0.8.0](#080)
+- **Current (0.8.x)**: [Unreleased](#unreleased) | [0.8.2](#082) | [0.8.1](#081) | [0.8.0](#080)
 
 - **0.7.x**: [0.7.7](#077) | [0.7.6](#076) | [0.7.5](#075) | [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
 
@@ -20,6 +20,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.5.x**: [0.5.8](#058) | [0.5.7](#057) | [0.5.6](#056) | [0.5.5](#055) | [0.5.4 ⚠️](#054) | [0.5.3](#053) | [0.5.2](#052) | [0.5.1](#051) | [0.5.0](#050)
 
 - **0.4.x**: [0.4.8](#048) | [0.4.7](#047)
+
+---
+
+<a id="unreleased"></a>
+
+## [Unreleased]
+
+### Fixed
+
+- **Pre-commit hook now fails on ERROR diagnostics.** The published
+  `.pre-commit-hooks.yaml` used `entry: senpy --check`, which only
+  exits 1 when `fixable_count > 0`. Projects with unfixable
+  ERROR-severity diagnostics (e.g. RPY104 undefined variables, RPY303
+  dead labels) silently passed the pre-commit gate, defeating its
+  purpose. Changed `entry` to `senpy --errors-only`, which filters
+  output to ERROR severity and computes the exit code from
+  `error_count` (1 if any ERROR, unless `--exit-zero`). WARNINGs and
+  INFO notices are hidden from the pre-commit log; users who want the
+  full picture run `senpy` manually without `--errors-only`.
+  Documentation in `README.md`, `README_ru.md`, and
+  `docs/renpy-github-actions.md` updated to match. The `--check` CLI
+  flag itself is unchanged (still a dry-run for `--fix`); only the
+  pre-commit hook entry was switched.
 
 ---
 

@@ -541,7 +541,7 @@ jobs:
 ## Pre-commit Integration
 
 Senpy ships a [pre-commit](https://pre-commit.com) hook that runs
-`senpy --check` on every commit. Add this to your `.pre-commit-config.yaml`:
+`senpy --errors-only` on every commit. Add this to your `.pre-commit-config.yaml`:
 
 ```yaml
 repos:
@@ -552,10 +552,17 @@ repos:
 ```
 
 The hook is **non-mutating** — it only reports issues, never auto-fixes
-them. This is deliberate: an auto-fixing hook combined with git's
-`autocrlf` on Windows creates an infinite loop (the formatter
-normalizes line endings, git converts them back, the formatter runs
-again). Run `senpy --fix` manually if you want auto-fixes.
+them. It uses `--errors-only` so the gate fails (exit 1) on any
+ERROR-severity diagnostic, including unfixable ones (undefined
+variables, dead labels, etc.). WARNINGs and INFO notices are hidden
+from the pre-commit log; run `senpy` manually without `--errors-only`
+for the full picture.
+
+The non-mutating choice is deliberate: an auto-fixing hook combined
+with git's `autocrlf` on Windows creates an infinite loop (the
+formatter normalizes line endings, git converts them back, the
+formatter runs again). Run `senpy --fix` manually if you want
+auto-fixes.
 
 ---
 

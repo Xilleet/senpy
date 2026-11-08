@@ -1,8 +1,8 @@
-# Senpy pre-commit hook (non-mutating).
+# Senpy pre-commit hook (non-mutating, fails on ERROR diagnostics).
 #
-# Registers `senpy --check` as a pre-commit hook so that any project
-# using https://pre-commit.com can lint their Ren'Py scripts with a
-# one-line config:
+# Registers `senpy --errors-only` as a pre-commit hook so that any
+# project using https://pre-commit.com can lint their Ren'Py scripts
+# with a one-line config:
 #
 #     repos:
 #       - repo: https://github.com/Xilleet/senpy
@@ -10,13 +10,25 @@
 #         hooks:
 #           - id: senpy
 #
-# Design note: we deliberately expose ONLY `--check` (non-mutating)
-# here. A `senpy --fix` auto-fixing hook would create an infinite
-# loop on Windows when combined with ruff-format (CRLF <-> LF
-# conversion via git's autocrlf). See Senpy worklog §4 "Ruff-format
-# hook" for the full story. Users who want auto-fix can run
-# `senpy --fix` manually or wire up a local hook with their own
-# line-ending strategy.
+# Design notes:
+#
+# 1. Why `--errors-only` and not `--check`:
+#    `--check` is a dry-run for `--fix`: it exits 1 only when
+#    `fixable_count > 0`. A project with unfixable ERROR-severity
+#    diagnostics (e.g. RPY104 undefined variables, RPY303 dead labels)
+#    would silently pass the pre-commit gate, defeating its purpose.
+#    `--errors-only` filters the visible output to ERROR severity and
+#    computes the exit code from `error_count` via the renderer's
+#    `_exit_code` (1 if any ERROR, unless `--exit-zero` is set — which
+#    it is not here). WARNINGs and INFO notices are hidden from the
+#    pre-commit log; users who want the full picture run `senpy`
+#    manually without `--errors-only`.
+#
+# 2. Why not `--fix`:
+#    A `senpy --fix` auto-fixing hook would create an infinite loop on
+#    Windows when combined with ruff-format (CRLF <-> LF conversion via
+#    git's autocrlf). Users who want auto-fix can run `senpy --fix`
+#    manually or wire up a local hook with their own line-ending strategy.
 #
 # `additional_dependencies` is empty — Senpy's runtime deps are
 # declared in pyproject.toml and pre-commit installs the package
@@ -25,7 +37,7 @@
 id: senpy
 name: senpy
 description: Semantic linter for Ren'Py visual novels
-entry: senpy --check
+entry: senpy --errors-only
 language: python
 types: [file]
 files: \.(rpy|rpym|_ren\.py)$
