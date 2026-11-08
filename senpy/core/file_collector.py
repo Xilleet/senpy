@@ -750,7 +750,14 @@ class FileCollector:
 
         Returns (was_init_python, new_idx).
         """
-        m_chan = re.search(r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', clean)
+        # Mask string literals before register_channel regex — a dialogue
+        # line like '"renpy.music.register_channel(\'foo\')"' would falsely
+        # register channel 'foo' (P2-17 fix). strip_string_literals replaces
+        # string contents with spaces, so the regex only matches real calls.
+        masked_clean = strip_string_literals(clean)
+        m_chan = re.search(
+            r'renpy\.music\.register_channel\s*\(\s*["\']([^\W\d]\w*)["\']', masked_clean
+        )
         if m_chan:
             chan_name = m_chan.group(1).lower()
             scope.registered_audio_channels.add(chan_name)

@@ -83,6 +83,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sort candidates by `(file_path, line_idx)` and take the first match
   (lowest lexicographically).
 
+- **`_check_voice_loop` now masks string literals before `loop` keyword match.**
+  `asset.py:609` ran `re.search(r"\bloop\b", rest)` directly on `rest` — a
+  filename like `"my loop song.ogg"` matched `loop` inside the string → false
+  RPY505. Applied `strip_string_literals(rest)` before the regex.
+
+- **`register_channel` regex now masks string literals.**
+  `file_collector.py:753` ran the `register_channel` regex on `clean` before
+  `strip_string_literals` was applied (line 759+). A dialogue line like
+  `"renpy.music.register_channel('foo')"` matched inside the string → falsely
+  registered channel `foo`. Applied `strip_string_literals(clean)` before the
+  regex.
+
+- **Plugin `PLUGIN_API_VERSION` now enforced (opt-in, not opt-out).**
+  `loader.py:237-242` — a plugin without `PLUGIN_API_VERSION` was loaded with
+  a DEBUG log (silently accepted). The contract
+  (`docs/plugin-development.md:62`) says "must declare". Changed to WARNING
+  + skip (return None). Plugins without the declaration are now rejected
+  fail-safe. Both shipped example plugins already declare it.
+
 ---
 
 <a id="083"></a>

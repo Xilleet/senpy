@@ -16,6 +16,7 @@ from senpy.core.constants import (
 from senpy.core.models import Diagnostic
 from senpy.core.scope import ScopeStack
 from senpy.rules.base import BaseChecker
+from senpy.text_utils import strip_string_literals
 
 # Regex to match individual audio targets inside a playlist `[a, b, c]` or a
 # single-file statement `play music "file.ogg"`. Matches quoted strings or
@@ -606,7 +607,11 @@ class AssetChecker(BaseChecker):
         noqa_map: dict,
     ) -> None:
         """RPY505: Warn about `loop` on the `voice` channel (causes audio glitches)."""
-        if channel != "voice" or not re.search(r"\bloop\b", rest, re.IGNORECASE):
+        # Mask string literals before checking for 'loop' keyword — a
+        # filename like "my loop song.ogg" contains 'loop' as a word but
+        # it's inside a string literal, not a loop keyword (P2-16 fix).
+        clean_rest = strip_string_literals(rest)
+        if channel != "voice" or not re.search(r"\bloop\b", clean_rest, re.IGNORECASE):
             return
         start_c, end_c = self.analyzer._get_utf16_range(raw_line, "loop")
         self.analyzer._add_diagnostic(

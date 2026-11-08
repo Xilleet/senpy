@@ -235,11 +235,20 @@ def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
             )
             return None
     else:
-        _logger.debug(
+        # enforce PLUGIN_API_VERSION declaration. The contract
+        # (docs/plugin-development.md:62) says plugins "must declare"
+        # PLUGIN_API_VERSION. Previously this was a DEBUG log + continue
+        # (opt-out) — a plugin without the declaration was silently loaded.
+        # Now: WARNING + skip (opt-in). Fail-safe: a plugin that doesn't
+        # declare its API version is incompatible by default.
+        _logger.warning(
             "Plugin %r does not declare PLUGIN_API_VERSION "
-            "(neither class nor module attribute). Loading without version check.",
+            "(neither class nor module attribute). Skipping — "
+            "plugins must declare PLUGIN_API_VERSION for compatibility "
+            "(see docs/plugin-development.md).",
             plugin_name,
         )
+        return None
 
     # All checks passed
     return _LoadedEntryPoint(name=plugin_name, rule_cls=rule_cls)
