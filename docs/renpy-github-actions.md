@@ -300,15 +300,17 @@ Always exits 0, even if errors are found. Use for nightly reports or
 non-blocking sweeps that gather findings without blocking the
 pipeline. Diagnostics are still printed to stdout.
 
-### `--statistics`
+### Summary table (default in text mode)
 
 ```bash
-senpy game/ --statistics
+senpy game/
 ```
 
-Prints a summary table of diagnostics by rule code (count per rule,
-sorted by frequency). Useful as a CI artifact — see which rules
-account for most of your technical debt.
+A summary table of diagnostics by rule code (count per rule, sorted by
+frequency) is always printed in text output mode. No `--statistics`
+flag is needed — it was removed as a no-op (the table was always
+printed regardless). The table is useful as a CI artifact — see which
+rules account for most of your technical debt.
 
 ### `--show-fixes`
 

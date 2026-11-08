@@ -140,9 +140,22 @@ class SafeCacheUnpickler(pickle.Unpickler):
 
 
 class CacheManager:
-    def __init__(self, project_path: str, enabled: bool = True):
+    def __init__(
+        self,
+        project_path: str,
+        enabled: bool = True,
+        cache_dir: str | None = None,
+    ):
         self.project_path = os.path.abspath(project_path)
-        self.cache_dir = os.path.join(self.project_path, ".senpy_cache")
+        # cache_dir: explicit override (CLI --cache-dir) wins; otherwise
+        # default to <project>/.senpy_cache. The override is useful for CI
+        # with a shared cache between runs (e.g. actions/cache on a
+        # custom path). Previously this was hardcoded and --cache-dir was
+        # a dead flag (P1-5).
+        if cache_dir:
+            self.cache_dir = os.path.abspath(cache_dir)
+        else:
+            self.cache_dir = os.path.join(self.project_path, ".senpy_cache")
         self.manifest_path = os.path.join(self.cache_dir, "cache.pkl")
         self.enabled = enabled
         self.manifest: CacheManifest | None = None

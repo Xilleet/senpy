@@ -370,6 +370,8 @@ def _run_analysis(args, extra_rpy_files, is_quiet_mode: bool, dry_run_callback=N
         fix=should_apply_fix,
         no_cache=no_cache,
         strict=args.strict if args.strict else None,
+        cache_dir=getattr(args, "cache_dir", None),
+        config_path=getattr(args, "config", None),
     )
     result = analyzer.run(quiet=is_quiet_mode, dry_run_callback=dry_run_callback)
     elapsed = time.perf_counter() - start_time

@@ -283,4 +283,4 @@ logic, and merge into your project.
 - [**Configuration**](configuration.md) — how to silence noisy rules,
   promote warnings to errors, and use `strict` mode in CI.
 - [**CLI reference**](cli-reference.md) — every flag, including
-  `--traceback`, `--defaults`, `--fix`, `--statistics`.
+  `--traceback`, `--defaults`, `--fix`, `--cache-dir`, `--config`.

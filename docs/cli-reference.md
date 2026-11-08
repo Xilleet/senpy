@@ -32,7 +32,6 @@ senpy rule show RPY104           # show one rule detail (subcommand)
 |---|---|
 | `--version` | Print Senpy version and exit |
 | `path` (positional) | Path to Ren'Py project or `game/` directory (default: `.`) |
-| `--respect-gitignore` | Skip files matching patterns in `.gitignore` |
 | `--config FILE` | Path to custom `senpy.toml` (env: `SENPY_CONFIG`) |
 | `--show-settings` | Print resolved config + exit |
 
@@ -66,8 +65,8 @@ senpy rule show RPY104           # show one rule detail (subcommand)
 | `--clear-cache` | Clear `.senpy_cache/` and exit |
 | `--cache-dir DIR` | Custom cache directory |
 | `--exit-zero` | Always exit 0, even with errors (non-blocking CI) |
+| `--fail-on-error` | Explicit "exit 1 on ERROR" (default behavior, made explicit for CI) |
 | `--show-fixes` | Show detailed list of fixes applied by `--fix` |
-| `--statistics` | Print summary table: count per rule, sorted by frequency |
 | `--add-noqa` | Add `# noqa` comments to all fixable diagnostics |
 | `--tsundere` | Enable tsundere UI mode (Easter egg) |
 
@@ -251,9 +250,12 @@ strict = true
 ### Non-blocking CI sweep
 
 ```bash
-senpy /path/to/game --exit-zero --statistics
-# always exits 0, prints summary table for review
+senpy /path/to/game --exit-zero
+# always exits 0, prints diagnostics + summary table for review
 ```
+
+The summary table is always printed in text output mode (no `--statistics`
+flag needed — it was removed in P1-5 as a no-op).
 
 ### Explicit fail-on-error (CI contract)
 

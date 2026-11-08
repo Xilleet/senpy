@@ -113,13 +113,15 @@ def validate_config(raw: dict) -> dict:
         return {}
 
 
-def load_config(project_path: str) -> dict:
+def load_config(project_path: str, config_path: str | None = None) -> dict:
     """Find and read the Senpy configuration.
 
     Searches for senpy.toml or pyproject.toml in this order:
-        1. In project_path/
-        2. In the parent directory of project_path/
-        3. In the current working directory
+        1. If ``config_path`` is passed (CLI ``--config FILE``) — that file.
+        2. If ``SENPY_CONFIG`` env var is set — that file.
+        3. In project_path/
+        4. In the parent directory of project_path/
+        5. In the current working directory
 
     Returns the contents of the [tool.senpy] section (or [senpy] for senpy.toml),
     validated via pydantic.
@@ -135,18 +137,33 @@ def load_config(project_path: str) -> dict:
 
     Args:
         project_path: Path to the Ren'Py project or the folder with the config.
+        config_path: Optional explicit path to a senpy.toml config file
+            (CLI ``--config FILE``). If passed, this file is tried first;
+            if it does not exist or is invalid, the search falls back to
+            the default candidates. Previously this parameter did not
+            exist and ``--config`` was a dead flag (P1-5).
 
     Returns:
         Dict with the configuration. Empty dict if the config is not found or broken.
     """
-    candidates = [
-        os.path.join(project_path, "senpy.toml"),
-        os.path.join(project_path, "pyproject.toml"),
-        os.path.join(os.path.dirname(project_path), "senpy.toml"),
-        os.path.join(os.path.dirname(project_path), "pyproject.toml"),
-        os.path.join(os.getcwd(), "senpy.toml"),
-        os.path.join(os.getcwd(), "pyproject.toml"),
-    ]
+    # Build the candidate list. Explicit config_path (CLI --config) and
+    # SENPY_CONFIG env var take priority over the default search order.
+    candidates: list[str] = []
+    if config_path:
+        candidates.append(config_path)
+    env_config = os.environ.get("SENPY_CONFIG")
+    if env_config:
+        candidates.append(env_config)
+    candidates.extend(
+        [
+            os.path.join(project_path, "senpy.toml"),
+            os.path.join(project_path, "pyproject.toml"),
+            os.path.join(os.path.dirname(project_path), "senpy.toml"),
+            os.path.join(os.path.dirname(project_path), "pyproject.toml"),
+            os.path.join(os.getcwd(), "senpy.toml"),
+            os.path.join(os.getcwd(), "pyproject.toml"),
+        ]
+    )
     for c in candidates:
         if not os.path.isfile(c):
             continue

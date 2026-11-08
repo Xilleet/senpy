@@ -415,14 +415,27 @@ Clear the project cache directory (`.senpy_cache/`) and exit. Use
 this if you suspect the cache is corrupted (rare — the cache uses
 BLAKE2b hashes and silently invalidates on mismatch).
 
-### `--respect-gitignore`
+### `--cache-dir DIR`
 
 ```bash
-senpy game/ --respect-gitignore
+senpy game/ --cache-dir /tmp/senpy_cache
 ```
 
-Skip files matching patterns in `.gitignore`. Reduces noise in large
-repos with vendor directories, build artifacts, etc.
+Use a custom cache directory instead of the default `.senpy_cache/` in
+the project root. Useful for CI with a shared cache between runs (e.g.
+`actions/cache` on a custom path).
+
+### `--config FILE`
+
+```bash
+senpy game/ --config /path/to/custom_senpy.toml
+# or via env var:
+SENPY_CONFIG=/path/to/custom_senpy.toml senpy game/
+```
+
+Load the config from a custom path instead of searching for `senpy.toml`
+in the project root. The `SENPY_CONFIG` environment variable is an
+alternative for CI scripts where modifying the command line is awkward.
 
 ---
 

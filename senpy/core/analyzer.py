@@ -52,9 +52,15 @@ class SenpyAnalyzer:
         no_cache: bool = False,
         severity_overrides: dict[str, str] | None = None,
         strict: bool | None = None,
+        cache_dir: str | None = None,
+        config_path: str | None = None,
     ):
         self.project_path = os.path.abspath(project_path)
-        self.cache_manager = CacheManager(self.project_path, enabled=not no_cache)
+        # cache_dir: passed through to CacheManager (CLI --cache-dir).
+        # None = default <project>/.senpy_cache.
+        self.cache_manager = CacheManager(
+            self.project_path, enabled=not no_cache, cache_dir=cache_dir
+        )
         self.assets = AssetManager(self.project_path)
         self.python_ast = PythonAstChecker(self)
         self.flow = StoryFlowAnalyzer(self)
@@ -79,7 +85,7 @@ class SenpyAnalyzer:
             # expecting full programmatic control.
             self.enable_plugins = False
         else:
-            cfg = load_config(self.project_path)
+            cfg = load_config(self.project_path, config_path=config_path)
             self.severity_overrides = {
                 k.strip().upper(): v.strip().upper() for k, v in cfg.get("severity", {}).items()
             }

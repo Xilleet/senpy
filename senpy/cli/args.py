@@ -34,7 +34,14 @@ __all__ = [
 
 
 def _add_general_args(parser: argparse.ArgumentParser) -> None:
-    """Add --version flag and positional path argument."""
+    """Add --version flag and positional path argument.
+
+    Removed flags:
+      - ``--statistics`` — was a no-op (summary table always printed in
+        render_text). Removed to make the CLI contract honest.
+      - ``--respect-gitignore`` — was a no-op (file discovery uses
+        IGNORED_DIRS, not .gitignore parsing). Removed for the same reason.
+    """
     # --version: prints version and exits (like ruff/black).
     # Uses senpy.__version__ (single source of truth).
     parser.add_argument(
@@ -48,11 +55,6 @@ def _add_general_args(parser: argparse.ArgumentParser) -> None:
         nargs="?",
         default=".",
         help="Path to the Ren'Py project or 'game' directory (default: current dir)",
-    )
-    parser.add_argument(
-        "--respect-gitignore",
-        action="store_true",
-        help="Skip files matching patterns in .gitignore (reduces noise in large repos).",
     )
     parser.add_argument(
         "--config",
@@ -219,11 +221,6 @@ def _add_lint_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Show detailed list of fixes applied by --fix (file:line: rule — message). "
         "Without --fix, shows '0 fixes applied'. Useful for CI logs and audit.",
-    )
-    g.add_argument(
-        "--statistics",
-        action="store_true",
-        help="Print a summary table of diagnostics by rule code (count per rule, sorted by frequency).",
     )
     g.add_argument(
         "--add-noqa",

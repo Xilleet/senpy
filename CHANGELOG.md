@@ -181,6 +181,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with `test_cold_warm_equivalence` they form a full parity guard:
   cold→warm (cache-restore bugs) + no-cache→cache (cache-write bugs).
 
+- **Dead CLI flags wired or removed.** Four flags were declared in
+  `args.py` but never reached their consumers:
+  - `--cache-dir DIR` — now wired through `SenpyAnalyzer(cache_dir=...)`
+    to `CacheManager(cache_dir=...)`. The cache is written to the custom
+    directory instead of the hardcoded `<project>/.senpy_cache`. Useful
+    for CI with a shared cache between runs.
+  - `--config FILE` — now wired through `SenpyAnalyzer(config_path=...)`
+    to `load_config(project_path, config_path=...)`. The `SENPY_CONFIG`
+    env var also works as an alternative. Previously `--config` was
+    parsed but `load_config(args.path)` ignored it.
+  - `--statistics` — removed. The summary table was always printed in
+    `render_text` (the flag was a no-op). Removing it makes the CLI
+    contract honest; users who passed `--statistics` got no error but
+    also no extra behavior.
+  - `--respect-gitignore` — removed. File discovery uses `IGNORED_DIRS`
+    (hardcoded set in `constants.py`), not `.gitignore` parsing. The
+    flag was a no-op.
+  New constructor args on `SenpyAnalyzer`: `cache_dir: str | None`,
+  `config_path: str | None`. `load_config` gained `config_path` param
+  and `SENPY_CONFIG` env var support. Docs updated: `cli-reference.md`,
+  `configuration.md`, `renpy-github-actions.md`, `renpy-error-checker.md`
+  — removed sections for the deleted flags, added sections for
+  `--cache-dir` and `--config`. New test module
+  `tests/test_dead_cli_flags.py` (11 tests): `--cache-dir` parsed +
+  creates cache at custom location, `--config` parsed + loads custom
+  file + `SENPY_CONFIG` env var works, `--statistics` and
+  `--respect-gitignore` rejected with exit 2, attrs absent after parse.
+
 ---
 
 <a id="082"></a>
