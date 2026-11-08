@@ -142,6 +142,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not trigger RPY502, GIF/BMP appear in `valid_images`, sanity that
   RPY502 still fires on genuinely missing images.
 
+- **RPY109 fixture no longer vacuous.** The
+  `tests/fixtures/rules/RPY109/bad_init_order.rpy` fixture had both
+  `init python:` blocks in a single file, but RPY109 only fires on
+  cross-file violations (`python_ast.py:739-740: if def_file == file_path:
+  continue`). The snapshot was `[]` — `test_rule_fixture` passed
+  vacuously, masking the absence of a cross-file fixture. Renamed the
+  file to `good_init_order_same_file.rpy` (positive — same-file, RPY109
+  must NOT fire, which is correct). Deleted the empty `bad_init_order.json`
+  snapshot. Added cross-file fixture files
+  (`tests/fixtures/rpy109_cross_file/a_caller.rpy` +
+  `z_definer.rpy`) and a new test module
+  `tests/test_rpy109_cross_file_fixture.py` (2 tests): RPY109 fires
+  when `a_caller.rpy` references `z_definer.rpy`'s function (alphabetical
+  order wrong), and does NOT fire when files are renamed to correct order.
+  The fixture files live under `tests/fixtures/rpy109_cross_file/` (not
+  `tests/fixtures/rules/RPY109/`) to avoid `test_rule_fixture`'s rglob
+  picking them up as one-file positive fixtures — `test_rule_fixture`
+  cannot test multi-file rules.
+
 ---
 
 <a id="082"></a>
