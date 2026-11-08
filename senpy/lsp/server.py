@@ -502,13 +502,13 @@ def schedule_full_diagnostics(ls: LanguageServer, uri: str):
 def schedule_change_diagnostics(ls: LanguageServer, uri: str):
     """Debounce while typing.
 
-    P1'-8 (0.6.0-11): per-URI debounce. Previously there was a single shared
+    per-URI debounce. Previously there was a single shared
     _change_timer for all URIs — when editing 2+ files at once, the timers
     conflicted (the last-edited file cancelled the pending analysis of other
     files). Now each URI has its own timer in _lsp_server.change_timers.
 
     _change_timer (module-level) is kept for back-compat with tests that
-    verify cancel logic. It will be removed in 0.7.0.
+    verify cancel logic.
     """
     global _change_timer
 

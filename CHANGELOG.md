@@ -47,6 +47,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **registry.py stale 0.6.0 Stage 2 comment.** "In 0.6.0 Stage 2,
   this registry will be populated... For now only #1 works" → "Both paths
   work since 0.7.5 (plugin autoload)".
+- **bump_version.py regex requires `v` prefix.** `.pre-commit-hooks.yaml`
+  uses `rev: 0.8.4` (no `v`), but the regex required `v`. Made `v` optional.
+- **Stale `senpy.spec` removed.** PyInstaller spec had Windows path
+  and was unused — release workflow uses `senpy/cli/main.py` directly.
+- **dead_code.py docstrings "in the same file".** RPY705/706 said
+  "in the same file" — actually project-wide. Fixed.
+- **RPY503/RPY504 severity qualifiers removed.** "WARNING (HINT
+  in some configs)" — no config knob. RPY504: WARNING for overrides, INFO for
+  exact duplicates.
+- **renpy_api.py version format aligned.** `"8.5.3.26051504"` → `"8.5.3"`.
+- **test_main_characterization.py stale `--exit-zero` comment.** Updated.
+- **test_lsp_asset_hover test name fixed.** `test_wide_image_emits_width`
+  → `test_wide_image_emits_height` (tests height, not width).
+- **renpy-vscode-extension.md semantic tokens over-promise.** `✅` →
+  `❌ (planned)`.
+- **server.py stale "removed in 0.7.0".** Removed deadline.
+- **`__version__.py` docstring inaccurate.** Updated to list actual
+  files bump_version.py touches vs. dynamic readers.
 
 ---
 

@@ -251,7 +251,7 @@ and translation files, not just text.
 | **Find references** | ❌ | ✅ across the whole project |
 | **Hover docs** | ❌ | ✅ 975 Ren'Py API entries + asset previews |
 | **Rename symbol** | ❌ | ✅ labels, screens, transforms, defines |
-| **Semantic tokens** | ❌ | ✅ |
+| **Semantic tokens** | ❌ | ❌ (planned) |
 | **Story graph visualization** | ❌ | ✅ Mermaid diagram of branching routes |
 | **Save / rollback safety checks** | ❌ | ✅ |
 | **Translation validator** | ❌ | ✅ `game/tl/` mismatch detection + coverage |

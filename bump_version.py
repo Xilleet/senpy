@@ -39,8 +39,10 @@ PACKAGE_JSON_PATH = os.path.join("senpy-vscode", "package.json")
 # FIRST occurrence per file. If a file has multiple version mentions, extend
 # the per-file logic below.
 HARDCODED_VERSION_FILES: list[tuple[str, str]] = [
-    # .pre-commit-hooks.yaml: "#         rev: v0.7.5   # Use the latest tag"
-    (".pre-commit-hooks.yaml", r"(rev:\s*)v\d+\.\d+\.\d+"),
+    # .pre-commit-hooks.yaml: "#         rev: 0.8.4   # Use the latest tag"
+    # made `v` optional — the file uses `rev: 0.8.4` (no `v` prefix),
+    # while README.md uses `rev: v0.8.4` (with `v`). Both should match.
+    (".pre-commit-hooks.yaml", r"(rev:\s*)v?\d+\.\d+\.\d+"),
     # .github/release-header.md: "Open%20VSX-0.7.7-success"
     (".github/release-header.md", r"(Open%20VSX-)\d+\.\d+\.\d+"),
     # docs/install.md: "# senpy 0.7.7"

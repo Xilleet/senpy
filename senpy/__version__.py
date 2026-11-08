@@ -1,10 +1,18 @@
 """Single source of truth for the Senpy version.
 
-All other locations (pyproject.toml, constants.SENPY_VERSION, server.py,
-senpy-vscode/package.json) must be synchronized with this file via
-`python bump_version.py`.
+The version is defined here as ``__version__``. ``bump_version.py`` reads
+this file and updates the following locations automatically:
+- ``senpy-vscode/package.json``
+- ``.github/release-header.md``
+- ``docs/install.md``
+- ``docs/index.md``
+- ``.pre-commit-hooks.yaml`` (rev: line)
 
-Change the version only here (or via `bump_version.py`, which will
+``pyproject.toml``, ``constants.SENPY_VERSION``, and ``server.py`` read the
+version dynamically from this file (via ``importlib.metadata`` or direct
+import) — they do NOT need bumping.
+
+Change the version only here (or via ``bump_version.py``, which will
 update it here and everywhere else automatically).
 """
 

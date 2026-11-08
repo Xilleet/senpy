@@ -293,7 +293,7 @@ class TestMarkdownSizeParam:
         p.write_bytes(b"")
         assert markdown_size_param(p) == ""
 
-    def test_wide_image_emits_width(self, tmp_path):
+    def test_wide_image_emits_height(self, tmp_path):
         p = tmp_path / "x.png"
         p.write_bytes(_make_minimal_png(800, 100))
         # 800x100 → 400x50, width is binding (w < h after clamp? no, 400 > 50,

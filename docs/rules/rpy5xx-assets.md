@@ -82,7 +82,7 @@ Senpy resolves:
 
 ### `RPY503` — Unused media asset on disk
 
-**Severity:** `WARNING` (HINT in some configs)
+**Severity:** `WARNING`
 
 Image or audio files located in the project directory are never
 referenced in any script. Inflates build distribution size.
@@ -108,7 +108,8 @@ helps you identify what to delete before building a distribution.
 
 ### `RPY504` — Duplicate image declaration
 
-**Severity:** `WARNING` (HINT in some configs)
+**Severity:** `WARNING` for overrides (second declaration shadows the first);
+`INFO` for exact duplicates (same tag + same path — likely a copy-paste error).
 
 Declaring the same image tag twice (via `image name = ...` or
 `image name:`) silently overrides the previous definition,

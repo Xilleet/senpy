@@ -200,11 +200,11 @@ def _check_rpy705(
     """RPY705: Unused screen parameters.
 
     For each screen, check each declared parameter (from signature.all_names).
-    A parameter is "used" if it appears anywhere in the same file
-    (not just in the screen body — approximation, but matches how
-    Ren'Py allows screens to reference each other's params via actions).
-    False positive risk: if a parameter name happens to match another
-    identifier in the same file. Accepted for v1 — we document it.
+    A parameter is "used" if it appears anywhere in the project (not just
+    the declaration file). The scan is project-wide via ``word_locations``,
+    which is a global index of every word in every .rpy file.
+    False positive risk: if a parameter name matches a common word used
+    elsewhere in the project. Accepted for v1 — documented here.
     """
     for name, scr_sym in analyzer.screens.items():
         if name in BUILTIN_SCREENS:
@@ -234,7 +234,7 @@ def _check_rpy706(
     analyzer: DiagnosticSinkAndSymbolsAndNoqa,
     word_locations: dict[str, set[tuple[str, int]]],
 ) -> None:
-    """RPY706: Unused transform parameters (same logic as RPY705 for transforms)."""
+    """RPY706: Unused transform parameters (project-wide, same logic as RPY705)."""
     for name, trn_sym in analyzer.transforms.items():
         if name in BUILTIN_SYMBOLS:
             continue

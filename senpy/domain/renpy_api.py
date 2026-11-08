@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Ren'Py documentation version pinned in this database
-RENPY_DOC_VERSION = "8.5.3.26051504"
+RENPY_DOC_VERSION = "8.5.3"
 
 RENPY_API_DOCS: dict[str, dict[str, str]] = {
     "Call": {

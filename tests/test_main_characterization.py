@@ -177,7 +177,8 @@ def test_main_analyzes_test_game_finds_diagnostics():
 def test_main_json_output_format():
     """`senpy test_game --output-format json` produces valid JSON.
 
-    NB: --exit-zero doesn't work for JSON output (sys.exit before exit_zero check).
+    NB: --exit-zero is not passed here (it works for JSON output since
+    the --exit-zero check is in _exit_code which all renderers call).
     We accept exit code 1 (diagnostics found) but validate JSON output structure.
     """
     repo_root = Path(__file__).parent.parent
@@ -192,7 +193,8 @@ def test_main_json_output_format():
         ]
     )
 
-    # Exit 1 is OK — JSON output path calls sys.exit before --exit-zero check
+    # Exit 1 is OK — JSON renderer calls sys.exit(_exit_code(args, error_count)),
+    # which returns 1 if there are ERROR diagnostics (expected for test_game).
     assert code in (0, 1)
     # Output should be valid JSON
     import json
