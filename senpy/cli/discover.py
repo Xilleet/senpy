@@ -186,8 +186,19 @@ def discover_files(
             False (used by `senpy inspect`), never prompts — only
             decompiles if `--decompile` or `config['decompile']` is set.
     """
-    decomp_sandbox = os.path.join(os.path.abspath(args.path), ".senpy_cache", "decompiled")
-    rpa_sandbox = os.path.join(os.path.abspath(args.path), ".senpy_cache", "rpa_extracted")
+    # Sandbox directories for decompiled .rpy and extracted RPA scripts.
+    # Honor --cache-dir (P1-5 wiring): if the user passed a custom cache
+    # dir, the sandboxes go there too — otherwise CI with a shared cache
+    # still pollutes <project>/.senpy_cache/ with sandbox artifacts (N2
+    # post-0.8.3 fix). Falls back to <project>/.senpy_cache/ when
+    # --cache-dir is not passed (default behavior, unchanged).
+    cache_dir = getattr(args, "cache_dir", None)
+    if cache_dir:
+        cache_base = os.path.abspath(cache_dir)
+    else:
+        cache_base = os.path.join(os.path.abspath(args.path), ".senpy_cache")
+    decomp_sandbox = os.path.join(cache_base, "decompiled")
+    rpa_sandbox = os.path.join(cache_base, "rpa_extracted")
     os.makedirs(decomp_sandbox, exist_ok=True)
     os.makedirs(rpa_sandbox, exist_ok=True)
 

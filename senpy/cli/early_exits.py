@@ -146,7 +146,11 @@ def _handle_early_exits(args, console, is_tsundere: bool) -> int | None:
         from senpy.core.config import load_config
 
         project_path = args.path if args.path else "."
-        config = load_config(project_path)
+        # Honor --config FILE (and SENPY_CONFIG env var) the same way
+        # SenpyAnalyzer does — without this, --show-settings bypassed
+        # the config_path wiring from P1-5 and showed the default config
+        # even when the user passed --config (N1 post-0.8.3 fix).
+        config = load_config(project_path, config_path=getattr(args, "config", None))
         console.print("[bold]Resolved Senpy configuration:[/bold]")
         console.print(f"  project_path: {project_path}")
         for key, val in sorted(config.items()):

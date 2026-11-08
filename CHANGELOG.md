@@ -27,7 +27,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No changes yet. See the [0.8.3](#083) release below for the latest._
+### Fixed
+
+- **`--show-settings` now honors `--config FILE`.** `--show-settings` in
+  `senpy/cli/early_exits.py` called `load_config(project_path)` without
+  passing `config_path` — it bypassed the `--config` wiring from P1-5
+  and showed the default config even when the user passed a custom file.
+  Now calls `load_config(project_path, config_path=args.config)`.
+
+- **`--cache-dir` now covers decompiled/rpa_extracted sandbox.**
+  `discover_files` in `senpy/cli/discover.py` hardcoded
+  `<project>/.senpy_cache/decompiled` and `<project>/.senpy_cache/rpa_extracted`
+  — the `--cache-dir` flag (wired into `CacheManager` in P1-5) did not
+  redirect these sandbox directories. CI with `--cache-dir /shared/cache`
+  still polluted `<project>/.senpy_cache/` with sandbox artifacts. Now
+  uses `args.cache_dir` (if passed) as the base for both sandboxes;
+  falls back to `<project>/.senpy_cache/` when `--cache-dir` is not
+  passed (default behavior unchanged).
 
 ---
 
