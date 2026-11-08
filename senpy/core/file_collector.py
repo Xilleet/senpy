@@ -45,6 +45,7 @@ from senpy.core.constants import (
     RE_SCREEN_START,
     RE_STRING_MATCH,
     RE_TRANSFORM,
+    is_terminator_line,
 )
 from senpy.core.models import Diagnostic, FileScope
 from senpy.core.paths import normalize_path
@@ -560,20 +561,15 @@ class FileCollector:
                 if not has_intervening_top_level:
                     # Step 3: check the last non-blank line for terminator.
                     prev_clean = _strip_comment(lines[last_nb_idx]).strip()
+                    # A line terminates the label's control flow if it matches
+                    # RE_TERMINATOR (jump/return/call/$ renpy.quit()/
+                    # renpy.full_restart()/etc.) OR ends with `:` (block-
+                    # opening statement). `pass` is deliberately NOT a
+                    # terminator — it is a no-op, control flow DOES fall
+                    # through (P2-7 bug fix).
                     if (
                         prev_clean
-                        and not prev_clean.startswith(
-                            (
-                                "return",
-                                "jump ",
-                                "jump\t",
-                                "call ",
-                                "call\t",
-                                "renpy.full_restart",
-                                "renpy.quit",
-                                "pass",
-                            )
-                        )
+                        and not is_terminator_line(prev_clean)
                         and not prev_clean.endswith(":")
                     ):
                         prev_sym = scope.labels[previous_label]

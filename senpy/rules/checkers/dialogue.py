@@ -84,6 +84,7 @@ class DialogueChecker(BaseChecker):
         noqa_map: dict[int, set[str] | None],
     ) -> None:
         """RPY308: Check if label is preceded by fallthrough (no return/jump)."""
+        from senpy.core.constants import is_terminator_line
         from senpy.text_utils import _strip_comment
 
         if not self.in_label_context or idx <= 0:
@@ -96,21 +97,12 @@ class DialogueChecker(BaseChecker):
             return
 
         prev_clean = _strip_comment(lines[prev_idx]).strip()
-        if (
-            prev_clean
-            and not prev_clean.startswith(
-                (
-                    "return",
-                    "jump ",
-                    "jump\t",
-                    "call ",
-                    "call\t",
-                    "renpy.full_restart",
-                    "renpy.quit",
-                )
-            )
-            and not prev_clean.endswith(":")
-        ):
+        # A line terminates the label's control flow if it matches
+        # RE_TERMINATOR (jump/return/call/$ renpy.quit()/renpy.full_restart()/
+        # etc.) OR ends with `:` (block-opening statement like `if`, `menu`,
+        # `python:` — control flow may or may not return, but the next label
+        # is not a direct fall-through hazard in the same way).
+        if prev_clean and not is_terminator_line(prev_clean) and not prev_clean.endswith(":"):
             self.analyzer._add_diagnostic(
                 Diagnostic(
                     file_path=file_path,

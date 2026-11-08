@@ -259,6 +259,53 @@ SYSTEM_LABELS = {
     "warningscreen",
 }
 
+# Regex matching lines that terminate a label's control flow — i.e. after
+# this line, control does NOT fall through to the next label in the file.
+# Used by:
+#   - RPY308 (dialogue.py:_check_label_fallthrough) — must fire when the
+#     previous line is NOT a terminator.
+#   - RPY309 (file_collector.py:_collect_label_body) — must set
+#     fall_through_to when the previous line is NOT a terminator.
+#   - StateChecker (state.py) — marks if-branches as terminating.
+#
+# The regex handles:
+#   - leading whitespace (^\\s*)
+#   - optional `$` prefix for one-line python statements (\\$?\\s*)
+#   - `jump` / `return` statements (with word boundary)
+#   - terminating renpy.* function calls: quit, full_restart, utter_restart,
+#     jump, jump_out_of_context
+#   - `call` statement (kept for backward compat — `call` pushes onto the
+#     return stack and the called label may `return` back, but treating
+#     `call` as a terminator is the existing behavior and changing it is
+#     out of scope for P1-1/P2-7; see ROADMAP)
+#
+# Deliberately does NOT match:
+#   - `pass` — pass is a no-op, control flow DOES fall through to the next
+#     label. Previously file_collector.py included `pass` in the terminator
+#     tuple (P2-7 bug) — that prevented fall_through_to from being set and
+#     masked RPY308 fall-through hazards.
+#   - bare `renpy.full_restart` without `()` — the word boundary (\\b)
+#     requires the call to be a function reference, not a substring of a
+#     longer identifier.
+RE_TERMINATOR = re.compile(
+    r"^\s*(?:"
+    r"jump\b|return\b|call\b|"
+    r"\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b"
+    r")"
+)
+
+
+def is_terminator_line(line: str) -> bool:
+    """Return True if `line` (a stripped Ren'Py source line) terminates a label.
+
+    Convenience wrapper around RE_TERMINATOR for callers that prefer a
+    boolean predicate over a regex match object. The line should already
+    have comments stripped (via text_utils._strip_comment) — the regex
+    does not handle inline comments.
+    """
+    return bool(RE_TERMINATOR.match(line))
+
+
 NON_DIALOGUE_STATEMENTS = {
     "$",
     "python",

@@ -100,6 +100,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ensure_cache_dir`). Updated the comment to explain the cache creation
   path: `analysis_pipeline.py:294` → `save_manifest` → `ensure_cache_dir`.
 
+- **RPY308/RPY309 terminator detection unified via `RE_TERMINATOR`.** Two
+  related bugs in label-terminator detection:
+  - **P1-1:** `$ renpy.full_restart()` and `$ renpy.quit()` were not
+    recognized as terminators. `dialogue.py` (RPY308) and
+    `file_collector.py` (RPY309) used `startswith(("renpy.full_restart",
+    "renpy.quit", ...))` which does not match the real line
+    `    $ renpy.full_restart()` (leading whitespace + `$` prefix). RPY308
+    false-fired on fall-through after `$ renpy.full_restart()`; RPY309
+    false-skipped setting `fall_through_to`.
+  - **P2-7:** `file_collector.py` included `"pass"` in the terminator
+    tuple, but `dialogue.py` did not. In Ren'Py `pass` is a no-op —
+    control flow DOES fall through. The inconsistency meant RPY309
+    failed to set `fall_through_to` when the previous label ended with
+    `pass`, masking fall-through hazards.
+  Fix: extracted `RE_TERMINATOR` regex and `is_terminator_line()` helper
+  into `senpy/core/constants.py` (based on the regex already used in
+  `state.py:155-159`). The regex handles leading whitespace, optional `$`
+  prefix, word boundaries, and the full set of terminating renpy.* calls
+  (`quit`, `full_restart`, `utter_restart`, `jump`, `jump_out_of_context`).
+  Deliberately does NOT match `pass` (no-op). Applied to RPY308
+  (`dialogue.py`) and RPY309 (`file_collector.py`); StateChecker left
+  unchanged (its regex serves RPY401 menu-branch termination, where
+  `call` semantics differ — out of scope). New test module
+  `tests/test_terminator_detection.py` (9 tests): `$ renpy.full_restart()`,
+  `$ renpy.quit()`, `$ renpy.utter_restart()`, `$ renpy.jump()`, sanity
+  that RPY308 still fires on real fall-through, `pass` as non-terminator
+  (RPY308 fires + RPY309 no-island).
+
 ---
 
 <a id="082"></a>
