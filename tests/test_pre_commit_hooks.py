@@ -27,33 +27,76 @@ Historical bug (P0-1)
 passes the gate silently. The fix is to use ``--errors-only``, which
 filters output to ERRORs and computes exit code via
 ``renderers._exit_code`` (1 if error_count > 0, unless ``--exit-zero``).
+
+Parsing note
+------------
+``.pre-commit-hooks.yaml`` is parsed WITHOUT PyYAML. The file is a flat
+``key: value`` mapping after the ``---`` document marker (no nesting,
+no quoting, no multiline scalars) — a regex extractor is sufficient
+and avoids adding ``pyyaml`` to runtime dependencies just for one
+test. The extractor only reads the fields the test guards (``id``,
+``entry``); if future hook fields need validation, extend the extractor
+or revisit whether ``pyyaml`` belongs in dev dependencies.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
-
-import yaml
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _HOOKS_FILE = _REPO_ROOT / ".pre-commit-hooks.yaml"
 
+# Match a top-level YAML key after the `---` document marker.
+# Pre-commit hook files are flat mappings (no nesting at top level),
+# so a line-anchored regex is sufficient and avoids a PyYAML dependency.
+# `key` is captured as `[A-Za-z_][A-Za-z0-9_]*` (valid YAML identifier);
+# `value` is everything after `: ` up to end-of-line (stripped).
+# Inline comments (` # ...`) are NOT stripped because the hook file does
+# not use them on the data lines we care about (id, entry, language...).
+_RE_KV = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*?)\s*$", re.MULTILINE)
+
 
 def _load_hooks_yaml() -> dict:
-    """Parse .pre-commit-hooks.yaml into a dict.
+    """Parse .pre-commit-hooks.yaml into a flat dict (top-level keys only).
+
+    The pre-commit hook spec uses a flat mapping — no nested keys, no
+    flow sequences at top level (``types: [file]`` is the only flow
+    style, and we don't guard on it). A regex extractor over the
+    post-``---`` body is sufficient and avoids a runtime dependency
+    on PyYAML.
 
     Raises AssertionError with a helpful message if the file is missing
-    or unparseable — both are project-structure regressions.
+    or empty — both are project-structure regressions.
     """
     assert _HOOKS_FILE.exists(), (
         ".pre-commit-hooks.yaml missing — this file is the published pre-commit "
         "hook that third-party Ren'Py projects consume. See Senpy docs."
     )
-    with _HOOKS_FILE.open(encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    assert isinstance(
-        data, dict
-    ), f".pre-commit-hooks.yaml must parse to a dict, got {type(data).__name__}."
+    text = _HOOKS_FILE.read_text(encoding="utf-8")
+    # Strip everything up to and including the `---` document marker so
+    # that commented-out YAML examples in the file header (which also
+    # use `key: value` syntax) don't pollute the parsed fields.
+    marker = text.find("\n---\n")
+    if marker != -1:
+        body = text[marker + len("\n---\n") :]
+    else:
+        # No document marker — parse the whole file (defensive; the
+        # current file always has the marker, but this keeps the parser
+        # robust if it's ever removed).
+        body = text
+
+    data: dict[str, str] = {}
+    for m in _RE_KV.finditer(body):
+        key, value = m.group(1), m.group(2)
+        # Last-write-wins on duplicate keys (YAML semantics for flat
+        # mappings reject duplicates, but we don't enforce that —
+        # pre-commit's own validator does).
+        data[key] = value
+    assert data, (
+        ".pre-commit-hooks.yaml parsed to an empty dict — the file is either "
+        "empty or has no top-level key:value lines after the `---` marker."
+    )
     return data
 
 
