@@ -240,8 +240,8 @@ class CacheManager:
 
         Note: filesystem-dependent data (AssetManager.valid_images,
         audio_dir_files, defined_audio_map target paths) is NOT part
-        of this hash. A separate ``environment_fingerprint`` will be
-        added in a follow-up task to cover asset
+        of this hash. A separate ``environment_fingerprint`` (see
+        ``compute_environment_fingerprint`` below) covers asset
         add/delete scenarios.
         """
         hasher = hashlib.blake2b()

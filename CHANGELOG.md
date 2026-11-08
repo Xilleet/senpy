@@ -27,7 +27,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No changes yet. See the [0.8.4](#084) release below for the latest._
+### Fixed
+
+- **ARCHITECTURE.md plugin wiring stale.** "planned for 0.8.0" →
+  "wired since 0.8.0" (gated by `enable_plugins` config).
+- **ARCHITECTURE.md Stage 3 missing tl_rpy + cross-language.**
+  Added `check_cross_language_consistency` (RPY801/802) and `strict` mode
+  to Stage 3 description.
+- **cache.py docstring stale.** "will be added in a follow-up task"
+  → "see `compute_environment_fingerprint` below" (already implemented).
+- **autoload.py docstring stale.** "does NOT wire plugin rules" →
+  "wired since 0.8.0" (gated by `enable_plugins`).
+- **plugins/__init__.py incorrect autoload claim.** Removed
+  `dispatch_inspect` from the list of autoload callers (it doesn't call
+  `autoload_plugins()`). Updated "(future) in the analyzer's lint loop"
+  → "in the analyzer's per-file lint loop (gated by `enable_plugins`)".
+- **plugins/base.py RuleContext.config misleading comment.**
+  "rule-specific config" → "severity_overrides from analyzer".
+- **registry.py stale 0.6.0 Stage 2 comment.** "In 0.6.0 Stage 2,
+  this registry will be populated... For now only #1 works" → "Both paths
+  work since 0.7.5 (plugin autoload)".
 
 ---
 
@@ -35,8 +54,8 @@ _No changes yet. See the [0.8.4](#084) release below for the latest._
 
 ## [0.8.4] — Edge-case cleanup: string-literal masking, thread safety, checker isolation
 
-A patch release closing **19 P2 tasks** (edge cases, code quality, partial
-features). All P0, P1, and P2 tasks from the post-0.8.2 audit are now
+A patch release closing **19 tasks** (edge cases, code quality, partial
+features). All tasks from the post-0.8.2 are now
 closed. **1836 tests** (up from 1816 in 0.8.3, +20). No new rules — all
 changes are correctness fixes, isolation hardening, and dead-code removal.
 Also includes 2 post-0.8.3 follow-up fixes (N1: `--show-settings` honors
@@ -46,7 +65,7 @@ Also includes 2 post-0.8.3 follow-up fixes (N1: `--show-settings` honors
 
 - **`--show-settings` now honors `--config FILE`.** `--show-settings` in
   `senpy/cli/early_exits.py` called `load_config(project_path)` without
-  passing `config_path` — it bypassed the `--config` wiring from P1-5
+  passing `config_path` — it bypassed the `--config` wiring
   and showed the default config even when the user passed a custom file.
   Now calls `load_config(project_path, config_path=args.config)`.
 

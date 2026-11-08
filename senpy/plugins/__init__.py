@@ -18,11 +18,11 @@ Architecture:
     └── autoload.py    — idempotent one-shot loader for CLI entry points
 
 Plugin autoloading (since 0.7.5):
-    CLI entry points (`senpy.cli.main:main()`, `senpy.cli.rule_dispatch:dispatch_rule`,
-    `senpy.cli.inspect_dispatch:dispatch_inspect`) call `autoload_plugins()` once
-    per process. This makes installed-and-trusted plugin rules visible in
-    `senpy rule list/show` output, in `senpy inspect` symbols, and (future) in
-    the analyzer's lint loop.
+    CLI entry points (`senpy.cli.main:main()`, `senpy.cli.rule_dispatch:dispatch_rule`)
+    call `autoload_plugins()` once per process. This makes installed-and-trusted
+    plugin rules visible in `senpy rule list/show` output, in `senpy inspect`
+    symbols, and in the analyzer's per-file lint loop (gated by `enable_plugins`
+    config, default `False`).
 
 Plugin contract (STABLE — see senpy.api for the full public contract):
     1. Subclass Rule

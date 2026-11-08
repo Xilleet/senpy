@@ -198,9 +198,13 @@ verified via `@runtime_checkable` in `tests/test_protocols_runtime.py`.
    (RPY503), unused declarations (RPY701/702/703).
 2. Translation file analysis: for each `.rpy` in `game/tl/`, validate
    old/new pairs for variable interpolation (RPY601), formatting tags
-   (RPY602), and empty strings (RPY603).
+   (RPY602), and empty strings (RPY603). Also runs
+   `check_cross_language_consistency` which detects duplicate translation
+   strings across languages (RPY801) and inconsistent dialogue strings
+   between original and translated files (RPY802).
 3. Severity overrides: apply user-configured severity changes from
-   `senpy.toml [tool.senpy.severity]`.
+   `senpy.toml [tool.senpy.severity]`. If `strict=True`, promote all
+   non-overridden diagnostics to ERROR.
 4. Cache save: write `CacheManifest` with global symbol hash + per-file
    entries (diagnostics, scope, used assets, content hash).
 
@@ -354,8 +358,10 @@ my_rule = "my_senpy_plugin.rules:MyRule"
    `_REGISTERED_LINT_RULES`.
 
 After autoload, plugin rules are VISIBLE in `senpy rule list/show` output.
-Wiring plugin rules into the analyzer's per-file check loop is
-tracked as a separate task (planned for 0.8.0, after the analyzer split).
+Plugin rules are wired into the analyzer's per-file check loop since 0.8.0
+(gated by `enable_plugins` config, default `False`). When enabled, each
+registered Rule subclass is instantiated and its `check(ctx)` method is
+called per-file in `_run_plugin_rules` (see `analysis_pipeline.py`).
 
 ### Rule Base Class
 

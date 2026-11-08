@@ -124,7 +124,7 @@ class RuleContext:
 
     # Optional fields (may be None for simple contexts)
     analyzer: Any = None  # SenpyAnalyzer instance, if available
-    config: dict[str, Any] | None = None  # rule-specific config
+    config: dict[str, Any] | None = None  # severity_overrides from analyzer
 
 
 # =============================================================================

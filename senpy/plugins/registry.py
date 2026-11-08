@@ -16,11 +16,11 @@ Usage:
 Rules are stored in module-level registry. They can be retrieved via
 get_registered_lint_rules() for instantiation by SenpyAnalyzer.
 
-In 0.6.0 Stage 2 , this registry will be populated from:
+The registry is populated from:
 1. Built-in rules (declared with @register_rule in senpy source)
 2. External plugins (discovered via [project.entry-points."senpy.plugins"])
 
-For now (Stage 1), only #1 works — @register_rule in code.
+Both paths work since 0.7.5 (plugin autoload).
 """
 
 from __future__ import annotations

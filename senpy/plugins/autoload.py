@@ -20,14 +20,13 @@ Design:
     decides: trusted plugins load; untrusted plugins in non-interactive (CI)
     or LSP mode are skipped silently; in interactive CLI the user is prompted.
 
-What this does NOT do:
-    It registers plugin rules in `_REGISTERED_LINT_RULES`, which makes them
-    VISIBLE in `senpy rule list/show` and INSPECT output. It does NOT wire
-    plugin rules into the analyzer's per-file check loop — built-in checkers
-    (BaseChecker) and plugin rules (Rule.check(ctx)) currently run on different
-    dispatch paths. Connecting them is a separate task (analyzer plugin
-    integration). For now, the contract is: "if the plugin is installed and
-    trusted, its metadata is visible; its check() may not yet run during lint."
+What this does:
+    Registers plugin rules in `_REGISTERED_LINT_RULES`, which makes them
+    VISIBLE in `senpy rule list/show` and INSPECT output. Plugin rules
+    are also wired into the analyzer's per-file check loop since 0.8.0
+    (gated by `enable_plugins` config, default `False`). When enabled,
+    `_run_plugin_rules` in `analysis_pipeline.py` instantiates each
+    registered Rule and calls its `check(ctx)` method per-file.
 """
 
 from __future__ import annotations
