@@ -41,6 +41,29 @@ Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github
 ---
 ## What's New
 
+### 0.8.3 — Hotfix: broken contracts, dead CLI flags, LSP snapshot consistency
+
+A patch release closing **15 bugs** across (broken contracts, real user-impact bugs, edge cases). **1816 tests** (up from 1777 in 0.8.2, +39). No new rules — all changes are correctness fixes and CLI contract enforcement.
+
+| Area | What Was Broken | What Changed |
+|---|---|---|
+| **Pre-commit hook** | `entry: senpy --check` only failed on fixable issues — unfixable ERRORs passed silently. | Switched to `--errors-only` (fails on any ERROR). |
+| **`--strict` / `--fail-on-error`** | Documented but absent from `args.py` — `argparse exit 2`. | Both flags declared and wired; `--strict` promotes all diagnostics to ERROR; `--fail-on-error` + `--exit-zero` rejected. |
+| **`--cache-dir` / `--config`** | Parsed but never reached `CacheManager` / `load_config`. | Wired through `SenpyAnalyzer` constructor; `SENPY_CONFIG` env var supported. |
+| **`--statistics` / `--respect-gitignore`** | No-ops (summary table always printed; file discovery uses `IGNORED_DIRS`). | Removed to make the CLI contract honest. |
+| **Production logging** | `setup_logging()` never called — WARNING+ records hit `lastResort` on stderr, corrupting LSP JSON-RPC transport. | Wired into `cli.runner.main()` and `lsp.server.start_lsp()`. |
+| **RPY308/RPY309 terminators** | `$ renpy.full_restart()` / `$ renpy.quit()` not recognized (leading whitespace + `$`); `pass` inconsistently treated as terminator. | Unified `RE_TERMINATOR` regex in `constants.py`; `pass` is not a terminator. |
+| **RPY502 GIF/BMP** | Hardcoded `(".png", ".webp", ".jpg", ".jpeg")` missed `.gif`/`.bmp` — hover worked, but `show` triggered RPY502. | Replaced with `IMAGE_EXTENSIONS`. |
+| **LSP `prepare_rename`** | Returned `None` for variables/transforms/screens — VS Code F2 did nothing. | Returns Range for all rename-supported symbol types. |
+| **LSP `references`** | Read live analyzer state — after `did_change`, labels from other files disappeared. | Switched to `_symbol_snapshot` (consistent with `rename`/`prepare_rename`). |
+| **LSP `document_symbols`** | Mutated `analyzer.file_scopes` under read lock (violated `_RWLock` contract). | Returns `[]` if scope missing; no mutation. |
+| **Plugin isolation** | `check()` returning `[None]` or `["string"]` crashed the analyzer. | `isinstance(diag, Diagnostic)` validation; bad elements skipped with WARNING. |
+| **`.senpy-ignore` filename** | `SENPY_OWN_FILES` had `.senpyignore` (no hyphen) — real `.senpy-ignore` leaked into `senpy inspect` output. | Added `.senpy-ignore`; kept `.senpyignore` for backward compat. |
+
+Also: RPY109 fixture was vacuous (single-file, but RPY109 only fires cross-file) — replaced with a real cross-file fixture; `--no-cache` parity test added (catches cache-write bugs); vacuous `or True` assertion removed from cache characterization test.
+
+---
+
 ### 0.8.2 — False-positive cleanup + CRLF/Windows fix
 
 A patch release that closes **9 false-positive classes** discovered by running Senpy 0.8.1 on a 5-project corpus of real open-source Ren'Py games (~174k LOC): DDLC, LearnToCodeRPG, cross_channel localization, DDLCModTemplate, renpy-template. **1777 tests** (up from 1646 in 0.8.1). No new rules — all changes are correctness fixes. Corpus verification: 8968 → 8485 diagnostics (-483 false positives, -5.4%).
@@ -546,7 +569,7 @@ Senpy ships a [pre-commit](https://pre-commit.com) hook that runs
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.8.2   # use the latest tag
+    rev: v0.8.3   # use the latest tag
     hooks:
       - id: senpy
 ```

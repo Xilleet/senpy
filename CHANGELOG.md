@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.8.x)**: [Unreleased](#unreleased) | [0.8.2](#082) | [0.8.1](#081) | [0.8.0](#080)
+- **Current (0.8.x)**: [Unreleased](#unreleased) | [0.8.3](#083) | [0.8.2](#082) | [0.8.1](#081) | [0.8.0](#080)
 
 - **0.7.x**: [0.7.7](#077) | [0.7.6](#076) | [0.7.5](#075) | [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
 
@@ -26,6 +26,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <a id="unreleased"></a>
 
 ## [Unreleased]
+
+_No changes yet. See the [0.8.3](#083) release below for the latest._
+
+---
+
+<a id="083"></a>
+
+## [0.8.3] — Hotfix: broken contracts, dead CLI flags, LSP snapshot consistency
+
+A patch release closing **15 bugs** across P0 (broken contracts), P1
+(real user-impact bugs), and P2 (edge cases). All P0 and P1 tasks from
+the post-0.8.2 audit are now closed. **1816 tests** (up from 1777 in
+0.8.2, +39). No new rules — all changes are correctness fixes and CLI
+contract enforcement. The release focuses on three themes: (1) CLI
+flags that were documented but silently did nothing, (2) LSP handlers
+that read stale or inconsistent state, (3) analyzer crashes from
+unchecked plugin output.
 
 ### Fixed
 
