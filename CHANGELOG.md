@@ -128,6 +128,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that RPY308 still fires on real fall-through, `pass` as non-terminator
   (RPY308 fires + RPY309 no-island).
 
+- **RPY502 false positive on GIF/BMP images fixed.**
+  `AssetManager._index_valid_images` in `senpy/domain/assets.py` hardcoded
+  the image extension tuple as `(".png", ".webp", ".jpg", ".jpeg")` —
+  missing `.gif` and `.bmp`. Meanwhile, `IMAGE_EXTENSIONS` in
+  `senpy/core/constants.py` includes all six. The split caused
+  `image_name_to_path` (LSP hover) to register GIF/BMP images correctly,
+  but `valid_images` (RPY502 validation) to miss them — so `show foo bar`
+  triggered RPY502 "unknown image" when `images/foo bar.gif` existed.
+  Replaced the hardcoded tuple with `IMAGE_EXTENSIONS`, keeping
+  `valid_images` consistent with `image_name_to_path`. New test module
+  `tests/test_rpy502_gif_bmp.py` (5 tests): GIF/BMP in `images/` does
+  not trigger RPY502, GIF/BMP appear in `valid_images`, sanity that
+  RPY502 still fires on genuinely missing images.
+
 ---
 
 <a id="082"></a>

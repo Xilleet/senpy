@@ -239,12 +239,21 @@ class AssetManager:
         Strict parsing applies only to the official images/ standard:
         `images/foo/bar.png` → "foo bar" + "bar". Other assets are
         registered as-is by `_index_disk_files`.
+
+        The extension set is `IMAGE_EXTENSIONS` from `senpy/core/constants.py`
+        — the same set used by `_register_image_for_hover` for
+        `image_name_to_path`. Keeping the two in sync ensures that if an
+        image is hoverable, it is also recognized as valid by RPY502
+        (and vice versa). Previously this method hardcoded
+        `(".png", ".webp", ".jpg", ".jpeg")` which missed `.gif` and
+        `.bmp` — causing RPY502 false positives on GIF/BMP images that
+        hover correctly resolved.
         """
         for asset in self.known_assets:
             base, ext = os.path.splitext(asset)
 
             # Keep strict parsing only for the official images/ standard
-            if ext.lower() in (".png", ".webp", ".jpg", ".jpeg"):
+            if ext.lower() in IMAGE_EXTENSIONS:
                 clean_name = base.replace("\\", "/").lower()
                 clean_name = clean_name.removeprefix("game/")
                 if clean_name.startswith("images/"):
