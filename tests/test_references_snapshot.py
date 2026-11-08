@@ -139,7 +139,12 @@ class TestReferencesUsesSnapshotNotLiveAnalyzer:
 
         # Now call references on `target_label` from file_b.rpy.
         # Cursor on the label declaration line (line 0: "label target_label:").
-        uri_b = f"file://{file_b}"
+        # Use _path_to_uri (not f"file://{file_b}") — the server's helper
+        # produces the canonical file URI (file:///C:/... on Windows,
+        # file:///tmp/... on POSIX). Hardcoding f"file://{path}" breaks on
+        # Windows because it produces file://C:\... (no third slash,
+        # backslashes) which does not match the URIs the server returns.
+        uri_b = server_mod._path_to_uri(str(file_b))
         script_b = file_b.read_text(encoding="utf-8")
         doc = MockDocument(uri_b, script_b)
         mock_ls = MagicMock()
@@ -160,7 +165,8 @@ class TestReferencesUsesSnapshotNotLiveAnalyzer:
         )
 
         # Verify the jump site in file_a.rpy is in the results.
-        file_a_uri = f"file://{file_a}"
+        # Use _path_to_uri for the same canonical-URI reason.
+        file_a_uri = server_mod._path_to_uri(str(file_a))
         uris_in_result = {loc.uri for loc in result}
         assert file_a_uri in uris_in_result, (
             f"references must include file_a.rpy (which jumps to target_label). "
@@ -177,7 +183,7 @@ class TestReferencesUsesSnapshotNotLiveAnalyzer:
         project_root, file_a, file_b = _setup_multi_file_project(tmp_path)
         _initialize_lsp(project_root)
 
-        uri_b = f"file://{file_b}"
+        uri_b = server_mod._path_to_uri(str(file_b))
         script_b = file_b.read_text(encoding="utf-8")
         doc = MockDocument(uri_b, script_b)
         mock_ls = MagicMock()
@@ -190,7 +196,7 @@ class TestReferencesUsesSnapshotNotLiveAnalyzer:
         assert result, "references must return locations for target_label."
 
         # The declaration (file_b.rpy, line 0) must be in the results.
-        file_b_uri = f"file://{file_b}"
+        file_b_uri = server_mod._path_to_uri(str(file_b))
         decl_locations = [
             loc for loc in result if loc.uri == file_b_uri and loc.range.start.line == 0
         ]
@@ -208,7 +214,7 @@ class TestReferencesUsesSnapshotNotLiveAnalyzer:
         project_root, file_a, file_b = _setup_multi_file_project(tmp_path)
         _initialize_lsp(project_root)
 
-        uri_b = f"file://{file_b}"
+        uri_b = server_mod._path_to_uri(str(file_b))
         script_b = file_b.read_text(encoding="utf-8")
         doc = MockDocument(uri_b, script_b)
         mock_ls = MagicMock()
@@ -219,7 +225,7 @@ class TestReferencesUsesSnapshotNotLiveAnalyzer:
         result = references(mock_ls, params)
         assert result, "references must return jump site locations."
 
-        file_b_uri = f"file://{file_b}"
+        file_b_uri = server_mod._path_to_uri(str(file_b))
         decl_locations = [
             loc for loc in result if loc.uri == file_b_uri and loc.range.start.line == 0
         ]

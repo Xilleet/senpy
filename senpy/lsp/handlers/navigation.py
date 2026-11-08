@@ -835,10 +835,19 @@ def document_symbols(
     file_path = server_mod._uri_to_path(uri)
     norm_path = server_mod._normalize_path(file_path)  # P0-6: unified normalization
 
+    # Read the scope from the analyzer's file_scopes. If the scope is
+    # missing, return [] — do NOT call _collect_symbols to populate it
+    # on the fly. _collect_symbols mutates analyzer.file_scopes and
+    # analyzer._stage1_lines, but document_symbols is registered with
+    # @_with_analysis_lock (read lock) — readers must not write (P1-8).
+    #
+    # The empty-scope case happens during the did_open → full-analysis
+    # race: did_open schedules run_full_project_diagnostics with a 300ms
+    # debounce. If document_symbols arrives in those 300ms, file_scopes
+    # is not yet populated. Returning [] is safe — the scheduled full
+    # analysis will populate the scope, and VS Code re-requests the
+    # outline on did_change / did_save, so the user sees it within ~1s.
     scope = server_mod._active_analyzer.file_scopes.get(norm_path)
-    if not scope:
-        server_mod._active_analyzer._collect_symbols(file_path)
-        scope = server_mod._active_analyzer.file_scopes.get(norm_path)
     if not scope:
         return []
 

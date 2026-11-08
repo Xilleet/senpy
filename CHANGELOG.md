@@ -244,6 +244,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   jump sites after simulated `analyze_file_only` (the bug scenario),
   declaration included/excluded per `context.include_declaration`.
 
+- **LSP `document_symbols` no longer mutates analyzer under read lock.**
+  `document_symbols` in `senpy/lsp/handlers/navigation.py` (lines 838-841)
+  had a fallback: if `file_scopes[norm_path]` was missing, it called
+  `analyzer._collect_symbols(file_path)` to populate it on the fly. But
+  `document_symbols` is registered with `@_with_analysis_lock` (read
+  lock), and `_collect_symbols` mutates `analyzer.file_scopes` and
+  `analyzer._stage1_lines` — violating the `_RWLock` contract (readers
+  must not write). The race scenario: `did_open` schedules
+  `run_full_project_diagnostics` with a 300ms debounce; if
+  `document_symbols` arrived in those 300ms, the handler mutated shared
+  state under a read lock. Removed the fallback: if the scope is missing,
+  return `[]`. The scheduled full analysis will populate the scope; VS
+  Code re-requests the outline on `did_change`/`did_save`, so the user
+  sees it within ~1s. New test module
+  `tests/test_document_symbols_no_mutation.py` (3 tests): returns `[]`
+  when scope missing (no `_collect_symbols` call), returns symbols when
+  scope present (happy path), does not populate `file_scopes` (no
+  side-effect mutation).
+
 ---
 
 <a id="082"></a>
