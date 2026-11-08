@@ -38,13 +38,14 @@ class DialogueChecker(BaseChecker):
         self,
         file_path: str,
         idx: int,
+        next_idx: int,
         raw_line: str,
         clean_line: str,
         scope_stack: ScopeStack,
         noqa_map: dict[int, set[str] | None],
         lines: list[str],
         branch_uninitialized: dict | None = None,
-    ) -> tuple[str, bool]:
+    ) -> tuple[int, bool]:
         stripped = clean_line.strip()
         line_indent = len(raw_line) - len(raw_line.lstrip(" "))
         is_in_screen = scope_stack.current_screen_name() is not None
@@ -72,7 +73,7 @@ class DialogueChecker(BaseChecker):
         # RPY305: Unescaped quotes in dialogue
         self._check_unescaped_quotes(file_path, idx, stripped, is_in_screen, noqa_map)
 
-        return raw_line, False
+        return next_idx, False
 
     def _check_label_fallthrough(
         self,

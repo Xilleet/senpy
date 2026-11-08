@@ -176,7 +176,7 @@ class TestCheckLineRefactored:
         analyzer = MockAnalyzer()
         analyzer.valid_images = {"bg"}
         checker = _make_checker(analyzer)
-        checker.check_line("test.rpy", 0, "show ghost", "show ghost", _make_scope(), {}, [])
+        checker.check_line("test.rpy", 0, 1, "show ghost", "show ghost", _make_scope(), {}, [])
         assert any(d.code == "RPY502" for d in analyzer.diagnostics)
 
     def test_play_invalid_channel(self):
@@ -184,7 +184,7 @@ class TestCheckLineRefactored:
         analyzer = MockAnalyzer()
         checker = _make_checker(analyzer)
         checker.check_line(
-            "test.rpy", 0, 'play bad "song.ogg"', 'play bad "song.ogg"', _make_scope(), {}, []
+            "test.rpy", 0, 1, 'play bad "song.ogg"', 'play bad "song.ogg"', _make_scope(), {}, []
         )
         assert any(d.code == "RPY505" for d in analyzer.diagnostics)
 
@@ -192,5 +192,7 @@ class TestCheckLineRefactored:
         """check_line на обычной строке — нет diagnostic."""
         analyzer = MockAnalyzer()
         checker = _make_checker(analyzer)
-        checker.check_line("test.rpy", 0, '"Hello world"', '"Hello world"', _make_scope(), {}, [])
+        checker.check_line(
+            "test.rpy", 0, 1, '"Hello world"', '"Hello world"', _make_scope(), {}, []
+        )
         assert len(analyzer.diagnostics) == 0

@@ -214,7 +214,27 @@ class AnalysisPipeline:
                 # produce an empty `senpy_defaults.rpy`).
                 missing_defaults_start = dict(a.missing_defaults)
 
-                self._analyze_file(file_path)
+                # Wrap _analyze_file in try/except so a bug in a
+                # built-in checker (IndexError, KeyError, AttributeError)
+                # does not abort the entire analysis run. Plugin rules
+                # already have isolation (P1-9); built-in checkers did not.
+                # On exception: log WARNING, emit a synthesized RPY000
+                # diagnostic, and continue with the next file.
+                try:
+                    self._analyze_file(file_path)
+                except Exception as exc:  # noqa: BLE001 — isolation
+                    _logger.exception("Internal error analyzing %s: %s", file_path, exc)
+                    a._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=1,
+                            line_content="",
+                            code="RPY000",
+                            message=(f"Senpy internal error: {exc!r}. " f"Please report this bug."),
+                            severity="ERROR",
+                        ),
+                        {},
+                    )
 
                 new_diags = a.diagnostics[diag_start:]
                 lines_added = a.total_lines - lines_start
@@ -327,8 +347,8 @@ class AnalysisPipeline:
             line_indent = len(raw_line) - len(raw_line.lstrip(" "))
             state.scope_stack.pop_to_indent(line_indent)
 
-            raw_line, modified = state.fmt.check_line(
-                file_path, idx, raw_line, clean, state.scope_stack, noqa_map, lines
+            _next, modified = state.fmt.check_line(
+                file_path, idx, next_idx, raw_line, clean, state.scope_stack, noqa_map, lines
             )
             if modified:
                 state.file_modified = True
@@ -406,13 +426,18 @@ class AnalysisPipeline:
         for one logical line."""
 
         # 2. ScreenChecker (RPY203, RPY204, RPY206)
-        state.screen.check_line(file_path, idx, raw_line, clean, state.scope_stack, noqa_map, lines)
+        state.screen.check_line(
+            file_path, idx, next_idx, raw_line, clean, state.scope_stack, noqa_map, lines
+        )
         # 3. AssetChecker (RPY501, RPY502)
-        state.asset.check_line(file_path, idx, raw_line, clean, state.scope_stack, noqa_map, lines)
+        state.asset.check_line(
+            file_path, idx, next_idx, raw_line, clean, state.scope_stack, noqa_map, lines
+        )
         # 4. DialogueChecker (RPY302, RPY305, RPY306, RPY308)
         state.dialogue.check_line(
             file_path,
             idx,
+            next_idx,
             raw_line,
             clean,
             state.scope_stack,

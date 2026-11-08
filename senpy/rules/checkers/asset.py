@@ -777,12 +777,13 @@ class AssetChecker(BaseChecker):
         self,
         file_path: str,
         idx: int,
+        next_idx: int,
         raw_line: str,
         clean_line: str,
         scope_stack: ScopeStack,
         noqa_map: dict[int, set[str] | None],
         lines: list[str],
-    ) -> tuple[str, bool]:
+    ) -> tuple[int, bool]:
         """Dispatcher: checks show/scene and audio via _check_* methods.
 
         Phase 4 Step 1 (0.5.7): split from 351 lines into 2 methods + dispatcher.
@@ -795,4 +796,4 @@ class AssetChecker(BaseChecker):
         # RPY501/RPY505: play / queue / stop
         self._check_audio_statement(file_path, idx, raw_line, stripped, noqa_map)
 
-        return raw_line, False
+        return next_idx, False

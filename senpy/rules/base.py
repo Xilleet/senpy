@@ -56,11 +56,21 @@ class BaseChecker:
         self,
         file_path: str,
         idx: int,
+        next_idx: int,
         raw_line: str,
         clean_line: str,
         scope_stack: ScopeStack,
         noqa_map: dict[int, set[str] | None],
         lines: list[str],
-    ) -> tuple[str, bool]:
-        """Returns (updated_line, whether_file_was_modified)."""
-        return raw_line, False
+    ) -> tuple[int, bool]:
+        """Returns (next_idx, whether_file_was_modified).
+
+        Signature unified with StateChecker.check_line. The
+        ``next_idx`` parameter was added to match StateChecker (which
+        needs it for multi-line statement handling). BaseChecker ignores
+        it and returns the passed-in next_idx unchanged. The return type
+        is ``tuple[int, bool]`` (was ``tuple[str, bool]`` — the first
+        element was never used by callers, they used next_idx from
+        StateChecker).
+        """
+        return next_idx, False

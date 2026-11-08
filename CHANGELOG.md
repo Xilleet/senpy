@@ -139,6 +139,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (hypothetical). Replaced with `re.match(r"--lsp(?:=|$)", arg)` that
   matches `--lsp` as a standalone argument or with `=value`.
 
+- **`SecurityError(ValueError)` now emits DeprecationWarning.** The
+  `ValueError` inheritance violates the design principle in
+  `exceptions.py` ("Do not inherit from ValueError/TypeError"). Kept for
+  backward compat, but `__init__` now emits `DeprecationWarning` — will
+  be removed in 1.0. Callers should catch `SecurityError` explicitly.
+
+- **Built-in checker bugs no longer abort the entire analysis run.**
+  `_analyze_file` in `analysis_pipeline.py` had no `try/except` — an
+  `IndexError`/`KeyError`/`AttributeError` in any built-in checker
+  (screen, dialogue, state, etc.) killed the analysis of all remaining
+  files. Plugin rules already had isolation (P1-9); built-in checkers
+  did not. Added `try/except Exception` around `_analyze_file` call:
+  on exception, logs at ERROR level, emits a synthesized `RPY000`
+  diagnostic ("Senpy internal error"), and continues with the next file.
+
+- **`BaseChecker.check_line` signature unified with `StateChecker.check_line`.**
+  `BaseChecker.check_line` took 7 args and returned `tuple[str, bool]`;
+  `StateChecker.check_line` took 8 (added `next_idx`) and returned
+  `tuple[int, bool]`. Liskov violation — the pipeline knew which
+  subclass it was calling and passed different arg counts. Unified:
+  all checkers now take 8 args (including `next_idx`) and return
+  `tuple[int, bool]`. Updated all 5 checker subclasses
+  (Formatting, Screen, Asset, Dialogue, State) and the pipeline call
+  sites. Updated `test_asset_checker.py` call sites.
+
+- **`--check`/`--diff` limitations documented.** These dry-run modes
+  work only with the default text output format. When `--output-format`
+  is `sarif`/`json`/`junit`/`github`/`rdjson`/`gitlab`, the renderer
+  calls `sys.exit()` before `--check`/`--diff` handlers run. Added a
+  section to `docs/cli-reference.md` explaining this is by design.
+
+- **RPA index activation ordering regression test added.** The `.rpa`
+  check in `assets.py` must run BEFORE the `NON_ASSET_EXTENSIONS` skip
+  — otherwise `_read_rpa_index` is dead code. Added
+  `tests/test_rpa_index_regression.py` that creates a minimal `.rpa`
+  archive and verifies the file itself is skipped from `known_assets`
+  (correct) while the code path (check before skip) is exercised.
+
 ---
 
 <a id="083"></a>

@@ -144,7 +144,25 @@ class SecurityError(SenpyError, ValueError):
     Note: inherits from ValueError for backward compat — old callers that
     catch ValueError (e.g. from before) continue to work.
     New callers should catch SecurityError explicitly.
+
+    The ValueError inheritance is deprecated and will be removed in 1.0.
+    It violates the design principle stated at the top of this file
+    ("Do not inherit from ValueError/TypeError"). A grep of the codebase
+    shows no production callers catch ValueError to reach SecurityError —
+    the inheritance is vestigial. Kept for now to avoid breaking external
+    callers, but a DeprecationWarning is emitted on instantiation.
     """
+
+    def __init__(self, *args, **kwargs):
+        import warnings
+
+        warnings.warn(
+            "SecurityError inherits from ValueError for backward compat, "
+            "but this will be removed in 1.0. Catch SecurityError explicitly.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(*args, **kwargs)
 
 
 class DecompilationError(SenpyError):

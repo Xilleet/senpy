@@ -257,6 +257,18 @@ senpy /path/to/game --exit-zero
 The summary table is always printed in text output mode (no `--statistics`
 flag needed — it was removed in P1-5 as a no-op).
 
+### `--check` and `--diff` limitations
+
+`--check` and `--diff` are dry-run modes that work **only with the default
+text output format**. When `--output-format` is set to `sarif`, `json`,
+`junit`, `github`, `rdjson`, or `gitlab`, the renderer calls `sys.exit()`
+before `--check`/`--diff` handlers run — the machine-readable output is
+emitted, but the "Would fix N issues" / unified diff is not printed.
+
+This is by design: CI scripts that parse SARIF/JSON expect the output to be
+pure machine-readable format, not mixed with human-readable dry-run messages.
+For dry-run preview, use `--output-format text` (the default).
+
 ### Explicit fail-on-error (CI contract)
 
 ```bash

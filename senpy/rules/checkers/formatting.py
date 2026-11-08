@@ -15,12 +15,13 @@ class FormattingChecker(BaseChecker):
         self,
         file_path: str,
         idx: int,
+        next_idx: int,
         raw_line: str,
         clean_line: str,
         scope_stack: ScopeStack,
         noqa_map: dict[int, set[str] | None],
         lines: list[str],
-    ) -> tuple[str, bool]:
+    ) -> tuple[int, bool]:
         file_modified = False
         new_raw_line = raw_line
         stripped = clean_line.strip()
@@ -104,4 +105,4 @@ class FormattingChecker(BaseChecker):
                     noqa_map,
                 )
 
-        return new_raw_line, file_modified
+        return next_idx, file_modified

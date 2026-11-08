@@ -26,12 +26,13 @@ class ScreenChecker(BaseChecker):
         self,
         file_path: str,
         idx: int,
+        next_idx: int,
         raw_line: str,
         clean_line: str,
         scope_stack: ScopeStack,
         noqa_map: dict[int, set[str] | None],
         lines: list[str],
-    ) -> tuple[str, bool]:
+    ) -> tuple[int, bool]:
         stripped = clean_line.strip()
         is_in_screen = scope_stack.current_screen_name() is not None
 
@@ -52,7 +53,7 @@ class ScreenChecker(BaseChecker):
 
         self._check_screen_call_targets(file_path, idx, raw_line, stripped, noqa_map)
 
-        return raw_line, False
+        return next_idx, False
 
     def _check_screen_variable_actions(
         self,
