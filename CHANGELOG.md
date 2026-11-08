@@ -45,6 +45,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   falls back to `<project>/.senpy_cache/` when `--cache-dir` is not
   passed (default behavior unchanged).
 
+- **RPY701 `is_character` heuristic no longer uses loose substring match.**
+  `file_collector.py:353` used `"Character" in clean or
+  "DynamicCharacter" in clean` — a substring check that matched
+  `NotCharacterRelated()` (function name containing "Character" as a
+  substring) and string literals like `"Some Character string"`. The
+  result: RPY701 (unused define) skipped these false-positive
+  "characters", producing false negatives (genuinely unused constants
+  were not reported). Replaced with `_RE_CHARACTER_CALL` regex
+  (`\b(?:Character|DynamicCharacter)\s*\(`) which requires a word
+  boundary + optional whitespace + `(` — the actual Ren'Py
+  character-definition call pattern. New test module
+  `tests/test_is_character_heuristic.py` (4 tests): real Character
+  call → is_character=True, DynamicCharacter → True, NotCharacterRelated
+  → False (substring false positive eliminated), string literal with
+  "Character" → False.
+
 ---
 
 <a id="083"></a>

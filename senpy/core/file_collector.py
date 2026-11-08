@@ -67,6 +67,15 @@ if TYPE_CHECKING:
 # Regex for extracting string literals from expressions (e.g. image definitions)
 _RE_STRING_LITERAL = re.compile(r"""(["'])(?P<value>(?:\\.|(?!\1).)*)\1""")
 
+# Regex for detecting Character/DynamicCharacter function calls.
+# Used by is_character heuristic (RPY701 unused-define skip).
+# Requires word boundary + optional whitespace + `(` to distinguish
+# `Character("Alice")` (real character) from `NotCharacterRelated()`
+# (substring false positive) or `"Some Character string"` (string literal).
+# The `(` may have whitespace between the name and the opening paren
+# (e.g. `Character ("Alice")` is valid Ren'Py).
+_RE_CHARACTER_CALL = re.compile(r"\b(?:Character|DynamicCharacter)\s*\(")
+
 
 def _extract_string_literal(expr: str) -> str | None:
     """Return the first single- or double-quoted string literal in *expr*."""
@@ -350,7 +359,18 @@ class FileCollector:
 
         inferred_t = infer_expr_type(val_str, known_vars=self.analyzer.variables)
         is_const = "." not in clean.split("=")[0]
-        is_char = "Character" in clean or "DynamicCharacter" in clean
+        # is_character: True only for actual Character/DynamicCharacter CALLS
+        # (e.g. `define x = Character("Alice")`). Previously this was a loose
+        # substring check `"Character" in clean` which matched:
+        #   - function names containing "Character" as a substring
+        #     (e.g. `NotCharacterRelated()`) → false is_character=True →
+        #     RPY701 false negative (unused define skipped).
+        #   - string literals containing "Character" (e.g. `"Some Character
+        #     string"`) → same false positive.
+        # The regex requires Character/DynamicCharacter to appear as a
+        # function call (word boundary + optional whitespace + `(`), which
+        # is the actual Ren'Py character-definition pattern (P2-6 fix).
+        is_char = bool(_RE_CHARACTER_CALL.search(clean))
         var_sym = VariableSymbol(
             name=var,
             file_path=file_path,
