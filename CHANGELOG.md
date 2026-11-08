@@ -209,6 +209,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file + `SENPY_CONFIG` env var works, `--statistics` and
   `--respect-gitignore` rejected with exit 2, attrs absent after parse.
 
+- **LSP `prepare_rename` now returns Range for variables/transforms/screens.**
+  `prepare_rename` in `senpy/lsp/handlers/navigation.py` returned a Range
+  only for labels — for variables, transforms, and screens it returned
+  `None`. But `rename` already supported all four symbol types (labels
+  via `_rename_label`, variables/transforms/screens via
+  `_rename_symbol_via_text_search`). VS Code does not start an F2 rename
+  session if `prepareRename` returns `None` — the user pressed F2 on a
+  variable, nothing happened, and they concluded "renaming doesn't work
+  for variables". The fix broadens the eligibility check: if the word
+  under the cursor is in any of the four rename-supported snapshot sets
+  (labels, variables, transforms, screens), return its Range. The Range
+  calculation (UTF-16 positions for VS Code) is unchanged. Words that
+  are not symbols (strings, comments, keywords) still return `None` —
+  F2 does not start on arbitrary text. New test module
+  `tests/test_prepare_rename_non_label.py` (5 tests): variable,
+  `define` constant, `transform` declaration, non-symbol word → None,
+  label still works (regression guard).
+
 ---
 
 <a id="082"></a>
