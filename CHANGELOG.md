@@ -74,6 +74,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was silently skipped (regexes didn't match BOM-prefixed lines). Changed
   to `encoding="utf-8-sig"` (strips BOM). New test module
   `tests/test_utf8_bom.py` (2 tests).
+- **RPY110 mixed indentation test.** `python:` blocks with
+  tab-only and mixed tab/space indentation were untested. Added 2 tests
+  verifying the analyzer does not crash (TabError caught by P2-2
+  try/except).
+- **RE_DIALOGUE_LINE edge cases tested.** `formats/stats.py`
+  regex `RE_DIALOGUE_LINE` had no direct tests for narrator dialogue,
+  character shortcut, `call screen`, or `label` non-matches. Added 4
+  tests.
+- **wiki.py tests added.** `formats/wiki.py` had zero direct
+  tests. Added 3 tests: Characters section, State & Variables section,
+  Story Endings section.
 
 ---
 
