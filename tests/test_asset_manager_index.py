@@ -2,7 +2,7 @@
 
 Two behaviors covered here:
 
-1. Senpy's own files (senpy.toml, .senpyignore, report.json) must NOT
+1. Senpy's own files (senpy.toml, .senpy-ignore, report.json) must NOT
    appear in `unused_assets`. They are not game assets — they are
    Senpy's own configuration / output artifacts. Before the fix, the
    DDLC: Blue Skies dump showed `"senpy.toml"` and `"report.json"` in
@@ -34,7 +34,8 @@ def _make_project(tmp_path: Path) -> Path:
 
     # Senpy's own files (should NOT appear in unused_assets).
     (project / "senpy.toml").write_text("[senpy]\nstrict = false\n", encoding="utf-8")
-    (project / ".senpyignore").write_text("*.rpyc\n", encoding="utf-8")
+    # The REAL file as written by senpy and documented in docs:
+    (project / ".senpy-ignore").write_text("*.rpyc\n", encoding="utf-8")
     (project / "report.json").write_text('{"diagnostics": []}', encoding="utf-8")
     (project / "test_report.json").write_text('{"tests": []}', encoding="utf-8")
     (project / "test_report.txt").write_text("passed\n", encoding="utf-8")
@@ -64,11 +65,50 @@ class TestSenpyOwnFilesExcluded:
         assert "senpy.toml" not in unused
         assert "game/senpy.toml" not in unused
 
-    def test_senpyignore_excluded(self, tmp_path):
+    def test_senpy_ignore_excluded(self, tmp_path):
+        """The .senpy-ignore file (with hyphen) must NOT appear in unused_assets.
+
+        This is the real filename written by senpy and documented in
+        ``docs/configuration.md``. The fixture in ``_make_project`` creates
+        ``.senpy-ignore`` (with hyphen); ``SENPY_OWN_FILES`` must list it
+        so ``AssetManager.index()`` skips it.
+        """
         project = _make_project(tmp_path)
         unused = _collect_unused_assets(project)
-        assert ".senpyignore" not in unused
-        assert "game/.senpyignore" not in unused
+        assert ".senpy-ignore" not in unused
+        assert "game/.senpy-ignore" not in unused
+
+    def test_senpy_ignore_with_hyphen_excluded(self, tmp_path):
+        """The REAL .senpy-ignore file (with hyphen) must be excluded.
+
+        Production code writes and reads `.senpy-ignore` (with hyphen) —
+        see ``senpy/cli/filters.py:56`` and ``docs/configuration.md``. The
+        ``SENPY_OWN_FILES`` frozenset in ``senpy/domain/assets.py`` must
+        list the same filename so that ``AssetManager.index()`` skips it.
+        Historically the frozenset had ``.senpyignore`` (no hyphen) — a
+        typo that made the real ``.senpy-ignore`` file leak into
+        ``known_assets`` and appear in ``senpy inspect`` JSON output.
+        """
+        project = tmp_path / "proj_hyphen"
+        project.mkdir()
+        game = project / "game"
+        game.mkdir()
+        (game / "images").mkdir()
+        (game / "images" / "bg_unused.png").write_bytes(b"\x89PNG\r\n\x1a\n fake png")
+        # The REAL file as written by senpy and documented in docs:
+        (project / ".senpy-ignore").write_text("RPY001\n", encoding="utf-8")
+
+        am = AssetManager(str(project))
+        am.index()
+        unused = set(am.known_assets)
+
+        assert ".senpy-ignore" not in unused, (
+            ".senpy-ignore (with hyphen) must be in SENPY_OWN_FILES so "
+            "AssetManager.index() skips it. Currently it leaks into "
+            "known_assets and appears in `senpy inspect` JSON as a "
+            "spurious 'unused asset'. See senpy/domain/assets.py:31."
+        )
+        assert "game/.senpy-ignore" not in unused
 
     def test_report_json_excluded(self, tmp_path):
         project = _make_project(tmp_path)

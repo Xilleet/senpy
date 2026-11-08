@@ -75,6 +75,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `True`/`False` overrides. `docs/cli-reference.md` extended with an
   "Explicit fail-on-error" section.
 
+- **`.senpy-ignore` filename corrected in `SENPY_OWN_FILES`.** The
+  frozenset in `senpy/domain/assets.py` listed `".senpyignore"` (no
+  hyphen), but production code (`cli/filters.py:56`) writes and reads
+  `.senpy-ignore` (with hyphen), matching the docs. As a result,
+  `.senpy-ignore` leaked into `known_assets` and appeared in
+  `senpy inspect` JSON output as a spurious "unused asset". The test
+  `test_asset_manager_index.py::_make_project` created `.senpyignore`
+  (no hyphen) — passing vacuously. Fixed: added `.senpy-ignore` to
+  `SENPY_OWN_FILES`, kept `.senpyignore` for backward compat (rare
+  manual creation), updated the test fixture to create the real
+  `.senpy-ignore` file, added a regression test that asserts
+  `.senpy-ignore` does not leak into `known_assets`.
+
 ---
 
 <a id="082"></a>

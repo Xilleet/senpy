@@ -28,7 +28,9 @@ _logger = get_logger("domain.assets")
 SENPY_OWN_FILES: frozenset[str] = frozenset(
     {
         "senpy.toml",  # Senpy project config
-        ".senpyignore",  # Senpy ignore-list (gitignore-style)
+        ".senpy-ignore",  # Senpy ignore-list (gitignore-style) — see cli/filters.py:56
+        ".senpyignore",  # Legacy typo kept for backward compat (rare, but some
+        #                  projects may have created this filename manually).
         ".senpy-cache",  # Legacy name (rare)
         "report.json",  # senpy inspect / lint output
         "report.txt",  # senpy inspect / lint output (text)
