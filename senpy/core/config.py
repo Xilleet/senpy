@@ -81,6 +81,29 @@ class SenpyConfig(BaseModel):
     # (see T-003 in WORKLOG).
     enable_plugins: bool = False
 
+    # User-extended Ren'Py built-in namespaces / screen actions. These
+    # are MERGED with the defaults shipped in
+    # `senpy/core/renpy_builtins.py` (BUILTIN_SYMBOLS / BUILTIN_ACTIONS)
+    # at analyzer-init time, so the user does not need to redeclare
+    # everything Senpy already knows about — only what is missing.
+    #
+    # `additional_builtins` covers runtime-provided namespaces like
+    # ``iap`` (in-app purchases), ``updater``, ``build``, or any
+    # user-installed Ren'Py library that registers a global name.
+    # Adding a name here makes RPY202 / RPY103 / RPY104 treat it as
+    # declared — same behaviour as ``renpy`` or ``persistent``.
+    #
+    # `additional_actions` covers user-defined or third-party screen
+    # Action classes that can be called with ``()`` in the ``action``
+    # slot of a screen button. Adding a name here stops RPY206 from
+    # firing on ``action MyCustomAction()``.
+    #
+    # Both default to empty lists. Invalid identifiers (non-ASCII,
+    # starting with a digit, etc.) are silently filtered at merge time
+    # to avoid breaking the symbol table.
+    additional_builtins: list[str] = Field(default_factory=list)
+    additional_actions: list[str] = Field(default_factory=list)
+
 
 def validate_config(raw: dict) -> dict:
     """Validates a raw config dict via pydantic.

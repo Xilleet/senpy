@@ -26,6 +26,7 @@ Public API:
 
 from __future__ import annotations
 
+import ast
 import difflib
 import textwrap
 
@@ -468,3 +469,88 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     indent = len(clean_parts[0]) - len(clean_parts[0].lstrip())
     joined_clean = (" " * indent) + " ".join(cleaned_tokens)
     return curr_idx + 1, "".join(raw_parts), joined_clean
+
+
+# =============================================================================
+# For-loop target extraction
+# =============================================================================
+def _collect_target_names(node: ast.expr) -> set[str]:
+    """Recursively collect all ``ast.Name`` ids from a for-loop target.
+
+    Supports every Python for-target shape:
+        - ``for x in ...``              → {x}
+        - ``for x, y in ...``           → {x, y}
+        - ``for (x, y) in ...``         → {x, y}
+        - ``for x, (y, z) in ...``      → {x, y, z}  (tuple unpacking)
+        - ``for x, *rest in ...``       → {x, rest}  (star unpacking)
+        - ``for [(x, y)] in ...``       → {x, y}     (list + nested tuple)
+
+    Used by ``extract_for_targets`` so RPY202 (screen-language for-loops)
+    and RPY103 (init-python / label for-loops) both add every loop target
+    to the local scope, not just the first one. Pattern 3 of dev assist
+    (AST-based, not regex-without-context) — ``RE_FOR_LOOP`` previously
+    matched only ``for x in`` and silently dropped tuple-unpacking cases.
+    """
+    names: set[str] = set()
+    if isinstance(node, ast.Name):
+        names.add(node.id)
+    elif isinstance(node, (ast.Tuple, ast.List)):
+        for elt in node.elts:
+            names |= _collect_target_names(elt)
+    elif isinstance(node, ast.Starred):
+        # ``for x, *rest in ...`` — PEP 3132 extended iterable unpacking.
+        names |= _collect_target_names(node.value)
+    # ast.Constant / ast.Attribute / ast.Subscript / etc. — not a name,
+    # ignore (matches Python: ``for obj.attr in ...`` is invalid syntax
+    # at the for-target position anyway).
+    return names
+
+
+def extract_for_targets(line: str) -> set[str]:
+    """Extract all loop-target names from a ``for ... in ...:`` line.
+
+    Returns the empty set for non-for-loop lines, lines with syntax errors
+    in the for-target expression, or for-loop lines that fail to parse
+    entirely. Callers must treat the empty set as "no targets found" —
+    typically the line is then skipped (no symbols added).
+
+    Why AST instead of regex:
+        The previous ``RE_FOR_LOOP`` regex
+        (``r"^\\s*for\\s+([^\\W\\d]\\w*)\\s+in\\s+"``) only matched a
+        single identifier — ``for x in ...``. Tuple unpacking
+        (``for i, (a, b, c) in enumerate(...)``) silently produced no
+        match, so loop targets were never added to the scope, and RPY202
+        / RPY103 fired false positives on subsequent references to ``a``,
+        ``b``, ``c``, ``i``. AST parsing covers every Python for-target
+        shape in one place; the only failure mode is a SyntaxError, which
+        we catch and report as "no targets".
+
+    Args:
+        line: A single Ren'Py / Python source line, e.g.
+            ``"    for i, (music_file, music_name, music_title) in enumerate(music_list):"``.
+
+    Returns:
+        Set of all loop-target names. Empty set on any parse failure or
+        if the line is not a for-loop.
+    """
+    stripped = line.strip()
+    if not stripped.startswith("for ") and not stripped.startswith("for\t"):
+        return set()
+    # ``ast.parse`` expects a complete statement; the trailing ``:`` is
+    # already on a well-formed for-loop line. We append a dummy body
+    # (``pass``) so the parse succeeds without requiring the entire
+    # loop body on the same line.
+    if not stripped.endswith(":"):
+        # Could be a multi-line for expression (e.g. `for x in (`
+        # split across lines). Append a closing `: pass` and try.
+        candidate = stripped + ":\n    pass"
+    else:
+        candidate = stripped + "\n    pass"
+    try:
+        tree = ast.parse(candidate, mode="exec")
+    except SyntaxError:
+        return set()
+    for node in tree.body:
+        if isinstance(node, ast.For):
+            return _collect_target_names(node.target)
+    return set()

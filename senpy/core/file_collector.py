@@ -59,10 +59,16 @@ from senpy.core.symbols import (
     VariableSymbol,
 )
 from senpy.rules.python_ast import infer_expr_type
-from senpy.text_utils import _get_logical_line, _strip_comment, dedent_python, strip_string_literals
+from senpy.text_utils import (
+    _get_logical_line,
+    _strip_comment,
+    dedent_python,
+    extract_for_targets,
+    strip_string_literals,
+)
 
 if TYPE_CHECKING:
-    pass
+    from senpy.core.scope import ScopeStack
 
 # Regex for extracting string literals from expressions (e.g. image definitions)
 _RE_STRING_LITERAL = re.compile(r"""(["'])(?P<value>(?:\\.|(?!\1).)*)\1""")
@@ -1052,13 +1058,28 @@ class FileCollector:
             self.analyzer._mark_asset_used(os.path.basename(expanded))
 
     def _handle_init_python_block(
-        self, lines: list[str], idx: int, file_path: str, noqa_map: dict
+        self,
+        lines: list[str],
+        idx: int,
+        file_path: str,
+        noqa_map: dict,
+        scope_stack: ScopeStack | None = None,
     ) -> int | None:
         """Detect `init python:` block and run AST checks on it.
 
         Returns `next_idx` (the index after the block) if an init block was
         found and processed, or `None` if the current line is not an init
         python block start.
+
+        Args:
+            scope_stack: Optional. When passed, every for-loop target
+                name in the block is registered into the local scope
+                so RPY103 (undeclared-variable-in-condition) does not
+                fire on subsequent `if fn...:` lines inside the block.
+                Mirrors the same fix applied in
+                `StateChecker._check_python_block` for `python:` blocks
+                and in `ScreenChecker.check_line` for screen-language
+                for-loops (D.2).
         """
         # Use the raw_line from lines[idx] — format_checker may have modified it.
         raw_line = lines[idx]
@@ -1081,6 +1102,17 @@ class FileCollector:
         if block_lines:
             self.analyzer._scan_python_assets(block_lines)
             code = dedent_python("".join(block_lines))
+            # Pre-register every for-loop target name in the local
+            # scope before `check_python_ast` walks the AST. Without
+            # this, RPY103 fires false positives on `if fn...:` inside
+            # `for fn in ...:` within `init python:` blocks (D.2). The
+            # `extract_for_targets` helper covers tuple unpacking too
+            # (``for i, (a, b) in ...``) — single integration point
+            # for the whole codebase.
+            if scope_stack is not None:
+                for line in block_lines:
+                    for target_name in extract_for_targets(line):
+                        scope_stack.add_symbol(target_name)
             self.analyzer.python_ast.check_init_dependency(
                 code, file_path, idx + 2, noqa_map, lines, init_priority=init_priority
             )

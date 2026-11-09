@@ -57,7 +57,7 @@ class SymbolTable:
         missing_defaults: dict[var, inferred_default] — for senpy_defaults.rpy
     """
 
-    def __init__(self) -> None:
+    def __init__(self, additional_builtins: set[str] | None = None) -> None:
         # Object registries (replace the old 13 dicts)
         self.variables: dict[str, VariableSymbol] = {}
         self.labels: dict[str, LabelSymbol] = {}
@@ -65,9 +65,24 @@ class SymbolTable:
         self.images: dict[str, ImageSymbol] = {}
         self.transforms: dict[str, TransformSymbol] = {}
 
+        # User-extended built-in names (from
+        # `senpy.toml [tool.senpy].additional_builtins`). Stored once
+        # here so reset / rebuild_from_scopes can re-merge them into
+        # `declared_symbols` without re-reading the config. Filtered to
+        # valid Python identifiers to avoid poisoning the set with
+        # typos like `"123"` or `"with space"`.
+        self._additional_builtins: set[str] = {
+            name
+            for name in (additional_builtins or ())
+            if isinstance(name, str) and name.isidentifier()
+        }
+
         # Aggregate sets
         self.user_symbols: set[str] = set()
-        self.declared_symbols: set[str] = set(BUILTIN_SYMBOLS)
+        # `BUILTIN_SYMBOLS` is a frozenset — copying into a mutable set
+        # is a single allocation. Union with `_additional_builtins`
+        # happens once per init/reset/rebuild.
+        self.declared_symbols: set[str] = set(BUILTIN_SYMBOLS) | self._additional_builtins
         self.referenced_labels: set[str] = set()
 
         # Audio
@@ -92,7 +107,10 @@ class SymbolTable:
         self.images.clear()
         self.transforms.clear()
         self.user_symbols.clear()
-        self.declared_symbols = set(BUILTIN_SYMBOLS)
+        # Re-merge the user-extended built-ins — `_additional_builtins`
+        # is preserved across reset() so the same analyzer instance can
+        # be re-run() without losing the config-provided extensions.
+        self.declared_symbols = set(BUILTIN_SYMBOLS) | self._additional_builtins
         self.referenced_labels.clear()
         self.defined_audio_map.clear()
         self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
@@ -109,7 +127,7 @@ class SymbolTable:
         Called after _collect_all_symbols and after
         _differential_purge_file (full rebuild path).
         """
-        self.declared_symbols = set(BUILTIN_SYMBOLS)
+        self.declared_symbols = set(BUILTIN_SYMBOLS) | self._additional_builtins
         self.user_symbols.clear()
         self.registered_audio_channels = set(BUILTIN_AUDIO_CHANNELS)
         self.defined_audio_map.clear()

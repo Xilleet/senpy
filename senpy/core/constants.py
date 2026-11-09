@@ -1,7 +1,18 @@
 from __future__ import annotations
 
-import builtins
 import re
+
+# `BUILTIN_SYMBOLS` and `BUILTIN_ACTIONS` live in `senpy/core/renpy_builtins.py`
+# now. Re-exported here so the 5+ consumers that import them from
+# `senpy.core.constants` keep working without churn. The new module is the
+# single source of truth — the sets are extended at runtime via
+# `senpy.toml [tool.senpy].additional_builtins` / `.additional_actions`.
+# The F401 suppressions are needed because ruff sees these as unused
+# within constants.py itself; they are re-exports for external consumers.
+from senpy.core.renpy_builtins import (  # noqa: F401
+    BUILTIN_ACTIONS,
+    BUILTIN_SYMBOLS,
+)
 
 # Default cutoff ratio for difflib.get_close_matches suggestions (e.g. "did
 # you mean '...' ?"). Used by senpy.text_utils.suggest_similar() and all
@@ -46,181 +57,6 @@ BUILTIN_COLORS = RENPY_BUILTIN_COLOR_KEYWORDS
 BUILTIN_AUDIO_CHANNELS = {"music", "sound", "voice", "audio"}
 CLAUSE_KEYWORDS = {"at", "as", "with", "zorder", "behind", "onlayer"}
 
-BUILTIN_SYMBOLS = {
-    "config",
-    "persistent",
-    "renpy",
-    "audio",
-    "currentuser",
-    "gui",
-    "layout",
-    "store",
-    "ui",
-    "im",
-    "Action",
-    "Preferences",
-    "main_menu",
-    "_return",
-    "_in_replay",
-    "_window_during_functions",
-    "_history_list",
-    "_restart",
-    "name",
-    "player",
-    "theme",
-    "style",
-    "who",
-    "what",
-    "prefix_",
-    "dissolve",
-    "fade",
-    "pixellate",
-    "vpunch",
-    "hpunch",
-    "pushright",
-    "pushleft",
-    "pushup",
-    "pushdown",
-    "wipeleft",
-    "wiperight",
-    "wipeup",
-    "wipedown",
-    "slideleft",
-    "slideright",
-    "slideup",
-    "slidedown",
-    "zoomin",
-    "zoomout",
-    "zoominout",
-    "blinds",
-    "squares",
-    "irisin",
-    "irisout",
-    # Standard Ren'Py positions and base transforms
-    "center",
-    "truecenter",
-    "left",
-    "right",
-    "top",
-    "topleft",
-    "topright",
-    "offscreenleft",
-    "offscreenright",
-    "reset",
-    "default",
-    # Built-in Ren'Py transition classes (for calls with parameters: Dissolve(1.0), Fade(...))
-    "Dissolve",
-    "Fade",
-    "Pixellate",
-    "MoveTransition",
-    "MultipleTransition",
-    "CropMove",
-    "PushMove",
-    "ImageDissolve",
-    "AlphaDissolve",
-    "ComposeTransition",
-    "Pause",
-    *dir(builtins),
-}
-
-BUILTIN_ACTIONS = {
-    # Original set (kept as-is — historical and still valid).
-    "SetVariable",
-    "SetField",
-    "SetScreenVariable",
-    "ToggleVariable",
-    "ToggleField",
-    "ToggleScreenVariable",
-    "Show",
-    "Hide",
-    "Jump",
-    "Return",
-    "Function",
-    "Play",
-    "Stop",
-    "Queue",
-    "PauseAudio",
-    "NullAction",
-    "Call",
-    "Notify",
-    "Confirm",
-    "Preference",
-    "FileSave",
-    "FileLoad",
-    "FileDelete",
-    "FileAction",
-    "QuickSave",
-    "QuickLoad",
-    "Rollback",
-    "Skip",
-    "Help",
-    "Quit",
-    "OpenURL",
-    "SelectedIf",
-    "SensitiveIf",
-    "With",
-    "HideInterface",
-    "ShowMenu",
-    "MainMenu",
-    "Start",
-    "EndReplay",
-    "If",
-    "Language",
-    "ShowTransient",
-    "FilePage",
-    # Extended to cover the complete screen action library documented at
-    # https://www.renpy.org/doc/html/screen_actions.html. Without these,
-    # RPY206 fires false positives on legitimate Ren'Py patterns like
-    # `action FilePagePrevious()`. Each entry is a callable that returns
-    # an Action object — calling it with `()` in the `action` slot is
-    # the documented usage, not "executes immediately during screen
-    # render".
-    "FilePageNext",
-    "FilePagePrevious",
-    "FileTakeScreenshot",
-    "ToggleScreen",
-    "SetLocalVariable",
-    "ToggleLocalVariable",
-    "CycleDict",
-    "CycleField",
-    "CycleLocalVariable",
-    "CycleScreenVariable",
-    "CycleVariable",
-    "IncrementDict",
-    "IncrementField",
-    "IncrementLocalVariable",
-    "IncrementScreenVariable",
-    "IncrementVariable",
-    "SetDict",
-    "ToggleDict",
-    "AddToSet",
-    "RemoveFromSet",
-    "ToggleSetMembership",
-    "Continue",
-    "DownloadSync",
-    "UploadSync",
-    "GetMixer",
-    "SetMixer",
-    "SetMute",
-    "ToggleMute",
-    "CaptureFocus",
-    "ClearFocus",
-    "GetFocusRect",
-    "ToggleFocus",
-    "InvertSelected",
-    "CopyToClipboard",
-    "DisableAllInputValues",
-    "EditFile",
-    "ExecJS",
-    "MouseMove",
-    "OpenDirectory",
-    "QueueEvent",
-    "RestartStatement",
-    "RollForward",
-    "RollbackToIdentifier",
-    "Screenshot",
-    "Scroll",
-}
 
 # Single source of truth for the version — senpy/__version__.py.
 # Previously the version was hardcoded in 4 places (pyproject.toml, constants.py,
@@ -517,7 +353,7 @@ RE_INTERPOLATION = re.compile(r"\[([^\W\d]\w*)[^\]]*\]")
 RE_CONDITION = re.compile(r"^\s*(?:if|elif|while)\s+(.+):$")
 RE_PYTHON_BLOCK_START = re.compile(r"^(\s*)python(?:\s+early)?\s*:\s*(?:#.*)?$")
 RE_INIT_PYTHON_START = re.compile(
-    r"^(\s*)init(?:\s+(-?\d+))?\s+python(?:\s+early)?\s*:\s*(?:#.*)?$"
+    r"^(\s*)init(?:\s+(-?\d+))?\s+python(?:\s+early)?(?:\s+hide)?\s*:\s*(?:#.*)?$"
 )
 RE_TRANSFORM = re.compile(r"^\s*transform\s+([^\W\d]\w*)(?:\s*\((.*?)\))?\s*:")
 RE_SCREEN_START = re.compile(

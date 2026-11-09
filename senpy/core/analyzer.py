@@ -87,6 +87,13 @@ class SenpyAnalyzer:
             # here would surprise callers that pass severity_overrides
             # expecting full programmatic control.
             self.enable_plugins = False
+            # Same caller-managed reasoning for the user-extended Ren'Py
+            # built-ins: callers that pass severity_overrides bypass the
+            # config, so they get the shipped defaults only. Tests that
+            # need extension should construct a SenpyConfig / cfg dict
+            # themselves.
+            self._additional_builtins: set[str] = set()
+            self._additional_actions: set[str] = set()
         else:
             cfg = load_config(self.project_path, config_path=config_path)
             self.severity_overrides = {
@@ -103,9 +110,20 @@ class SenpyAnalyzer:
             # When True, registered Rule subclasses are invoked per-file
             # during _analyze_file (see T-003 in WORKLOG).
             self.enable_plugins = bool(cfg.get("enable_plugins", False))
+            # User-extended Ren'Py built-ins / screen actions
+            # (`senpy.toml [tool.senpy].additional_builtins` /
+            # `.additional_actions`). Merged with the shipped defaults in
+            # `BUILTIN_SYMBOLS` / `BUILTIN_ACTIONS` so the user does not
+            # need to redeclare what Senpy already knows about. Used by
+            # `SymbolTable.declared_symbols` (for namespaces) and by
+            # `ScreenChecker._check_buttons` (for actions).
+            self._additional_builtins = set(cfg.get("additional_builtins", []))
+            self._additional_actions = set(cfg.get("additional_actions", []))
 
-        # Base sets — now managed by SymbolTable
-        self._symbols = SymbolTable()
+        # Base sets — now managed by SymbolTable. The user-extended
+        # built-ins are passed in so they survive reset() / rebuild and
+        # reach the rule checkers via `declared_symbols`.
+        self._symbols = SymbolTable(additional_builtins=self._additional_builtins)
         self._collector = FileCollector(self)
         self._pipeline = AnalysisPipeline(self)
 

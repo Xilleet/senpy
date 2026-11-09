@@ -354,7 +354,9 @@ class AnalysisPipeline:
             if modified:
                 state.file_modified = True
 
-            init_next = a._handle_init_python_block(lines, idx, file_path, noqa_map)
+            init_next = a._handle_init_python_block(
+                lines, idx, file_path, noqa_map, scope_stack=state.scope_stack
+            )
             if init_next is not None:
                 idx = init_next
                 continue

@@ -29,6 +29,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Ren'Py built-in symbols and screen actions consolidated into
+  `senpy/core/renpy_builtins.py`.** Previously `BUILTIN_SYMBOLS` (the
+  runtime-provided Ren'Py namespaces like `persistent`, `config`,
+  `gui`, `audio`, `renpy` — recognized as "declared" without an
+  explicit user `default`/`define`) and `BUILTIN_ACTIONS` (the
+  documented Ren'Py screen-action classes callable with `()` in
+  the `action` slot — `Function`, `Return`, `Show`, `FilePagePrevious`,
+  `CycleDict`, ...) lived in `core/constants.py` alongside 30+ other
+  constants. Extracted into a focused module so the rest of the codebase
+  imports a single source of truth, and so `senpy.toml [tool.senpy]`
+  can extend them at runtime. Two previously-missing names that
+  triggered user-facing false positives are now shipped:
+  - `achievement` (BUILTIN_SYMBOLS) — Ren'Py ships `achievement` as a
+    runtime-provided object (https://www.renpy.org/doc/html/achievements.html);
+    users write `if achievement.steam:` without a `default`. Previously
+    missing, causing RPY202 false positives on the `developers_info`
+    screen of a real user project.
+  - `GamepadCalibrate` (BUILTIN_ACTIONS) — documented Ren'Py action
+    that invokes the gamepad calibration routine; calling it with `()`
+    in the `action` slot is the documented usage. Previously missing,
+    causing RPY206 false positives on `textbutton "Calibrate" action
+    GamepadCalibrate()`.
+  - Both sets stay plain `set` (not `frozenset`) so the existing
+    contract `isinstance(BUILTIN_SYMBOLS, set)` is preserved.
+- **`senpy.toml` runtime extension of built-ins.** Two new optional
+  fields in the `[tool.senpy]` section:
+  - `additional_builtins = ["iap", "updater", "build"]` — adds
+    user-installed / third-party Ren'Py libraries' runtime-provided
+    namespaces to `BUILTIN_SYMBOLS`. RPY202 / RPY103 / RPY104 then
+    treat them as declared, same behaviour as `renpy` or `persistent`.
+  - `additional_actions = ["MyCustomAction"]` — adds user-defined or
+    third-party screen Action classes to `BUILTIN_ACTIONS`. RPY206 then
+    stops firing on `action MyCustomAction()`.
+  - Both are merged with the shipped defaults at analyzer-init time —
+    the user does not need to redeclare what Senpy already knows about.
+    Invalid identifiers (digits, spaces, non-string entries) are
+    silently filtered to avoid poisoning the symbol table. The
+    user-extensions survive `SymbolTable.reset()` and
+    `rebuild_from_scopes()` so a second `run()` on the same analyzer
+    instance does not lose the config.
+- **`extract_for_targets` AST-based for-loop target extractor.** A new
+  helper in `senpy/text_utils.py` that extracts every loop-target name
+  from a `for ... in ...:` line — covers tuple unpacking
+  (`for i, (a, b, c) in enumerate(...)` → `{i, a, b, c}`), parens
+  around tuples, star unpacking (`for x, *rest in ...`), nested tuples,
+  list targets, and single-identifier loops. Returns the empty set for
+  non-for-loop lines and on `SyntaxError` so callers can `continue`.
+  This replaces the regex-based `RE_FOR_LOOP`
+  (`r"^\s*for\s+([^\W\d]\w*)\s+in\s+"`) which only matched a single
+  identifier and silently dropped tuple unpacking — Pattern 3 (AST =
+  guaranteed) of the dev assist architectural patterns.
 - **RPY000 registered in RULES_DATABASE.** The synthesized `RPY000`
   diagnostic — emitted by `AnalysisPipeline._analyze_all_files` when a
   built-in checker raises an unhandled exception during analysis — is
@@ -89,6 +140,60 @@ match, call/call screen/pass/dialogue does not match), divergence matrix between
 - **Trust store schema versioning (v1 → v2).** `senpy/plugins/security.py:_read_trust_store` previously returned whatever was on disk (after basic structural validation) and `_TRUST_STORE_VERSION` was a constant never compared against the on-disk `version` field. Any future schema change (e.g. adding `audit_warnings` for R-P0-1 plugin import-time audit) would silently "zero out" trust for every previously-trusted plugin — users would see the `[y/N]` prompt again for each plugin. Now `_TRUST_STORE_VERSION` is bumped to 2, the schema gains a new top-level `audit_warnings` dict (mapping plugin name → list of audit warning strings; populated by R-P0-1 when that lands, empty for now), and `_read_trust_store` migrates v1 stores to v2 on read: version bumped, missing `audit_warnings` field added with empty default, trusted plugins and `trusted_at` entries preserved (no trust loss). An INFO log records the migration so users running with `--verbose` can see what happened. Corrupt JSON still returns a fresh empty v2 store (existing fail-safe behavior preserved). `untrust_plugin` now also removes the plugin's `audit_warnings` entry so stale warnings don't accumulate. Design note: the roadmap proposed changing `version` from int to string ("1.0" → "1.1") and `plugins` from list to dict — both breaking changes beyond what R-P0-2 needs (just "add a field for audit_warnings"). The int version stays int (bumped 1 → 2), `plugins` stays a list, `audit_warnings` is added as a parallel dict (same shape as the existing `trusted_at`). Minimal breaking change, automatic migration, no user-visible disruption. Coverage: `tests/test_trust_store_schema.py` (10 tests, RED → GREEN via TDD): schema version is 2; fresh store returns v2 structure; v1→v2 migration on read (trusted plugins preserved, `audit_warnings` added empty, INFO log emitted, migration persists to disk on next write); corrupt JSON fail-safe to empty v2; unknown future version migrates down; `audit_warnings` field not touched by `trust_plugin` (R-P0-1 owns it) and cleaned up by `untrust_plugin`.
 
 ### Fixed
+
+- **RPY202 false positive on tuple-unpacking for-loops in screens.**
+  The screen `music_room` example from a real user project used
+  `for i, (music_file, music_name, music_title) in enumerate(music_list):`
+  followed by `if current_file == music_file:`. The regex-based
+  `RE_FOR_LOOP` only matched `for x in ...:` (single identifier), so
+  the tuple-unpacking case silently produced no match — loop targets
+  were never registered in the screen scope, and RPY202 fired on
+  `music_file` as undeclared. `ScreenChecker.check_line` now uses
+  `extract_for_targets` to register every loop target. Coverage:
+  `tests/rules/test_for_loop_targets.py` (TestScreenForTupleUnpacking):
+  tuple unpacking silences RPY202; simple `for x in items:` still
+  works (no regression); star unpacking silences RPY202.
+- **RPY103 false positive on for-loop targets in non-screen contexts
+  (`init python:`, `init python hide:`, label body).** The same regex
+  gap (above) applied to for-loops inside `init python:` blocks and
+  label bodies — `for fn in renpy.loader.listdirfiles():` followed by
+  `if fn.startswith('_'):` fired RPY103 on `fn` (and three stacked
+  diagnostics per line, see next fix). Fixed at three integration
+  points so every Python-execution path is covered:
+  - `StateChecker.check_line` — for `init python hide:` and any block
+    whose start regex doesn't match (post line-by-line dispatch).
+  - `StateChecker._check_python_block` — for `python:` blocks.
+  - `StateChecker._check_python_inline` — for `$ for x in ...:` inline.
+  - `FileCollector._handle_init_python_block` (new optional
+    `scope_stack` parameter) — for `init python:` blocks processed as
+    a single AST. The analyzer's `_handle_init_python_block` call in
+    `analysis_pipeline._analyze_file` now passes `state.scope_stack`.
+- **`init python hide:` now recognized by `RE_INIT_PYTHON_START`.** The
+  regex `r"^(\s*)init(?:\s+(-?\d+))?\s+python(?:\s+early)?\s*:..."` did
+  not include the `hide` keyword, so `init python hide:` blocks were
+  silently treated as ordinary Ren'Py lines (processed one-by-one
+  through `check_line` rather than as a single Python AST). Added
+  `(?:\s+hide)?` to the pattern. Visible impact: RPY110 (Python syntax
+  error) now fires inside `init python hide:` blocks too, and
+  `_handle_init_python_block` runs the full AST pipeline on them.
+- **RPY103/RPY202 duplicate diagnostics on the same line.**
+  `_check_undeclared_vars_in_condition` walked `ast.walk(cond_tree)`
+  and emitted one diagnostic per `ast.Name` node in `Load` context.
+  When the same undeclared variable appeared multiple times in one
+  condition (e.g. `if not fn.endswith(".png") and not
+  fn.endswith(".jpg") and not fn.endswith(".webp"):` references `fn`
+  three times), three separate RPY103 diagnostics were emitted on the
+  same line — all pointing at the first occurrence column (because
+  `get_utf16_range` returns the first match). Visually this looked like
+  a single stacked squiggly line on the wrong column, not three
+  separate underlines. Introduced a `seen` set per call: each (line,
+  var_name) gets at most one diagnostic. Different undeclared
+  variables on the same line still each get their own diagnostic.
+  Coverage: `tests/rules/test_rpy103_dedup.py` (4 tests): repeated
+  var → 1 RPY103; distinct undeclared vars → each gets its own;
+  repeated var in screen → 1 RPY202; end-to-end repro from user
+  feedback #5 with the exact `init python hide:` + `for fn` + 3-stacked
+  `if fn.lower()` scenario.
 
 - **Windows CI: `generate_defaults_file` read-only dir tests skipped on win32.** The four read-only-directory tests in `tests/test_generate_defaults_file.py` (`test_readonly_dir_does_not_raise`, `test_readonly_dir_records_failed_writes`, `test_readonly_dir_logs_warning`, `test_defaults_on_readonly_dir_exits_nonzero`) used `chmod 0o555` on the `game/` directory to trigger `PermissionError` on `open(..., "w")`. This works on POSIX but NOT on Windows — Windows directory permissions work via ACLs, not the DOS readonly attribute, so `chmod` on a directory does not prevent file creation inside it. On Windows CI the file was created successfully, the tests saw a non-empty `out_file` and empty `failed_writes`, and failed. Fixed by adding `@pytest.mark.skipif(sys.platform == "win32", ...)` to the four POSIX-only tests, and adding a new cross-platform `test_permission_error_does_not_raise` that patches `builtins.open` to raise `PermissionError` directly. The cross-platform contract (catch `PermissionError` → record `failed_writes` → return `("", 0)`) is now covered on all platforms via the mock-based tests (`test_permission_error_does_not_raise`, `test_disk_full_does_not_raise`), while the POSIX integration tests (real read-only directory) remain as a stronger guard where they work.
 - **ARCHITECTURE.md plugin wiring stale.** "planned for 0.8.0" →

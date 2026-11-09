@@ -48,6 +48,34 @@ tsundere = false
 # RPY104 = "ERROR"   # [EN] Elevate dynamic assignments to critical build-breaking errors
 # RPY308 = "INFO"    # [EN] Demote label fallthrough to informational notices
 
+# [EN] User-extended Ren'Py built-in namespaces. Names listed here are
+# treated as "declared" by Senpy (same behaviour as `persistent`,
+# `config`, `gui`, `renpy`, ...). Useful when you install a third-party
+# Ren'Py library that registers a global name at runtime
+# (e.g. `iap`, `updater`, `build`, `achievement` — though `achievement`
+# is now shipped by default). Without this, RPY202 / RPY103 / RPY104
+# may fire false positives on legitimate uses of those namespaces.
+# [RU] Пользовательские встроенные пространства имён Ren'Py. Имена из
+# этого списка считаются «объявленными» (как persistent, config, gui,
+# renpy ...). Полезно при установке сторонних библиотек Ren'Py,
+# регистрирующих глобальное имя при запуске (например iap, updater,
+# build — хотя achievement теперь встроено по умолчанию). Без этой
+# настройки RPY202 / RPY103 / RPY104 могут ложно срабатывать на
+# законное использование этих имён.
+# additional_builtins = ["iap", "updater", "build"]
+
+# [EN] User-extended Ren'Py screen-action classes callable with `()`
+# in the `action` slot of a screen button (same behaviour as
+# `Function`, `Return`, `Show`, `GamepadCalibrate`, ...). Useful for
+# user-defined or third-party Action classes. Without this, RPY206
+# may fire false positives on `action MyCustomAction()`.
+# [RU] Пользовательские классы действий Ren'Py, вызываемые с `()` в
+# слоте action экранных кнопок (как Function, Return, Show,
+# GamepadCalibrate ...). Полезно для пользовательских или сторонних
+# Action-классов. Без этой настройки RPY206 может ложно срабатывать
+# на `action MyCustomAction()`.
+# additional_actions = ["MyCustomAction"]
+
 # [EN] List of diagnostic codes to completely ignore across the whole project.
 # [RU] Список кодов ошибок, которые нужно полностью игнорировать во всём проекте.
 ignore = [

@@ -10,7 +10,6 @@ from senpy.core.constants import (
     BUILTIN_SCREENS,
     RE_BUTTON_LINE,
     RE_DEFAULT,
-    RE_FOR_LOOP,
     RE_SCREEN_CALL,
     SCREEN_LOCAL_IGNORE,
 )
@@ -18,7 +17,7 @@ from senpy.core.models import Diagnostic
 from senpy.core.scope import ScopeStack
 from senpy.core.signature import validate_call_arguments
 from senpy.rules.base import BaseChecker
-from senpy.text_utils import strip_string_literals
+from senpy.text_utils import extract_for_targets, strip_string_literals
 
 
 class ScreenChecker(BaseChecker):
@@ -41,9 +40,14 @@ class ScreenChecker(BaseChecker):
             if m_def:
                 scope_stack.add_symbol(m_def.group(1))
 
-            m_for = RE_FOR_LOOP.match(stripped)
-            if m_for:
-                scope_stack.add_symbol(m_for.group(1))
+            # Add every loop-target name to the local scope, not just
+            # the first one. ``RE_FOR_LOOP`` (regex) only matched
+            # ``for x in ...`` and silently dropped tuple unpacking like
+            # ``for i, (a, b, c) in enumerate(...)`` — causing RPY202
+            # false positives on subsequent ``if a == b:`` in the same
+            # screen. AST extraction covers every Python for-target shape.
+            for target_name in extract_for_targets(stripped):
+                scope_stack.add_symbol(target_name)
 
             self._check_screen_variable_actions(
                 file_path, idx, raw_line, stripped, scope_stack, noqa_map
@@ -221,7 +225,15 @@ class ScreenChecker(BaseChecker):
         m_act = re.search(r"\baction\s+([^\W\d]\w*)\s*\(", stripped)
         if m_act:
             fn_name = m_act.group(1)
-            if fn_name not in BUILTIN_ACTIONS:
+            # BUILTIN_ACTIONS is the shipped Ren'Py action library (a
+            # frozenset in senpy/core/renpy_builtins.py). The analyzer
+            # also holds user-extended actions from
+            # `senpy.toml [tool.senpy].additional_actions` so third-party
+            # / custom Action classes are not flagged. We build the
+            # effective set per-line — a set union of two frozensets is
+            # cheap and avoids caching concerns across analyzer lifetime.
+            effective_actions = BUILTIN_ACTIONS | self.analyzer._additional_actions
+            if fn_name not in effective_actions:
                 # Find the matching closing paren of the call so the
                 # QuickFix range covers `action myfunc(arg1, arg2)` as a
                 # whole, not just `action myfunc(`. Without this, the LSP

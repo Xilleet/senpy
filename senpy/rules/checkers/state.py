@@ -12,7 +12,7 @@ from senpy.core.constants import (
     is_branch_terminator_line,
 )
 from senpy.core.scope import ScopeStack
-from senpy.text_utils import dedent_python
+from senpy.text_utils import dedent_python, extract_for_targets
 
 if TYPE_CHECKING:
     from senpy.core.protocols import DiagnosticSinkAndSymbolsAndFlow
@@ -79,6 +79,18 @@ class StateChecker(BaseChecker):
         # Manage if/elif/else branching stack (outside screens)
         if not is_in_screen:
             self._manage_if_elif_else_stack(stripped, line_indent, idx)
+            # Register for-loop targets into the local scope. This catches
+            # the case where the surrounding block is NOT recognized as
+            # an init-python / python: block by the regex-based dispatch
+            # in `analysis_pipeline._analyze_file` — most notably
+            # `init python hide:` (the `hide` keyword is not yet in
+            # `RE_INIT_PYTHON_START`). In those cases the lines are
+            # processed one-by-one through `check_line`, so the for-loop
+            # target registration has to happen here too. `extract_for_targets`
+            # covers tuple unpacking (``for i, (a, b) in ...``) and star
+            # unpacking — single integration point for B.2 + D.2.
+            for target_name in extract_for_targets(stripped):
+                scope_stack.add_symbol(target_name)
 
         # RPY404: Check interpolations [var] after branches
         self.analyzer._check_cfg_interpolations(
@@ -232,6 +244,14 @@ class StateChecker(BaseChecker):
                 lines=lines,
             )
         else:
+            # Pre-register for-loop targets so subsequent `if x...:`
+            # on the same `$ for x in items: ...` inline python does
+            # not fire RPY103. Mirrors the same logic added in
+            # `_check_python_block` for multi-line `python:` blocks (D.2).
+            # Rare case — `$ for ...:` is unusual — but covers the
+            # whole codebase consistently.
+            for target_name in extract_for_targets(py_code):
+                scope_stack.add_symbol(target_name)
             self.analyzer._check_python_ast(
                 py_code, file_path, start_line=idx + 1, noqa_map=noqa_map, lines=lines
             )
@@ -277,6 +297,21 @@ class StateChecker(BaseChecker):
                     lines=lines,
                 )
             else:
+                # Pre-register every for-loop target name into the local
+                # scope so that RPY103 (undeclared-variable-in-condition)
+                # does not fire on subsequent `if fn.lower()...` lines
+                # inside the same `python:` block. Without this,
+                # `_check_python_ast` would walk the AST, encounter
+                # `if fn.startswith('_'):` inside `for fn in ...:`, and
+                # see `fn` as undeclared — because the for-loop target is
+                # local to the block but never registered in
+                # `scope_stack.get_local_symbols()`.
+                # ``extract_for_targets`` covers tuple unpacking too
+                # (``for i, (a, b) in ...``), so this is the single
+                # integration point for the whole codebase (D.2).
+                for line in block_lines:
+                    for target_name in extract_for_targets(line):
+                        scope_stack.add_symbol(target_name)
                 self.analyzer._check_python_ast(
                     code, file_path, start_line=idx + 2, noqa_map=noqa_map, lines=lines
                 )

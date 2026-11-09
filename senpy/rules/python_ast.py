@@ -2008,16 +2008,37 @@ class PythonAstChecker:
         screen_local_symbols: set[str],
         noqa_map: dict,
     ) -> None:
-        """RPY202/RPY103: Undeclared variables in if/elif conditions."""
+        """RPY202/RPY103: Undeclared variables in if/elif conditions.
+
+        Deduplication: if the same variable appears multiple times in the
+        same condition (e.g. ``if not fn.endswith(".png") and not
+        fn.endswith(".jpg") and not fn.endswith(".webp"):`` references
+        ``fn`` three times), only ONE diagnostic is emitted per variable
+        per line. Without this, three stacked RPY103 diagnostics appear
+        on the same line, all pointing at the first occurrence of ``fn``
+        (because ``get_utf16_range`` returns the first match) — visually
+        that looks like a single squiggly line on the wrong column, not
+        three separate underlines. A ``seen`` set per call enforces the
+        deduplication; different undeclared variables on the same line
+        still each get their own diagnostic.
+        """
+        seen: set[str] = set()
         for node in ast.walk(cond_tree):
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                 var_name = node.id
                 if var_name.startswith("_") or var_name in SCREEN_LOCAL_IGNORE:
                     continue
+                if var_name in seen:
+                    # Already emitted RPY202/RPY103 for this var on this
+                    # line — skip duplicates so we don't get N stacked
+                    # diagnostics pointing at the same first-occurrence
+                    # column via get_utf16_range.
+                    continue
                 if (
                     var_name not in self.analyzer.declared_symbols
                     and var_name not in screen_local_symbols
                 ):
+                    seen.add(var_name)
                     hint = suggest_similar_symbol(var_name, self.analyzer.user_symbols)
                     start_c, end_c = get_utf16_range(line_content, var_name)
                     if screen_name:
