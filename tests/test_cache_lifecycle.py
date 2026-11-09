@@ -237,10 +237,9 @@ def test_cold_warm_equivalence(tmp_path: Path) -> None:
     )
 
     # Analyzer state must be identical.
-    assert cold_a.missing_defaults == warm_a.missing_defaults, (
-        f"missing_defaults differs: cold={cold_a.missing_defaults}, "
-        f"warm={warm_a.missing_defaults}"
-    )
+    assert (
+        cold_a.missing_defaults == warm_a.missing_defaults
+    ), f"missing_defaults differs: cold={cold_a.missing_defaults}, warm={warm_a.missing_defaults}"
     assert cold_a.referenced_labels == warm_a.referenced_labels, (
         f"referenced_labels differs: cold={cold_a.referenced_labels}, "
         f"warm={warm_a.referenced_labels}"
@@ -249,18 +248,18 @@ def test_cold_warm_equivalence(tmp_path: Path) -> None:
         f"has_dynamic_jumps differs: cold={cold_a.has_dynamic_jumps}, "
         f"warm={warm_a.has_dynamic_jumps}"
     )
-    assert cold_a.user_symbols == warm_a.user_symbols, (
-        f"user_symbols differs: cold={cold_a.user_symbols}, " f"warm={warm_a.user_symbols}"
-    )
-    assert cold_a.total_lines == warm_a.total_lines, (
-        f"total_lines differs: cold={cold_a.total_lines}, " f"warm={warm_a.total_lines}"
-    )
-    assert cold_a.fixable_count == warm_a.fixable_count, (
-        f"fixable_count differs: cold={cold_a.fixable_count}, " f"warm={warm_a.fixable_count}"
-    )
-    assert cold_a.fixed_count == warm_a.fixed_count, (
-        f"fixed_count differs: cold={cold_a.fixed_count}, " f"warm={warm_a.fixed_count}"
-    )
+    assert (
+        cold_a.user_symbols == warm_a.user_symbols
+    ), f"user_symbols differs: cold={cold_a.user_symbols}, warm={warm_a.user_symbols}"
+    assert (
+        cold_a.total_lines == warm_a.total_lines
+    ), f"total_lines differs: cold={cold_a.total_lines}, warm={warm_a.total_lines}"
+    assert (
+        cold_a.fixable_count == warm_a.fixable_count
+    ), f"fixable_count differs: cold={cold_a.fixable_count}, warm={warm_a.fixable_count}"
+    assert (
+        cold_a.fixed_count == warm_a.fixed_count
+    ), f"fixed_count differs: cold={cold_a.fixed_count}, warm={warm_a.fixed_count}"
 
 
 # ---------------------------------------------------------------------------
@@ -289,10 +288,9 @@ def _assert_analyzer_state_equal(a1, a2, label1: str, label2: str) -> None:
     )
 
     # State fields — same as test_cold_warm_equivalence.
-    assert a1.missing_defaults == a2.missing_defaults, (
-        f"missing_defaults differs: {label1}={a1.missing_defaults}, "
-        f"{label2}={a2.missing_defaults}"
-    )
+    assert (
+        a1.missing_defaults == a2.missing_defaults
+    ), f"missing_defaults differs: {label1}={a1.missing_defaults}, {label2}={a2.missing_defaults}"
     assert a1.referenced_labels == a2.referenced_labels, (
         f"referenced_labels differs: {label1}={a1.referenced_labels}, "
         f"{label2}={a2.referenced_labels}"
@@ -301,18 +299,18 @@ def _assert_analyzer_state_equal(a1, a2, label1: str, label2: str) -> None:
         f"has_dynamic_jumps differs: {label1}={a1.has_dynamic_jumps}, "
         f"{label2}={a2.has_dynamic_jumps}"
     )
-    assert a1.user_symbols == a2.user_symbols, (
-        f"user_symbols differs: {label1}={a1.user_symbols}, " f"{label2}={a2.user_symbols}"
-    )
-    assert a1.total_lines == a2.total_lines, (
-        f"total_lines differs: {label1}={a1.total_lines}, " f"{label2}={a2.total_lines}"
-    )
-    assert a1.fixable_count == a2.fixable_count, (
-        f"fixable_count differs: {label1}={a1.fixable_count}, " f"{label2}={a2.fixable_count}"
-    )
-    assert a1.fixed_count == a2.fixed_count, (
-        f"fixed_count differs: {label1}={a1.fixed_count}, " f"{label2}={a2.fixed_count}"
-    )
+    assert (
+        a1.user_symbols == a2.user_symbols
+    ), f"user_symbols differs: {label1}={a1.user_symbols}, {label2}={a2.user_symbols}"
+    assert (
+        a1.total_lines == a2.total_lines
+    ), f"total_lines differs: {label1}={a1.total_lines}, {label2}={a2.total_lines}"
+    assert (
+        a1.fixable_count == a2.fixable_count
+    ), f"fixable_count differs: {label1}={a1.fixable_count}, {label2}={a2.fixable_count}"
+    assert (
+        a1.fixed_count == a2.fixed_count
+    ), f"fixed_count differs: {label1}={a1.fixed_count}, {label2}={a2.fixed_count}"
 
 
 def test_no_cache_equals_cold_cache(tmp_path: Path) -> None:

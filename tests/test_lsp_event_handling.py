@@ -199,10 +199,9 @@ def test_did_change_watched_files_refreshes_asset_manager(tmp_path: Path) -> Non
 
     # Verify the AssetManager has not yet indexed the new image.
     initial_valid = set(analyzer.assets.valid_images)
-    assert "town_bg" not in initial_valid, (
-        "Sanity check: before the watched-files event, the new image "
-        "should not be in valid_images."
-    )
+    assert (
+        "town_bg" not in initial_valid
+    ), "Sanity check: before the watched-files event, the new image should not be in valid_images."
 
     # Simulate the LSP workspace notifying the server of the file change.
     from senpy.lsp.handlers.text_document import did_change_watched_files

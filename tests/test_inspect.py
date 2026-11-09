@@ -276,9 +276,9 @@ def test_dump_jump_sources_values_are_lists(dump: dict):
             sources, list
         ), f"jump_sources[{target!r}] must be list, got {type(sources)}"
         for src in sources:
-            assert isinstance(src, list), (
-                f"jump_sources[{target!r}] entry must be list (not tuple), " f"got {type(src)}"
-            )
+            assert isinstance(
+                src, list
+            ), f"jump_sources[{target!r}] entry must be list (not tuple), got {type(src)}"
 
 
 def test_dump_used_assets_is_list(dump: dict):
@@ -403,7 +403,7 @@ class TestSystemLabelsExcluded:
         # Add a regular label that IS unreferenced.
         game = project / "game"
         (game / "extra.rpy").write_text(
-            "label my_unused_label:\n" "    return\n",
+            "label my_unused_label:\n    return\n",
             encoding="utf-8",
         )
         a = SenpyAnalyzer(str(project), no_cache=True)

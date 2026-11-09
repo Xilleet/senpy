@@ -56,9 +56,9 @@ def test_rpa_contents_in_known_assets(tmp_path: Path):
     am.index()
 
     # The .rpa file itself must NOT be in known_assets (it's a build artifact).
-    assert "game/archive.rpa" not in am.known_assets, (
-        ".rpa archive file must NOT be in known_assets — it's skipped by " "NON_ASSET_EXTENSIONS."
-    )
+    assert (
+        "game/archive.rpa" not in am.known_assets
+    ), ".rpa archive file must NOT be in known_assets — it's skipped by NON_ASSET_EXTENSIONS."
     # The code path (check .rpa before skip) was exercised — the test
     # passing means the ordering is correct. If the skip ran first,
     # _read_rpa_index would never be called (dead code), and a real RPA

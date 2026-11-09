@@ -88,9 +88,9 @@ class TestPluginsLoadedThreadSafety:
             t.join()
 
         # After all threads finish, _PLUGINS_LOADED must be True.
-        assert autoload._PLUGINS_LOADED is True, (
-            "After concurrent autoload_plugins() calls, _PLUGINS_LOADED " "must be True."
-        )
+        assert (
+            autoload._PLUGINS_LOADED is True
+        ), "After concurrent autoload_plugins() calls, _PLUGINS_LOADED must be True."
         assert errors == [], f"Concurrent autoload_plugins() raised errors: {errors}"
 
 
@@ -132,9 +132,9 @@ class TestGithubActionsPercentEscape:
         render_github([diag], args, console)
 
         captured = capsys.readouterr()
-        assert "%25" in captured.out, (
-            f"render_github must escape % → %25 in messages. " f"Got output:\n{captured.out}"
-        )
+        assert (
+            "%25" in captured.out
+        ), f"render_github must escape % → %25 in messages. Got output:\n{captured.out}"
         # The raw % (not %25) must NOT appear in the message part.
         # (It may appear in the workflow command syntax, but not in the
         # user-facing message text.)

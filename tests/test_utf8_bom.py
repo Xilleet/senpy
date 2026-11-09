@@ -33,9 +33,9 @@ def test_utf8_bom_file_analyzed_without_error(tmp_path: Path):
     rpy100 = [d for d in analyzer.diagnostics if d.code == "RPY100"]
     assert rpy100 == [], f"UTF-8 BOM file must not trigger RPY100. Got: {rpy100}"
     # The label 'start' must be registered (first line not skipped).
-    assert "start" in analyzer.labels, (
-        "Label 'start' must be registered — BOM should not cause the " "first line to be skipped."
-    )
+    assert (
+        "start" in analyzer.labels
+    ), "Label 'start' must be registered — BOM should not cause the first line to be skipped."
 
 
 def test_utf8_bom_file_no_bom_same_diagnostics(tmp_path: Path):

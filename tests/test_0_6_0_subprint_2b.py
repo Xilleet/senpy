@@ -253,10 +253,9 @@ class TestPluginLoading:
 
         try:
             result = load_plugin(_MockEntryPoint(), trust_callback=lambda _name: True)
-            assert result is not None, (
-                "load_plugin must accept plugins with a compatible "
-                "module-level PLUGIN_API_VERSION"
-            )
+            assert (
+                result is not None
+            ), "load_plugin must accept plugins with a compatible module-level PLUGIN_API_VERSION"
         finally:
             sys.modules.pop("test_compatible_module_plugin", None)
 

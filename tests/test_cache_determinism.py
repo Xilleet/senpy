@@ -75,7 +75,7 @@ def test_warm_run_preserves_fixable_count(tmp_path: Path):
 
     # Табы в indentation — это RPY001, fixable правило.
     (game_dir / "script.rpy").write_text(
-        "label start:\n" '\t"Tab-indented dialogue."\n' "\t$ x = 1\n" "    return\n",
+        'label start:\n\t"Tab-indented dialogue."\n\t$ x = 1\n    return\n',
         encoding="utf-8",
     )
 
@@ -95,9 +95,9 @@ def test_warm_run_preserves_fixable_count(tmp_path: Path):
         f"warm={warm.fixable_count}. The cache entry stores diagnostics but "
         f"not the fixable counter."
     )
-    assert warm.fixed_count == cold.fixed_count, (
-        f"Tier 2 cache hit lost fixed_count: cold={cold.fixed_count}, " f"warm={warm.fixed_count}."
-    )
+    assert (
+        warm.fixed_count == cold.fixed_count
+    ), f"Tier 2 cache hit lost fixed_count: cold={cold.fixed_count}, warm={warm.fixed_count}."
 
     # Дополнительно: diagnostics тоже должны совпадать (та же регрессия N2,
     # но проверяем здесь тоже, чтобы тест был самодостаточным)

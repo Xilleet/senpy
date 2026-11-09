@@ -603,13 +603,13 @@ def test_init_dependency_rpy109_respects_init_priority(tmp_path: Path):
     # priority 998 (runs last). References a variable defined at the
     # default priority 0 (runs first).
     (game_dir / "job_posting.rpy").write_text(
-        "init 998 python:\n" "    skill_map = {'coffee': plot_skill_coffee}\n",
+        "init 998 python:\n    skill_map = {'coffee': plot_skill_coffee}\n",
         encoding="utf-8",
     )
     # variables.rpy — alphabetically AFTER job_posting.rpy, but at
     # priority 0 (runs first). Defines the variable.
     (game_dir / "variables.rpy").write_text(
-        "init python:\n" "    plot_skill_coffee = 'skill'\n",
+        "init python:\n    plot_skill_coffee = 'skill'\n",
         encoding="utf-8",
     )
 
@@ -627,7 +627,7 @@ def test_init_dependency_rpy109_respects_init_priority(tmp_path: Path):
     # matters within the same priority.
     (game_dir / "job_posting.rpy").unlink()
     (game_dir / "job_posting.rpy").write_text(
-        "init python:\n" "    skill_map = {'coffee': plot_skill_coffee}\n",
+        "init python:\n    skill_map = {'coffee': plot_skill_coffee}\n",
         encoding="utf-8",
     )
     analyzer2 = SenpyAnalyzer(str(tmp_path))
@@ -1133,7 +1133,7 @@ def test_lsp_differential_purge_keeps_symbol_declared_in_other_file(tmp_path: Pa
         encoding="utf-8",
     )
     file_b.write_text(
-        "default shared_var = 2\ndefault b_only = 20\n" "label shared_label_b:\n    return\n",
+        "default shared_var = 2\ndefault b_only = 20\nlabel shared_label_b:\n    return\n",
         encoding="utf-8",
     )
 

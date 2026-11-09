@@ -52,7 +52,7 @@ class TestRPY502GifBmpNotFalsePositive:
         gif_bytes = b"GIF87a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"
         (images / "foo bar.gif").write_bytes(gif_bytes)
         (game / "script.rpy").write_text(
-            "label start:\n" "    show foo bar\n" "    return\n",
+            "label start:\n    show foo bar\n    return\n",
             encoding="utf-8",
         )
 
@@ -93,7 +93,7 @@ class TestRPY502GifBmpNotFalsePositive:
         )
         (images / "foo bar.bmp").write_bytes(bmp_bytes)
         (game / "script.rpy").write_text(
-            "label start:\n" "    show foo bar\n" "    return\n",
+            "label start:\n    show foo bar\n    return\n",
             encoding="utf-8",
         )
 
@@ -178,7 +178,7 @@ class TestRPY502StillFiresOnMissingImage:
         game = tmp_path / "game"
         game.mkdir()
         (game / "script.rpy").write_text(
-            "label start:\n" "    show nonexistent image\n" "    return\n",
+            "label start:\n    show nonexistent image\n    return\n",
             encoding="utf-8",
         )
 

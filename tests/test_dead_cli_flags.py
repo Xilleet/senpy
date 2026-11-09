@@ -229,6 +229,6 @@ class TestStatisticsAndRespectGitignoreRemoved:
     def test_no_respect_gitignore_attr_after_parse(self):
         """``args.respect_gitignore`` must not exist after parse_args."""
         args = parse_args(["."])
-        assert not hasattr(args, "respect_gitignore"), (
-            "args.respect_gitignore must not exist — the --respect-gitignore " "flag was removed."
-        )
+        assert not hasattr(
+            args, "respect_gitignore"
+        ), "args.respect_gitignore must not exist — the --respect-gitignore flag was removed."

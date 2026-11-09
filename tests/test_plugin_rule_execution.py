@@ -96,7 +96,7 @@ def test_plugin_rule_fires_when_enable_plugins_true(todo_plugin_registered, tmp_
     # senpy.toml enables plugins
     (tmp_path / "senpy.toml").write_text("[senpy]\nenable_plugins = true\n", encoding="utf-8")
 
-    code = "# TODO: implement this label\n" "label start:\n" "    return\n"
+    code = "# TODO: implement this label\nlabel start:\n    return\n"
     _make_game(tmp_path, code)
 
     analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
@@ -120,7 +120,7 @@ def test_plugin_rule_silent_when_enable_plugins_not_set(todo_plugin_registered, 
     """Without enable_plugins in senpy.toml, RPY902 must NOT fire —
     the default is False in 0.8.0 (opt-in to plugin execution)."""
     # No senpy.toml → default config → enable_plugins defaults to False
-    code = "# TODO: implement this label\n" "label start:\n" "    return\n"
+    code = "# TODO: implement this label\nlabel start:\n    return\n"
     _make_game(tmp_path, code)
 
     analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
@@ -142,7 +142,7 @@ def test_plugin_rule_silent_when_enable_plugins_false(todo_plugin_registered, tm
     """With enable_plugins=False in senpy.toml, RPY902 must NOT fire."""
     (tmp_path / "senpy.toml").write_text("[senpy]\nenable_plugins = false\n", encoding="utf-8")
 
-    code = "# TODO: implement this label\n" "label start:\n" "    return\n"
+    code = "# TODO: implement this label\nlabel start:\n    return\n"
     _make_game(tmp_path, code)
 
     analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
@@ -166,7 +166,7 @@ def test_plugin_rule_diagnostic_honours_noqa(todo_plugin_registered, tmp_path: P
     """
     (tmp_path / "senpy.toml").write_text("[senpy]\nenable_plugins = true\n", encoding="utf-8")
 
-    code = "# TODO: implement this label  # noqa: RPY902\n" "label start:\n" "    return\n"
+    code = "# TODO: implement this label  # noqa: RPY902\nlabel start:\n    return\n"
     _make_game(tmp_path, code)
 
     analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
@@ -205,9 +205,7 @@ def test_broken_plugin_rule_is_isolated(tmp_path: Path):
             raise RuntimeError("intentional plugin crash for test")
 
     code = (
-        "# TODO: this should still fire RPY902 even with a broken rule\n"
-        "label start:\n"
-        "    return\n"
+        "# TODO: this should still fire RPY902 even with a broken rule\nlabel start:\n    return\n"
     )
     _make_game(tmp_path, code)
 

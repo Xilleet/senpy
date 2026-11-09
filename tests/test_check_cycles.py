@@ -42,6 +42,6 @@ def test_check_cycles_script_passes() -> None:
         f"stdout:\n{result.stdout}\n"
         f"stderr:\n{result.stderr}"
     )
-    assert "[OK] No circular imports found" in result.stdout, (
-        f"check_cycles.py exited 0 but did not report OK — unexpected output:\n" f"{result.stdout}"
-    )
+    assert (
+        "[OK] No circular imports found" in result.stdout
+    ), f"check_cycles.py exited 0 but did not report OK — unexpected output:\n{result.stdout}"

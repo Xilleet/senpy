@@ -60,14 +60,14 @@ def _setup_multi_file_project(tmp_path: Path) -> tuple[Path, Path, Path]:
     # file_a.rpy: jumps to `target_label` which is defined in file_b.rpy.
     file_a = game / "file_a.rpy"
     file_a.write_text(
-        "label start:\n" '    "Hello"\n' "    jump target_label\n" "    return\n",
+        'label start:\n    "Hello"\n    jump target_label\n    return\n',
         encoding="utf-8",
     )
 
     # file_b.rpy: defines `target_label` and jumps back to `start`.
     file_b = game / "file_b.rpy"
     file_b.write_text(
-        "label target_label:\n" '    "In target"\n' "    jump start\n" "    return\n",
+        'label target_label:\n    "In target"\n    jump start\n    return\n',
         encoding="utf-8",
     )
 

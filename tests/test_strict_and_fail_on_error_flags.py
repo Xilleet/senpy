@@ -92,9 +92,9 @@ class TestFailOnErrorFlagAccepted:
     def test_fail_on_error_flag_default_false(self):
         """Without ``--fail-on-error``, ``args.fail_on_error is False``."""
         args = parse_args([])
-        assert args.fail_on_error is False, (
-            "args.fail_on_error must default to False when --fail-on-error " "is not passed."
-        )
+        assert (
+            args.fail_on_error is False
+        ), "args.fail_on_error must default to False when --fail-on-error is not passed."
 
     def test_fail_on_error_flag_with_path(self):
         """``--fail-on-error`` works alongside a positional path."""

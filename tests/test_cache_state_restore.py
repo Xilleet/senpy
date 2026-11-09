@@ -84,9 +84,9 @@ label start:
     cold_rpy701 = [d for d in cold_r.diagnostics if d.code == "RPY701"]
     warm_rpy701 = [d for d in warm_r.diagnostics if d.code == "RPY701"]
     assert cold_rpy701 == [], f"Cold run should suppress RPY701 via # noqa, got: {cold_rpy701}"
-    assert warm_rpy701 == [], (
-        f"Warm run must preserve the # noqa suppression, but RPY701 " f"re-fired: {warm_rpy701}"
-    )
+    assert (
+        warm_rpy701 == []
+    ), f"Warm run must preserve the # noqa suppression, but RPY701 re-fired: {warm_rpy701}"
 
 
 # ---------------------------------------------------------------------------
@@ -195,9 +195,9 @@ label ending:
 
     cold_rpy701 = [d for d in cold_r.diagnostics if d.code == "RPY701"]
     warm_rpy701 = [d for d in warm_r.diagnostics if d.code == "RPY701"]
-    assert cold_rpy701 == [], (
-        f"Cold run: has_dynamic_jumps=True should suppress RPY701, " f"got: {cold_rpy701}"
-    )
+    assert (
+        cold_rpy701 == []
+    ), f"Cold run: has_dynamic_jumps=True should suppress RPY701, got: {cold_rpy701}"
     assert warm_rpy701 == [], (
         f"Warm run: has_dynamic_jumps must be restored from cache to "
         f"suppress RPY701, but it re-fired: {warm_rpy701}"

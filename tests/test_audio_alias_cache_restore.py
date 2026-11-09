@@ -40,10 +40,7 @@ def _make_project_with_audio_alias(tmp_path: Path) -> Path:
     game = tmp_path / "game"
     game.mkdir(parents=True, exist_ok=True)
     (game / "script.rpy").write_text(
-        'define audio.calm = "audio/bgm_calm.ogg"\n'
-        "label start:\n"
-        "    play music calm\n"
-        "    return\n",
+        'define audio.calm = "audio/bgm_calm.ogg"\nlabel start:\n    play music calm\n    return\n',
         encoding="utf-8",
     )
     audio_dir = game / "audio"
@@ -143,9 +140,9 @@ class TestAudioAliasHoverAfterTier1CacheHit:
         # Cold run.
         analyzer1 = SenpyAnalyzer(str(project))
         analyzer1.run(quiet=True)
-        assert "calm" in analyzer1.defined_audio_map, (
-            "Cold run did not register audio alias in defined_audio_map. " "Test setup is wrong."
-        )
+        assert (
+            "calm" in analyzer1.defined_audio_map
+        ), "Cold run did not register audio alias in defined_audio_map. Test setup is wrong."
 
         # Warm run.
         analyzer2 = SenpyAnalyzer(str(project))

@@ -143,12 +143,7 @@ class TestRenpyFullRestartRecognizedAsTerminator:
         RPY308 must fire. This guards against over-broadening the regex.
         """
         (tmp_path / "script.rpy").write_text(
-            "label scene_a:\n"
-            '    "End of scene A."\n'
-            "\n"
-            "label scene_b:\n"
-            '    "Scene B"\n'
-            "    return\n",
+            'label scene_a:\n    "End of scene A."\n\nlabel scene_b:\n    "Scene B"\n    return\n',
             encoding="utf-8",
         )
         diags = _run_analyzer_get_diagnostics(tmp_path)

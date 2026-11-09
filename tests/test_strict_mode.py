@@ -142,7 +142,7 @@ def test_strict_default_is_false_when_field_absent(tmp_path: Path, monkeypatch):
     project.mkdir()
     (project / "game").mkdir()
     (project / "game" / "script.rpy").write_text(
-        "label start:\n" "    $ x = 1   # RPY104 (default WARNING)\n" "    return\n",
+        "label start:\n    $ x = 1   # RPY104 (default WARNING)\n    return\n",
         encoding="utf-8",
     )
     # No senpy.toml at all — load_config returns {} and strict defaults to False.
@@ -151,6 +151,6 @@ def test_strict_default_is_false_when_field_absent(tmp_path: Path, monkeypatch):
     result = analyzer.run()
 
     by_code = _severities_by_code(result)
-    assert by_code.get("RPY104") == {"WARNING"}, (
-        "without strict=true, RPY104 must stay WARNING; " f"got {by_code.get('RPY104')!r}"
-    )
+    assert by_code.get("RPY104") == {
+        "WARNING"
+    }, f"without strict=true, RPY104 must stay WARNING; got {by_code.get('RPY104')!r}"

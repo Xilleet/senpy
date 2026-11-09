@@ -77,9 +77,9 @@ def test_rpy109_cross_file_fixture_fires(tmp_path: Path):
     assert (
         "setup_gui" in diag.message
     ), f"RPY109 message must mention 'setup_gui', got: {diag.message}"
-    assert "z_definer.rpy" in diag.message, (
-        f"RPY109 message must mention 'z_definer.rpy' (the defining file), " f"got: {diag.message}"
-    )
+    assert (
+        "z_definer.rpy" in diag.message
+    ), f"RPY109 message must mention 'z_definer.rpy' (the defining file), got: {diag.message}"
     assert diag.severity == "ERROR"
 
 

@@ -37,7 +37,7 @@ class TestPythonSyntaxErrorDiagnostic:
         """``$ x = )`` → ``RPY110`` diagnostic with ERROR severity."""
         project = _make_project(
             tmp_path,
-            "label start:\n" "    $ x = )\n" "    return\n",
+            "label start:\n    $ x = )\n    return\n",
         )
         analyzer = SenpyAnalyzer(str(project), no_cache=True)
         result = analyzer.run(quiet=True)
@@ -57,7 +57,7 @@ class TestPythonSyntaxErrorDiagnostic:
         """``RPY110`` line_number must point at the line with the error."""
         project = _make_project(
             tmp_path,
-            "label start:\n" "    $ x = )\n" "    return\n",
+            "label start:\n    $ x = )\n    return\n",
         )
         analyzer = SenpyAnalyzer(str(project), no_cache=True)
         result = analyzer.run(quiet=True)
@@ -73,10 +73,7 @@ class TestPythonSyntaxErrorDiagnostic:
         """Valid Python in ``$``-statements must NOT emit RPY110."""
         project = _make_project(
             tmp_path,
-            "label start:\n"
-            "    $ x = 1 + 2\n"
-            "    $ y = [a for a in range(10)]\n"
-            "    return\n",
+            "label start:\n    $ x = 1 + 2\n    $ y = [a for a in range(10)]\n    return\n",
         )
         analyzer = SenpyAnalyzer(str(project), no_cache=True)
         result = analyzer.run(quiet=True)
@@ -90,7 +87,7 @@ class TestPythonSyntaxErrorDiagnostic:
         """``init python:`` block with syntax error → ``RPY110``."""
         project = _make_project(
             tmp_path,
-            "init python:\n" "    x = )\n" "label start:\n" "    return\n",
+            "init python:\n    x = )\nlabel start:\n    return\n",
         )
         analyzer = SenpyAnalyzer(str(project), no_cache=True)
         result = analyzer.run(quiet=True)
@@ -106,7 +103,7 @@ class TestPythonSyntaxErrorDiagnostic:
         """
         project = _make_project(
             tmp_path,
-            "label start:\n" "    $ x = )\n" "    return\n",
+            "label start:\n    $ x = )\n    return\n",
         )
         analyzer = SenpyAnalyzer(str(project), no_cache=True)
         result = analyzer.run(quiet=True)

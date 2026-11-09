@@ -21,6 +21,7 @@ import contextlib
 import json
 import os
 import re
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -137,14 +138,22 @@ def _write_trust_store(data: dict) -> None:
     a crash during ``json.dump`` cannot leave a partially-written trust
     store: either the previous content survives intact, or the new content
     fully replaces it. The temp file is cleaned up if the rename fails.
+
+    Uses ``tempfile.mkstemp`` for a unique temp filename per call, so
+    concurrent invocations cannot clobber each other's temp file before
+    the atomic ``os.replace``. Previously used a fixed
+    ``trusted_plugins.json.tmp`` name, which under concurrent writes
+    produced interleaved JSON bytes (self-healing via ``_read_trust_store``
+    catching the bad JSON, but a one-time empty trust store was the
+    observable cost).
     """
     path = get_trust_store_path()
     store_dir = os.path.dirname(path)
     os.makedirs(store_dir, exist_ok=True)
 
-    tmp_path = f"{path}.tmp"
+    fd, tmp_path = tempfile.mkstemp(dir=store_dir, prefix="trusted_plugins.json.", suffix=".tmp")
     try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         os.replace(tmp_path, path)
     except BaseException:

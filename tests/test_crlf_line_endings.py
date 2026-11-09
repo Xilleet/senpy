@@ -43,11 +43,7 @@ def test_dedent_python_handles_crlf() -> None:
     ALL platforms — no file I/O, no platform-dependent newline handling.
     """
     crlf_input = (
-        "    # Comment\r\n"
-        '    renpy.image("x", "y")\r\n'
-        "\r\n"
-        "    for f in [1]:\r\n"
-        "        pass\r\n"
+        '    # Comment\r\n    renpy.image("x", "y")\r\n\r\n    for f in [1]:\r\n        pass\r\n'
     )
     lf_input = crlf_input.replace("\r\n", "\n")
 
@@ -65,9 +61,9 @@ def test_dedent_python_handles_crlf() -> None:
 
     # Fix: dedent_python strips indent on CRLF.
     fixed = dedent_python(crlf_input)
-    assert fixed.lstrip().startswith("#"), (
-        f"dedent_python must strip common indent from CRLF input. " f"Got: {fixed!r}"
-    )
+    assert fixed.lstrip().startswith(
+        "#"
+    ), f"dedent_python must strip common indent from CRLF input. Got: {fixed!r}"
     # The result should be identical to the LF version's dedent.
     assert fixed == textwrap.dedent(lf_input), (
         f"dedent_python(CRLF) must equal textwrap.dedent(LF). "

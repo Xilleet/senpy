@@ -85,6 +85,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **wiki.py tests added.** `formats/wiki.py` had zero direct
   tests. Added 3 tests: Characters section, State & Variables section,
   Story Endings section.
+- **Concurrent invocations: shared temp-file race eliminated.**
+  `CacheManager.save_manifest` (cache.py:206) and
+  `_write_trust_store` (security.py:145) used a fixed temp filename
+  (`cache.pkl.tmp` / `trusted_plugins.json.tmp`). Two writers sharing
+  the same temp inode could interleave bytes before `os.replace`,
+  producing a corrupt pickle/JSON (self-healing via the load-path
+  try/except, but at the cost of a one-time cold-cache run). Switched
+  to `tempfile.mkstemp(dir=..., prefix=..., suffix=".tmp")` for a
+  unique temp filename per call — portable, no new dependencies,
+  structurally impossible to clobber. Cleanup on `os.replace` failure
+  preserved. New test module `tests/test_concurrent_invocations.py`
+  (8 tests): self-healing contract (corrupt manifest → cold rebuild;
+  corrupt trust store → empty structure); unique-temp-filename
+  verification; cleanup-on-failure verification.
+- **Cache invalidation test for branch-switch scenarios.** No
+  dedicated test exercised the cold → delete → warm → re-add → warm →
+  rename → warm sequence on `.rpy` files. The implementation has
+  always handled these via implicit manifest eviction (rebuilt from
+  disk every run), but no regression guard existed. New test module
+  `tests/test_branch_switch_cache_invalidation.py` (4 tests): full
+  branch-switch sequence with RPY302 cross-file verification,
+  delete-all-files edge case, add-new-file between runs,
+  rename-preserves-symbol-resolution.
+- **JPEG long APP markers regression test.** `image_size._jpeg_size`
+  reads only the first 64 KB of the file (mirrors renpy-magic). A
+  real-world JPEG with a max-length APP1 (EXIF/XMP/ICC, payload
+  65533 bytes) pushes SOF0 past the buffer — `_jpeg_size` returns
+  `None` gracefully (image_size.py:137), `markdown_size_param`
+  returns `""`, LSP hover renders image at natural VS Code size.
+  The behavior was correct but untested. New test module
+  `tests/test_jpeg_long_app_markers.py` (15 tests): direct
+  `_jpeg_size` unit tests with byte slices (long APP1 past buffer,
+  SOF0 fully inside / straddling buffer, corrupt JPEG, truncated
+  marker, truncated SOF, multiple APP markers); end-to-end tests
+  via `get_image_size` and `markdown_size_param` (long APP marker →
+  None, normal JPEG → dimensions, wide/tall clamp behavior, missing
+  file, empty file, truncated JPEG).
+- **Docs deps conflict fixed.** Dependabot bumped `mkdocs-material`
+  9.6.14 → 9.8.0 and `pymdown-extensions` 10.14.3 → 10.21.3 in the
+  same PR, but `mkdocs-material 9.8.0` requires
+  `pymdown-extensions>=11.0.1` — dependabot does not resolve
+  cross-package constraints. CI `pip install -r requirements-docs.txt`
+  failed with `ResolutionImpossible`. Bumped `pymdown-extensions`
+  to 13.0 (latest stable, satisfies the constraint, follows the
+  intent of the original dependabot update). Verified locally:
+  `pip install -r requirements-docs.txt` resolves clean;
+  `mkdocs build --strict` exits 0 with `site/` populated.
 
 ---
 
@@ -1283,7 +1330,7 @@ module that wraps the loader pipeline in an idempotent one-shot function:
 from senpy.plugins.autoload import autoload_plugins
 
 autoload_plugins()  # called once per process, from cli/main.py:main()
-                    # and from cli/rule_dispatch.py:dispatch_rule()
+# and from cli/rule_dispatch.py:dispatch_rule()
 ```
 
 Design:

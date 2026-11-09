@@ -177,9 +177,9 @@ def test_rename_variable_does_not_touch_label_declaration(tmp_path: Path) -> Non
     edits = _collect_edits(result)
 
     # The variable declaration (line 0: "default player_hp = 100") MUST be edited.
-    assert any(line == 0 for _, line, _, _ in edits), (
-        f"Variable declaration on line 0 must be edited. " f"Edits: {edits}"
-    )
+    assert any(
+        line == 0 for _, line, _, _ in edits
+    ), f"Variable declaration on line 0 must be edited. Edits: {edits}"
 
     # The variable usage in interpolation (line 3: "[player_hp]") MUST be edited.
     assert any(
@@ -193,10 +193,9 @@ def test_rename_variable_does_not_touch_label_declaration(tmp_path: Path) -> Non
 
     # The natural-language mention on line 4 MUST NOT be edited.
     line_4 = [e for e in edits if e[1] == 4]
-    assert not line_4, (
-        f"Natural-language mention on line 4 must NOT be edited by "
-        f"variable rename. Edits: {edits}"
-    )
+    assert (
+        not line_4
+    ), f"Natural-language mention on line 4 must NOT be edited by variable rename. Edits: {edits}"
 
     # The jump target (line 6: "jump player_hp") MUST NOT be edited.
     line_6 = [e for e in edits if e[1] == 6]
@@ -251,10 +250,9 @@ def test_rename_variable_does_not_touch_dialog_text(tmp_path: Path) -> None:
     line_3 = [
         (file_uri, line, char, new_text) for file_uri, line, char, new_text in edits if line == 3
     ]
-    assert not line_3, (
-        f"Natural-language mention of 'hp' in dialogue on line 3 must "
-        f"NOT be edited. Edits: {edits}"
-    )
+    assert (
+        not line_3
+    ), f"Natural-language mention of 'hp' in dialogue on line 3 must NOT be edited. Edits: {edits}"
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +265,7 @@ def _run_with_overrides(tmp_path: Path, severity_overrides: dict[str, str] | Non
 
     Returns the result and analyzer instance.
     """
-    rpy = "default unused = 10\n" "label start:\n" "    return\n"
+    rpy = "default unused = 10\nlabel start:\n    return\n"
     game_dir = tmp_path / "game"
     game_dir.mkdir(parents=True, exist_ok=True)
     (game_dir / "script.rpy").write_text(rpy, encoding="utf-8")
@@ -296,10 +294,9 @@ def test_severity_overrides_normalises_mixed_case_keys(tmp_path: Path) -> None:
 
     # The effective override for RPY701 must be the LAST one set,
     # because all three keys normalise to "RPY701".
-    assert "RPY701" in a.severity_overrides, (
-        f"Override key must be normalised to upper-case. "
-        f"severity_overrides={a.severity_overrides}"
-    )
+    assert (
+        "RPY701" in a.severity_overrides
+    ), f"Override key must be normalised to upper-case. severity_overrides={a.severity_overrides}"
     assert a.severity_overrides["RPY701"] == "HINT", (
         f"Override value must be normalised to upper-case. "
         f"severity_overrides={a.severity_overrides}"
@@ -374,9 +371,9 @@ def test_severity_overrides_win_over_strict_mode(tmp_path: Path) -> None:
         diag_overridden.severity == "INFO"
     ), f"Override must win over strict mode. Got: {diag_overridden.severity}"
     # Other codes are promoted to ERROR by strict mode.
-    assert diag_other.severity == "ERROR", (
-        f"Strict mode must promote non-overridden codes to ERROR. " f"Got: {diag_other.severity}"
-    )
+    assert (
+        diag_other.severity == "ERROR"
+    ), f"Strict mode must promote non-overridden codes to ERROR. Got: {diag_other.severity}"
 
 
 def test_severity_overrides_unknown_codes_are_ignored(tmp_path: Path) -> None:
@@ -395,9 +392,9 @@ def test_severity_overrides_unknown_codes_are_ignored(tmp_path: Path) -> None:
     assert "RPY999" in a.severity_overrides
     # No diagnostic with code RPY999 exists (it's unknown).
     rpy999_diags = [d for d in r.diagnostics if d.code == "RPY999"]
-    assert rpy999_diags == [], (
-        f"Unknown rule codes should not produce diagnostics. " f"Got: {rpy999_diags}"
-    )
+    assert (
+        rpy999_diags == []
+    ), f"Unknown rule codes should not produce diagnostics. Got: {rpy999_diags}"
 
 
 def test_severity_overrides_empty_dict_is_noop(tmp_path: Path) -> None:

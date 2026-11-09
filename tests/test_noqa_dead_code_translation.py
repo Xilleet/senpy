@@ -39,7 +39,7 @@ def _run(code: str, tmp_path: Path, *, filename: str = "script.rpy"):
 
 def test_noqa_suppresses_rpy701_unused_define(tmp_path: Path):
     """``# noqa: RPY701`` must suppress the unused-define hint."""
-    code = "define UNUSED_CONST = 42  # noqa: RPY701\n" "label start:\n" "    return\n"
+    code = "define UNUSED_CONST = 42  # noqa: RPY701\nlabel start:\n    return\n"
     result = _run(code, tmp_path)
     assert not any(
         d.code == "RPY701" for d in result.diagnostics
@@ -53,7 +53,7 @@ def test_noqa_suppresses_rpy704_unused_default(tmp_path: Path):
     never read), so the ability to suppress RPY704 inline is the most
     user-impactful case of this bug class.
     """
-    code = "default unused_var = 0  # noqa: RPY704\n" "label start:\n" "    return\n"
+    code = "default unused_var = 0  # noqa: RPY704\nlabel start:\n    return\n"
     result = _run(code, tmp_path)
     assert not any(
         d.code == "RPY704" for d in result.diagnostics
@@ -77,10 +77,7 @@ def test_noqa_suppresses_rpy703_unused_screen(tmp_path: Path):
 def test_noqa_suppresses_rpy702_unused_transform(tmp_path: Path):
     """``# noqa: RPY702`` must suppress the unused-transform hint."""
     code = (
-        "transform unused_transform():  # noqa: RPY702\n"
-        "    xoffset 100\n"
-        "label start:\n"
-        "    return\n"
+        "transform unused_transform():  # noqa: RPY702\n    xoffset 100\nlabel start:\n    return\n"
     )
     result = _run(code, tmp_path)
     assert not any(
@@ -134,9 +131,7 @@ def test_noqa_suppresses_rpy603_empty_translation_string(tmp_path: Path):
     tl_dir = game_dir / "tl" / "english"
     tl_dir.mkdir(parents=True, exist_ok=True)
 
-    tl_code = (
-        "translate english start_a1b2c3d4:\n" '    old "Hello"\n' '    new ""  # noqa: RPY603\n'
-    )
+    tl_code = 'translate english start_a1b2c3d4:\n    old "Hello"\n    new ""  # noqa: RPY603\n'
     (tl_dir / "common.rpy").write_text(tl_code, encoding="utf-8")
     (game_dir / "script.rpy").write_text("label start:\n    return\n", encoding="utf-8")
 

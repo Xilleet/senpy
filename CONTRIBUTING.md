@@ -414,9 +414,7 @@ from senpy.formatter.core import FormatConfig, FormatContext, register_rule
 
 
 @register_rule("FMT-COMMENT-ALIGN")
-def align_comments(
-    contexts: list[FormatContext], config: FormatConfig
-) -> list[FormatContext]:
+def align_comments(contexts: list[FormatContext], config: FormatConfig) -> list[FormatContext]:
     """Align inline comments with the surrounding code."""
     for ctx in contexts:
         if ctx.skip:

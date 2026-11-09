@@ -71,9 +71,9 @@ class TestLabelHasReturnInGlobalHash:
         # Run 1: label foo has no return.
         project = _make_project(
             tmp_path,
-            script_content=("label foo:\n" "    jump bar\n" "label bar:\n" "    return\n"),
+            script_content=("label foo:\n    jump bar\nlabel bar:\n    return\n"),
             extra_files={
-                "caller.rpy": ("label start:\n" "    call foo\n" "    return\n"),
+                "caller.rpy": ("label start:\n    call foo\n    return\n"),
             },
         )
 
@@ -83,7 +83,7 @@ class TestLabelHasReturnInGlobalHash:
 
         # Run 2: edit foo to add return (semantic change for callers).
         (project / "game" / "script.rpy").write_text(
-            "label foo:\n" "    jump bar\n" "    return\n" "label bar:\n" "    return\n",
+            "label foo:\n    jump bar\n    return\nlabel bar:\n    return\n",
             encoding="utf-8",
         )
 
@@ -105,9 +105,9 @@ class TestLabelHasReturnInGlobalHash:
         """
         project = _make_project(
             tmp_path,
-            script_content=("label foo:\n" "    jump bar\n" "label bar:\n" "    return\n"),
+            script_content=("label foo:\n    jump bar\nlabel bar:\n    return\n"),
             extra_files={
-                "caller.rpy": ("label start:\n" "    call foo\n" "    return\n"),
+                "caller.rpy": ("label start:\n    call foo\n    return\n"),
             },
         )
 
@@ -117,12 +117,7 @@ class TestLabelHasReturnInGlobalHash:
 
         # Run 2: change the jump target.
         (project / "game" / "script.rpy").write_text(
-            "label foo:\n"
-            "    jump baz\n"
-            "label bar:\n"
-            "    return\n"
-            "label baz:\n"
-            "    return\n",
+            "label foo:\n    jump baz\nlabel bar:\n    return\nlabel baz:\n    return\n",
             encoding="utf-8",
         )
 
@@ -156,9 +151,9 @@ class TestTransformSignatureInGlobalHash:
         """Edit file A's transform signature → global hash must change."""
         project = _make_project(
             tmp_path,
-            script_content=("transform slide(a, b):\n" "    xoffset a\n" "    yoffset b\n"),
+            script_content=("transform slide(a, b):\n    xoffset a\n    yoffset b\n"),
             extra_files={
-                "user.rpy": ("label start:\n" "    show bg at slide(1, 2)\n" "    return\n"),
+                "user.rpy": ("label start:\n    show bg at slide(1, 2)\n    return\n"),
             },
         )
 
@@ -168,7 +163,7 @@ class TestTransformSignatureInGlobalHash:
 
         # Run 2: change the signature (add a parameter).
         (project / "game" / "script.rpy").write_text(
-            "transform slide(a, b, c):\n" "    xoffset a\n" "    yoffset b\n" "    rotate c\n",
+            "transform slide(a, b, c):\n    xoffset a\n    yoffset b\n    rotate c\n",
             encoding="utf-8",
         )
 
@@ -205,7 +200,7 @@ class TestImageFieldsInGlobalHash:
             tmp_path,
             script_content=('image bg_town = "images/bg_town.png"\n'),
             extra_files={
-                "user.rpy": ("label start:\n" "    scene bg_town\n" "    return\n"),
+                "user.rpy": ("label start:\n    scene bg_town\n    return\n"),
             },
         )
 
@@ -356,7 +351,7 @@ class TestGlobalHashDeterminism:
         """
         project = _make_project(
             tmp_path,
-            script_content=("label start:\n" "    return\n"),
+            script_content=("label start:\n    return\n"),
         )
 
         analyzer1 = SenpyAnalyzer(str(project), no_cache=True)
@@ -365,7 +360,7 @@ class TestGlobalHashDeterminism:
 
         # Add a comment — does not change any symbol.
         (project / "game" / "script.rpy").write_text(
-            "# This is a comment.\n" "label start:\n" "    return\n",
+            "# This is a comment.\nlabel start:\n    return\n",
             encoding="utf-8",
         )
 

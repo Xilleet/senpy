@@ -279,6 +279,6 @@ class TestAddNoqaCliIntegration:
         content = (game / "script.rpy").read_text(encoding="utf-8")
         line2 = content.splitlines()[1]
         assert "RPY001" in line2, "Existing # noqa: RPY001 must be preserved."
-        assert "RPY101" in line2, (
-            f"RPY101 should be added to the existing noqa directive. " f"Line: {line2!r}"
-        )
+        assert (
+            "RPY101" in line2
+        ), f"RPY101 should be added to the existing noqa directive. Line: {line2!r}"

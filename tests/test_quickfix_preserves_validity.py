@@ -147,8 +147,7 @@ def test_quickfix_preserves_validity(fixture: Path, tmp_path: Path) -> None:
             # as Python (after stripping $ and indent).
             if not _python_parses(fixed):
                 failures.append(
-                    f"{rule_id} L{diag.line_number}: fixed Python "
-                    f"output {fixed!r} does not parse"
+                    f"{rule_id} L{diag.line_number}: fixed Python output {fixed!r} does not parse"
                 )
         else:
             # For Ren'Py lines, every produced line must be balanced.

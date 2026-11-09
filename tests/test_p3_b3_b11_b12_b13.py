@@ -33,12 +33,7 @@ class TestRPY110MixedIndentation:
         # Use tabs inside the python: block — Python ast.parse raises TabError
         # if tabs and spaces are mixed. Here we use only tabs (valid).
         (game / "script.rpy").write_text(
-            "label start:\n"
-            '    "Hello"\n'
-            "    python:\n"
-            "\t\tx = 1\n"
-            "\t\ty = 2\n"
-            "    return\n",
+            'label start:\n    "Hello"\n    python:\n\t\tx = 1\n\t\ty = 2\n    return\n',
             encoding="utf-8",
         )
 
@@ -129,7 +124,7 @@ class TestWikiGeneration:
         game = tmp_path / "game"
         game.mkdir(parents=True, exist_ok=True)
         (game / "script.rpy").write_text(
-            'define e = Character("Eileen")\n' "label start:\n" '    e "Hello"\n' "    return\n",
+            'define e = Character("Eileen")\nlabel start:\n    e "Hello"\n    return\n',
             encoding="utf-8",
         )
         analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
@@ -146,7 +141,7 @@ class TestWikiGeneration:
         game = tmp_path / "game"
         game.mkdir(parents=True, exist_ok=True)
         (game / "script.rpy").write_text(
-            "default score = 0\n" "define MAX_HP = 100\n" "label start:\n" "    return\n",
+            "default score = 0\ndefine MAX_HP = 100\nlabel start:\n    return\n",
             encoding="utf-8",
         )
         analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
@@ -164,7 +159,7 @@ class TestWikiGeneration:
         game = tmp_path / "game"
         game.mkdir(parents=True, exist_ok=True)
         (game / "script.rpy").write_text(
-            "label start:\n" "    jump ending\n" "label ending:\n" "    return\n",
+            "label start:\n    jump ending\nlabel ending:\n    return\n",
             encoding="utf-8",
         )
         analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)

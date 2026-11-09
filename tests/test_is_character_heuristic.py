@@ -36,7 +36,7 @@ class TestIsCharacterHeuristic:
         game = tmp_path / "game"
         game.mkdir(parents=True, exist_ok=True)
         (game / "script.rpy").write_text(
-            'define x = Character("Alice")\n' "label start:\n" "    return\n",
+            'define x = Character("Alice")\nlabel start:\n    return\n',
             encoding="utf-8",
         )
         analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
@@ -56,7 +56,7 @@ class TestIsCharacterHeuristic:
         game = tmp_path / "game"
         game.mkdir(parents=True, exist_ok=True)
         (game / "script.rpy").write_text(
-            'define x = DynamicCharacter("Alice")\n' "label start:\n" "    return\n",
+            'define x = DynamicCharacter("Alice")\nlabel start:\n    return\n',
             encoding="utf-8",
         )
         analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
@@ -78,7 +78,7 @@ class TestIsCharacterHeuristic:
         game = tmp_path / "game"
         game.mkdir(parents=True, exist_ok=True)
         (game / "script.rpy").write_text(
-            "define w = NotCharacterRelated()\n" "label start:\n" "    return\n",
+            "define w = NotCharacterRelated()\nlabel start:\n    return\n",
             encoding="utf-8",
         )
         analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
@@ -109,7 +109,7 @@ class TestIsCharacterHeuristic:
         game = tmp_path / "game"
         game.mkdir(parents=True, exist_ok=True)
         (game / "script.rpy").write_text(
-            'define x = "Some Character string"\n' "label start:\n" "    return\n",
+            'define x = "Some Character string"\nlabel start:\n    return\n',
             encoding="utf-8",
         )
         analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)

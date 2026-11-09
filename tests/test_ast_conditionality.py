@@ -94,10 +94,9 @@ class TestExtractAssignedNamesConditionality:
         """
         # `if cond: y = 2` — y is conditional, not guaranteed.
         result = extract_assigned_names("if cond: y = 2")
-        assert "y" not in result, (
-            f"Conditional assignment inside `if` must NOT be reported "
-            f"as guaranteed. Got: {result}"
-        )
+        assert (
+            "y" not in result
+        ), f"Conditional assignment inside `if` must NOT be reported as guaranteed. Got: {result}"
 
     def test_assignment_outside_if_still_returned(self) -> None:
         """A top-level assignment that appears BEFORE an `if` in the

@@ -272,9 +272,9 @@ def test_rpy401_quickfix_inserts_assignment_in_branch_body(tmp_path: Path) -> No
         fixed_lines[0].rstrip().endswith(":")
     ), f"RPY401 QuickFix broke the choice line: {fixed!r}"
     # A new assignment line must be inserted in the body.
-    assert any("$ route = " in ln for ln in fixed_lines[1:]), (
-        f"RPY401 QuickFix did not insert `$ route = ...` in the branch body: " f"{fixed!r}"
-    )
+    assert any(
+        "$ route = " in ln for ln in fixed_lines[1:]
+    ), f"RPY401 QuickFix did not insert `$ route = ...` in the branch body: {fixed!r}"
     # The inserted line must be indented deeper than the choice line.
     choice_indent = len(fixed_lines[0]) - len(fixed_lines[0].lstrip(" "))
     inserted_line = next(ln for ln in fixed_lines[1:] if "$ route = " in ln)

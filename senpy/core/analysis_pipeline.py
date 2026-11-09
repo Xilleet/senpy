@@ -230,7 +230,7 @@ class AnalysisPipeline:
                             line_number=1,
                             line_content="",
                             code="RPY000",
-                            message=(f"Senpy internal error: {exc!r}. " f"Please report this bug."),
+                            message=(f"Senpy internal error: {exc!r}. Please report this bug."),
                             severity="ERROR",
                         ),
                         {},

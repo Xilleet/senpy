@@ -59,7 +59,7 @@ class TestIsCharacterInGlobalHash:
         game = tmp_path / "game"
         game.mkdir(parents=True, exist_ok=True)
         (game / "script.rpy").write_text(
-            'define eileen = Character("Eileen")\n' "label start:\n" "    return\n",
+            'define eileen = Character("Eileen")\nlabel start:\n    return\n',
             encoding="utf-8",
         )
 

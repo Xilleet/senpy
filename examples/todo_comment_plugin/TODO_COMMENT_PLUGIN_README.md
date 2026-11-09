@@ -89,6 +89,7 @@ from senpy.api import Diagnostic
 
 PLUGIN_API_VERSION = "1.0"
 
+
 @register_rule("RPY902")
 class TodoCommentRule(Rule):
     meta = RuleMeta(
@@ -150,8 +151,8 @@ def test_detects_todo():
     ctx = RuleContext(
         file_path="test.rpy",
         lines=[
-            'label start:\n',
-            '    # TODO: implement this\n',  # flagged
+            "label start:\n",
+            "    # TODO: implement this\n",  # flagged
             '    "Hello"\n',
         ],
         symbols={},
@@ -177,7 +178,7 @@ def test_case_insensitive():
     rule = TodoCommentRule()
     ctx = RuleContext(
         file_path="test.rpy",
-        lines=['    # fixme: lowercase\n'],  # flagged
+        lines=["    # fixme: lowercase\n"],  # flagged
         symbols={},
     )
     diags = rule.check(ctx)
@@ -189,7 +190,7 @@ def test_word_boundary():
     rule = TodoCommentRule()
     ctx = RuleContext(
         file_path="test.rpy",
-        lines=['    # todolist — not the keyword\n'],  # not flagged
+        lines=["    # todolist — not the keyword\n"],  # not flagged
         symbols={},
     )
     assert rule.check(ctx) == []

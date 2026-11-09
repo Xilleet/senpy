@@ -117,9 +117,9 @@ class TestSenpyAnalyzerImplementsProtocols:
 
     def test_analyzer_implements_project_info(self, tmp_path):
         analyzer = _make_analyzer(tmp_path)
-        assert isinstance(analyzer, ProjectInfo), (
-            "SenpyAnalyzer must implement ProjectInfo Protocol — " "missing project_path attribute"
-        )
+        assert isinstance(
+            analyzer, ProjectInfo
+        ), "SenpyAnalyzer must implement ProjectInfo Protocol — missing project_path attribute"
 
 
 class TestDiagnosticSinkIsSingleSourceOfTruth:
@@ -191,9 +191,9 @@ class TestNoqaMapProviderProtocol:
         files that may have been skipped due to a Tier 2 cache hit."""
         analyzer = _make_analyzer(tmp_path)
         result = analyzer._get_noqa_map_for_file("/nonexistent/file.rpy")
-        assert result == {}, (
-            f"_get_noqa_map_for_file must return {{}} for unknown files, " f"got: {result!r}"
-        )
+        assert (
+            result == {}
+        ), f"_get_noqa_map_for_file must return {{}} for unknown files, got: {result!r}"
 
     def test_add_diagnostic_by_file_honours_noqa(self, tmp_path):
         """``_add_diagnostic_by_file`` must suppress a diagnostic when the

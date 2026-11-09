@@ -4,6 +4,7 @@ import hashlib
 import os
 import pickle
 import shutil
+import tempfile
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -198,15 +199,40 @@ class CacheManager:
         return None
 
     def save_manifest(self, manifest: CacheManifest) -> None:
-        """Atomically saves the manifest to a binary pickle."""
+        """Atomically saves the manifest to a binary pickle.
+
+        Uses ``tempfile.mkstemp`` for a unique temp filename per call, so
+        concurrent invocations on the same project cannot clobber each
+        other's temp file before the atomic ``os.replace``. Previously
+        used a fixed ``cache.pkl.tmp`` name, which under concurrent writes
+        produced interleaved pickle bytes (self-healing via
+        ``load_manifest`` catching the bad pickle, but a single slow
+        cold-cache run was the observable cost).
+        """
         if not self.enabled:
             return
         try:
             self.ensure_cache_dir()
-            tmp_path = self.manifest_path + ".tmp"
-            with open(tmp_path, "wb") as f:
-                pickle.dump(manifest, f, protocol=pickle.HIGHEST_PROTOCOL)
-            os.replace(tmp_path, self.manifest_path)
+            fd, tmp_path = tempfile.mkstemp(dir=self.cache_dir, prefix="cache.pkl.", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "wb") as f:
+                    pickle.dump(manifest, f, protocol=pickle.HIGHEST_PROTOCOL)
+                os.replace(tmp_path, self.manifest_path)
+            except BaseException:
+                # Clean up the temp file if anything went wrong (write
+                # error, rename failure, KeyboardInterrupt, ...). The
+                # previously persisted manifest at ``manifest_path`` is
+                # left untouched because os.replace has not happened yet.
+                # Cleanup failures are swallowed silently — best-effort.
+                # Note: ``contextlib.suppress`` is intentionally avoided
+                # here — see ``test_no_contextlib_suppress_in_core_cache``
+                # for the migration contract that requires explicit
+                # try/except in this module.
+                try:  # noqa: SIM105
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
         except (OSError, pickle.PickleError) as e:
             # log debug instead of silent suppress. Save failure is
             # recoverable (next run rebuilds), but indicates disk issues.

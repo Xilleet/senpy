@@ -278,10 +278,7 @@ class TestCombinedGlobalHash:
         """A .png add (no .rpy change) → combined hash must change."""
         project = _make_project(
             tmp_path,
-            'image bg_town = "images/bg_town.png"\n'
-            "label start:\n"
-            "    scene bg_town\n"
-            "    return\n",
+            'image bg_town = "images/bg_town.png"\nlabel start:\n    scene bg_town\n    return\n',
         )
 
         analyzer1 = SenpyAnalyzer(str(project), no_cache=True)
@@ -316,7 +313,7 @@ class TestCombinedGlobalHash:
         """A .rpy edit (no FS change) → combined hash must change."""
         project = _make_project(
             tmp_path,
-            "label foo:\n" "    jump bar\n" "label bar:\n" "    return\n",
+            "label foo:\n    jump bar\nlabel bar:\n    return\n",
         )
 
         analyzer1 = SenpyAnalyzer(str(project), no_cache=True)
@@ -325,7 +322,7 @@ class TestCombinedGlobalHash:
 
         # Edit .rpy (add return to foo — symbol change, no FS change).
         (project / "game" / "script.rpy").write_text(
-            "label foo:\n" "    jump bar\n" "    return\n" "label bar:\n" "    return\n",
+            "label foo:\n    jump bar\n    return\nlabel bar:\n    return\n",
             encoding="utf-8",
         )
 
@@ -345,7 +342,7 @@ class TestCombinedGlobalHash:
         """
         project = _make_project(
             tmp_path,
-            "label start:\n" "    return\n",
+            "label start:\n    return\n",
         )
 
         analyzer1 = SenpyAnalyzer(str(project), no_cache=True)
@@ -354,7 +351,7 @@ class TestCombinedGlobalHash:
 
         # Add a comment — no symbol change, no FS change.
         (project / "game" / "script.rpy").write_text(
-            "# comment\n" "label start:\n" "    return\n",
+            "# comment\nlabel start:\n    return\n",
             encoding="utf-8",
         )
 
@@ -393,7 +390,7 @@ class TestStaleRPY502NoLongerServedFromWarmCache:
         # so RPY502 never fires regardless of the filesystem.
         project = _make_project(
             tmp_path,
-            "label start:\n" "    scene bg_town\n" "    return\n",
+            "label start:\n    scene bg_town\n    return\n",
         )
         # No image file on disk → RPY502 fires.
 

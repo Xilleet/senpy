@@ -48,7 +48,7 @@ def _setup_project_with_label(tmp_path: Path) -> Path:
     game = tmp_path / "game"
     game.mkdir(parents=True, exist_ok=True)
     (game / "script.rpy").write_text(
-        "label start:\n" '    "Hello"\n' "    return\n",
+        'label start:\n    "Hello"\n    return\n',
         encoding="utf-8",
     )
     return tmp_path
@@ -117,9 +117,9 @@ class TestDocumentSymbolsDoesNotMutateUnderReadLock:
 
         # document_symbols must return [] (no scope available).
         # Before P1-8: it would have called _collect_symbols and returned symbols.
-        assert result == [], (
-            f"document_symbols must return [] when file_scopes is empty. " f"Got: {result}"
-        )
+        assert (
+            result == []
+        ), f"document_symbols must return [] when file_scopes is empty. Got: {result}"
         # And it must NOT have called _collect_symbols (no mutation under read lock).
         assert collect_calls == [], (
             f"document_symbols must NOT call _collect_symbols (mutation under "
@@ -154,9 +154,9 @@ class TestDocumentSymbolsDoesNotMutateUnderReadLock:
         result = document_symbols(mock_ls, params)
 
         # Must return at least one symbol (the "start" label).
-        assert result, (
-            "document_symbols must return symbols when file_scopes is populated. " f"Got: {result}"
-        )
+        assert (
+            result
+        ), f"document_symbols must return symbols when file_scopes is populated. Got: {result}"
         # The "start" label must be in the results.
         symbol_names = [s.name for s in result]
         assert (

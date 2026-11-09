@@ -89,9 +89,7 @@ def test_real_jump_action_still_emits_rpy302(tmp_path: Path) -> None:
 """
     result, _ = _run_analyzer_on(rpy, tmp_path)
     rpy302 = [d for d in result.diagnostics if d.code == "RPY302"]
-    assert len(rpy302) == 1, (
-        f"Expected exactly 1 RPY302 for real Jump action, got " f"{len(rpy302)}"
-    )
+    assert len(rpy302) == 1, f"Expected exactly 1 RPY302 for real Jump action, got {len(rpy302)}"
     assert "nonexistent_label" in rpy302[0].message
 
 
@@ -125,9 +123,9 @@ def test_renpy_jump_in_dialogue_does_not_set_dynamic_flag(tmp_path: Path) -> Non
     return
 """
     result, analyzer = _run_analyzer_on(rpy, tmp_path)
-    assert analyzer.has_dynamic_jumps is False, (
-        "Dialogue mention of 'renpy.jump()' must not flip " "has_dynamic_jumps."
-    )
+    assert (
+        analyzer.has_dynamic_jumps is False
+    ), "Dialogue mention of 'renpy.jump()' must not flip has_dynamic_jumps."
 
 
 def test_real_renpy_jump_still_sets_dynamic_flag(tmp_path: Path) -> None:

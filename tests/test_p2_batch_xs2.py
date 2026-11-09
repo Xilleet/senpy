@@ -51,7 +51,7 @@ class TestVoiceLoopStringLiteralMasking:
         game = tmp_path / "game"
         game.mkdir(parents=True, exist_ok=True)
         (game / "script.rpy").write_text(
-            "label start:\n" '    queue voice "my loop song.ogg"\n' "    return\n",
+            'label start:\n    queue voice "my loop song.ogg"\n    return\n',
             encoding="utf-8",
         )
         analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
@@ -71,7 +71,7 @@ class TestVoiceLoopStringLiteralMasking:
         game = tmp_path / "game"
         game.mkdir(parents=True, exist_ok=True)
         (game / "script.rpy").write_text(
-            "label start:\n" '    queue voice "song.ogg" loop\n' "    return\n",
+            'label start:\n    queue voice "song.ogg" loop\n    return\n',
             encoding="utf-8",
         )
         analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
