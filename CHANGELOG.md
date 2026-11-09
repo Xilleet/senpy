@@ -50,6 +50,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pipeline severity preservation under default and `strict` modes,
   `senpy rule show RPY000` (text + json), `senpy rule list` (text +
   json, including `--tag internal` filter).
+- **`_write_fixed_file` catches UnicodeEncodeError + uses atomic write.**
+  `analysis_pipeline.py:_write_fixed_file` previously caught only
+  `OSError`. A `--fix` run whose rule output contained a lone surrogate
+  code point (e.g. `\udcXX` from upstream `errors='surrogateescape'`
+  decoding or a plugin rule that constructs replacement text from raw
+  bytes) raised `UnicodeEncodeError` on `writelines()`, which propagated
+  up to `_analyze_file`'s broad `except Exception` and got misclassified
+  as a synthesized RPY000 "internal error" diagnostic — the file never
+  reached `failed_writes`, so `_force_nonzero_if_failed_writes` left the
+  exit code at 0 even though no fix landed on disk. The catch is now
+  `(OSError, UnicodeEncodeError)`; failures route through the existing
+  `failed_writes` path, log WARNING, and force exit code 1. While here,
+  the write itself is now ATOMIC: lines are written to a temp file via
+  `tempfile.mkstemp` in the same directory and swapped in via
+  `os.replace` (same pattern as `CacheManager.save_manifest` in
+  `cache.py`). Previously `open(file_path, "w")` truncated the target
+  file at open time, so a `writelines()` failure (disk full, surrogate)
+  left the file empty on disk. The atomic write preserves the existing
+  file on any partial-failure path. Read-only files (POSIX `chmod 0o444`)
+  are detected up front via `os.access(file_path, os.W_OK)` — without
+  this guard `os.replace(tmp, target)` would SUCCEED on a read-only file
+  (rename is a directory operation, not a file-permission operation),
+  silently overwriting the user's read-only marker. Coverage:
+  `tests/test_write_fixed_file_unicode.py` (7 tests, RED → GREEN via
+  TDD): unit tests for `_write_fixed_file` directly (surrogate →
+  failed_writes + WARNING + atomic-write contract + clean write
+  unaffected) and end-to-end tests through `analyzer.run(fix=True)`
+  (failed_writes recorded, no RPY000 emitted, other files in the same
+  run still fixed).
 
 ### Fixed
 

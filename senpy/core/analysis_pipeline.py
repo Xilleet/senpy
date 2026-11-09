@@ -18,6 +18,7 @@ Before this extraction, SenpyAnalyzer was 855 lines. After: ~400 lines
 from __future__ import annotations
 
 import os
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -605,21 +606,94 @@ class AnalysisPipeline:
         by ``--diff`` mode to capture what ``--fix`` would write without
         modifying files — replacing the old ``builtins.open`` monkey-patch.
 
+        Writes are ATOMIC: lines are first written to a temp file in the
+        same directory, then ``os.replace`` swaps it into place. This
+        preserves the existing file on disk if the write fails partway
+        — which previously did not hold: ``open(file_path, "w")``
+        truncates the target file at open time, so a ``writelines()``
+        failure (disk full, UnicodeEncodeError on a surrogate in
+        ``fix_replacement``) left the file empty. Same pattern as
+        ``CacheManager.save_manifest`` (cache.py).
+
         On ``OSError`` (read-only file, disk full, permission denied, ...)
-        the failure is logged at WARNING level and the path is appended to
-        ``self.analyzer.failed_writes`` so ``AnalysisResult.failed_writes``
-        can surface it to the caller. The exception is NOT re-raised: a
-        single unwritable file must not abort the whole analysis run.
+        OR ``UnicodeEncodeError`` (a rule's ``fix_replacement`` produced
+        text the UTF-8 codec cannot encode — typically a lone surrogate
+        ``\\udcXX`` from upstream ``errors='surrogateescape'`` decoding or
+        from a plugin rule that synthesises replacement text from raw
+        bytes), the failure is logged at WARNING level and the path is
+        appended to ``self.analyzer.failed_writes`` so
+        ``AnalysisResult.failed_writes`` can surface it to the caller.
+        The exception is NOT re-raised: a single unwritable or
+        un-encodable file must not abort the whole analysis run.
+
+        ``UnicodeEncodeError`` is NOT a subclass of ``OSError`` — it must
+        be caught explicitly. Before this catch was added, the error
+        propagated up to ``_analyze_file``'s broad ``except Exception``
+        clause, which emitted a synthesized RPY000 "internal error"
+        diagnostic. That was misleading: the analyzer itself didn't crash,
+        the fix replacement was simply bad bytes. Handling it locally in
+        ``_write_fixed_file`` keeps the failure classified correctly (as
+        a write failure, not an internal analyzer bug) and routes it
+        through the existing ``failed_writes`` path so
+        ``_force_nonzero_if_failed_writes`` forces exit code 1.
         """
         if self._dry_run_callback is not None:
             self._dry_run_callback(file_path, lines)
             return
+
+        # If the target file exists but is not writable (e.g. ``chmod 0o444``
+        # on POSIX), ``os.replace(tmp, target)`` would SUCCEED — rename is a
+        # directory operation, not a file-permission operation. That would
+        # silently overwrite a read-only file that the user explicitly
+        # marked as read-only, breaking the existing ``failed_writes``
+        # contract for read-only files (see
+        # ``tests/test_analyzer_fix_failed_writes.py``).
+        #
+        # Check writability up front and short-circuit: log WARNING, record
+        # the path, and return. There's a TOCTOU window between this check
+        # and the actual rename, but on the read-only path this is the
+        # user's intent (they made the file read-only) — the check is
+        # best-effort, and a race that flips the permission back to writable
+        # between the check and the rename is a benign outcome (the file
+        # gets written, which is what ``--fix`` was asked to do).
+        if os.path.exists(file_path) and not os.access(file_path, os.W_OK):
+            _logger.warning("Failed to write fixes to %s: file is read-only", file_path)
+            self.analyzer.failed_writes.append(file_path)
+            return
+
+        target_dir = os.path.dirname(file_path) or "."
+        tmp_fd: int | None = None
+        tmp_path: str | None = None
         try:
-            with open(file_path, "w", encoding="utf-8", newline="") as f:
+            tmp_fd, tmp_path = tempfile.mkstemp(dir=target_dir, prefix=".senpy_fix.", suffix=".tmp")
+            with os.fdopen(tmp_fd, "w", encoding="utf-8", newline="") as f:
+                tmp_fd = None  # fd closed by the context manager
                 f.writelines(lines)
-        except OSError as e:
+            os.replace(tmp_path, file_path)
+            tmp_path = None  # rename succeeded; nothing to clean up
+        except (OSError, UnicodeEncodeError) as e:
             _logger.warning("Failed to write fixes to %s: %s", file_path, e)
             self.analyzer.failed_writes.append(file_path)
+        finally:
+            # If we still hold the raw fd (mkstemp succeeded but fdopen
+            # failed before we entered the `with` block), close it.
+            # ``contextlib.suppress`` is intentionally avoided here — same
+            # explicit try/except pattern as ``CacheManager.save_manifest``
+            # (cache.py:231).
+            if tmp_fd is not None:
+                try:  # noqa: SIM105
+                    os.close(tmp_fd)
+                except OSError:
+                    pass
+            # If the temp file was created but the rename did not happen
+            # (write failed, or os.replace raised), remove it so we don't
+            # leave .senpy_fix.*.tmp files lying around on every failed
+            # --fix write.
+            if tmp_path is not None:
+                try:  # noqa: SIM105
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
     def analyze_file_only(self, file_path: str) -> list[Diagnostic]:
         """Fast analysis of only the changed file for LSP without state leakage."""
