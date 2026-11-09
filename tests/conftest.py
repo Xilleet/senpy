@@ -209,6 +209,26 @@ def _clean_lsp_state_after_test():
                 except Exception:
                     pass
             lsp_server.change_timers.clear()
+        # Reset _symbol_snapshot to empty so a stale snapshot from test A
+        # does not leak into test B. The snapshot is populated by
+        # _refresh_symbol_snapshot() (called from setup_test_workspace and
+        # did_open/did_save handlers); without this reset, a test that
+        # mutates _active_analyzer directly (bypassing setup_test_workspace)
+        # would see leftover labels/jump_sources from the previous test,
+        # because navigation handlers like incoming_calls() check the
+        # snapshot BEFORE falling back to _active_analyzer.
+        snap = getattr(server_mod, "_symbol_snapshot", None)
+        if snap is not None:
+            for _k in (
+                "labels",
+                "screens",
+                "transforms",
+                "variables",
+                "jump_sources",
+                "labels_by_file",
+            ):
+                snap[_k] = {}
+            snap["images"] = set()
     except ImportError:
         # senpy.lsp.server ещё не импортирован этим тестом — ничего не делаем
         pass
