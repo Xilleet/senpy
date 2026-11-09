@@ -279,6 +279,6 @@ diff baseline.json current.json
   disk (related but for files, not code).
 - [RPY3xx — Story Flow](rpy3xx-story.md) — `RPY303` (unreferenced
   labels) is similar in spirit but for labels, not declarations.
-- [All 52 rules](index.md) — back to the navigator.
+- [All 53 rules](index.md) — back to the navigator.
 - [RULES.md in repo](https://github.com/Xilleet/senpy/blob/main/RULES.md)
   — canonical reference.

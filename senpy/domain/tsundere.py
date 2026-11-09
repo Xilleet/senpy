@@ -182,6 +182,9 @@ TSUNDERE_FLAVORS = {
     "RPY100": "(╯°□°)╯︵ ┻━┻ «Этот файл вообще не в UTF-8! Он молча выпал из проверки — ищи кракозябры в игре, бака!»"
     if IS_RU
     else "(╯°□°)╯︵ ┻━┻ «This file isn't even UTF-8! It silently dropped out of the check — enjoy the mojibake in-game, baka!»",
+    "RPY000": "(；￣Д￣) «С-стой, это не твоя вина... это я споткнулась на твоём файле и упала! Н-но это всё равно позорно для меня, бака! Пожалуйста, отправь отчёт на GitHub, я исправлюсь!»"
+    if IS_RU
+    else "(；￣Д￣) «W-Wait, this isn't your fault... I tripped over your file and crashed! B-But it's still embarrassing for me, baka! Please report this on GitHub so I can fix myself!»",
 }
 
 TSUNDERE_UI = {

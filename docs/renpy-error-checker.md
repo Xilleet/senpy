@@ -278,7 +278,7 @@ logic, and merge into your project.
 
 ## What's next?
 
-- [**All 52 rules**](rules/index.md) — browse by category.
+- [**All 53 rules**](rules/index.md) — browse by category.
 - [**Ren'Py Linter**](renpy-linter.md) — overview of what linters catch.
 - [**Configuration**](configuration.md) — how to silence noisy rules,
   promote warnings to errors, and use `strict` mode in CI.

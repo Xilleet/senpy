@@ -9,7 +9,7 @@ tags:
 # Install Senpy
 
 Senpy is distributed through three channels. Pick the one that matches
-your workflow — they all use the same analyzer engine and the same 52 rules.
+your workflow — they all use the same analyzer engine and the same 53 rules.
 
 | Channel | Best for | Setup |
 |---|---|---|
@@ -32,7 +32,7 @@ Verify:
 
 ```bash
 senpy --version
-senpy --rules    # list all 52 rules
+senpy --rules    # list all 53 rules
 ```
 
 Requirements:
@@ -148,7 +148,7 @@ senpy --version
 # senpy 0.8.4
 
 senpy --rules
-# prints a table of all 52 rules with severity + tags
+# prints a table of all 53 rules with severity + tags
 
 senpy path/to/your/renpy/game
 # analyzes the project, prints diagnostics + summary line
@@ -195,6 +195,6 @@ If the extension does not activate:
 - **Add Senpy to [CI](renpy-github-actions.md)** — `senpy --init-ci`
   generates a GitHub Actions workflow that runs Senpy on every PR and
   uploads SARIF to GitHub Code Scanning.
-- **Browse [all 52 rules](rules/index.md)** — each rule has a page
+- **Browse [all 53 rules](rules/index.md)** — each rule has a page
   explaining what it catches, why it matters, and a real `.rpy` example
   before/after.

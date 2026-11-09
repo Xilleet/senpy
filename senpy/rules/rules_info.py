@@ -8,6 +8,45 @@ from rich.text import Text
 console = Console()
 
 RULES_DATABASE = {
+    # ---------------- 000: Internal (Senpy signals, not user rules) --------
+    # RPY000 is emitted by AnalysisPipeline._analyze_all_files when a
+    # built-in checker raises an unhandled exception during analysis. It
+    # is not triggered by anything in user .rpy code — it signals a bug
+    # in Senpy itself. Registered in RULES_DATABASE (rather than being an
+    # ad-hoc code) so that:
+    #   - `senpy rule show RPY000` prints a real description instead of
+    #     "Unknown rule code";
+    #   - RULE_SEVERITY (derived from this dict) returns "ERROR" for
+    #     RPY000 instead of falling back to the "WARNING" default that
+    #     _apply_severity uses for unknown codes;
+    #   - the rule list groups it under an explicit "Internal" section so
+    #     users understand it is a Senpy signal, not a rule they can fix
+    #     by editing their .rpy file.
+    "RPY000": {
+        "title": "Senpy internal error",
+        "severity": "ERROR",
+        "tags": ["internal"],
+        "why": (
+            "An unexpected exception occurred inside Senpy while analyzing a file. "
+            "This is a bug in Senpy itself, not in your .rpy code — please report it "
+            "at https://github.com/Xilleet/senpy/issues with the file that triggered "
+            "the error, the exception traceback printed to stderr, and the Senpy "
+            "version (`senpy --version`)."
+        ),
+        "bad": (
+            "# RPY000 is not triggered by user code — it is emitted by Senpy\n"
+            "# when an internal checker raises an unhandled exception.\n"
+            "# If you see it, your .rpy file exposed a Senpy bug; please report it."
+        ),
+        "good": (
+            "# Suppress on a specific line if you cannot fix Senpy right away:\n"
+            "label start:\n"
+            "    $ risky_call()  # noqa: RPY000\n"
+            "\n"
+            "# Or run with --select RPY000 to surface only internal errors\n"
+            "# when reproducing a bug report."
+        ),
+    },
     # ---------------- 000: Indentation & Code Formatting ----------------
     "RPY001": {
         "title": "Tab character in indentation",

@@ -307,6 +307,6 @@ senpy /path/to/game --tag dialogue   # only dialogue-tag rules
 
 - [RPY4xx — Branching](rpy4xx-flow.md) — menu asymmetry, MAYBE_SET.
 - [RPY2xx — Screens & UI](rpy2xx-screens.md) — screen actions, UI bugs.
-- [All 52 rules](index.md) — back to the navigator.
+- [All 53 rules](index.md) — back to the navigator.
 - [RULES.md in repo](https://github.com/Xilleet/senpy/blob/main/RULES.md)
   — canonical reference.

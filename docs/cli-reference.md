@@ -13,7 +13,7 @@ The `senpy` command has 30+ flags organized in 5 argument groups, plus
 
 ```bash
 senpy --version                  # show version
-senpy --rules                    # list all 52 rules
+senpy --rules                    # list all 53 rules
 senpy path/to/game               # analyze the project (default)
 senpy path/to/game --fix         # auto-fix safe errors
 senpy format path/to/game/       # format .rpy files (subcommand)
@@ -39,7 +39,7 @@ senpy rule show RPY104           # show one rule detail (subcommand)
 
 | Flag | Description |
 |---|---|
-| `--rules` | List all 52 rules and descriptions |
+| `--rules` | List all 53 rules and descriptions |
 | `--rule CODE` | Show detailed explanation for a rule (e.g. `--rule RPY104`) |
 
 ### Analysis & autofix
@@ -134,7 +134,7 @@ Output is JSON — pipe into `jq` or save to a file.
 Browse rule metadata without running the analyzer.
 
 ```bash
-senpy rule list                       # table of all 52 rules
+senpy rule list                       # table of all 53 rules
 senpy rule list --format json         # JSON output
 senpy rule list --tag rollback        # filter by tag
 senpy rule list --severity ERROR      # filter by severity

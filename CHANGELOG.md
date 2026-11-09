@@ -27,6 +27,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **RPY000 registered in RULES_DATABASE.** The synthesized `RPY000`
+  diagnostic — emitted by `AnalysisPipeline._analyze_all_files` when a
+  built-in checker raises an unhandled exception during analysis — is
+  now a first-class entry in `RULES_DATABASE` with `severity=ERROR`
+  and `tags=["internal"]`. Previously the code was emitted ad-hoc: it
+  was missing from `RULES_DATABASE`, so `senpy rule show RPY000`
+  printed "Unknown rule code" and `RULE_SEVERITY.get("RPY000", "WARNING")`
+  fell back to WARNING. The pipeline already constructed the Diagnostic
+  with explicit `severity="ERROR"`, so end-to-end behaviour for users
+  was already correct (the audit's BUG-1 description over-stated the
+  impact), but the contract was implicit. Registering RPY000 makes the
+  severity single-sourced and lets `senpy rule show RPY000` /
+  `senpy rule list` surface it. The text-mode `senpy rule list` now
+  renders an explicit "Internal (Senpy signals, not user rules)" section
+  below the main rules table, separating RPY000 from the user-facing
+  RPY001–RPY802 rules. RULES.md gains a matching "Internal (RPY000)"
+  section. Coverage: `tests/test_rpy000_severity.py` (12 tests, RED →
+  GREEN via TDD): database membership, severity lookup, end-to-end
+  pipeline severity preservation under default and `strict` modes,
+  `senpy rule show RPY000` (text + json), `senpy rule list` (text +
+  json, including `--tag internal` filter).
+
 ### Fixed
 
 - **ARCHITECTURE.md plugin wiring stale.** "planned for 0.8.0" →

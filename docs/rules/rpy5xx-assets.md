@@ -231,6 +231,6 @@ senpy /path/to/game --tag assets   # only asset rules
 
 - [RPY7xx — Dead Code](rpy7xx-deadcode.md) — unused `define`,
   `transform`, `screen` (related but for code, not media).
-- [All 52 rules](index.md) — back to the navigator.
+- [All 53 rules](index.md) — back to the navigator.
 - [RULES.md in repo](https://github.com/Xilleet/senpy/blob/main/RULES.md)
   — canonical reference.

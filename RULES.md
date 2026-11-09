@@ -5,6 +5,7 @@ Comprehensive guide to all semantic and static rules implemented in the **Senpy*
 ---
 
 ### Navigation
+- **Internal (RPY000)**: [RPY000](#rpy000) — Senpy signal, not a user rule
 - **Indentation & Code (RPY0xx)**: [RPY001](#rpy001) | [RPY002](#rpy002)
 - **Variables & State (RPY1xx)**: [RPY100](#rpy100) | [RPY101](#rpy101) | [RPY102](#rpy102) | [RPY103](#rpy103) | [RPY104](#rpy104) | [RPY105](#rpy105) | [RPY106](#rpy106) | [RPY107](#rpy107) | [RPY108](#rpy108) | [RPY109](#rpy109) | [RPY110](#rpy110)
 - **Screens & UI (RPY2xx)**: [RPY201](#rpy201) | [RPY202](#rpy202) | [RPY203](#rpy203) | [RPY204](#rpy204) | [RPY205](#rpy205) | [RPY206](#rpy206) | [RPY207](#rpy207) | [RPY208](#rpy208)
@@ -1006,3 +1007,26 @@ label start:
     play ambient "rain.ogg"
     return
 ```
+
+---
+
+## Internal (RPY000)
+
+<a id="rpy000"></a>
+### RPY000: Senpy internal error
+- **Severity**: `ERROR`
+- **Tag**: `internal`
+- **Why**: An unexpected exception occurred inside Senpy while analyzing a file. This is a bug in Senpy itself, not in your `.rpy` code. Please report it at [github.com/Xilleet/senpy/issues](https://github.com/Xilleet/senpy/issues) with the file that triggered the error, the exception traceback printed to stderr, and the Senpy version (`senpy --version`).
+- **Tip**: Suppress on a specific line with `# noqa: RPY000`, or run with `--select RPY000` to surface only internal errors when reproducing a bug report.
+
+```renpy
+# RPY000 is not triggered by user code — it is emitted by Senpy
+# when an internal checker raises an unhandled exception.
+# If you see it, your .rpy file exposed a Senpy bug; please report it.
+
+# Suppress on a specific line if you cannot fix Senpy right away:
+label start:
+    $ risky_call()  # noqa: RPY000
+```
+
+> **Note:** Unlike RPY001–RPY802, RPY000 is a Senpy signal, not a user-facing rule. It exists so internal errors are visible in the diagnostic stream with `ERROR` severity, fail `--fail-on-error` runs, and can be suppressed or filtered like any other diagnostic. It is grouped under the "Internal" section in `senpy rule list` output.

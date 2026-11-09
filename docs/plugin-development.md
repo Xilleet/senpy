@@ -639,7 +639,7 @@ If any of these fail, that's your problem. Fix it, reinstall with
 
 ## What's next?
 
-- [**All 52 rules**](rules/index.md) — built-in rule reference.
+- [**All 53 rules**](rules/index.md) — built-in rule reference.
 - [**Configuration**](configuration.md) — `senpy.toml`, `--tag` filter
   for plugin rules.
 - [**CLI reference**](cli-reference.md) — `--trust-plugin`,

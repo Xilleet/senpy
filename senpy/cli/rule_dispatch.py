@@ -226,13 +226,22 @@ def _render_list_text(rules: list[dict[str, Any]]) -> str:
     We build the table manually (instead of capturing Console output)
     so the function is pure and testable. The format mirrors
     show_rules_table() in rules_info.py.
+
+    Rules carrying the ``internal`` tag (currently only RPY000) are
+    rendered in a separate "Internal" section after the main table, so
+    users can tell them apart from the user-facing RPY001-RPY802 rules.
+    Internal rules signal Senpy bugs or analysis state — they are not
+    triggered by anything the user can fix in their .rpy file.
     """
+    main_rules = [r for r in rules if "internal" not in r["tags"]]
+    internal_rules = [r for r in rules if "internal" in r["tags"]]
+
     lines: list[str] = []
     lines.append(f"Senpy Linter Rules Reference ({len(rules)} rule(s))")
     lines.append("")
     lines.append(f"{'Rule':<8}  {'Severity':<8}  {'Tags':<32}  Description")
     lines.append(f"{'-' * 8}  {'-' * 8}  {'-' * 32}  {'-' * 40}")
-    for r in rules:
+    for r in main_rules:
         tags_str = ", ".join(r["tags"])
         if len(tags_str) > 32:
             tags_str = tags_str[:29] + "..."
@@ -240,6 +249,20 @@ def _render_list_text(rules: list[dict[str, Any]]) -> str:
         if len(title) > 40:
             title = title[:37] + "..."
         lines.append(f"{r['code']:<8}  {r['severity']:<8}  {tags_str:<32}  {title}")
+
+    if internal_rules:
+        lines.append("")
+        lines.append("Internal (Senpy signals, not user rules)")
+        lines.append(f"{'-' * 8}  {'-' * 8}  {'-' * 32}  {'-' * 40}")
+        for r in internal_rules:
+            tags_str = ", ".join(r["tags"])
+            if len(tags_str) > 32:
+                tags_str = tags_str[:29] + "..."
+            title = r["title"]
+            if len(title) > 40:
+                title = title[:37] + "..."
+            lines.append(f"{r['code']:<8}  {r['severity']:<8}  {tags_str:<32}  {title}")
+
     lines.append("")
     lines.append("Run 'senpy rule show <CODE>' for detailed explanation and examples.")
     return "\n".join(lines) + "\n"

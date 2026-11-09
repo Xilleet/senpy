@@ -231,6 +231,6 @@ senpy /path/to/game --tag translations --info   # include HINT-level
   strings).
 - [Ren'Py Translation Checker](../renpy-translation-checker.md) —
   the full `--coverage` documentation and worked examples.
-- [All 52 rules](index.md) — back to the navigator.
+- [All 53 rules](index.md) — back to the navigator.
 - [RULES.md in repo](https://github.com/Xilleet/senpy/blob/main/RULES.md)
   — canonical reference.

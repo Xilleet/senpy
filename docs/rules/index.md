@@ -1,5 +1,5 @@
 ---
-title: All Senpy Rules — 52 Rules Across 8 Categories
+title: All Senpy Rules — 53 Rules Across 8 Categories
 description: Senpy includes 52 specialized lint rules for Ren'Py visual novels, organized into 8 categories by prefix (RPY0xx through RPY8xx). Browse by category or search for a specific rule. Each rule links to the canonical RULES.md reference in the repository.
 tags:
   - rules
@@ -20,7 +20,7 @@ in the terminal:
 
 ```bash
 senpy rule show RPY104    # show one rule in detail
-senpy rule list           # table of all 52 rules
+senpy rule list           # table of all 53 rules
 senpy rule list --tag rollback    # filter by tag
 ```
 

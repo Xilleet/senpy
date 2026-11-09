@@ -161,6 +161,11 @@ def test_mega_broken_script_catches_all_rules(tmp_path: Path):
     # Каждое — с указанием причины и номером соответствующего fixture-теста
     # (если он есть) или TODO (если fixture ещё нужно создать — см.).
     MEGA_UNCOVERED_RULES = {
+        # RPY000 — internal Senpy signal, emitted only when a built-in
+        # checker raises an unhandled exception. Cannot be triggered by
+        # user .rpy code. Covered by tests/test_rpy000_severity.py via
+        # monkeypatch of _analyze_file.
+        "RPY000",
         # RPY100 — нужен файл с невалидным UTF-8 (тестируется отдельно через
         # test_encoding_errors.py + RPY100 fixture TODO).
         "RPY100",

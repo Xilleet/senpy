@@ -321,6 +321,6 @@ senpy /path/to/game --ignore-tag deprecated   # skip deprecated API checks
 
 - [RPY2xx — Screens & UI](rpy2xx-screens.md) — screen actions, UI prediction.
 - [RPY4xx — Branching](rpy4xx-flow.md) — `MAYBE_SET` reads after menu branches.
-- [All 52 rules](index.md) — back to the navigator.
+- [All 53 rules](index.md) — back to the navigator.
 - [RULES.md in repo](https://github.com/Xilleet/senpy/blob/main/RULES.md)
   — canonical reference with full examples for every RPY1xx rule.

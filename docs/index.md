@@ -57,7 +57,7 @@ See [Install](install.md) for all three installation paths (Python CLI, VS Code 
 
 ## What can Senpy detect?
 
-Senpy includes **52 rules** across 8 categories. Each rule maps to a
+Senpy includes **53 rules** across 8 categories. Each rule maps to a
 real Ren'Py runtime failure that goes beyond `renpy lint`'s scope:
 
 | Category | Rules | Example caught bug |
