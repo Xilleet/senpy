@@ -1,8 +1,0 @@
-[
-  {
-    "code": "RPY701",
-    "severity": "HINT",
-    "line": 3,
-    "message_fragment": "Constant 'debug_mode' is declared with 'define' but never used. Consider removing this dead code."
-  }
-]

@@ -1,8 +1,0 @@
-[
-  {
-    "code": "RPY201",
-    "severity": "WARNING",
-    "line": 2,
-    "message_fragment": "Direct state mutation 'player_gold' inside screen 'shop'. Screens are evaluated predictively. Use sc"
-  }
-]

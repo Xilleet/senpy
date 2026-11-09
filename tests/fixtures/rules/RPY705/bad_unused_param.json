@@ -1,8 +1,0 @@
-[
-  {
-    "code": "RPY705",
-    "severity": "HINT",
-    "line": 1,
-    "message_fragment": "Screen 'shop' declares parameter 'unused_currency' but never uses it in the body. Consider removing "
-  }
-]

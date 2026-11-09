@@ -1,8 +1,0 @@
-[
-  {
-    "code": "RPY502",
-    "severity": "WARNING",
-    "line": 4,
-    "message_fragment": "Sprite or background 'Sayori' not found in assets or 'image' definitions (case mismatch: did you mea"
-  }
-]

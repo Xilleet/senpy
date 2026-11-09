@@ -1,8 +1,0 @@
-[
-  {
-    "code": "RPY100",
-    "severity": "ERROR",
-    "line": 1,
-    "message_fragment": "File is not valid UTF-8 (invalid continuation byte at byte offset 0). Ren'Py requires UTF-8 script f"
-  }
-]

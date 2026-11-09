@@ -1,8 +1,0 @@
-[
-  {
-    "code": "RPY106",
-    "severity": "WARNING",
-    "line": 2,
-    "message_fragment": "Mutable 'set' used in story flow. Ren'Py rollback does not track standard sets. Prefer list '[]' or "
-  }
-]
