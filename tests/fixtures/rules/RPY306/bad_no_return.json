@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY306",
+    "severity": "WARNING",
+    "line": 2,
+    "message_fragment": "Static analysis could not find a 'return' path from called label 'sub_scene'. Verify that control fl"
+  }
+]

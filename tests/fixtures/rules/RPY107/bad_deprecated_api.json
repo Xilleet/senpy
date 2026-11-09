@@ -1,0 +1,14 @@
+[
+  {
+    "code": "RPY107",
+    "severity": "WARNING",
+    "line": 1,
+    "message_fragment": "Deprecated Ren'Py API 'LiveComposite'. This function is obsolete or outdated. Use 'Composite' instea"
+  },
+  {
+    "code": "RPY107",
+    "severity": "WARNING",
+    "line": 2,
+    "message_fragment": "Deprecated Ren'Py API 'DynamicCharacter'. Deprecated in modern Ren'Py. Use 'Character' with '[var]' "
+  }
+]

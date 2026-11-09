@@ -1,0 +1,20 @@
+[
+  {
+    "code": "RPY310",
+    "severity": "ERROR",
+    "line": 5,
+    "message_fragment": "Invalid arguments in 'call target_with_params': missing required argument 'b'. Causes fatal TypeErro"
+  },
+  {
+    "code": "RPY310",
+    "severity": "ERROR",
+    "line": 6,
+    "message_fragment": "Invalid arguments in 'call target_with_params': takes at most 3 argument(s), but 5 were provided. Ca"
+  },
+  {
+    "code": "RPY310",
+    "severity": "ERROR",
+    "line": 7,
+    "message_fragment": "Invalid arguments in 'call target_with_params': got unexpected keyword argument 'unknown_arg'. Cause"
+  }
+]

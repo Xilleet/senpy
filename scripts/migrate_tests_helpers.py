@@ -75,7 +75,6 @@ def section(title: str) -> None:
 # Step 1+2: package markers
 # --------------------------------------------------------------------------- #
 
-
 def create_package_markers() -> None:
     section("Step 1+2: package markers")
     for path in (TESTS / "__init__.py", HELPERS / "__init__.py"):
@@ -297,7 +296,6 @@ def create_subprint_helper() -> None:
 # Step 6: move tests/_quickfix_sim.py → tests/_helpers/quickfix.py
 # --------------------------------------------------------------------------- #
 
-
 def move_quickfix_sim() -> None:
     section("Step 6: tests/_quickfix_sim.py → tests/_helpers/quickfix.py")
     src = TESTS / "_quickfix_sim.py"
@@ -320,7 +318,6 @@ def move_quickfix_sim() -> None:
 # --------------------------------------------------------------------------- #
 # Step 7: edit test_lsp.py to import helpers instead of defining them
 # --------------------------------------------------------------------------- #
-
 
 def refactor_test_lsp() -> None:
     section("Step 7: tests/test_lsp.py — import from tests._helpers.lsp")
@@ -383,11 +380,11 @@ label deep_cave:
 
     return script_file, analyzer'''
 
-    new_block = """from tests._helpers.lsp import (  # noqa: F401  — re-exported for back-compat
+    new_block = '''from tests._helpers.lsp import (  # noqa: F401  — re-exported for back-compat
     MockDocument,
     MockWorkspace,
     setup_test_workspace,
-)"""
+)'''
 
     if new_block in text:
         print(f"  · skip (already migrated): {path.relative_to(REPO)}")
@@ -406,7 +403,6 @@ label deep_cave:
 # --------------------------------------------------------------------------- #
 # Step 8: edit test_0_6_0_subprint_3a.py
 # --------------------------------------------------------------------------- #
-
 
 def refactor_subprint_3a() -> None:
     section("Step 8: tests/test_0_6_0_subprint_3a.py — import from tests._helpers.subprint")
@@ -442,17 +438,19 @@ class MockWorkspace:
     def get_text_document(self, uri: str) -> MockDocument | None:
         return self._documents.get(uri)'''
 
-    new_block = """from tests._helpers.subprint import (  # noqa: F401  — re-exported for back-compat
+    new_block = '''from tests._helpers.subprint import (  # noqa: F401  — re-exported for back-compat
     MockDocument,
     MockWorkspace,
-)"""
+)'''
 
     if new_block in text:
         print(f"  · skip (already migrated): {path.relative_to(REPO)}")
         return
 
     if old_block not in text:
-        raise RuntimeError("test_0_6_0_subprint_3a.py: expected helper block not found verbatim.")
+        raise RuntimeError(
+            "test_0_6_0_subprint_3a.py: expected helper block not found verbatim."
+        )
 
     new_text = text.replace(old_block, new_block)
     path.write_text(new_text, encoding="utf-8")
@@ -506,7 +504,6 @@ def update_test_lsp_importers() -> None:
 # Step 10: update importer of `from test_0_6_0_subprint_3a import ...`
 # --------------------------------------------------------------------------- #
 
-
 def update_subprint_importer() -> None:
     section(
         "Step 10: rewrite `from test_0_6_0_subprint_3a import` → `from tests._helpers.subprint import`"
@@ -540,7 +537,9 @@ QUICKFIX_IMPORTERS = [
 
 
 def update_quickfix_importers() -> None:
-    section("Step 11: rewrite `from _quickfix_sim import` → `from tests._helpers.quickfix import`")
+    section(
+        "Step 11: rewrite `from _quickfix_sim import` → `from tests._helpers.quickfix import`"
+    )
     for rel in QUICKFIX_IMPORTERS:
         path = REPO / rel
         text = path.read_text(encoding="utf-8")
@@ -566,7 +565,8 @@ def update_quickfix_importers() -> None:
 
 PARENT_PARENT_FILES = {
     "tests/test_post_080_fixes.py": [
-        ('Path(__file__).parent.parent / "senpy-vscode" / "src" / "extension.ts"', "EXTENSION_TS"),
+        ('Path(__file__).parent.parent / "senpy-vscode" / "src" / "extension.ts"',
+         "EXTENSION_TS"),
         ('Path(__file__).parent.parent / "SECURITY.md"', "SECURITY_MD"),
     ],
     "tests/test_vscode_extension.py": [
@@ -576,8 +576,10 @@ PARENT_PARENT_FILES = {
         ("Path(__file__).parent.parent", "REPO_ROOT"),
     ],
     "tests/test_lsp_asset_hover.py": [
-        ('Path(__file__).parent.parent / "senpy-vscode" / "src" / "extension.ts"', "EXTENSION_TS"),
-        ('Path(__file__).parent.parent / "senpy-vscode" / "package.json"', "VSCODE_PACKAGE_JSON"),
+        ('Path(__file__).parent.parent / "senpy-vscode" / "src" / "extension.ts"',
+         "EXTENSION_TS"),
+        ('Path(__file__).parent.parent / "senpy-vscode" / "package.json"',
+         "VSCODE_PACKAGE_JSON"),
     ],
     "tests/test_p0_cli.py": [
         ("Path(__file__).parent.parent", "REPO_ROOT"),
@@ -589,28 +591,22 @@ PARENT_PARENT_FILES = {
 
 RESOLVE_PARENT_PARENT_FILES = {
     "tests/test_plugin_rule_execution.py": [
-        (
-            'Path(__file__).resolve().parent.parent / "examples" / "todo_comment_plugin"',
-            "PLUGIN_DIR",
-        ),
+        ('Path(__file__).resolve().parent.parent / "examples" / "todo_comment_plugin"',
+         "PLUGIN_DIR"),
     ],
     "tests/test_packaging.py": [
         ("Path(__file__).resolve().parent.parent", "REPO_ROOT"),
     ],
     "tests/test_check_cycles.py": [
-        (
-            'Path(__file__).resolve().parent.parent / "scripts" / "check_cycles.py"',
-            "CHECK_CYCLES_SCRIPT",
-        ),
+        ('Path(__file__).resolve().parent.parent / "scripts" / "check_cycles.py"',
+         "CHECK_CYCLES_SCRIPT"),
     ],
     "tests/test_pre_commit_hooks.py": [
         ("Path(__file__).resolve().parent.parent", "REPO_ROOT"),
     ],
     "tests/test_lsp_plugin_execution.py": [
-        (
-            'Path(__file__).resolve().parent.parent / "examples" / "todo_comment_plugin"',
-            "PLUGIN_DIR",
-        ),
+        ('Path(__file__).resolve().parent.parent / "examples" / "todo_comment_plugin"',
+         "PLUGIN_DIR"),
     ],
     "tests/test_inspect_cli.py": [
         ("Path(__file__).resolve().parent.parent", "REPO_ROOT"),
@@ -622,10 +618,8 @@ RESOLVE_PARENT_PARENT_FILES = {
         ("Path(__file__).resolve().parent.parent", "REPO_ROOT"),
     ],
     "tests/test_todo_comment_plugin.py": [
-        (
-            'Path(__file__).resolve().parent.parent / "examples" / "todo_comment_plugin"',
-            "PLUGIN_DIR",
-        ),
+        ('Path(__file__).resolve().parent.parent / "examples" / "todo_comment_plugin"',
+         "PLUGIN_DIR"),
     ],
     "tests/test_ruff_clean.py": [
         ("Path(__file__).resolve().parent.parent", "REPO_ROOT"),
@@ -646,7 +640,8 @@ FIXTURES_PATH_FILES = {
         ('Path(__file__).parent / "fixtures" / "rules"', "FIXTURES_DIR"),
     ],
     "tests/test_rpy109_cross_file_fixture.py": [
-        ('Path(__file__).parent / "fixtures" / "rpy109_cross_file"', "CROSS_FILE_FIXTURES_DIR"),
+        ('Path(__file__).parent / "fixtures" / "rpy109_cross_file"',
+         "CROSS_FILE_FIXTURES_DIR"),
     ],
 }
 
@@ -661,7 +656,9 @@ def add_paths_import(text: str, names: list[str]) -> str:
         import_line = f"from tests._helpers.paths import {names[0]}\n"
     else:
         import_line = (
-            "from tests._helpers.paths import (\n" + "".join(f"    {n},\n" for n in names) + ")\n"
+            "from tests._helpers.paths import (\n"
+            + "".join(f"    {n},\n" for n in names)
+            + ")\n"
         )
 
     if "from tests._helpers.paths import" in text:
@@ -698,7 +695,9 @@ def replace_path_constants(files_map: dict[str, list[tuple[str, str]]]) -> None:
         names_sorted = sorted(names_needed)
         modified = add_paths_import(modified, names_sorted)
         path.write_text(modified, encoding="utf-8")
-        log(f"edited {rel}: {len(names_needed)} path constant(s) replaced, import added")
+        log(
+            f"edited {rel}: {len(names_needed)} path constant(s) replaced, import added"
+        )
 
 
 def update_path_arithmetic() -> None:
@@ -717,7 +716,6 @@ def update_path_arithmetic() -> None:
 # Step 14: pyproject.toml — add --import-mode=importlib
 # --------------------------------------------------------------------------- #
 
-
 def update_pyproject() -> None:
     section("Step 14: pyproject.toml — add --import-mode=importlib")
     path = REPO / "pyproject.toml"
@@ -725,17 +723,17 @@ def update_pyproject() -> None:
     if "--import-mode=importlib" in text:
         print("  · skip (already migrated): pyproject.toml")
         return
-    old = """addopts = [
+    old = '''addopts = [
     "--strict-markers",
     "--strict-config",
     "-ra",
-]"""
-    new = """addopts = [
+]'''
+    new = '''addopts = [
     "--strict-markers",
     "--strict-config",
     "-ra",
     "--import-mode=importlib",
-]"""
+]'''
     if old not in text:
         raise RuntimeError("pyproject.toml: addopts block not found verbatim")
     path.write_text(text.replace(old, new), encoding="utf-8")
@@ -745,7 +743,6 @@ def update_pyproject() -> None:
 # --------------------------------------------------------------------------- #
 # Driver
 # --------------------------------------------------------------------------- #
-
 
 def main() -> int:
     print(f"Repo root: {REPO}")

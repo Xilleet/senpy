@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY103",
+    "severity": "ERROR",
+    "line": 8,
+    "message_fragment": "Undeclared variable 'target_enemy' in condition. Evaluating this condition will crash with NameError"
+  }
+]

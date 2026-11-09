@@ -1,0 +1,14 @@
+[
+  {
+    "code": "RPY309",
+    "severity": "WARNING",
+    "line": 6,
+    "message_fragment": "Story island detected: label 'abandoned_island_a' forms an isolated subgraph unreachable from 'start"
+  },
+  {
+    "code": "RPY309",
+    "severity": "WARNING",
+    "line": 10,
+    "message_fragment": "Story island detected: label 'abandoned_island_b' forms an isolated subgraph unreachable from 'start"
+  }
+]

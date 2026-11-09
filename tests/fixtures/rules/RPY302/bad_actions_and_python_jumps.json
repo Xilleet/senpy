@@ -1,0 +1,26 @@
+[
+  {
+    "code": "RPY302",
+    "severity": "ERROR",
+    "line": 5,
+    "message_fragment": "Jump/Call action to non-existent label 'strt' (did you mean 'start' ?). Causes ScriptError."
+  },
+  {
+    "code": "RPY302",
+    "severity": "ERROR",
+    "line": 6,
+    "message_fragment": "Jump/Call action to non-existent label 'btle'. Causes ScriptError."
+  },
+  {
+    "code": "RPY302",
+    "severity": "ERROR",
+    "line": 9,
+    "message_fragment": "Jump/Call action to non-existent label 'edning'. Causes ScriptError."
+  },
+  {
+    "code": "RPY302",
+    "severity": "ERROR",
+    "line": 10,
+    "message_fragment": "Jump/Call action to non-existent label 'chpter2'. Causes ScriptError."
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY302",
+    "severity": "ERROR",
+    "line": 11,
+    "message_fragment": "Jump to non-existent label '.missing_sub'. Causes ScriptError."
+  }
+]

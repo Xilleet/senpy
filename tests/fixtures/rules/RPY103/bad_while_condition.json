@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY103",
+    "severity": "ERROR",
+    "line": 3,
+    "message_fragment": "Undeclared variable 'missing_flag' in condition. Evaluating this condition will crash with NameError"
+  }
+]

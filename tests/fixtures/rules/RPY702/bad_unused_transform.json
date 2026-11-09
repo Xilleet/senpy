@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY702",
+    "severity": "HINT",
+    "line": 4,
+    "message_fragment": "Transform 'unused_transform' is defined but never used in 'show/scene at'. Consider removing this de"
+  }
+]

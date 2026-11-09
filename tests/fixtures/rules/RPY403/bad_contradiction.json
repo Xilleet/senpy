@@ -1,0 +1,14 @@
+[
+  {
+    "code": "RPY403",
+    "severity": "WARNING",
+    "line": 2,
+    "message_fragment": "Condition 'False' is always False. This block will never execute."
+  },
+  {
+    "code": "RPY403",
+    "severity": "WARNING",
+    "line": 5,
+    "message_fragment": "Condition contains mutually exclusive contradiction: 'has_key and not has_key'. Always evaluates to "
+  }
+]

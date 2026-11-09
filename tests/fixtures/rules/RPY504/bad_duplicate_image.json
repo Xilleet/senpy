@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY504",
+    "severity": "WARNING",
+    "line": 2,
+    "message_fragment": "Image 'bg room' is redefined (override). Previously declared at bad_duplicate_image.rpy:1."
+  }
+]

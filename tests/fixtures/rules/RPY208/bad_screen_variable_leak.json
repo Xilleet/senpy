@@ -1,0 +1,20 @@
+[
+  {
+    "code": "RPY208",
+    "severity": "ERROR",
+    "line": 6,
+    "message_fragment": "Screen action 'SetVariable' targets screen-local variable 'selected_item'. This leaks into the globa"
+  },
+  {
+    "code": "RPY208",
+    "severity": "ERROR",
+    "line": 9,
+    "message_fragment": "Screen action 'ToggleVariable' targets screen-local variable 'is_confirmed'. This leaks into the glo"
+  },
+  {
+    "code": "RPY208",
+    "severity": "ERROR",
+    "line": 12,
+    "message_fragment": "Direct state mutation of screen-local variable 'discount_rate' inside screen 'shop'. Python statemen"
+  }
+]

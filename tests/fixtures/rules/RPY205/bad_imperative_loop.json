@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY205",
+    "severity": "WARNING",
+    "line": 3,
+    "message_fragment": "Imperative 'for' loop inside screen 'inventory'. Python loops inside screens hurt UI prediction perf"
+  }
+]

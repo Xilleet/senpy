@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY310",
+    "severity": "ERROR",
+    "line": 6,
+    "message_fragment": "Invalid arguments in 'call quest': missing required argument 'item'. Causes fatal TypeError."
+  }
+]

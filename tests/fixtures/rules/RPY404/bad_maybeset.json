@@ -1,0 +1,14 @@
+[
+  {
+    "code": "RPY404",
+    "severity": "WARNING",
+    "line": 9,
+    "message_fragment": "Variable 'met_yuri' may be uninitialized (MAYBE_SET) if player took choice 'Уйти' on line 5. Conditi"
+  },
+  {
+    "code": "RPY404",
+    "severity": "WARNING",
+    "line": 12,
+    "message_fragment": "Variable '[met_yuri]' may be uninitialized (MAYBE_SET) if player took choice 'Уйти' on line 5. Will "
+  }
+]

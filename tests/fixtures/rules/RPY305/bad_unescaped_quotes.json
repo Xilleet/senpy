@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY305",
+    "severity": "ERROR",
+    "line": 2,
+    "message_fragment": "Unescaped quotes inside dialogue text. Use '\\\"' instead of '\"' to avoid syntax errors."
+  }
+]

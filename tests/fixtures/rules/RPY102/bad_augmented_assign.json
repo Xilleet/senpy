@@ -1,0 +1,8 @@
+[
+  {
+    "code": "RPY102",
+    "severity": "ERROR",
+    "line": 3,
+    "message_fragment": "Augmented assignment to 'magic_points' before declaration via 'default'. Causes runtime NameError."
+  }
+]
