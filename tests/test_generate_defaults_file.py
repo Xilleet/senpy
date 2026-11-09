@@ -25,6 +25,7 @@ The fix:
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -61,6 +62,15 @@ def _make_readonly(path: Path) -> None:
 
     On POSIX, ``chmod 0o555`` on the directory prevents creating new
     files inside it — ``open(..., "w")`` raises ``PermissionError``.
+
+    On Windows, ``chmod`` on a directory does NOT prevent creating new
+    files inside it (Windows directory permissions work via ACLs, not
+    the DOS readonly attribute). Tests that rely on this behavior must
+    be skipped on Windows — see ``_WINDOWS_SKIP`` markers below. The
+    cross-platform coverage of the same OSError contract is provided
+    by mock-based tests (``test_disk_full_does_not_raise`` and
+    ``test_permission_error_does_not_raise``) which patch ``builtins.open``
+    to raise ``PermissionError`` directly.
     """
     path.chmod(0o555)
 
@@ -81,6 +91,15 @@ def _restore_writable(path: Path) -> None:
 class TestGenerateDefaultsFileErrorHandling:
     """``generate_defaults_file`` must not crash on OSError."""
 
+    # Skip on Windows: chmod on a directory does not prevent file creation
+    # there (Windows uses ACLs, not the DOS readonly attribute). The
+    # cross-platform contract is covered by mock-based tests below
+    # (test_permission_error_does_not_raise, test_disk_full_does_not_raise).
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="chmod on directory does not prevent file creation on Windows; "
+        "cross-platform coverage via mock-based tests below",
+    )
     def test_readonly_dir_does_not_raise(self, tmp_path: Path) -> None:
         """A read-only ``game/`` directory must not crash generate_defaults_file."""
         game = _make_project_with_missing_defaults(tmp_path)
@@ -104,6 +123,10 @@ class TestGenerateDefaultsFileErrorHandling:
         finally:
             _restore_writable(game)
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="chmod on directory does not prevent file creation on Windows",
+    )
     def test_readonly_dir_records_failed_writes(self, tmp_path: Path) -> None:
         """A read-only ``game/`` must record the path in failed_writes.
 
@@ -128,6 +151,10 @@ class TestGenerateDefaultsFileErrorHandling:
         finally:
             _restore_writable(game)
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="chmod on directory does not prevent file creation on Windows",
+    )
     def test_readonly_dir_logs_warning(self, tmp_path: Path, caplog) -> None:
         """A WARNING must be logged with the file path — same pattern as
         ``_write_fixed_file``."""
@@ -151,6 +178,33 @@ class TestGenerateDefaultsFileErrorHandling:
             )
         finally:
             _restore_writable(game)
+
+    def test_permission_error_does_not_raise(self, tmp_path: Path) -> None:
+        """Simulate PermissionError (read-only directory on Windows / POSIX)
+        via mock — must not raise.
+
+        This is the cross-platform counterpart to ``test_readonly_dir_does_not_raise``
+        (which is skipped on Windows because ``chmod`` on a directory does
+        not prevent file creation there). ``PermissionError`` is a subclass
+        of ``OSError`` and is what ``open(..., "w")`` raises when the OS
+        denies write access — same code path as the read-only directory
+        case, just triggered via mock for portability.
+        """
+        _make_project_with_missing_defaults(tmp_path)
+        analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
+        analyzer.run(quiet=True)
+        assert analyzer.missing_defaults
+
+        with patch(
+            "builtins.open",
+            side_effect=PermissionError("[Errno 13] Permission denied"),
+        ):
+            out_file, gen_count = analyzer.generate_defaults_file()
+            assert out_file == ""
+            assert gen_count == 0
+        assert any(
+            "senpy_defaults.rpy" in p for p in analyzer.failed_writes
+        ), "failed_writes must contain senpy_defaults.rpy on PermissionError"
 
     def test_disk_full_does_not_raise(self, tmp_path: Path) -> None:
         """Simulate disk-full (OSError) via mock — must not raise."""
@@ -228,6 +282,10 @@ class TestDefaultsCliExitCodeOnWriteFailure:
     ``game/`` directory, the CLI must exit non-zero (not crash with
     a traceback)."""
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="chmod on directory does not prevent file creation on Windows",
+    )
     def test_defaults_on_readonly_dir_exits_nonzero(self, tmp_path: Path) -> None:
         """``senpy --defaults`` on read-only game/ must exit 1, not crash."""
         from rich.console import Console

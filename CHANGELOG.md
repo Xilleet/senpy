@@ -90,6 +90,7 @@ match, call/call screen/pass/dialogue does not match), divergence matrix between
 
 ### Fixed
 
+- **Windows CI: `generate_defaults_file` read-only dir tests skipped on win32.** The four read-only-directory tests in `tests/test_generate_defaults_file.py` (`test_readonly_dir_does_not_raise`, `test_readonly_dir_records_failed_writes`, `test_readonly_dir_logs_warning`, `test_defaults_on_readonly_dir_exits_nonzero`) used `chmod 0o555` on the `game/` directory to trigger `PermissionError` on `open(..., "w")`. This works on POSIX but NOT on Windows — Windows directory permissions work via ACLs, not the DOS readonly attribute, so `chmod` on a directory does not prevent file creation inside it. On Windows CI the file was created successfully, the tests saw a non-empty `out_file` and empty `failed_writes`, and failed. Fixed by adding `@pytest.mark.skipif(sys.platform == "win32", ...)` to the four POSIX-only tests, and adding a new cross-platform `test_permission_error_does_not_raise` that patches `builtins.open` to raise `PermissionError` directly. The cross-platform contract (catch `PermissionError` → record `failed_writes` → return `("", 0)`) is now covered on all platforms via the mock-based tests (`test_permission_error_does_not_raise`, `test_disk_full_does_not_raise`), while the POSIX integration tests (real read-only directory) remain as a stronger guard where they work.
 - **ARCHITECTURE.md plugin wiring stale.** "planned for 0.8.0" →
   "wired since 0.8.0" (gated by `enable_plugins` config).
 - **ARCHITECTURE.md Stage 3 missing tl_rpy + cross-language.**
