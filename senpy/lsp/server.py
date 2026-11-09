@@ -243,6 +243,16 @@ class SenpyLSPServer:
         # removed in T-009 (0.8.0) — it serialised every reader,
         # defeating the RWLock.
         self.rw_lock = _RWLock()
+        # generation counters guard against ``Timer.cancel()`` TOCTOU
+        # race. When a stale debounce worker fires (cancel was called too
+        # late, after ``Event.wait()`` returned but before ``is_set()``
+        # was sampled in ``Timer.run()``), the worker checks its generation
+        # against the latest — if a newer ``did_change`` / ``did_save``
+        # superseded it, the worker bails out before publishing stale
+        # diagnostics. Per-URI dict for change workers; single counter
+        # for full-scan workers (full scans are not URI-specific).
+        self.change_generations: dict[str, int] = {}
+        self.full_generation: int = 0
 
 
 # Singleton instance for future use.
@@ -371,11 +381,17 @@ def _with_analysis_lock(func):
     return wrapper
 
 
-def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
+def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str, gen: int | None = None):
     """Full project scan in a single thread with protection against parallel runs.
 
-    P1'-9 (0.6.0-12): takes the write lock — exclusive access to state.
+    takes the write lock — exclusive access to state.
     While a writer runs, no reader (handler) will start.
+
+    ``gen`` is the generation counter captured at schedule time. If
+    a newer ``schedule_full_diagnostics`` call superseded this worker
+    (incrementing ``_lsp_server.full_generation``), the worker bails out
+    before publishing stale diagnostics. ``gen=None`` skips the check
+    (direct call path, e.g. from tests).
     """
     global \
         _previously_diagnosed_uris, \
@@ -384,8 +400,20 @@ def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
         _current_workspace_root, \
         _is_initialized
 
+    # stale-worker guard. If gen was provided and the latest
+    # generation is different, a newer schedule_full_diagnostics has
+    # superseded us — bail out before acquiring the write lock.
+    if gen is not None and _lsp_server.full_generation != gen:
+        return
+
     _lsp_server.rw_lock.acquire_write()
     try:
+        # re-check inside the write lock — a newer
+        # schedule_full_diagnostics could have arrived between the outer
+        # check and acquire_write().
+        if gen is not None and _lsp_server.full_generation != gen:
+            return
+
         # trigger_uri may be empty when called from the `initialized`
         # handler (workspace-wide scan with no specific file). In that
         # case fall back to the workspace root path; if that's also
@@ -445,18 +473,39 @@ def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str):
         _lsp_server.rw_lock.release_write()
 
 
-def run_single_file_diagnostics(ls: LanguageServer, uri: str, content: str):
+def run_single_file_diagnostics(ls: LanguageServer, uri: str, content: str, gen: int | None = None):
     """Ultra-fast on-the-fly analysis of a single file (15 ms).
 
     P1'-9 (0.6.0-12): takes the write lock — mutates _active_analyzer.in_memory_files
     and _latest_diagnostics_by_path.
+
+    ``gen`` is the generation counter captured at schedule time. If
+    a newer ``schedule_change_diagnostics`` call for this URI superseded
+    this worker (incrementing ``_lsp_server.change_generations[uri]``),
+    the worker bails out before publishing stale diagnostics.
+    ``gen=None`` skips the check (direct call path, e.g. from tests).
     """
     if _active_analyzer is None or not _is_initialized:
         schedule_full_diagnostics(ls, uri)
         return
 
+    # stale-worker guard. If gen was provided and the latest
+    # generation for this URI is different, a newer did_change has
+    # superseded us — bail out before acquiring the write lock.
+    if gen is not None:
+        latest_gen = _lsp_server.change_generations.get(uri, 0)
+        if latest_gen != gen:
+            return
+
     _lsp_server.rw_lock.acquire_write()
     try:
+        # re-check inside the write lock — a newer did_change could
+        # have arrived between the outer check and acquire_write().
+        if gen is not None:
+            latest_gen = _lsp_server.change_generations.get(uri, 0)
+            if latest_gen != gen:
+                return
+
         file_path = _uri_to_path(uri)
         norm_file = _normalize_path(file_path)  # P0-6: unified normalization
 
@@ -490,11 +539,21 @@ def run_single_file_diagnostics(ls: LanguageServer, uri: str, content: str):
 
 
 def schedule_full_diagnostics(ls: LanguageServer, uri: str):
-    """Debounce for the full scan (suppresses a batch of simultaneous didOpen)."""
+    """Debounce for the full scan (suppresses a batch of simultaneous didOpen).
+
+    increments ``_lsp_server.full_generation`` and passes the new
+    value into the Timer args. The worker checks its captured generation
+    against the latest — if a newer schedule_full_diagnostics superseded
+    it, the worker bails out (``Timer.cancel()`` is not reliable for the
+    TOCTOU window between ``Event.wait()`` returning and ``is_set()``
+    being sampled).
+    """
     global _full_timer
     if _full_timer is not None:
         _full_timer.cancel()
-    _full_timer = threading.Timer(0.3, run_full_project_diagnostics, args=[ls, uri])
+    _lsp_server.full_generation += 1
+    new_gen = _lsp_server.full_generation
+    _full_timer = threading.Timer(0.3, run_full_project_diagnostics, args=[ls, uri, new_gen])
     _full_timer.daemon = True
     _full_timer.start()
 
@@ -512,7 +571,7 @@ def schedule_change_diagnostics(ls: LanguageServer, uri: str):
     """
     global _change_timer
 
-    # P1'-8: cancel existing timer for THIS uri only
+    # cancel existing timer for THIS uri only
     existing = _lsp_server.change_timers.get(uri)
     if existing is not None:
         existing.cancel()
@@ -527,7 +586,15 @@ def schedule_change_diagnostics(ls: LanguageServer, uri: str):
             _change_timer = None
         return
 
-    new_timer = threading.Timer(0.15, run_single_file_diagnostics, args=[ls, uri, doc.source])
+    # increment generation for this URI. Stale workers (with older
+    # gen) bail out before publishing, even if ``Timer.cancel()`` lost
+    # the TOCTOU race (cancel called after worker already started).
+    new_gen = _lsp_server.change_generations.get(uri, 0) + 1
+    _lsp_server.change_generations[uri] = new_gen
+
+    new_timer = threading.Timer(
+        0.15, run_single_file_diagnostics, args=[ls, uri, doc.source, new_gen]
+    )
     new_timer.daemon = True
     _lsp_server.change_timers[uri] = new_timer
     # Back-compat: duplicate into the module-level _change_timer for tests checking cancel
@@ -537,7 +604,7 @@ def schedule_change_diagnostics(ls: LanguageServer, uri: str):
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
 def did_open(ls: LanguageServer, params: lsp.DidOpenTextDocumentParams):
-    """0.6.0-3: delegates to handlers.text_document."""
+    """delegates to handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_open as _impl
 
     _impl(ls, params)
@@ -545,7 +612,7 @@ def did_open(ls: LanguageServer, params: lsp.DidOpenTextDocumentParams):
 
 @server.feature(lsp.WORKSPACE_DID_CHANGE_WATCHED_FILES)
 def did_change_watched_files(ls: LanguageServer, params: lsp.DidChangeWatchedFilesParams):
-    """0.6.0-3: delegates to handlers.text_document."""
+    """delegates to handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_change_watched_files as _impl
 
     _impl(ls, params)
@@ -553,7 +620,7 @@ def did_change_watched_files(ls: LanguageServer, params: lsp.DidChangeWatchedFil
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
 def did_save(ls: LanguageServer, params: lsp.DidSaveTextDocumentParams):
-    """0.6.0-3: delegates to handlers.text_document."""
+    """delegates to handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_save as _impl
 
     _impl(ls, params)
@@ -561,7 +628,7 @@ def did_save(ls: LanguageServer, params: lsp.DidSaveTextDocumentParams):
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_CLOSE)
 def did_close(ls: LanguageServer, params: lsp.DidCloseTextDocumentParams):
-    """0.6.0-3: delegates to handlers.text_document."""
+    """delegates to handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_close as _impl
 
     _impl(ls, params)
@@ -569,7 +636,7 @@ def did_close(ls: LanguageServer, params: lsp.DidCloseTextDocumentParams):
 
 @server.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
 def did_change(ls: LanguageServer, params: lsp.DidChangeTextDocumentParams):
-    """0.6.0-3: delegates to handlers.text_document."""
+    """delegates to handlers.text_document."""
     from senpy.lsp.handlers.text_document import did_change as _impl
 
     _impl(ls, params)
@@ -581,7 +648,7 @@ def did_change(ls: LanguageServer, params: lsp.DidChangeTextDocumentParams):
 )
 @_with_analysis_lock
 def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.CodeAction]:
-    """0.6.0: delegates to handlers.diagnostics."""
+    """delegates to handlers.diagnostics."""
     from senpy.lsp.handlers.diagnostics import code_action as _impl
 
     return _impl(ls, params)
@@ -590,7 +657,7 @@ def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.Co
 @server.feature(lsp.TEXT_DOCUMENT_COMPLETION)
 @_with_analysis_lock
 def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.CompletionList:
-    """0.6.0: delegates to handlers.completion."""
+    """delegates to handlers.completion."""
     from senpy.lsp.handlers.completion import completions as _impl
 
     return _impl(ls, params)
@@ -599,7 +666,7 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
 @server.feature(lsp.TEXT_DOCUMENT_DEFINITION)
 @_with_analysis_lock
 def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location | None:
-    """0.6.0-4: delegates to handlers.navigation."""
+    """delegates to handlers.navigation."""
     from senpy.lsp.handlers.navigation import definition as _impl
 
     return _impl(ls, params)
@@ -608,7 +675,7 @@ def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location
 @server.feature(lsp.TEXT_DOCUMENT_REFERENCES)
 @_with_analysis_lock
 def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Location] | None:
-    """0.6.0-4: delegates to handlers.navigation."""
+    """delegates to handlers.navigation."""
     from senpy.lsp.handlers.navigation import references as _impl
 
     return _impl(ls, params)
@@ -617,7 +684,7 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
 @server.feature(lsp.TEXT_DOCUMENT_HOVER)
 @_with_analysis_lock
 def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
-    """0.6.0: delegates to handlers.hover."""
+    """delegates to handlers.hover."""
     from senpy.lsp.handlers.hover import hover as _impl
 
     return _impl(ls, params)
@@ -628,14 +695,14 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
 def document_symbols(
     ls: LanguageServer, params: lsp.DocumentSymbolParams
 ) -> list[lsp.DocumentSymbol]:
-    """0.6.0-4: delegates to handlers.navigation."""
+    """delegates to handlers.navigation."""
     from senpy.lsp.handlers.navigation import document_symbols as _impl
 
     return _impl(ls, params)
 
 
 # =============================================================================
-# UX-1: textDocument/foldingRange — fold label/screen/menu/init blocks
+# textDocument/foldingRange — fold label/screen/menu/init blocks
 # =============================================================================
 # Allows VS Code to fold code blocks:
 # - label X: ... (until the next label or end of file)
@@ -870,4 +937,13 @@ def start_lsp():
     from senpy.core.logging import setup_logging
 
     setup_logging(verbose=False)
+    # Ensure plugin rules are registered before the LSP I/O loop starts.
+    # main() calls autoload_plugins() at the top of CLI entry, but an
+    # embedded host invoking start_lsp() directly would otherwise have
+    # an empty _REGISTERED_LINT_RULES — `_run_plugin_rules` early-returns
+    # and plugin diagnostics silently never reach publishDiagnostics.
+    # Idempotent: autoload_plugins() checks `_PLUGINS_LOADED` flag.
+    from senpy.plugins.autoload import autoload_plugins
+
+    autoload_plugins()
     server.start_io()

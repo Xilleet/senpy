@@ -132,6 +132,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   intent of the original dependabot update). Verified locally:
   `pip install -r requirements-docs.txt` resolves clean;
   `mkdocs build --strict` exits 0 with `site/` populated.
+- **LSP `start_lsp()` now calls `autoload_plugins()`.** Embedded
+  hosts invoking `start_lsp()` directly (without going through
+  `main()`) would have an empty `_REGISTERED_LINT_RULES` —
+  `_run_plugin_rules` early-returns and plugin diagnostics silently
+  never reached `publishDiagnostics`. The fix adds one
+  `autoload_plugins()` call at the top of `start_lsp()` (idempotent
+  via the `_PLUGINS_LOADED` flag). New test module
+  `tests/test_lsp_plugin_execution.py` (5 tests): integration test
+  with the example `todo_comment_plugin` (RPY902) via both the
+  `did_open` (full-project scan) and `did_change` (single-file scan)
+  paths, asserting `publishDiagnostics` contains the plugin
+  diagnostic. Plus a direct test that `start_lsp()` invokes
+  `autoload_plugins()` and is idempotent.
+- **LSP `Timer.cancel()` race fixed via generation counter.** CPython's
+  `threading.Timer.cancel()` only sets an `Event` flag — if the
+  worker has already passed the `is_set()` check in `Timer.run()`,
+  `cancel()` is a no-op and the stale worker publishes outdated
+  diagnostics (visible as flicker in VS Code's Problems panel under
+  rapid typing). Added a generation counter to `SenpyLSPServer`:
+  `change_generations: dict[str, int]` (per-URI, for
+  `schedule_change_diagnostics` / `run_single_file_diagnostics`) and
+  `full_generation: int` (single counter, for
+  `schedule_full_diagnostics` / `run_full_project_diagnostics`).
+  Each schedule call increments the counter and passes the new value
+  into the Timer args; the worker bails out if its captured
+  generation no longer matches the latest. The check runs both
+  before `acquire_write()` (to avoid holding the lock needlessly)
+  and inside the write lock (to close the TOCTOU window between the
+  outer check and lock acquisition). `gen=None` (direct call path)
+  skips the check — backwards-compatible with existing tests and
+  direct `run_*_diagnostics` callers. New test module
+  `tests/test_lsp_b14_timer_cancel_race.py` (4 tests): deterministic
+  stress test using a `FlakyTimer` monkeypatch (forces `cancel()` to
+  be a no-op) + a `_worker_gate` event to release all workers
+  simultaneously after N schedule calls. Asserts only the latest
+  worker publishes; stale workers bail out before `acquire_write()`.
+  Plus per-URI generation independence test and `did_change` +
+  `did_save` overlap characterization.
 
 ---
 
