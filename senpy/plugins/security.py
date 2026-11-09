@@ -4,15 +4,34 @@ api_version compatibility check.
 trust-on-first-use security model.
 
 Trust store location: ~/.senpy/trusted_plugins.json (or $SENPY_HOME/trusted_plugins.json)
-Format:
+
+Schema (v2, since R-P0-2):
     {
-        "version": 1,
+        "version": 2,
         "plugins": ["my-senpy-plugin", "another-plugin"],
         "trusted_at": {
             "my-senpy-plugin": "2026-10-30T12:00:00Z",
             "another-plugin": "2026-10-30T13:00:00Z"
+        },
+        "audit_warnings": {
+            "my-senpy-plugin": ["uses os module at top level"],
+            "another-plugin": []
         }
     }
+
+The ``audit_warnings`` field was added in R-P0-2 (schema v2) as
+preparation for R-P0-1 (plugin import-time audit). It maps plugin name
+→ list of audit warning strings. R-P0-1 will populate it during the
+import-time audit; for now (R-P0-2 only) it is always an empty dict on
+fresh/migrated stores.
+
+Schema versioning:
+- v1 (Senpy ≤ 0.8.4): no ``audit_warnings`` field, ``version: 1``.
+- v2 (Senpy ≥ 0.9.0): adds ``audit_warnings`` dict, ``version: 2``.
+
+``_read_trust_store`` migrates v1 stores to v2 on read (in-place field
+addition, no trust loss). Future versions (v3+) will follow the same
+additive migration pattern.
 """
 
 from __future__ import annotations
@@ -26,6 +45,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from senpy.core.exceptions import PluginError
+from senpy.core.logging import get_logger
+
+_logger = get_logger("plugins.security")
 
 # =============================================================================
 # API version (unchanged from Stage 1)
@@ -86,7 +108,7 @@ def check_api_version(plugin_api_version: str, *, raise_on_mismatch: bool = Fals
 # =============================================================================
 
 _TRUST_STORE_FILENAME = "trusted_plugins.json"
-_TRUST_STORE_VERSION = 1
+_TRUST_STORE_VERSION = 2
 
 
 def get_trust_store_path() -> str:
@@ -106,28 +128,84 @@ def get_trust_store_path() -> str:
     return str(base / _TRUST_STORE_FILENAME)
 
 
+def _empty_trust_store() -> dict:
+    """Return a fresh empty v2 trust store structure."""
+    return {
+        "version": _TRUST_STORE_VERSION,
+        "plugins": [],
+        "trusted_at": {},
+        "audit_warnings": {},
+    }
+
+
+def _migrate_trust_store(data: dict) -> dict:
+    """Migrate a trust store dict to the current schema version.
+
+    Additive migration: missing fields are added with empty defaults,
+    version is normalized to ``_TRUST_STORE_VERSION``, unknown fields
+    are dropped. Trusted plugins and their ``trusted_at`` entries are
+    preserved across migrations — users never see the ``[y/N]`` prompt
+    again for plugins they already trusted.
+
+    A INFO log is emitted when the on-disk version differs from the
+    current schema version, so users running with ``--verbose`` can see
+    that a migration happened.
+    """
+    on_disk_version = data.get("version", 1)
+    if on_disk_version != _TRUST_STORE_VERSION:
+        _logger.info(
+            "Migrating trust store schema v%s → v%s (additive: trusted "
+            "plugins preserved, missing fields added with empty defaults).",
+            on_disk_version,
+            _TRUST_STORE_VERSION,
+        )
+
+    # Normalize version to current.
+    data["version"] = _TRUST_STORE_VERSION
+
+    # Validate / additively repair known fields.
+    if not isinstance(data.get("plugins"), list):
+        data["plugins"] = []
+    if not isinstance(data.get("trusted_at"), dict):
+        data["trusted_at"] = {}
+    if not isinstance(data.get("audit_warnings"), dict):
+        data["audit_warnings"] = {}
+
+    # Drop unknown fields (forward-compat: a future v3 store read by v2
+    # Senpy keeps only the fields it knows about).
+    known_keys = {"version", "plugins", "trusted_at", "audit_warnings"}
+    for unknown in list(set(data) - known_keys):
+        data.pop(unknown, None)
+
+    # Prune audit_warnings entries for plugins no longer in the trust
+    # list — keeps the store tidy if a plugin was untrusted by an older
+    # Senpy that didn't clean up audit_warnings.
+    trusted = set(data["plugins"])
+    for orphan in list(set(data["audit_warnings"]) - trusted):
+        data["audit_warnings"].pop(orphan, None)
+
+    return data
+
+
 def _read_trust_store() -> dict:
     """Read trust store from disk. Returns empty structure if missing/corrupt.
 
     Never raises — corrupt JSON is treated as empty (fail-safe).
+    Migrates older schema versions (v1) to the current version (v2) on
+    read, additively — trusted plugins are preserved.
     """
     path = get_trust_store_path()
     if not os.path.exists(path):
-        return {"version": _TRUST_STORE_VERSION, "plugins": [], "trusted_at": {}}
+        return _empty_trust_store()
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        # Validate structure
         if not isinstance(data, dict):
-            return {"version": _TRUST_STORE_VERSION, "plugins": [], "trusted_at": {}}
-        if "plugins" not in data or not isinstance(data["plugins"], list):
-            data["plugins"] = []
-        if "trusted_at" not in data or not isinstance(data["trusted_at"], dict):
-            data["trusted_at"] = {}
-        return data
+            return _empty_trust_store()
+        return _migrate_trust_store(data)
     except (json.JSONDecodeError, OSError, ValueError):
         # Corrupt JSON → treat as empty
-        return {"version": _TRUST_STORE_VERSION, "plugins": [], "trusted_at": {}}
+        return _empty_trust_store()
 
 
 def _write_trust_store(data: dict) -> None:
@@ -197,6 +275,10 @@ def trust_plugin(plugin_name: str) -> None:
 def untrust_plugin(plugin_name: str) -> bool:
     """Remove plugin from trust store. Persists to disk.
 
+    Also removes the plugin's ``audit_warnings`` entry (if any) so stale
+    warnings don't accumulate for untrusted plugins and resurface if the
+    user re-trusts the plugin later.
+
     Args:
         plugin_name: Name of the plugin to untrust.
 
@@ -208,6 +290,7 @@ def untrust_plugin(plugin_name: str) -> bool:
         return False
     store["plugins"].remove(plugin_name)
     store["trusted_at"].pop(plugin_name, None)
+    store.get("audit_warnings", {}).pop(plugin_name, None)
     _write_trust_store(store)
     return True
 
