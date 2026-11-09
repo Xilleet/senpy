@@ -42,6 +42,49 @@ pip install senpy-linter
 
 ## Что нового
 
+### 0.9.0 — Security hardening + soundness + FP-фиксы из фидбэка пользователей
+
+Minor-релиз: закрыты **6 задач** из post-0.8.4 плюс
+**4 false-positive фикса** из фидбэка. Два новых
+public API:
+- **Trust store schema v2** с авто-миграцией из v1 — добавлено
+  поле `audit_warnings` для будущего plugin import-time audit.
+- **Runtime-расширение Ren'Py builtins через `senpy.toml [tool.senpy]`**
+  — списки `additional_builtins` / `additional_actions` позволяют
+  объявлять сторонние namespace'ы (например `iap`, `updater`) и
+  кастомные Action-классы, чтобы RPY202 / RPY103 / RPY206 на них не
+  срабатывали.
+
+**1964 теста** (было 1836 в 0.8.4, +128). Новых правил нет — все
+изменения: correctness-fixes, security-hardening и инфраструктура для
+будущих plugin audit / branch-clear / cross-process cache lock (запланированы на 0.9.1).
+
+| Область | Что было сломано | Что изменилось |
+|---|---|---|
+| **Trust store schema** | Нет versioning schema — любое изменение формата молча «обнуляло» trust для всех ранее доверенных плагинов. | Schema bumped to v2, auto-migration при чтении, добавлено поле `audit_warnings` для R-P0-1. |
+| **Унификация терминаторов** | Три источника правды: `RE_TERMINATOR` (вкл. `call`) и два inline-regex'а в `state.py` / `flow.py` (без `call`). Могли разойтись. | `RE_BRANCH_TERMINATOR` вынесен в `core/constants.py`. Inline regex'ы заменены. Поведение не изменилось (чистый refactor). |
+| **Severity RPY000** | Синтетический `RPY000` («Senpy internal error») отсутствовал в `RULES_DATABASE` — `senpy rule show RPY000` печатал "Unknown rule code", а `_apply_severity` понижал до WARNING. | Зарегистрирован в `RULES_DATABASE` с `severity=ERROR` и `tags=["internal"]`. `senpy rule list` показывает отдельную секцию "Internal". RULES.md получил секцию "Internal (RPY000)". |
+| **`generate_defaults_file` error handling** | `open(out_file, "w")` без try/except — `OSError` (read-only `game/`, disk full, path too long) валил CLI с raw traceback. | Ловит `OSError`, логирует WARNING, записывает `failed_writes`, возвращает `("", 0)`. Exit code = 1. |
+| **`_write_fixed_file` UnicodeEncodeError** | Ловил только `OSError` — `--fix`-ран с lone surrogate поднимал `UnicodeEncodeError`, классифицировался как RPY000, exit code 0. | Ловит `(OSError, UnicodeEncodeError)`. Atomic write через `tempfile.mkstemp` + `os.replace`. Read-only файлы детектируются заранее. |
+| **RPY202 FP на `achievement.X`** | `BUILTIN_SYMBOLS` не содержал `achievement` — Ren'Py ships it as runtime-provided namespace. Добавлен. | Ren'Py builtins консолидированы в `senpy/core/renpy_builtins.py` (single source of truth). Расширение через `senpy.toml additional_builtins`. |
+| **RPY206 FP на `GamepadCalibrate()`** | `BUILTIN_ACTIONS` не содержал `GamepadCalibrate` — задокументированный Ren'Py action. Добавлен. | Та же консолидация в `renpy_builtins.py`. Расширение через `additional_actions`. |
+| **RPY202 FP на tuple-unpacking for-loops в screens** | `RE_FOR_LOOP` regex матчил только `for x in ...:` (один идентификатор) — silently пропускал `for i, (a, b, c) in enumerate(...)`. | AST-based хелпер `extract_for_targets` в `text_utils.py` покрывает все Python for-target shapes. |
+| **RPY103 FP на for-loop targets в `init python:` / label body** | For-loop targets регистрировались только внутри screens; `init python:` и label bodies их пропускали. RPY103 срабатывал на `if fn.lower()...:` внутри `for fn in ...:`. | `extract_for_targets` интегрирован в три точки: `StateChecker.check_line`, `_check_python_block`, `_check_python_inline`. Плюс `_handle_init_python_block` теперь принимает `scope_stack`. |
+| **`init python hide:` не распознавался `RE_INIT_PYTHON_START`** | Regex не включал `hide` keyword — `init python hide:` блоки молча падали в per-line `check_line` dispatch вместо AST-анализа. | Добавлен `(?:\s+hide)?` в паттерн. RPY110 (Python syntax error) теперь срабатывает и в `init python hide:` блоках. |
+| **RPY103/RPY202 stacked дубликаты диагностик** | Одна переменная, упомянутая N раз в одном if-condition, давала N диагностик на одной строке — все на колонке первого вхождения. Визуально: одна squiggly на неправильной колонке. | `seen` set в `_check_undeclared_vars_in_condition` — каждая пара (line, var_name) даёт максимум одну диагностику. Разные undeclared vars всё ещё получают свои. |
+
+**Дополнительно**: atomic writes в `CacheManager.save_manifest` и
+`_write_trust_store` (устранён race при конкурентных вызовах), фикс
+LSP `Timer.cancel()` race через generation counter, LSP
+`autoload_plugins` в `start_lsp()`, тесты cache invalidation при
+branch-switch, тест JPEG long APP markers, фикс конфликта docs deps
+(`pymdown-extensions` 13.0), удалён мёртвый `_purge_file_symbols`,
+фикс обработки UTF-8 BOM.
+
+Полные детали в [`CHANGELOG.md`](CHANGELOG.md#090).
+
+---
+
 ### 0.8.4 — Очистка edge-cases: string-literal masking, thread safety, checker isolation
 
 Patch-релиз, закрывающий **19 задач** (edge cases, code quality, partial features) + 2 post-0.8.3 follow-up фикса. **1836 тестов** (было 1816 в 0.8.3, +20). Новых правил нет — все изменения это correctness fixes, isolation hardening, и dead-code removal.

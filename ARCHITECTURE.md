@@ -43,13 +43,14 @@ senpy/
 │   ├── cache.py             # Two-tier disk cache (SafeCacheUnpickler, CacheManager, BLAKE2b)
 │   ├── cache_manifest.py    # Backward-compat re-export for cache_manifest
 │   ├── config.py            # load_config() + pydantic SenpyConfig validation
-│   ├── constants.py         # BUILTIN_SYMBOLS, BUILTIN_SCREENS, RENPY_BUILTIN_COLOR_KEYWORDS, SYSTEM_LABELS
+│   ├── constants.py         # BUILTIN_SCREENS, RENPY_BUILTIN_COLOR_KEYWORDS, SYSTEM_LABELS, regex constants
 │   ├── coverage.py          # Translation coverage metrics
 │   ├── exceptions.py        # SenpyError hierarchy (8 domain exceptions)
 │   ├── logging.py           # setup_logging(), get_logger() — library-style
 │   ├── models.py            # Diagnostic, AnalysisResult, FileScope, RULE_SEVERITY
 │   ├── paths.py             # Shared path helpers (normalize_path, 0.7.2+)
 │   ├── progress.py          # progress_print helper (0.7.2+)
+│   ├── renpy_builtins.py    # BUILTIN_SYMBOLS, BUILTIN_ACTIONS (0.9.0+)
 │   ├── scope.py             # ScopeStack, ScopeType (LABEL, SCREEN, etc.)
 │   ├── signature.py         # parse_signature(), validate_call_arguments()
 │   ├── sink.py              # DiagnosticSink re-export (decouples checkers from analyzer)
@@ -120,7 +121,7 @@ senpy/
 │   ├── src/extension.ts     # Extension entry point, commands, crash watcher
 │   ├── package.json         # Extension manifest, LSP configuration
 │   └── language-configuration.json
-├── tests                    # all tests (1836+ as of 0.8.4)
+├── tests                    # all tests (1964+ as of 0.9.0)
 └── examples                 # examples and your plugins with new rules
 ```
 
@@ -527,7 +528,7 @@ observable at DEBUG level.
 
 ## Testing
 
-- **1836 tests** across 131 test files.
+- **1964 tests** across 138 test files.
 - **Fixture-based**: `tests/fixtures/rules/RPYxxx/` with `bad_*.rpy` +
   `bad_*.json` (expected diagnostics) + `good_*.rpy` (should pass).
 - **Characterization tests**: Subprocess-based CLI tests that verify

@@ -11,7 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.8.x)**: [Unreleased](#unreleased) | [0.8.4](#084) | [0.8.3](#083) | [0.8.2](#082) | [0.8.1](#081) | [0.8.0](#080)
+- **Current (0.9.x)**: [Unreleased](#unreleased) | [0.9.0](#090) |
+
+- **0.8.x**: [0.8.4](#084) | [0.8.3](#083) | [0.8.2](#082) | [0.8.1](#081) | [0.8.0](#080)
 
 - **0.7.x**: [0.7.7](#077) | [0.7.6](#076) | [0.7.5](#075) | [0.7.4](#074) | [0.7.3](#073) | [0.7.2](#072) | [0.7.1](#071) | [0.7.0](#070)
 
@@ -26,6 +28,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <a id="unreleased"></a>
 
 ## [Unreleased]
+
+_No unreleased changes yet._
+
+---
+
+<a id="090"></a>
+
+## [0.9.0] — Security hardening + soundness fixes + FP fixes from user feedback
+
+A minor release closing **all 6 tasks** from the post-0.8.4 roadmap plus
+**4 user-feedback false-positive fixes**. Two new public APIs: trust store
+schema v2 (with auto-migration) and `senpy.toml [tool.senpy]` runtime
+extension of Ren'Py built-ins. **1964 tests** (up from 1836 in 0.8.4, +128).
+No new rules — all changes are correctness fixes, security hardening, and
+infrastructure for the upcoming plugin audit / branch-clear
+/ cross-process cache lock work scheduled for 0.9.1.
 
 ### Added
 

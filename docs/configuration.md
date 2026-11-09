@@ -239,6 +239,59 @@ Valid severities:
 - `INFO` — blue, hidden by default (use `--info` or `info = true`)
 - `HINT` — cyan, hidden by default (same as INFO)
 
+### `additional_builtins`
+
+User-extended Ren'Py built-in namespaces. Names listed here are treated
+as "declared" by Senpy — same behaviour as `persistent`, `config`,
+`gui`, `renpy`, `audio`, `achievement`, etc. (the full shipped list
+lives in `senpy/core/renpy_builtins.py:BUILTIN_SYMBOLS`).
+
+Use this when you install a third-party Ren'Py library that registers
+a global name at runtime (e.g. `iap` for in-app purchases, `updater`
+for the auto-updater, `build` for build-time configuration, or any
+custom library that hooks into the `store` namespace). Without this,
+RPY202 (undeclared variable in screen), RPY103 (undeclared variable in
+condition), and RPY104 (dynamic assignment without `default`) may fire
+false positives on legitimate uses of those namespaces.
+
+```toml
+[tool.senpy]
+# Add user-installed / third-party Ren'Py namespaces:
+additional_builtins = ["iap", "updater", "build", "my_custom_lib"]
+```
+
+Notes:
+
+- The shipped defaults (`renpy`, `persistent`, `config`, `gui`,
+  `audio`, `achievement`, `GamepadCalibrate`, ...) stay in effect —
+  you only list what is **missing**.
+- Invalid identifiers (digits at start, spaces, non-ASCII that isn't
+  a valid Python identifier, non-string entries) are silently filtered
+  to avoid poisoning the symbol table.
+- The extensions survive `analyzer.run()` reset / rebuild — a second
+  `run()` on the same analyzer instance does not lose the config.
+
+### `additional_actions`
+
+User-extended Ren'Py screen-action classes callable with `()` in the
+`action` slot of a screen button — same behaviour as `Function`,
+`Return`, `Show`, `GamepadCalibrate`, `FilePagePrevious`, etc. (the
+full shipped list lives in
+`senpy/core/renpy_builtins.py:BUILTIN_ACTIONS`).
+
+Use this for user-defined or third-party Action classes. Without this,
+RPY206 (direct function call in button action) fires false positives
+on `textbutton "X" action MyCustomAction()`.
+
+```toml
+[tool.senpy]
+# Add user-defined / third-party screen Action classes:
+additional_actions = ["MyCustomAction", "SteamLeaderboardAction"]
+```
+
+Same notes as `additional_builtins` — shipped defaults stay, invalid
+identifiers filtered, survives `run()` reset.
+
 ---
 
 ## `.senpy-ignore`

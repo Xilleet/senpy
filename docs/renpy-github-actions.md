@@ -343,7 +343,7 @@ Senpy ships a [pre-commit](https://pre-commit.com) hook that runs
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.8.4   # use the latest tag
+    rev: v0.9.0   # use the latest tag
     hooks:
       - id: senpy
 ```

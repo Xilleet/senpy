@@ -3,7 +3,7 @@
   "name": "senpy-vscode",
   "displayName": "Senpy — Ren'Py Linter & Language Server",
   "description": "Fast static analyzer, semantic linter and Language Server for Ren'Py visual novels. Detects undefined variables, broken labels, control-flow bugs, save/rollback issues and translation errors in real time.",
-  "version": "0.8.4",
+  "version": "0.9.0",
   "engines": {
     "vscode": "^1.85.0"
   },

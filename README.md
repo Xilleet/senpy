@@ -41,6 +41,48 @@ Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github
 ---
 ## What's New
 
+### 0.9.0 — Security hardening + soundness fixes + FP fixes from user feedback
+
+A minor release closing **6 P0 tasks** from the post-0.8.4 roadmap plus
+**4 user-feedback false-positive fixes**. Two new public APIs:
+- **Trust store schema v2** with auto-migration from v1
+  (R-P0-2) — `audit_warnings` dict added for the upcoming R-P0-1 plugin
+  import-time audit.
+- **`senpy.toml [tool.senpy]` runtime extension of Ren'Py built-ins**
+  — `additional_builtins` / `additional_actions` lists let users
+  declare third-party namespaces (e.g. `iap`, `updater`) and custom
+  Action classes so RPY202 / RPY103 / RPY206 stop firing on them.
+
+**1964 tests** (up from 1836 in 0.8.4, +128). No new rules — all
+changes are correctness fixes, security hardening, and infrastructure
+for the upcoming R-P0-1 plugin audit / R-P0-7 branch-clear / R-P0-8
+cross-process cache lock work scheduled for 0.9.1.
+
+| Area | What Was Broken | What Changed |
+|---|---|---|
+| **Trust store schema (R-P0-2)** | No schema versioning — any future change silently "zeroed out" trust for every previously-trusted plugin. | Schema bumped to v2, auto-migration on read, `audit_warnings` field added for R-P0-1. |
+| **Terminator unification (R-P0-3)** | Three sources of truth for "terminators": `RE_TERMINATOR` (incl. `call`) and two inline regexes in `state.py` / `flow.py` (without `call`). Could diverge. | `RE_BRANCH_TERMINATOR` extracted to `core/constants.py`. Inline regexes replaced. Behavior unchanged (pure refactor). |
+| **RPY000 severity (R-P0-4)** | Synthesized `RPY000` ("Senpy internal error") was missing from `RULES_DATABASE` — `senpy rule show RPY000` printed "Unknown rule code", and `_apply_severity` fell back to WARNING. | Registered in `RULES_DATABASE` with `severity=ERROR` and `tags=["internal"]`. `senpy rule list` shows separate "Internal" section. RULES.md gains matching "Internal (RPY000)" section. |
+| **`generate_defaults_file` error handling (R-P0-5)** | `open(out_file, "w")` without try/except — `OSError` (read-only `game/`, disk full, path too long) crashed CLI with raw traceback. | Catches `OSError`, logs WARNING, records `failed_writes`, returns `("", 0)`. Exit code forced to 1. |
+| **`_write_fixed_file` UnicodeEncodeError (R-P0-6)** | Caught only `OSError` — `--fix` runs producing a lone surrogate raised `UnicodeEncodeError`, misclassified as RPY000, exit code 0. | Catches `(OSError, UnicodeEncodeError)`. Atomic write via `tempfile.mkstemp` + `os.replace`. Read-only files detected up front. |
+| **RPY202 false positive on `achievement.X`** | `BUILTIN_SYMBOLS` did not include `achievement` — Ren'Py ships it as a runtime-provided namespace. Now added. | Ren'Py built-ins consolidated into `senpy/core/renpy_builtins.py` (single source of truth). `senpy.toml` extension via `additional_builtins`. |
+| **RPY206 false positive on `GamepadCalibrate()`** | `BUILTIN_ACTIONS` did not include `GamepadCalibrate` — documented Ren'Py action. Now added. | Same `renpy_builtins.py` consolidation. `senpy.toml` extension via `additional_actions`. |
+| **RPY202 false positive on tuple-unpacking for-loops in screens** | `RE_FOR_LOOP` regex matched only `for x in ...:` (single identifier) — silently dropped `for i, (a, b, c) in enumerate(...)`. | AST-based `extract_for_targets` helper in `text_utils.py` covers every Python for-target shape. |
+| **RPY103 false positive on for-loop targets in `init python:` / label body** | For-loop targets registered only inside screens; `init python:` and label bodies missed them. RPY103 fired on `if fn.lower()...:` inside `for fn in ...:`. | `extract_for_targets` integrated at three points: `StateChecker.check_line`, `_check_python_block`, `_check_python_inline`. Plus `_handle_init_python_block` now accepts `scope_stack`. |
+| **`init python hide:` not recognized by `RE_INIT_PYTHON_START`** | Regex did not include the `hide` keyword — `init python hide:` blocks silently fell through to per-line `check_line` dispatch instead of AST-based analysis. | Added `(?:\s+hide)?` to the pattern. RPY110 (Python syntax error) now fires inside `init python hide:` blocks too. |
+| **RPY103/RPY202 stacked duplicate diagnostics** | Same variable referenced N times in one if-condition produced N diagnostics on the same line — all pointing at the first-occurrence column. Visually: one stacked squiggly on the wrong column. | `seen` set in `_check_undeclared_vars_in_condition` — each (line, var_name) gets at most one diagnostic. Different undeclared vars still get their own. |
+
+**Plus**: atomic writes in `CacheManager.save_manifest` and
+`_write_trust_store` (concurrent invocations race eliminated), LSP
+`Timer.cancel()` race fix via generation counter, LSP `autoload_plugins`
+in `start_lsp()`, branch-switch cache invalidation tests, JPEG long
+APP markers test, docs deps conflict fix (`pymdown-extensions` 13.0),
+dead `_purge_file_symbols` removed, UTF-8 BOM handling fix.
+
+Full details in [`CHANGELOG.md`](CHANGELOG.md#090).
+
+---
+
 ### 0.8.4 — Edge-case cleanup: string-literal masking, thread safety, checker isolation
 
 A patch release closing **19 tasks** (edge cases, code quality, partial features) + 2 post-0.8.3 follow-up fixes. **1836 tests** (up from 1816 in 0.8.3, +20). No new rules — all changes are correctness fixes, isolation hardening, and dead-code removal.
@@ -280,7 +322,7 @@ Every bug above:
 
 Senpy catches them at lint time — before they ship. **That's why you need it.**
 
-For the full list of 52 rules with examples, see **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**.
+For the full list of 53 rules with examples, see **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**.
 
 ---
 
@@ -599,7 +641,7 @@ Senpy ships a [pre-commit](https://pre-commit.com) hook that runs
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.8.4   # use the latest tag
+    rev: v0.9.0   # use the latest tag
     hooks:
       - id: senpy
 ```
