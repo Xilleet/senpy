@@ -12,6 +12,7 @@ from senpy.core.file_collector import (
     emit_encoding_error,
     read_file_lines,
 )
+from senpy.core.logging import get_logger
 from senpy.core.models import AnalysisResult, Diagnostic, FileScope
 from senpy.core.paths import normalize_path
 from senpy.core.symbol_table import SymbolTable
@@ -35,6 +36,8 @@ from senpy.text_utils import (  # noqa: E402, F401
     _get_logical_line,
     _strip_comment,
 )
+
+_logger = get_logger("analyzer")
 
 # Extract the first quoted string literal from a Python expression
 # body. Used for `image name = "path"` and `image name = Transform("path", …)`
@@ -534,6 +537,27 @@ class SenpyAnalyzer:
         return parse_tl_pairs(lines)
 
     def generate_defaults_file(self) -> tuple[str, int]:
+        """Generate ``senpy_defaults.rpy`` with ``default`` declarations
+        for every variable in ``self.missing_defaults``.
+
+        Returns ``(out_file, count)``. On a successful write, ``out_file``
+        is the absolute path written and ``count`` is the number of
+        declarations. If ``missing_defaults`` is empty, returns ``("", 0)``
+        without touching the filesystem.
+
+        On ``OSError`` (read-only ``game/`` directory, disk full, path
+        too long, missing parent directory after a race, ...), the failure
+        is logged at WARNING level and the target path is appended to
+        ``self.failed_writes`` — same pattern as
+        ``AnalysisPipeline._write_fixed_file`` (R-P0-6). This lets
+        ``runner._force_nonzero_if_failed_writes`` force exit code 1 and
+        ``runner._print_failed_writes_summary`` print a clean user-facing
+        summary, reusing the existing failed-writes infrastructure rather
+        than inventing a parallel defaults-error path. Returns
+        ``("", 0)`` so the caller (``handle_defaults``) treats it as
+        "nothing was generated" rather than crashing the CLI with a raw
+        traceback (audit BUG-3).
+        """
         if not self.missing_defaults:
             return "", 0
 
@@ -550,7 +574,12 @@ class SenpyAnalyzer:
         for var, val in sorted(self.missing_defaults.items()):
             lines.append(f"default {var} = {val}\n")
 
-        with open(out_file, "w", encoding="utf-8") as f:
-            f.writelines(lines)
+        try:
+            with open(out_file, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+        except OSError as e:
+            _logger.warning("Failed to write defaults file to %s: %s", out_file, e)
+            self.failed_writes.append(out_file)
+            return "", 0
 
         return out_file, len(self.missing_defaults)
