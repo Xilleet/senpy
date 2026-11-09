@@ -11,6 +11,7 @@ from senpy.core.constants import (
     RE_MENU_CHOICE,
     RE_STRING_MATCH,
     SYSTEM_LABELS,
+    is_branch_terminator_line,
 )
 from senpy.core.models import Diagnostic
 from senpy.domain.text_tags import get_utf16_range
@@ -541,10 +542,12 @@ class StoryFlowAnalyzer:
             py = stripped[1:].strip()
             current_choice.defined_vars.update(extract_assigned_names(py))
 
-        if re.match(
-            r"^\s*(?:jump\b|return\b|\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b)",
-            stripped,
-        ):
+        # Mark this menu choice as terminating if the line is a branch
+        # terminator (jump/return/renpy.*). Uses is_branch_terminator_line
+        # (RE_BRANCH_TERMINATOR), which does NOT include `call` — `call X`
+        # returns to the calling menu choice and does not terminate it.
+        # See core/constants.py:RE_BRANCH_TERMINATOR docstring.
+        if is_branch_terminator_line(stripped):
             current_choice.terminates = True
 
         idx += 1

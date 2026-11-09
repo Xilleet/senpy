@@ -79,6 +79,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unaffected) and end-to-end tests through `analyzer.run(fix=True)`
   (failed_writes recorded, no RPY000 emitted, other files in the same
   run still fixed).
+- **Terminator unification: `RE_BRANCH_TERMINATOR` as a single source.** There were three sources of truth for "terminators" in the code:
+`core/constants.py:RE_TERMINATOR` (included `call` for RPY308/RPY309
+fall-through), and two identical inline regexes in `state.py:155` and
+`flow.py:544` (without `call` for branch-merge). The inline regexes were already correct (they intentionally did not include `call`, because `call X` returns control to the calling branch and does not terminate it for merge), but they were a duplication that could diverge from `RE_TERMINATOR` (which already happened—`call` was missing from both inline copies). Added `RE_BRANCH_TERMINATOR` and `is_branch_terminator_line()` to `core/constants.py` — an explicit, documented second concept for branch-merge. Inline regexes in `state.py` and `flow.py` have been replaced with calls to `is_branch_terminator_line(stripped)`. The behavior has not changed** — this is a pure refactor (single source of truth), but the two concepts (fall-through vs. branch-merge) are now clearly separated and documented. Coverage: `tests/test_branch_terminator_unification.py`
+(20 tests, RED → GREEN via TDD): regex semantics (jump/return/renpy.*
+match, call/call screen/pass/dialogue does not match), divergence matrix between `RE_TERMINATOR` and `RE_BRANCH_TERMINATOR` (agreement on everything except `call`/`call screen`), end-to-end behavior via `SenpyAnalyzer.run()` (`call X` in an if-branch does NOT mark it as terminating → RPY404 fires on the MAYBE_SET variable; `jump`/`return` in an if-branch marks it as terminating → RPY404 does not fire; similarly for menu choices).
 
 ### Fixed
 

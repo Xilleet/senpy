@@ -9,6 +9,7 @@ from senpy.core.constants import (
     RE_CONDITION,
     RE_MENU_START,
     RE_PYTHON_BLOCK_START,
+    is_branch_terminator_line,
 )
 from senpy.core.scope import ScopeStack
 from senpy.text_utils import dedent_python
@@ -151,11 +152,15 @@ class StateChecker(BaseChecker):
             new_ctx.current_branch = new_branch
             self.if_stack.append(new_ctx)
 
-        # Detect jump, return, and terminating renpy.* calls
-        if self.if_stack and re.match(
-            r"^\s*(?:jump\b|return\b|\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b)",
-            stripped,
-        ):
+        # Detect jump, return, and terminating renpy.* calls — mark this
+        # if-branch as terminating so the merge logic excludes it from
+        # the guaranteed/maybe-set intersection.
+        #
+        # Uses is_branch_terminator_line (RE_BRANCH_TERMINATOR), which
+        # does NOT include `call`/`call screen` — `call X` returns to
+        # the calling branch and does not terminate it. See
+        # core/constants.py:RE_BRANCH_TERMINATOR docstring.
+        if self.if_stack and is_branch_terminator_line(stripped):
             self.if_stack[-1].current_branch.terminates = True  # type: ignore[union-attr]
 
     def _check_menu_block(

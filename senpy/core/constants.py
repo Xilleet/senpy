@@ -306,6 +306,54 @@ def is_terminator_line(line: str) -> bool:
     return bool(RE_TERMINATOR.match(line))
 
 
+# Regex matching lines that terminate a BRANCH (if/elif/else body or menu
+# choice body) — i.e. after this line, control does NOT continue in the
+# same branch.
+#
+# DIFFERS from RE_TERMINATOR: this regex does NOT include `call` (or
+# `call screen`). Reason: `call X` pushes onto the return stack and the
+# called label returns control back to the calling branch — execution
+# continues in the SAME branch after `call` returns. So `call X` at the
+# end of an if-branch does NOT terminate that branch for merge purposes:
+# the branch is still "live" and contributes to the merge of
+# guaranteed/maybe-set variables.
+#
+# `RE_TERMINATOR` (with `call`) is used by RPY308/RPY309 fall-through
+# checks — different concept. See is_terminator_line above.
+#
+# Used by:
+#   - state.py:_manage_if_elif_else_stack — marks if-branches as terminating.
+#   - flow.py:_analyze_choice_body — marks menu choices as terminating.
+#
+# Before this constant existed, both call sites had inline copies of the
+# same regex (state.py:155, flow.py:544). That was 3 sources of truth
+# (constants.RE_TERMINATOR + 2 inline copies) that could drift apart —
+# the inline copies had already drifted from RE_TERMINATOR by omitting
+# `call`. Consolidating them here makes the two-concept split explicit
+# and single-sourced.
+RE_BRANCH_TERMINATOR = re.compile(
+    r"^\s*(?:"
+    r"jump\b|return\b|"
+    r"\$?\s*renpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\b"
+    r")"
+)
+
+
+def is_branch_terminator_line(line: str) -> bool:
+    """Return True if `line` terminates a BRANCH (if/menu choice body).
+
+    This is the branch-merge counterpart to ``is_terminator_line``: same
+    set of terminators EXCEPT ``call``/``call screen``, because ``call``
+    returns control to the calling branch and does not terminate it.
+
+    Used by ``state.py:_manage_if_elif_else_stack`` and
+    ``flow.py:_analyze_choice_body`` to mark branches as terminating.
+    The line should already have comments stripped (via
+    ``text_utils._strip_comment``).
+    """
+    return bool(RE_BRANCH_TERMINATOR.match(line))
+
+
 NON_DIALOGUE_STATEMENTS = {
     "$",
     "python",
