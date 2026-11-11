@@ -24,8 +24,16 @@ from pathlib import Path
 
 import pytest
 
-from senpy.core.analyzer import SenpyAnalyzer
-from senpy.core.models import AnalysisResult, Diagnostic
+# migration: ``Diagnostic`` and ``AnalysisResult`` are now imported
+# from the public ``senpy.api`` contract rather than the internal
+# ``senpy.core.models``. ``analyze_code`` is used by the migrated
+# ``TestDiagnosticsOutput`` class below; the other characterization classes
+# still use ``SenpyAnalyzer`` directly because they pin internal state
+# (symbol tables, cache dir, file_scopes) that the public API does not
+# expose yet. Migrating those would require extending ``senpy.api`` —
+# deferred to a later phase.
+from senpy.api import AnalysisResult, Diagnostic, analyze_code
+from senpy.core.analyzer import SenpyAnalyzer  # used by non-migrated classes
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -158,28 +166,32 @@ class TestSymbolCollection:
 
 
 class TestDiagnosticsOutput:
-    """SenpyAnalyzer.run() must return the right diagnostics."""
+    """analyze_code() must return the right diagnostics.
 
-    def test_clean_script_zero_diagnostics(self, tmp_path):
-        _make_project(tmp_path, {"script.rpy": SIMPLE_SCRIPT})
-        analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
-        result = analyzer.run(quiet=True)
-        assert len(result.diagnostics) == 0
+    migration: previously called ``SenpyAnalyzer(str(tmp_path),
+    no_cache=True).run()`` directly. Now uses the public ``analyze_code``
+    entry point. Same observable behavior, no longer coupled to the
+    internal ``SenpyAnalyzer`` class API.
 
-    def test_broken_script_produces_diagnostics(self, tmp_path):
-        _make_project(tmp_path, {"script.rpy": BROKEN_SCRIPT})
-        analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
-        result = analyzer.run(quiet=True)
-        assert len(result.diagnostics) > 0
-        codes = {d.code for d in result.diagnostics}
+    The ``tmp_path`` fixture is no longer needed by this class —
+    ``analyze_code`` handles temp project setup internally. Other classes
+    in this file still use ``tmp_path`` and ``_make_project``.
+    """
+
+    def test_clean_script_zero_diagnostics(self):
+        result = analyze_code(SIMPLE_SCRIPT)
+        assert len(result) == 0
+
+    def test_broken_script_produces_diagnostics(self):
+        result = analyze_code(BROKEN_SCRIPT)
+        assert len(result) > 0
+        codes = {d.code for d in result}
         assert "RPY001" in codes  # tab indentation
         assert "RPY302" in codes  # jump to nonexistent label
 
-    def test_diagnostics_have_required_fields(self, tmp_path):
-        _make_project(tmp_path, {"script.rpy": BROKEN_SCRIPT})
-        analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
-        result = analyzer.run(quiet=True)
-        for d in result.diagnostics:
+    def test_diagnostics_have_required_fields(self):
+        result = analyze_code(BROKEN_SCRIPT)
+        for d in result:
             assert isinstance(d, Diagnostic)
             assert d.code.startswith("RPY")
             assert d.severity in ("ERROR", "WARNING", "HINT", "INFO")
@@ -187,11 +199,11 @@ class TestDiagnosticsOutput:
             assert d.line_number > 0
             assert d.message
 
-    def test_diagnostics_include_file_path(self, tmp_path):
-        _make_project(tmp_path, {"script.rpy": BROKEN_SCRIPT})
-        analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
-        result = analyzer.run(quiet=True)
-        for d in result.diagnostics:
+    def test_diagnostics_include_file_path(self):
+        result = analyze_code(BROKEN_SCRIPT)
+        for d in result:
+            # analyze_code() writes the snippet to <tmp>/game/script.rpy,
+            # so the diagnostic's file_path must end with script.rpy.
             assert "script.rpy" in d.file_path or d.file_path.endswith("script.rpy")
 
 
