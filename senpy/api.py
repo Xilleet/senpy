@@ -1,5 +1,8 @@
 """senpy.api — explicitly public API module for plugin developers and library users.
 
+SEMVER CONTRACT
+---------------
+
 This module is the STABLE public contract. The following public names
 are covered by the semver guarantee — their presence, signature, and
 observable behavior MUST stay backward-compatible within the same
@@ -13,7 +16,10 @@ major version:
         - Location             — dataclass (line: int, character: int).
         - RULE_SEVERITY        — dict[str, str] mapping rule code to
                                  severity ("ERROR" / "WARNING" / "INFO" / "HINT").
-        - analyze_code(code)   — high-level one-liner API.
+        - analyze_code(code, config=None) — high-level one-liner API. The
+                                 optional ``config`` dict follows the
+                                 ``senpy.toml [tool.senpy]`` schema
+                                 (see function docstring for fields).
 
 Allowed within a minor version bump (no major bump required):
 
@@ -79,7 +85,7 @@ Status (0.9.x):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 # Re-exports — these are the stable public API. They MUST NOT change between
 # minor versions. Major version bumps are allowed to break them (with a
@@ -119,7 +125,7 @@ class Location:
 # =============================================================================
 
 
-def analyze_code(code: str) -> list[Diagnostic]:
+def analyze_code(code: str, config: dict[str, Any] | None = None) -> list[Diagnostic]:
     """Analyze a snippet of .rpy code and return diagnostics.
 
     This is the canonical high-level API for external code (plugins, scripts,
@@ -128,6 +134,53 @@ def analyze_code(code: str) -> list[Diagnostic]:
 
     Args:
         code: .rpy source code as a string. May be empty.
+        config: Optional configuration dict following the same schema
+            as ``senpy.toml [tool.senpy]``. When passed, this dict is
+            used directly (no filesystem lookup for ``senpy.toml``
+            happens). When ``None`` (default), Senpy searches for
+            ``senpy.toml`` / ``pyproject.toml`` in the temp project
+            directory (which is empty by construction, so in practice
+            defaults apply).
+
+            Supported fields — see ``senpy.core.config.SenpyConfig`` for
+            the canonical Pydantic schema (note: ``SenpyConfig`` itself
+            is NOT part of the frozen public API yet; only the dict
+            schema is, mirroring ``senpy.toml``):
+
+              Analyzer-affecting (observable in the returned diagnostics):
+
+                strict: bool                  — promote all diagnostics to ERROR
+                severity: dict[str, str]       — per-rule severity overrides
+                                               (e.g. {"RPY104": "ERROR"})
+                additional_builtins: list[str] — third-party Ren'Py namespaces
+                                               to treat as declared (e.g. ["iap"])
+                additional_actions: list[str] — third-party screen Action classes
+                                               (e.g. ["MyCustomAction"])
+                enable_plugins: bool          — opt-in plugin rule execution
+
+              CLI-layer only (ignored by ``analyze_code`` — these fields
+              are applied by the CLI's ``filter_diagnostics`` step AFTER
+              ``analyzer.run()``, so passing them via ``config`` here has
+              no effect on the returned list):
+
+                ignore: list[str]              — rule codes to suppress globally
+                select: list[str]              — rule codes whitelist
+                extend_select: list[str]       — additional whitelist codes
+                extend_ignore: list[str]       — additional suppressed codes
+                max_errors: int               — per-file diagnostic cap
+                info: bool                    — show INFO-severity diagnostics
+                errors_only: bool             — show only ERROR-severity
+                tsundere: bool                — alternate output tone
+
+            To filter diagnostics programmatically, filter the returned
+            list in caller code (``[d for d in diags if d.code not in
+            ignore_set]``). A future minor release may promote ``ignore``
+            to analyzer-level; that would be a behavior change for
+            callers that already filter post-hoc, so it's deferred.
+
+            Unknown fields are ignored (forward-compat). Invalid types
+            (e.g. ``strict = "yes"``) surface as a logged WARNING and
+            fall back to defaults.
 
     Returns:
         List of Diagnostic objects. Empty list if no issues found.
@@ -138,6 +191,9 @@ def analyze_code(code: str) -> list[Diagnostic]:
         >>> diags = analyze_code('label start:\\n    "Hello, [unknown]!"\\n    return\\n')
         >>> [d.code for d in diags]
         ['RPY101']
+
+        >>> # Programmatic severity override without writing senpy.toml:
+        >>> diags = analyze_code(code, config={"severity": {"RPY104": "ERROR"}})
 
     Note:
         For analyzing files on disk, use SenpyAnalyzer directly:
@@ -163,7 +219,7 @@ def analyze_code(code: str) -> list[Diagnostic]:
         with open(script_path, "w", encoding="utf-8") as f:
             f.write(code)
 
-        analyzer = SenpyAnalyzer(tmp_dir, no_cache=True)
+        analyzer = SenpyAnalyzer(tmp_dir, no_cache=True, config=config)
         result = analyzer.run(quiet=True)
 
     return list(result.diagnostics)

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from senpy.core.analysis_pipeline import AnalysisPipeline
 from senpy.core.cache import CacheManager
-from senpy.core.config import load_config
+from senpy.core.config import load_config, validate_config
 from senpy.core.file_collector import (
     FileCollector,
     build_noqa_map,
@@ -57,6 +58,7 @@ class SenpyAnalyzer:
         strict: bool | None = None,
         cache_dir: str | None = None,
         config_path: str | None = None,
+        config: dict[str, Any] | None = None,
     ):
         self.project_path = os.path.abspath(project_path)
         # cache_dir: passed through to CacheManager (CLI --cache-dir).
@@ -94,6 +96,25 @@ class SenpyAnalyzer:
             # themselves.
             self._additional_builtins: set[str] = set()
             self._additional_actions: set[str] = set()
+        elif config is not None:
+            # Explicit programmatic config — caller passes a dict that
+            # follows the same schema as ``senpy.toml [tool.senpy]``
+            # (see ``senpy.core.config.SenpyConfig`` for the canonical
+            # field list). Validated via pydantic so a missing/typo'd
+            # field surfaces as a logged WARNING + empty-config fallback
+            # rather than a silent misconfiguration.
+            #
+            # This branch enables ``analyze_code(code, config=...)``
+            # in the public API to override severity / ignore / strict /
+            # additional_builtins etc. without writing a senpy.toml file.
+            cfg = validate_config(config)
+            self.severity_overrides = {
+                k.strip().upper(): v.strip().upper() for k, v in cfg.get("severity", {}).items()
+            }
+            self.strict = bool(strict) if strict is not None else bool(cfg.get("strict", False))
+            self.enable_plugins = bool(cfg.get("enable_plugins", False))
+            self._additional_builtins = set(cfg.get("additional_builtins", []))
+            self._additional_actions = set(cfg.get("additional_actions", []))
         else:
             cfg = load_config(self.project_path, config_path=config_path)
             self.severity_overrides = {
