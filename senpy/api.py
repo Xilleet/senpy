@@ -1,8 +1,50 @@
 """senpy.api — explicitly public API module for plugin developers and library users.
 
-This module is the STABLE public contract. Internal modules (senpy.core.*,
-senpy.rules.*, senpy.lsp.*, etc.) may change between minor versions, but
-senpy.api MUST stay backward-compatible within the same major version.
+This module is the STABLE public contract. The following public names
+are covered by the semver guarantee — their presence, signature, and
+observable behavior MUST stay backward-compatible within the same
+major version:
+
+    Public names (defined or re-exported here):
+        - Diagnostic           — dataclass; its field names and types
+                                 are part of the contract.
+        - AnalysisResult       — dataclass; its field names and types
+                                 are part of the contract.
+        - Location             — dataclass (line: int, character: int).
+        - RULE_SEVERITY        — dict[str, str] mapping rule code to
+                                 severity ("ERROR" / "WARNING" / "INFO" / "HINT").
+        - analyze_code(code)   — high-level one-liner API.
+
+Allowed within a minor version bump (no major bump required):
+
+    - Adding new optional parameters to public functions, as long as
+      the default preserves existing call-site behavior.
+    - Adding new public names to ``__all__``.
+    - Performance improvements that do not change observable behavior.
+    - Bug fixes that change behavior only when the previous behavior
+      was demonstrably wrong (false positive, crash, wrong column, etc.).
+
+Breaking changes (require major version bump, 1.x → 2.0):
+
+    - Removing or renaming a public name.
+    - Changing a public function's signature in a way that breaks
+      existing call sites (mandatory parameter added, parameter
+      reordered, return type changed).
+    - Changing the type or documented semantics of a public dataclass
+      field.
+    - Changing the documented behavior of a public function in a way
+      that is not a bug fix.
+
+When a breaking change is unavoidable, the minor series BEFORE the
+major bump MUST emit ``DeprecationWarning`` for at least one release,
+and ``CHANGELOG.md`` MUST have a ``### Breaking Changes`` section in
+the major version entry with a migration guide.
+
+Internal modules (``senpy.core.*``, ``senpy.rules.*``, ``senpy.lsp.*``,
+``senpy.cli.*``, ``senpy.formats.*``, ``senpy.domain.*``,
+``senpy.plugins.*``) are NOT covered by this contract and may change
+between any versions. External code that imports from these modules
+does so at its own risk.
 
 What's here:
     - Diagnostic, RULE_SEVERITY, AnalysisResult — re-exported from core.models
@@ -26,7 +68,12 @@ Migration guide:
     NEW (recommended for new code):
         from senpy.api import Diagnostic, RULE_SEVERITY, analyze_code
 
-The `from senpy.api import *` works — __all__ lists all public names.
+The ``from senpy.api import *`` works — ``__all__`` lists all public names.
+
+Status (0.9.x):
+    Senpy is in feature freeze until 1.0. The public names listed above
+    are expected to remain frozen as-is through 1.0 — no breaking changes
+    to them in any 0.9.x release. See README.md "Status" section.
 """
 
 from __future__ import annotations
