@@ -40,6 +40,29 @@ pip install senpy-linter
 
 ---
 
+## Статус: заморозка фичей → 1.0
+
+Senpy 0.9.0 production-stable для пользователей. До 1.0 фокус — на
+hardening архитектуры и стабилизации контракта `senpy.api` —
+**без новых правил, без новых фичей, без новых форматов вывода**.
+
+Почему: ядро накопило architectural debt, на который changelog намекает. Симптомы видны в коде: facade-врапперы в `analyzer.py`,
+стирающие типизацию, LSP-стейт в module-level globals (97
+cyclic-import workarounds через `TYPE_CHECKING` / lazy import),
+oversized-модули (`python_ast.py` 2143 строки, `lsp/handlers/navigation.py`
+1326 строк), тесты, coupled с internals (485 импортов из
+`senpy.core/rules/cli/lsp` против 18 из публичного `senpy.api`).
+Хочу закрыть это системно до объявления 1.0 API stability.
+
+**Что принимается во время заморозки:** bug fixes, false-positive
+репорты, security advisories, улучшения документации.
+
+**Что отложено до post-1.0:** новые правила (расширение RPY0xx–RPY8xx,
+RPY9xx plugin ecosystem), новые форматы вывода, новые CLI-генераторы,
+расширение форматтера, sandbox R&D, editor-клиенты вне VS Code.
+
+---
+
 ## Что нового
 
 ### 0.9.0 — Security hardening + soundness + FP-фиксы из фидбэка пользователей

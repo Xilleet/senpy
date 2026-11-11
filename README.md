@@ -39,6 +39,36 @@ pip install senpy-linter
 Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github.com/Xilleet/senpy/releases) page → Install from VSIX in VS Code.
 
 ---
+
+## Status: Feature Freeze → 1.0
+
+Senpy 0.9.0 is production-stable for users. Until 1.0, I'm focusing on
+architecture hardening and `senpy.api` contract stabilization —
+**no new rules, no new features, no new output formats**.
+
+Why: the core has accumulated architectural debt that the changelog
+hints at ("three sources of truth for terminators", "`--strict`
+documented but absent from `args.py`", "`setup_logging()` never
+called"). Symptoms visible in code: facade wrappers in `analyzer.py`
+that erase type signatures, LSP server state held in module-level
+globals (97 cyclic-import workarounds via `TYPE_CHECKING` / lazy
+import), oversized modules (`python_ast.py` 2143 lines,
+`lsp/handlers/navigation.py` 1326 lines), tests coupled to internals
+(485 imports from `senpy.core/rules/cli/lsp` vs 18 from the public
+`senpy.api`). I want to close this systematically before declaring
+1.0 API stability.
+
+**What's accepted during the freeze:** bug fixes, false-positive
+reports, security advisories, documentation improvements.
+
+**What's deferred to post-1.0:** new rules (RPY0xx–RPY8xx expansion,
+RPY9xx plugin ecosystem), new output formats, new CLI generators,
+formatter extensions, sandbox R&D, editor clients beyond VS Code.
+
+Full plan with phases, exit criteria, metrics, and risks:
+[docs/ROADMAP_TO_1_0.md](docs/ROADMAP_TO_1_0.md).
+
+---
 ## What's New
 
 ### 0.9.0 — Security hardening + soundness fixes + FP fixes from user feedback
