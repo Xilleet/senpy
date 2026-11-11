@@ -65,9 +65,6 @@ reports, security advisories, documentation improvements.
 RPY9xx plugin ecosystem), new output formats, new CLI generators,
 formatter extensions, sandbox R&D, editor clients beyond VS Code.
 
-Full plan with phases, exit criteria, metrics, and risks:
-[docs/ROADMAP_TO_1_0.md](docs/ROADMAP_TO_1_0.md).
-
 ---
 ## What's New
 

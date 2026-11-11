@@ -29,7 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes yet._
+> **Feature freeze declared.** Until 1.0, releases focus on architecture
+> hardening and `senpy.api` contract stabilization — no new rules, no
+> new features, no new output formats. Bug fixes, false-positive reports,
+> security advisories, and documentation improvements are still accepted.
 
 ---
 
