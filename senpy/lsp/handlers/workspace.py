@@ -41,7 +41,9 @@ def workspace_symbol(
 
     VS Code: Ctrl+T → search across all files of the project.
     """
-    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+    # state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
+    if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return []
 
     query = (params.query or "").lower()
@@ -56,7 +58,7 @@ def workspace_symbol(
     # 1. Labels (SymbolKind.Function = 12)
     # UX: use the snapshot, not server_mod._active_analyzer.labels —
     # analyze_file_only clears labels from other files.
-    for name, lbl in server_mod._symbol_snapshot["labels"].items():
+    for name, lbl in lsp_server.symbol_snapshot["labels"].items():
         if not _matches(name):
             continue
         lbl_line = max(0, lbl.line_number - 1)
@@ -75,7 +77,7 @@ def workspace_symbol(
         )
 
     # 2. Screens (SymbolKind.Object = 26)
-    for name, scr in server_mod._symbol_snapshot["screens"].items():
+    for name, scr in lsp_server.symbol_snapshot["screens"].items():
         if not _matches(name):
             continue
         scr_line = max(0, scr.line_number - 1)
@@ -94,7 +96,7 @@ def workspace_symbol(
         )
 
     # 3. Transforms (SymbolKind.Function = 12)
-    for name, trn in server_mod._symbol_snapshot["transforms"].items():
+    for name, trn in lsp_server.symbol_snapshot["transforms"].items():
         if not _matches(name):
             continue
         trn_line = max(0, trn.line_number - 1)
@@ -208,7 +210,9 @@ def document_highlight(
     server_mod = _get_server_mod()
     """Highlights all occurrences of the word under the cursor in the current file.
     """
-    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+    # state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
+    if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return []
 
     doc = ls.workspace.get_text_document(params.text_document.uri)
@@ -224,7 +228,7 @@ def document_highlight(
     if not word:
         return []
 
-    if not _is_user_symbol(word, server_mod._active_analyzer):
+    if not _is_user_symbol(word, lsp_server.active_analyzer):
         return []
 
     return _find_all_occurrences(word, doc.lines)
@@ -298,6 +302,11 @@ def initialized(ls: LanguageServer, params: lsp.InitializedParams) -> None:
         root = None
 
     if root:
-        server_mod._current_workspace_root = root
+        # WRITE to module global via @property setter.
+        # _lsp_server.current_workspace_root = X triggers the setter which
+        # does `global _current_workspace_root; _current_workspace_root = X`.
+        # Same state, different access path. Tested by test_lsp_server_properties.py.
+        lsp_server = server_mod._lsp_server
+        lsp_server.current_workspace_root = root
         # Start a full scan in the background (debounced)
         server_mod.schedule_full_diagnostics(ls, "")
