@@ -66,6 +66,14 @@ senpy = "senpy.cli:main"
 include = ["senpy", "senpy.*"]
 exclude = ["senpy-vscode", "senpy-vscode.*", "test_game"]
 
+# include the JSON API docs resource in pip-installed packages.
+# Without this, `pip install senpy-linter` would ship the Python loader
+# but not the JSON data file it loads — hover docs would crash at runtime
+# with FileNotFoundError. The JSON lives in senpy/domain/data/ alongside
+# the __init__.py that makes it a proper subpackage.
+[tool.setuptools.package-data]
+"senpy.domain.data" = ["*.json"]
+
 [tool.setuptools.dynamic]
 version = {attr = "senpy.__version__.__version__"}
 
