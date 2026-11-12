@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import os
 import pickle
@@ -265,8 +264,10 @@ class CacheManager:
                         self._lock_path,
                         _LOCK_TIMEOUT,
                     )
-                    with contextlib.suppress(OSError):
+                    try:  # noqa: SIM105
                         os.close(fd)
+                    except OSError:
+                        pass
                     return None
                 time.sleep(_LOCK_RETRY_INTERVAL)
 
@@ -285,8 +286,10 @@ class CacheManager:
         except OSError:
             pass  # best-effort
         finally:
-            with contextlib.suppress(OSError):
+            try:  # noqa: SIM105
                 os.close(fd)
+            except OSError:
+                pass
 
     def load_manifest(self) -> CacheManifest | None:
         """Loads the manifest from the cache with a version check.

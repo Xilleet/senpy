@@ -177,6 +177,29 @@ def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
     """
     plugin_name = getattr(entry_point, "name", "<unknown>")
 
+    # Run import-time audit BEFORE the trust prompt.
+    # The audit reads the plugin's .py source files via importlib.metadata.files()
+    # (no import — the plugin module is never loaded) and scans for dangerous
+    # patterns (subprocess, socket, eval/exec, os.system, ctypes, pickle).
+    # Warnings are stored in the trust store and shown to the user before [y/N].
+    try:
+        from senpy.plugins.audit import audit_plugin_via_entry_point
+        from senpy.plugins.security import store_audit_warnings
+
+        audit_result = audit_plugin_via_entry_point(plugin_name, entry_point)
+        if audit_result.has_warnings:
+            store_audit_warnings(plugin_name, audit_result.warnings)
+            _logger.info(
+                "Audit warnings for plugin %r (%d files scanned): %s",
+                plugin_name,
+                audit_result.files_scanned,
+                audit_result.warnings,
+            )
+        elif audit_result.error:
+            _logger.debug("Audit skipped for %r: %s", plugin_name, audit_result.error)
+    except Exception as e:
+        _logger.debug("Audit failed for %r: %s", plugin_name, e)
+
     # Step 1: Trust check (SEC-P2) — MUST run before entry_point.load().
     # The trust decision is based solely on the plugin name (a string),
     # so it does not require loading the plugin module. Running trust
@@ -331,7 +354,19 @@ def _default_trust_callback(plugin_name: str) -> bool:
         # Non-interactive (CI, piped stdin) — fail-safe, decline
         return False
 
-    # Step 4: Prompt user
+    # Prompt user
+    # Show audit warnings before the trust prompt.
+    from senpy.plugins.security import get_audit_warnings
+
+    audit_warnings = get_audit_warnings(plugin_name)
+    if audit_warnings:
+        import sys as _sys
+
+        print(f"\n[senpy] Audit warnings for plugin '{plugin_name}':", file=_sys.stderr)
+        for w in audit_warnings:
+            print(f"  \u26a0 {w}", file=_sys.stderr)
+        print(file=_sys.stderr)
+
     try:
         answer = (
             input(f"\n[senpy] Plugin '{plugin_name}' wants to load. Trust and enable? [y/N]: ")

@@ -177,12 +177,11 @@ def _migrate_trust_store(data: dict) -> dict:
     for unknown in list(set(data) - known_keys):
         data.pop(unknown, None)
 
-    # Prune audit_warnings entries for plugins no longer in the trust
-    # list — keeps the store tidy if a plugin was untrusted by an older
-    # Senpy that didn't clean up audit_warnings.
-    trusted = set(data["plugins"])
-    for orphan in list(set(data["audit_warnings"]) - trusted):
-        data["audit_warnings"].pop(orphan, None)
+    # audit_warnings are stored BEFORE the trust prompt (the
+    # plugin is not yet trusted when the audit runs). Do NOT prune them
+    # here — that would delete the warnings before the user sees them.
+    # untrust_plugin() already cleans up audit_warnings when a plugin is
+    # explicitly untrusted.
 
     return data
 
@@ -299,3 +298,33 @@ def get_trusted_plugins() -> list[str]:
     """Returns list of all trusted plugin names (sorted)."""
     store = _read_trust_store()
     return sorted(store.get("plugins", []))
+
+
+# =============================================================================
+# Audit warnings
+# =============================================================================
+
+
+def store_audit_warnings(plugin_name: str, warnings: list[str]) -> None:
+    """Store audit warnings for a plugin in the trust store.
+
+    Called by ``load_plugin()`` after running the AST-based audit
+    (``senpy.plugins.audit``) but before the trust prompt. The warnings
+    are read by ``_default_trust_callback`` and shown to the user.
+
+    Persists to disk immediately (same pattern as trust_plugin/untrust_plugin).
+    Overwrites any existing warnings for this plugin.
+    """
+    store = _read_trust_store()
+    store.setdefault("audit_warnings", {})[plugin_name] = warnings
+    _write_trust_store(store)
+
+
+def get_audit_warnings(plugin_name: str) -> list[str]:
+    """Get audit warnings for a plugin from the trust store.
+
+    Returns an empty list if no warnings are stored (plugin was not
+    audited, or audit found no issues).
+    """
+    store = _read_trust_store()
+    return store.get("audit_warnings", {}).get(plugin_name, [])
