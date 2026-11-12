@@ -21,6 +21,25 @@ from senpy.domain.tsundere import TSUNDERE_UI
 from senpy.formats.traceback import find_latest_traceback, parse_traceback_file
 
 
+def _relpath_to_cwd(path: str) -> str:
+    """Return ``path`` relative to ``os.getcwd()``, with a cross-mount fallback.
+
+    On Windows, ``os.path.relpath`` raises ``ValueError`` when ``path``
+    and ``os.getcwd()`` are on different drives (e.g. the user runs
+    ``senpy`` from ``D:\\projects`` but their project lives on
+    ``C:\\games\\myvn``). The caller (``handle_init_ci``,
+    ``handle_stubs``) prints this relative path to the console as a
+    user-facing hint ("workflow created at .github/workflows/senpy.yml")
+    — falling back to the absolute path keeps the message useful instead
+    of crashing the CLI. Matches the existing defensive pattern in
+    ``senpy/formats/{gitlab,rdjson,sarif}.py``.
+    """
+    try:
+        return os.path.relpath(path, os.getcwd())
+    except ValueError:
+        return path
+
+
 def handle_traceback(args, console: Console, is_tsundere: bool) -> int | None:
     """--traceback: crash log analysis."""
     if not args.traceback:
@@ -70,7 +89,7 @@ def handle_init_ci(args, console: Console, is_tsundere: bool) -> int | None:
     from senpy.formats.ci import init_ci_workflow
 
     out_path, _created = init_ci_workflow(args.path)
-    rel_out = os.path.relpath(out_path, os.getcwd())
+    rel_out = _relpath_to_cwd(out_path)
     if is_tsundere:
         console.print(
             f"[bold magenta]{TSUNDERE_UI['init_ci'].format(path=rel_out)}[/bold magenta]\n"
@@ -339,7 +358,7 @@ def handle_stubs(args, analyzer, console: Console, is_tsundere: bool) -> int | N
     from senpy.formats.stubs import generate_stubs
 
     out_dir, count = generate_stubs(analyzer, out_dir=args.stubs)
-    rel_out = os.path.relpath(out_dir, os.getcwd())
+    rel_out = _relpath_to_cwd(out_dir)
     if is_tsundere:
         console.print(
             f"\n[bold magenta](//∇//) «{TSUNDERE_UI['generate_stubs'].format(path=rel_out, count=count)}»[/bold magenta]\n"
