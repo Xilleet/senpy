@@ -192,7 +192,35 @@ def _collect_target_names_into_dict(target: ast.expr, d: dict) -> None:
 
 
 class PythonAstChecker:
-    """Checks embedded Python code via AST for compliance with Ren'Py rules."""
+    """Checks embedded Python code via AST for compliance with Ren'Py rules.
+
+    TODO (post-1.0 architecture redesign): this class is 1540 lines / 41
+    methods implementing 8 rule groups (RPY102/105/106/108/110/201/208/
+    403/103/202). extracted type inference functions to
+    ``senpy/core/type_inference.py`` (454 lines), but the class itself
+    was NOT split via mixins because:
+
+      1. 47 cross-method calls — methods constantly call each other
+         (``_walk_python_nodes`` → ``_visit_augassign`` →
+         ``_check_augassign_name`` → ``_check_augassign_type_conflict``).
+         This is one cohesive AST visitor, not 5 independent modules.
+      2. Mixin pattern in Python shares ``self`` — mypy cannot verify
+         cross-mixin method calls, and import-chain fragility multiplies
+         (one missing re-export broke CI in Phase 4.3).
+      3. Only 7 of 41 methods are external entry points; the other 34
+         are internal implementation details.
+
+    The practical floor without a fundamental redesign is ~1580 lines
+    (after extracting the 5 module-level assignment helpers). Further
+    reduction requires a **rule-as-plugin architecture**: each rule
+    (RPY102, RPY105, etc.) becomes a separate class with a registration
+    pattern, sharing a common ``ASTVisitor`` base. This is post-1.0
+    work — not a Phase 4 file split, but an architectural change that
+    affects how rules are registered, discovered, and tested.
+
+    For now, this file is accepted as oversized but stable. The 8 rule
+    groups are documented inline via section comments for navigability.
+    """
 
     def __init__(self, analyzer: FullAnalyzer):
         self.analyzer = analyzer
