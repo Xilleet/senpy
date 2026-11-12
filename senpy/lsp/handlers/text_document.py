@@ -78,15 +78,21 @@ def did_close(ls, params: lsp.DidCloseTextDocumentParams) -> None:
         existing.cancel()
         _lsp_server_change_timers().pop(uri, None)
 
-    if server_mod._active_analyzer is not None:
+    # state access via _lsp_server.<attr> accessors.
+    # Both lsp_server.active_analyzer and the module global _active_analyzer
+    # are the same object (property delegates). Function calls
+    # (_normalize_path, _uri_to_path) stay on server_mod — they are module
+    # functions, not state.
+    lsp_server = server_mod._lsp_server
+    if lsp_server.active_analyzer is not None:
         norm_file = server_mod._normalize_path(server_mod._uri_to_path(uri))
-        with server_mod._lsp_server.rw_lock.write_lock():
-            # Re-check inside the lock: _active_analyzer could have been
+        with lsp_server.rw_lock.write_lock():
+            # Re-check inside the lock: active_analyzer could have been
             # swapped out by run_full_project_diagnostics between the
             # outer None-check and acquire_write(). The mutation must
             # target the analyzer that is current at mutation time, not
             # the one that was current at check time.
-            current = server_mod._active_analyzer
+            current = lsp_server.active_analyzer
             if current is not None:
                 current.in_memory_files.pop(norm_file, None)
 
@@ -165,13 +171,20 @@ def did_change_watched_files(ls, params: lsp.DidChangeWatchedFilesParams) -> Non
     import threading
 
     def _refresh_assets():
-        a = getattr(server_mod, "_active_analyzer", None)
-        if a is None or not getattr(server_mod, "_is_initialized", False):
+        # state access via _lsp_server.<attr>. The defensive
+        # getattr-with-default was needed when accessing module globals
+        # that might not exist during early LSP init — but _lsp_server is
+        # a singleton created at module import time, and its @property
+        # accessors always return a value (None / False by default). So
+        # direct access is safe and cleaner.
+        lsp_server = server_mod._lsp_server
+        a = lsp_server.active_analyzer
+        if a is None or not lsp_server.is_initialized:
             return
         # AssetManager.index() does a fresh disk scan; call under the
         # write lock so readers see a consistent snapshot.
         try:
-            with server_mod._lsp_server.rw_lock.write_lock():
+            with lsp_server.rw_lock.write_lock():
                 a.assets.index()
         except Exception:
             # Defensive: an asset refresh failure must not crash the LSP

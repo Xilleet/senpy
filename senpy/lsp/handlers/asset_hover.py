@@ -88,7 +88,9 @@ def _resolve_image_disk_path(image_name: str) -> str | None:
     auto-discovery.
     """
     server_mod = _get_server_mod()
-    analyzer = server_mod._active_analyzer
+    # state access via _lsp_server.active_analyzer property
+    # (delegates to module global _active_analyzer).
+    analyzer = server_mod._lsp_server.active_analyzer
     if analyzer is None:
         return None
 
@@ -165,7 +167,9 @@ def build_image_hover(line: str, col: int) -> lsp.Hover | None:
 
     file_uri = _path_to_file_uri(disk_path)
     server_mod = _get_server_mod()
-    analyzer = server_mod._active_analyzer
+    # state access via _lsp_server.active_analyzer property
+    # (delegates to module global _active_analyzer).
+    analyzer = server_mod._lsp_server.active_analyzer
 
     # Video: VS Code's image viewer cannot decode WebM/MP4. Render a
     # command URI that opens the file in the OS default app.
@@ -217,7 +221,9 @@ def build_audio_hover(line: str, col: int) -> lsp.Hover | None:
     file is on disk.
     """
     server_mod = _get_server_mod()
-    analyzer = server_mod._active_analyzer
+    # state access via _lsp_server.active_analyzer property
+    # (delegates to module global _active_analyzer).
+    analyzer = server_mod._lsp_server.active_analyzer
     if analyzer is None:
         return None
 
