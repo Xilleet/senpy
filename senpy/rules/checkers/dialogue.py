@@ -16,7 +16,7 @@ from senpy.core.scope import ScopeStack
 from senpy.core.signature import validate_call_arguments
 
 if TYPE_CHECKING:
-    from senpy.core.protocols import DiagnosticSinkAndSymbols
+    from senpy.core.protocols import DiagnosticSinkAndSymbolsAndFlow
 
 from senpy.rules.base import BaseChecker
 from senpy.text_utils import strip_string_literals
@@ -25,7 +25,12 @@ from senpy.text_utils import strip_string_literals
 class DialogueChecker(BaseChecker):
     """RPY3xx — Dialogue, quote checks, jump/call transitions, and label fallthrough."""
 
-    def __init__(self, analyzer: DiagnosticSinkAndSymbols):
+    # Narrow ``self.analyzer`` to the intersection this checker uses.
+    # DialogueChecker needs ``FlowProvider._can_reach_return`` for the
+    # RPY306 "no return path" check.
+    analyzer: DiagnosticSinkAndSymbolsAndFlow
+
+    def __init__(self, analyzer: DiagnosticSinkAndSymbolsAndFlow):
         super().__init__(analyzer)
         self.in_label_context = False
         self.current_global_label: str | None = None
@@ -233,23 +238,31 @@ class DialogueChecker(BaseChecker):
     ) -> None:
         """Call-specific post-checks: RPY310 (argument validation) + RPY306 (return path)."""
         # RPY310: argument validation
-        if target_label in self.analyzer.labels and self.analyzer.labels[target_label].signature:
+        # Bind signature to a local before the truthiness check so the
+        # narrowing carries through to ``validate_call_arguments`` below —
+        # re-accessing ``self.analyzer.labels[target_label].signature``
+        # would yield ``SignatureInfo | None`` again.
+        if target_label in self.analyzer.labels:
             sig = self.analyzer.labels[target_label].signature
-            m_args = re.search(r"\bcall\s+(?!screen\b)[^\W\d]\w*\s*(?:\((.*?)\))?", stripped)
-            call_args = m_args.group(1) if m_args and m_args.group(1) is not None else None
-            err_msg = validate_call_arguments(sig, call_args)
-            if err_msg:
-                self.analyzer._add_diagnostic(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        line_content=stripped,
-                        code="RPY310",
-                        message=f"Invalid arguments in 'call {target_label}': {err_msg}. Causes fatal TypeError.",
-                        severity="ERROR",
-                    ),
-                    noqa_map,
-                )
+            if sig is not None:
+                m_args = re.search(r"\bcall\s+(?!screen\b)[^\W\d]\w*\s*(?:\((.*?)\))?", stripped)
+                call_args = m_args.group(1) if m_args and m_args.group(1) is not None else None
+                err_msg = validate_call_arguments(sig, call_args)
+                if err_msg:
+                    self.analyzer._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=idx + 1,
+                            line_content=stripped,
+                            code="RPY310",
+                            message=(
+                                f"Invalid arguments in 'call {target_label}': {err_msg}. "
+                                "Causes fatal TypeError."
+                            ),
+                            severity="ERROR",
+                        ),
+                        noqa_map,
+                    )
 
         # RPY306: return path check
         if target_label in self.analyzer.labels and not self.analyzer._can_reach_return(

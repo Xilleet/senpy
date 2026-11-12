@@ -91,7 +91,7 @@ def generate_stubs(analyzer: SenpyAnalyzer, out_dir: str = "typings") -> tuple[s
 
         var_sym = analyzer.variables.get(var)
         var_type = var_sym.type_name if var_sym else None
-        py_type = type_map.get(var_type, "Any")
+        py_type = type_map.get(var_type or "", "Any")
         store_lines.append(f"{var}: {py_type}")
         symbols_count += 1
 

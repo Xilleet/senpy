@@ -66,7 +66,7 @@ def generate_sarif(diagnostics: list[Diagnostic], project_path: str) -> str:
 
         result = {
             "ruleId": diag.code,
-            "level": severity_map.get(diag.severity, "warning"),
+            "level": severity_map.get(diag.severity or "", "warning"),
             "message": {"text": diag.message},
             "locations": [
                 {

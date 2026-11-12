@@ -4,6 +4,7 @@ import functools
 import os
 import threading
 import time
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 from lsprotocol import types as lsp
@@ -439,7 +440,10 @@ _is_initialized: bool = False
 # on did_change) does not drop labels from other files out of _active_analyzer.labels.
 # Without the snapshot, autocomplete only shows labels from the current file —
 # the "jump in day1a.rpy doesn't suggest labels from day10a.rpy" bug.
-_symbol_snapshot: dict[str, dict] = {
+# Value type is a union of dict (for registries) and set (for image
+# keys) plus a list-of-tuples variant for ``labels_by_file``. Declared
+# ``Any`` so mypy does not flag the heterogeneous assignments below.
+_symbol_snapshot: dict[str, Any] = {
     "labels": {},
     "screens": {},
     "transforms": {},
@@ -507,7 +511,7 @@ def _create_lsp_diagnostic(diag: Diagnostic) -> lsp.Diagnostic:
             end=lsp.Position(line=line_idx, character=end_char),
         ),
         message=f"[{diag.code}] {diag.message}",
-        severity=SEVERITY_MAP.get(diag.severity, lsp.DiagnosticSeverity.Warning),
+        severity=SEVERITY_MAP.get(diag.severity or "", lsp.DiagnosticSeverity.Warning),
         source="senpy",
         code=diag.code,
         code_description=lsp.CodeDescription(

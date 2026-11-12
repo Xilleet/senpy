@@ -139,7 +139,10 @@ def _resolve_plugin_api_version(rule_cls: type) -> str | None:
     if class_attr is not None:
         return class_attr
 
-    module = sys.modules.get(getattr(rule_cls, "__module__", None))
+    mod_name = getattr(rule_cls, "__module__", None)
+    if mod_name is None:
+        return None
+    module = sys.modules.get(mod_name)
     if module is None:
         return None
     return getattr(module, "PLUGIN_API_VERSION", None)

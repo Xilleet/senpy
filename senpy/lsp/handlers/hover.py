@@ -70,7 +70,12 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
         # variable hover to avoid `define <attr> = Character(...)` noise.
         return None
     if asset_hover is not None:
-        return asset_hover
+        # ``asset_hover`` was narrowed to ``Hover | None`` by the
+        # ``is _SUPPRESS_HOVER`` branch above; cast carries the narrowing
+        # explicitly so mypy accepts the return.
+        from typing import cast
+
+        return cast(lsp.Hover, asset_hover)
 
     word = _word_at_position(line, col)
     if word is None:
@@ -101,7 +106,18 @@ def _word_at_position(line: str, col: int) -> str | None:
     return None
 
 
-def _try_asset_hover(*, line: str, col: int, stripped_line: str) -> lsp.Hover | None | object:
+class _SuppressHoverSentinel:
+    """Sentinel type for ``_SUPPRESS_HOVER``.
+
+    Distinct from ``object`` so that mypy can narrow
+    ``Hover | None | _SuppressHoverSentinel`` with ``is _SUPPRESS_HOVER``
+    followed by ``is not None`` — collapsing the union to just ``Hover``.
+    """
+
+
+def _try_asset_hover(
+    *, line: str, col: int, stripped_line: str
+) -> lsp.Hover | None | _SuppressHoverSentinel:
     """Try image (show/scene/hide) and audio (play/queue/define audio) hovers.
 
     Returns:
@@ -127,10 +143,13 @@ def _try_asset_hover(*, line: str, col: int, stripped_line: str) -> lsp.Hover | 
     return None  # Not an asset line — fall through to symbol hover.
 
 
-_SUPPRESS_HOVER = object()  # sentinel: "cursor on asset token, suppress symbol hover"
+_SUPPRESS_HOVER: _SuppressHoverSentinel = _SuppressHoverSentinel()
+# sentinel: "cursor on asset token, suppress symbol hover"
 
 
-def _hover_image_token(*, line: str, col: int, stripped_line: str) -> lsp.Hover | None | object:
+def _hover_image_token(
+    *, line: str, col: int, stripped_line: str
+) -> lsp.Hover | None | _SuppressHoverSentinel:
     """Handle hover on `show`/`scene`/`hide` image tokens.
 
     Returns:

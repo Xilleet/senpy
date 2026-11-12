@@ -15,6 +15,7 @@ server_mod._X (lazy import breaks the import cycle).
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -253,7 +254,7 @@ def _is_user_symbol(word: str, analyzer) -> bool:
     )
 
 
-def _find_all_occurrences(word: str, lines: list[str]) -> list[lsp.DocumentHighlight]:
+def _find_all_occurrences(word: str, lines: Sequence[str]) -> list[lsp.DocumentHighlight]:
     """Find all whole-word occurrences of `word` in `lines`, classifying each
     as Read or Write (declaration lines get Write)."""
     highlights: list[lsp.DocumentHighlight] = []

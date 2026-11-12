@@ -315,11 +315,15 @@ def decompile_to_sandbox(
     decomp_label = "[Декомпиляция]" if IS_RU else "[Decompiling]"
 
     temp_rpyc_files = []
-    for i, f in enumerate(orphans, 1):
-        base_name = os.path.basename(f)
+    # Loop variable is ``orphan_file`` (not ``f``) so it does not leak
+    # into the later ``with open(...) as f:`` block below — mypy keeps
+    # the loop variable in scope with type ``str``, which would clash
+    # with the ``TextIOWrapper`` target of the ``with`` statement.
+    for i, orphan_file in enumerate(orphans, 1):
+        base_name = os.path.basename(orphan_file)
         dest = os.path.join(temp_dir, base_name)
-        if os.path.exists(f) and normalize_path(f) != normalize_path(dest):
-            shutil.copy2(f, dest)
+        if os.path.exists(orphan_file) and normalize_path(orphan_file) != normalize_path(dest):
+            shutil.copy2(orphan_file, dest)
         temp_rpyc_files.append(dest)
         msg = f"\r{prep_label} {i}/{total} ({base_name[:25]})"
         progress_print(msg)

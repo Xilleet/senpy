@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import time
 from dataclasses import dataclass, field
+from types import ModuleType
 from typing import TYPE_CHECKING
 
 from senpy.core.constants import SENPY_VERSION
@@ -28,20 +29,28 @@ _logger = get_logger("cache")
 # degrades gracefully: load returns None (cold rebuild), save is
 # skipped (next run will persist).
 
+# Module-level annotation first; the import branches below either bind
+# the real module or leave the value as None. Declaring the type up
+# front avoids mypy's [no-redef] on the ``except ImportError`` arms
+# (without it, ``import fcntl as _fcntl`` is seen as the first
+# definition and the ``_fcntl: ModuleType | None = None`` in the
+# except branch is seen as a redefinition).
+_fcntl: ModuleType | None = None
 try:
-    import fcntl as _fcntl  # Unix only
+    import fcntl as _fcntl_mod  # Unix only
 
+    _fcntl = _fcntl_mod
     _HAS_FCNTL = True
 except ImportError:
-    _fcntl = None
     _HAS_FCNTL = False
 
+_msvcrt: ModuleType | None = None
 try:
-    import msvcrt as _msvcrt  # Windows only
+    import msvcrt as _msvcrt_mod  # Windows only
 
+    _msvcrt = _msvcrt_mod
     _HAS_MSVCRT = True
 except ImportError:
-    _msvcrt = None
     _HAS_MSVCRT = False
 
 _LOCK_TIMEOUT = 5.0  # seconds to wait before degrading
@@ -221,7 +230,7 @@ class CacheManager:
         """Path to the lock file (cache.lock next to cache.pkl)."""
         return os.path.join(self.cache_dir, "cache.lock")
 
-    def _acquire_lock(self) -> object | None:
+    def _acquire_lock(self) -> int | None:
         """Acquire an exclusive cross-process lock on cache.lock.
 
         Returns a lock handle (file descriptor wrapper) if acquired,
@@ -247,9 +256,14 @@ class CacheManager:
         while True:
             try:
                 if _HAS_FCNTL:
+                    assert _fcntl is not None
                     _fcntl.flock(fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
                     return fd  # acquired on Unix
                 elif _HAS_MSVCRT:
+                    # msvcrt.locking / LK_NBLCK / LK_UNLCK are Windows-only;
+                    # on Unix mypy cannot see them. Runtime is guarded by
+                    # ``_HAS_MSVCRT`` so the call is never reached on Linux.
+                    assert _msvcrt is not None
                     _msvcrt.locking(fd, _msvcrt.LK_NBLCK, 1)
                     return fd  # acquired on Windows
                 else:
@@ -271,16 +285,19 @@ class CacheManager:
                     return None
                 time.sleep(_LOCK_RETRY_INTERVAL)
 
-    def _release_lock(self, lock_handle: object | None) -> None:
+    def _release_lock(self, lock_handle: int | None) -> None:
         """Release the cross-process lock acquired by _acquire_lock."""
         if lock_handle is None:
             return
         fd = lock_handle  # it's an int file descriptor
         try:
             if _HAS_FCNTL:
+                assert _fcntl is not None
                 _fcntl.flock(fd, _fcntl.LOCK_UN)
             elif _HAS_MSVCRT:
-                # Seek back to start and unlock 1 byte
+                # Seek back to start and unlock 1 byte.
+                # msvcrt.locking / LK_UNLCK are Windows-only — see _acquire_lock.
+                assert _msvcrt is not None
                 os.lseek(fd, 0, os.SEEK_SET)
                 _msvcrt.locking(fd, _msvcrt.LK_UNLCK, 1)
         except OSError:
@@ -425,8 +442,14 @@ class CacheManager:
         for sym in sorted(analyzer.declared_symbols):
             if sym:
                 hasher.update(sym.encode("utf-8"))
-            if sym in analyzer.variables and analyzer.variables[sym].type_name:
-                hasher.update(analyzer.variables[sym].type_name.encode("utf-8"))
+            if sym in analyzer.variables:
+                # Bind to a local so the truthiness check narrows the
+                # ``str | None`` to ``str`` for the subsequent ``.encode()``
+                # call. Re-accessing ``analyzer.variables[sym].type_name``
+                # twice would defeat mypy's narrowing.
+                tn = analyzer.variables[sym].type_name
+                if tn:
+                    hasher.update(tn.encode("utf-8"))
 
         for var in sorted(analyzer.variables.values(), key=lambda v: v.name):
             if var.is_constant:

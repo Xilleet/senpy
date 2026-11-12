@@ -307,9 +307,18 @@ def _apply_noqa_comments(diagnostics, analyzer) -> list[str]:
                 merged_str = ", ".join(merged_codes)
                 # Use a lambda with default argument to bind merged_str at
                 # definition time (avoids B023: closure over loop variable).
+                # mypy cannot infer the return type of a lambda with a
+                # default argument — cast makes the intent explicit.
+                from collections.abc import Callable
+                from re import Match
+                from typing import cast
+
                 new_line = (
                     noqa_re.sub(
-                        lambda _m, s=merged_str: f"# noqa: {s}",
+                        cast(
+                            Callable[[Match[str]], str],
+                            lambda _m, s=merged_str: f"# noqa: {s}",
+                        ),
                         stripped,
                         count=1,
                     )

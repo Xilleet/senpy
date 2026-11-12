@@ -5,6 +5,7 @@ from __future__ import annotations
 import difflib
 import os
 import re
+from typing import TYPE_CHECKING
 
 from senpy.core.constants import (
     BUILTIN_COLORS,
@@ -13,6 +14,9 @@ from senpy.core.constants import (
     RE_SHOW_SCENE,
     RE_STOP_STATEMENT,
 )
+
+if TYPE_CHECKING:
+    from senpy.core.protocols import DiagnosticSinkAndSymbolsAndAsset
 from senpy.core.models import Diagnostic
 from senpy.core.scope import ScopeStack
 from senpy.rules.base import BaseChecker
@@ -77,6 +81,13 @@ def _split_at_clause(at_clause: str) -> list[str]:
 
 
 class AssetChecker(BaseChecker):
+    # Narrow ``self.analyzer`` to the intersection this checker actually
+    # uses. BaseChecker types it as ``DiagnosticSinkAndSymbols``; AssetChecker
+    # additionally needs ``AssetProvider`` members (``_mark_asset_used``,
+    # ``valid_images``, ``_get_tag_known_attributes``, ``known_assets``,
+    # ``audio_dir_files``).
+    analyzer: DiagnosticSinkAndSymbolsAndAsset
+
     def _validate_transition_expr(
         self,
         file_path: str,
@@ -285,12 +296,13 @@ class AssetChecker(BaseChecker):
         err_attr = invalid_attrs[0] if invalid_attrs else full_img_tag
 
         # Case-insensitive exact match for attributes: "Happy" → suggest "happy"
-        case_match = None
+        case_match: str | None = None
         for attr in valid_attrs:
             if attr.lower() == err_attr.lower():
                 case_match = attr
                 break
 
+        fix_attr: str | None
         if case_match:
             hint = f" (case mismatch: did you mean '{case_match}' ?)"
             fix_attr = case_match

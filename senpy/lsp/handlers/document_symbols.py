@@ -7,6 +7,7 @@ transforms, variables, images.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -145,7 +146,7 @@ def _collect_variable_symbols(scope) -> list[RawSymbolEntry]:
 def _build_document_symbols(
     *,
     raw_entries: list[RawSymbolEntry],
-    lines: list[str],
+    lines: Sequence[str],
     total_lines: int,
 ) -> list[lsp.DocumentSymbol]:
     """Convert sorted `raw_entries` into LSP DocumentSymbols.

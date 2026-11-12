@@ -304,7 +304,9 @@ class SenpyAnalyzer:
         # cross-file rules (RPY701-707, RPY802) which emit diagnostics for
         # files that have already been analysed. Reset here so a warm run
         # does not leak stale directives from the previous pass.
-        self._noqa_maps: dict[str, dict[int, set[str] | None]] = {}
+        # Attribute is already annotated at __init__ time (line 169);
+        # re-annotating here would trip mypy's [no-redef].
+        self._noqa_maps = {}
 
     def _get_noqa_map_for_file(self, file_path: str) -> dict[int, set[str] | None]:
         """Return the ``# noqa`` directive map for ``file_path``.
@@ -439,7 +441,7 @@ class SenpyAnalyzer:
         current_global_label: str | None,
         lines: list[str] | None = None,
         previous_label: str | None = None,
-    ) -> tuple[str, str, str | None]:
+    ) -> tuple[str, str | None, str]:
         return self._collector._collect_label(
             m_label, clean, file_path, idx, scope, current_global_label, lines, previous_label
         )
@@ -631,7 +633,7 @@ class SenpyAnalyzer:
         file_path: str,
         line_idx: int,
         line_content: str,
-        branch_uninitialized: dict[str, tuple[str, str]],
+        branch_uninitialized: dict[str, tuple[str, ...]],
         noqa_map: dict,
     ) -> None:
         self.flow.check_cfg_interpolations(
@@ -644,7 +646,7 @@ class SenpyAnalyzer:
         file_path: str,
         line_idx: int,
         line_content: str,
-        screen_name: str,
+        screen_name: str | None,
         screen_local_symbols: set[str],
         noqa_map: dict,
         lines: list[str] | None = None,

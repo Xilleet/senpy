@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TypedDict
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -7,7 +9,27 @@ from rich.text import Text
 
 console = Console()
 
-RULES_DATABASE = {
+
+class RuleInfo(TypedDict):
+    """Schema of a single entry in ``RULES_DATABASE``.
+
+    Introducing a ``TypedDict`` lets mypy narrow ``RULES_DATABASE[code]``
+    from the unified ``dict[str, str | list[str] | ...]`` value type that
+    emerges from a plain dict literal. Without it, ``info["title"]`` is
+    inferred as ``str | list[str] | ...`` and breaks both
+    ``Table.add_row`` (``[arg-type]``) and ``RULE_SEVERITY``'s
+    ``dict[str, str]`` annotation (``[misc]``).
+    """
+
+    title: str
+    severity: str
+    tags: list[str]
+    why: str
+    bad: str
+    good: str
+
+
+RULES_DATABASE: dict[str, RuleInfo] = {
     # ---------------- 000: Internal (Senpy signals, not user rules) --------
     # RPY000 is emitted by AnalysisPipeline._analyze_all_files when a
     # built-in checker raises an unhandled exception during analysis. It

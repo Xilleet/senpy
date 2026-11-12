@@ -170,7 +170,7 @@ class FileCollector:
 
     def _collect_default(
         self,
-        m_def,
+        m_def: re.Match[str],
         clean: str,
         line: str,
         file_path: str,
@@ -224,7 +224,7 @@ class FileCollector:
 
     def _collect_define(
         self,
-        m_define,
+        m_define: re.Match[str],
         clean: str,
         line: str,
         file_path: str,
@@ -289,7 +289,7 @@ class FileCollector:
         scope.variables[var] = var_sym
         self.analyzer.variables[var] = var_sym
 
-    def _collect_define_audio(self, m_audio_def, scope: FileScope) -> None:
+    def _collect_define_audio(self, m_audio_def: re.Match[str], scope: FileScope) -> None:
         """Handle `define audio.NAME = "file.ogg"`."""
         alias = m_audio_def.group(1)
         target_file = m_audio_def.group(2).replace("\\", "/").lower()
@@ -308,8 +308,8 @@ class FileCollector:
 
     def _collect_screen_transform(
         self,
-        m_screen_def,
-        m_trans,
+        m_screen_def: re.Match[str] | None,
+        m_trans: re.Match[str] | None,
         clean: str,
         line: str,
         file_path: str,
@@ -358,7 +358,7 @@ class FileCollector:
 
     def _collect_label(
         self,
-        m_label,
+        m_label: re.Match[str],
         clean: str,
         file_path: str,
         idx: int,
@@ -366,7 +366,7 @@ class FileCollector:
         current_global_label: str | None,
         lines: list[str] | None = None,
         previous_label: str | None = None,
-    ) -> tuple[str, str, str | None]:
+    ) -> tuple[str, str | None, str]:
         """Handle `label name(params):` — RPY307, LabelSymbol.
 
         Returns (label_name, current_global_label, current_label).
@@ -378,7 +378,8 @@ class FileCollector:
         ``renpy.full_restart``) and does not end with ``:``. This models
         the implicit fall-through edge used by RPY309 reachability.
         """
-        raw_name = m_label.group(1)
+        raw_name: str = m_label.group(1)
+        label_name: str
         if raw_name.startswith("."):
             label_name = f"{current_global_label}{raw_name}" if current_global_label else raw_name
         else:
@@ -1112,14 +1113,15 @@ class FileCollector:
                     new_loop_vars = dict(loop_vars)
                     iter_node = node.iter
                     if isinstance(iter_node, (_ast.List, _ast.Tuple)):
-                        iter_vals = []
+                        iter_vals: list[str] = []
+                        all_str = True
                         for elt in iter_node.elts:
                             if isinstance(elt, _ast.Constant) and isinstance(elt.value, str):
                                 iter_vals.append(elt.value)
                             else:
-                                iter_vals = None
+                                all_str = False
                                 break
-                        if iter_vals is not None:
+                        if all_str:
                             if isinstance(node.target, _ast.Name):
                                 new_loop_vars[node.target.id] = iter_vals
                             elif isinstance(node.target, (_ast.Tuple, _ast.List)):

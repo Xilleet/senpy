@@ -331,8 +331,16 @@ def signature_help(ls: LanguageServer, params: lsp.SignatureHelpParams) -> lsp.S
 
     # Phase 4: highlight the parameter the cursor is currently on.
     active_param = _count_active_parameter(line, cursor_pos, paren_start)
-    if active_param >= len(sig_info.parameters):
-        active_param = max(0, len(sig_info.parameters) - 1)
+    # ``sig_info.parameters`` is ``Sequence[ParameterInformation] | None``
+    # per lsprotocol — pygls always populates it (we built it with
+    # ``parameters=[...]`` in ``_build_signature_info``), but mypy cannot
+    # prove that. ``or ()`` gives an empty tuple fallback so ``len()``
+    # type-checks and the comparison stays correct (active_param >= 0).
+    # Renamed to ``sig_params`` so it does not shadow the function-level
+    # ``params: SignatureHelpParams`` argument.
+    sig_params = sig_info.parameters or ()
+    if active_param >= len(sig_params):
+        active_param = max(0, len(sig_params) - 1)
 
     return lsp.SignatureHelp(
         signatures=[sig_info],

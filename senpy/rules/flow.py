@@ -440,7 +440,7 @@ class StoryFlowAnalyzer:
                 idx += 1
                 continue
 
-            if current_choice and line_indent > choice_indent:
+            if current_choice and choice_indent is not None and line_indent > choice_indent:
                 statement_counts[id(current_choice)] = (
                     statement_counts.get(id(current_choice), 0) + 1
                 )
@@ -729,7 +729,7 @@ class _GraphContext:
         self.labels = self.analyzer.labels
         self.screens_registry = self.analyzer.screens
         self.screen_action_jumps = getattr(self.analyzer, "screen_action_jumps", {}) or {}
-        used_screens = getattr(self.analyzer, "used_screens", set()) or set()
+        used_screens: set[str] = getattr(self.analyzer, "used_screens", set()) or set()
         self.screen_uses = getattr(self.analyzer, "screen_uses", {}) or {}
         self.graph_screens = sorted(
             (set(self.screen_action_jumps) | set(used_screens) | set(self.screen_uses))

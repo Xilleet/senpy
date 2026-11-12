@@ -326,27 +326,33 @@ class ScreenChecker(BaseChecker):
             )
 
         # RPY207: argument mismatch
-        if (
-            screen_target in self.analyzer.screens
-            and self.analyzer.screens[screen_target].signature
-        ):
+        # Bind signature to a local before the truthiness check so the
+        # narrowing carries through to ``validate_call_arguments`` below —
+        # re-accessing ``self.analyzer.screens[screen_target].signature``
+        # would yield ``SignatureInfo | None`` again.
+        if screen_target in self.analyzer.screens:
             sig = self.analyzer.screens[screen_target].signature
-            m_scr_args = re.search(
-                r"\b(?:show\s+screen|call\s+screen|use)\s+[^\W\d]\w*\s*(?:\((.*?)\))?", stripped
-            )
-            scr_args = (
-                m_scr_args.group(1) if m_scr_args and m_scr_args.group(1) is not None else None
-            )
-            err_msg = validate_call_arguments(sig, scr_args)
-            if err_msg:
-                self.analyzer._add_diagnostic(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        line_content=stripped,
-                        code="RPY207",
-                        message=f"Invalid parameters in screen '{screen_target}': {err_msg}. Causes runtime Exception.",
-                        severity="ERROR",
-                    ),
-                    noqa_map,
+            if sig is not None:
+                m_scr_args = re.search(
+                    r"\b(?:show\s+screen|call\s+screen|use)\s+[^\W\d]\w*\s*(?:\((.*?)\))?",
+                    stripped,
                 )
+                scr_args = (
+                    m_scr_args.group(1) if m_scr_args and m_scr_args.group(1) is not None else None
+                )
+                err_msg = validate_call_arguments(sig, scr_args)
+                if err_msg:
+                    self.analyzer._add_diagnostic(
+                        Diagnostic(
+                            file_path=file_path,
+                            line_number=idx + 1,
+                            line_content=stripped,
+                            code="RPY207",
+                            message=(
+                                f"Invalid parameters in screen '{screen_target}': {err_msg}. "
+                                "Causes runtime Exception."
+                            ),
+                            severity="ERROR",
+                        ),
+                        noqa_map,
+                    )

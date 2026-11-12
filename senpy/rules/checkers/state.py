@@ -25,6 +25,14 @@ from senpy.rules.python_ast import extract_assigned_names
 class StateChecker(BaseChecker):
     """RPY1xx, RPY4xx — Check variables, types, conditions, mutations, and menu forks."""
 
+    # Narrow ``self.analyzer`` to the intersection this checker uses.
+    # BaseChecker types it as ``DiagnosticSinkAndSymbols``; StateChecker
+    # additionally needs ``FlowProvider`` methods (``_check_cfg_*``,
+    # ``_analyze_menu_flow``, ``_check_python_ast``, ``_consume_block``,
+    # ``_scan_python_assets``, ``_clear_safe_cfg_vars``,
+    # ``_check_screen_mutation``, ``_check_condition``).
+    analyzer: DiagnosticSinkAndSymbolsAndFlow
+
     def __init__(self, analyzer: DiagnosticSinkAndSymbolsAndFlow):
         super().__init__(analyzer)
         self.branch_uninitialized: dict[str, tuple[str, ...]] = {}

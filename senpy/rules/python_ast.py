@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 import difflib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from senpy.core.constants import BUILTIN_SYMBOLS, SCREEN_LOCAL_IGNORE
 from senpy.core.logging import get_logger
@@ -416,7 +416,7 @@ class PythonAstChecker:
         file_path: str,
         line_idx: int,
         line_content: str,
-        screen_name: str,
+        screen_name: str | None,
         screen_local_symbols: set[str],
         noqa_map: dict,
         lines: list[str] | None = None,
@@ -459,7 +459,7 @@ class PythonAstChecker:
         node: ast.For | ast.While,
         file_path: str,
         line_idx: int,
-        screen_name: str,
+        screen_name: str | None,
         lines: list[str] | None,
         noqa_map: dict,
     ) -> None:
@@ -503,7 +503,7 @@ class PythonAstChecker:
         node: ast.Assign | ast.AugAssign,
         file_path: str,
         line_idx: int,
-        screen_name: str,
+        screen_name: str | None,
         screen_local_symbols: set[str],
         line_content: str,
         lines: list[str] | None,
@@ -547,7 +547,7 @@ class PythonAstChecker:
         self,
         *,
         target_name: str,
-        screen_name: str,
+        screen_name: str | None,
         file_path: str,
         line_idx: int,
         raw_l: str,
@@ -580,7 +580,7 @@ class PythonAstChecker:
         self,
         *,
         target_name: str,
-        screen_name: str,
+        screen_name: str | None,
         file_path: str,
         line_idx: int,
         raw_l: str,
@@ -769,7 +769,10 @@ class PythonAstChecker:
         local_scope: set[str],
     ) -> None:
         """RPY105/RPY102/RPY108: augmented assignment to Name target ($ CONST += 1)."""
-        var_name = node.target.id
+        # Caller has already verified ``isinstance(node.target, ast.Name)``;
+        # cast carries that narrowing into this helper so ``.id`` type-checks.
+        target = cast(ast.Name, node.target)
+        var_name = target.id
         if var_name in local_scope:
             return
 
@@ -869,7 +872,10 @@ class PythonAstChecker:
         local_scope: set[str],
     ) -> None:
         """RPY105/RPY102: augmented assignment to Subscript target ($ CONST[x] += 1)."""
-        root_name = _get_root_name(node.target.value)
+        # Caller has already verified ``isinstance(node.target, ast.Subscript)``;
+        # cast carries that narrowing so ``node.target.value`` type-checks.
+        target = cast(ast.Subscript, node.target)
+        root_name = _get_root_name(target.value)
         if not root_name or root_name in local_scope or root_name in SYSTEM_MUTABLE_NAMESPACES:
             return
 
@@ -1154,11 +1160,14 @@ class PythonAstChecker:
     ) -> None:
         """RPY105/RPY102: Check mutating methods (.append, .update, etc.) on
         constants and undeclared variables."""
-        method_name = sub.func.attr
+        # Caller has already verified ``isinstance(sub.func, ast.Attribute)``;
+        # cast carries that narrowing so ``.attr`` and ``.value`` type-check.
+        func = cast(ast.Attribute, sub.func)
+        method_name = func.attr
         if method_name not in MUTATING_METHODS:
             return
 
-        root_name = _get_root_name(sub.func.value)
+        root_name = _get_root_name(func.value)
         if not root_name or root_name in local_scope or root_name in SYSTEM_MUTABLE_NAMESPACES:
             return
 
@@ -1211,11 +1220,14 @@ class PythonAstChecker:
     ) -> None:
         """RPY108: Check for invalid method calls on known built-in types
         (list.add → .append, dict.append, str.pop, etc.)."""
-        method_name = sub.func.attr
-        if not isinstance(sub.func.value, ast.Name) or method_name.startswith("_"):
+        # Caller has already verified ``isinstance(sub.func, ast.Attribute)``;
+        # cast carries that narrowing so ``.attr`` and ``.value`` type-check.
+        func = cast(ast.Attribute, sub.func)
+        method_name = func.attr
+        if not isinstance(func.value, ast.Name) or method_name.startswith("_"):
             return
 
-        var_id = sub.func.value.id
+        var_id = func.value.id
         var_sym = self.analyzer.variables.get(var_id)
         if not var_sym or var_sym.type_name not in KNOWN_TYPE_METHODS or var_id in local_scope:
             return

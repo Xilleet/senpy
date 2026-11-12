@@ -28,7 +28,7 @@ from senpy.core.symbols import (
 )
 
 if TYPE_CHECKING:
-    from senpy.core.scope import FileScope
+    from senpy.core.models import FileScope
 
 
 class SymbolTable:

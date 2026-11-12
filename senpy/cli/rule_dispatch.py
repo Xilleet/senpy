@@ -30,7 +30,7 @@ import json
 import sys
 from typing import Any
 
-from senpy.rules.rules_info import RULES_DATABASE
+from senpy.rules.rules_info import RULES_DATABASE, RuleInfo
 
 # ---------------------------------------------------------------------------
 # Filters
@@ -98,7 +98,7 @@ def _filter_rules(
     return out
 
 
-def _rule_to_dict(code: str, info: dict[str, Any]) -> dict[str, Any]:
+def _rule_to_dict(code: str, info: RuleInfo | dict[str, Any]) -> dict[str, Any]:
     """Convert a RULES_DATABASE entry to a JSON-serializable dict.
 
     The `code` field is added (it's the dict key in RULES_DATABASE, not
