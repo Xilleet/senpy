@@ -101,7 +101,6 @@ class AuditResult:
 # AST visitor
 # =============================================================================
 
-# Объединяем словари атрибутов в единую карту: модуль -> {атрибут: сообщение}
 _PICKLE_ATTRS = dict.fromkeys(
     ("load", "loads", "Unpickler"),
     "Plugin uses pickle.load/loads/Unpickler — can execute code during deserialization.",
@@ -120,7 +119,6 @@ class _DangerousCodeVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.warnings: list[str] = []
         self._seen: set[str] = set()
-        # Отслеживаем алиасы: локальное_имя -> (оригинальный_модуль, оригинальный_атрибут | None)
         self._aliases: dict[str, tuple[str, str | None]] = {}
 
     def _add(self, msg: str | None) -> None:
@@ -152,14 +150,12 @@ class _DangerousCodeVisitor(ast.NodeVisitor):
         for alias in node.names:
             local_name = alias.asname or alias.name
             self._aliases[local_name] = (module, alias.name)
-            # Автоматически проверит и pickle.loads, и from os import system, и from subprocess import Popen
             self._check_attr(module, alias.name)
 
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
         match node.func:
-            # 1. Прямой вызов: eval(), exec() или импортированный from os import system -> system()
             case ast.Name(id=func_name):
                 if func_name in _DANGEROUS_CALLS:
                     self._add(_DANGEROUS_CALLS[func_name])
@@ -168,7 +164,6 @@ class _DangerousCodeVisitor(ast.NodeVisitor):
                     if real_attr:
                         self._check_attr(real_module, real_attr)
 
-            # 2. Вызов метода/атрибута: os.system(), subprocess.run() или sp.run()
             case ast.Attribute(value=ast.Name(id=obj_name), attr=attr):
                 real_module, _ = self._aliases.get(obj_name, (obj_name, None))
                 self._check_attr(real_module, attr)
