@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import pickle
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -12,6 +14,39 @@ from senpy.core.constants import SENPY_VERSION
 from senpy.core.logging import get_logger
 
 _logger = get_logger("cache")
+
+# =============================================================================
+# Cross-process lock
+# =============================================================================
+# When pre-commit hook and LSP server run simultaneously on the same
+# project, both may try to save_manifest() at the same time. Without a
+# lock, one process's write can clobber the other's, or a reader can
+# see a half-written file (though os.replace mitigates the latter).
+#
+# The lock file (cache.lock) lives next to cache.pkl. On Unix we use
+# fcntl.flock(LOCK_EX); on Windows msvcrt.locking(LK_NBLCK, 1).
+# If the lock cannot be acquired within 5 seconds, the operation
+# degrades gracefully: load returns None (cold rebuild), save is
+# skipped (next run will persist).
+
+try:
+    import fcntl as _fcntl  # Unix only
+
+    _HAS_FCNTL = True
+except ImportError:
+    _fcntl = None
+    _HAS_FCNTL = False
+
+try:
+    import msvcrt as _msvcrt  # Windows only
+
+    _HAS_MSVCRT = True
+except ImportError:
+    _msvcrt = None
+    _HAS_MSVCRT = False
+
+_LOCK_TIMEOUT = 5.0  # seconds to wait before degrading
+_LOCK_RETRY_INTERVAL = 0.1  # seconds between lock attempts
 
 # CachedFileEntry and CacheManifest are defined HERE (in cache.py), not in a
 # separate cache_manifest.py. Reason: Python 3.14 changed dataclasses._is_type(),
@@ -178,9 +213,93 @@ class CacheManager:
             with open(gitignore, "w", encoding="utf-8") as f:
                 f.write("*\n")
 
+    # ------------------------------------------------------------------
+    # Cross-process lock
+    # ------------------------------------------------------------------
+
+    @property
+    def _lock_path(self) -> str:
+        """Path to the lock file (cache.lock next to cache.pkl)."""
+        return os.path.join(self.cache_dir, "cache.lock")
+
+    def _acquire_lock(self) -> object | None:
+        """Acquire an exclusive cross-process lock on cache.lock.
+
+        Returns a lock handle (file descriptor wrapper) if acquired,
+        None if the lock could not be acquired within the timeout
+        (graceful degradation: caller proceeds without cache).
+
+        On Unix: fcntl.flock(LOCK_EX | LOCK_NB) with retry loop.
+        On Windows: msvcrt.locking(LK_NBLCK, 1) with retry loop.
+        On platforms with neither: returns None (no locking, legacy
+        behavior — safe because os.replace is still atomic).
+        """
+        if not self.enabled:
+            return None
+        self.ensure_cache_dir()
+
+        try:
+            fd = os.open(self._lock_path, os.O_CREAT | os.O_RDWR)
+        except OSError as e:
+            _logger.debug("cache lock: cannot open %s: %s", self._lock_path, e)
+            return None
+
+        deadline = time.monotonic() + _LOCK_TIMEOUT
+        while True:
+            try:
+                if _HAS_FCNTL:
+                    _fcntl.flock(fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+                    return fd  # acquired on Unix
+                elif _HAS_MSVCRT:
+                    _msvcrt.locking(fd, _msvcrt.LK_NBLCK, 1)
+                    return fd  # acquired on Windows
+                else:
+                    os.close(fd)
+                    return None  # no locking primitive available
+            except (OSError, PermissionError):
+                # Lock is held by another process. Retry or degrade.
+                if time.monotonic() >= deadline:
+                    _logger.debug(
+                        "cache lock: could not acquire %s within %.1fs — "
+                        "degrading (cold rebuild or skip save)",
+                        self._lock_path,
+                        _LOCK_TIMEOUT,
+                    )
+                    with contextlib.suppress(OSError):
+                        os.close(fd)
+                    return None
+                time.sleep(_LOCK_RETRY_INTERVAL)
+
+    def _release_lock(self, lock_handle: object | None) -> None:
+        """Release the cross-process lock acquired by _acquire_lock."""
+        if lock_handle is None:
+            return
+        fd = lock_handle  # it's an int file descriptor
+        try:
+            if _HAS_FCNTL:
+                _fcntl.flock(fd, _fcntl.LOCK_UN)
+            elif _HAS_MSVCRT:
+                # Seek back to start and unlock 1 byte
+                os.lseek(fd, 0, os.SEEK_SET)
+                _msvcrt.locking(fd, _msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass  # best-effort
+        finally:
+            with contextlib.suppress(OSError):
+                os.close(fd)
+
     def load_manifest(self) -> CacheManifest | None:
-        """Loads the manifest from the cache with a version check."""
+        """Loads the manifest from the cache with a version check.
+
+        Acquires a cross-process lock (R-P0-8) to prevent reading a
+        cache.pkl that is being written by another process. If the lock
+        cannot be acquired within the timeout, returns None (cold rebuild).
+        """
         if not self.enabled or not os.path.exists(self.manifest_path):
+            return None
+        lock = self._acquire_lock()
+        if lock is None and self.enabled:
+            _logger.debug("cache lock: load_manifest degraded — another process holds the lock")
             return None
         try:
             with open(self.manifest_path, "rb") as f:
@@ -189,27 +308,32 @@ class CacheManager:
                 self.manifest = data
                 return data
         except (OSError, pickle.PickleError, EOFError, AttributeError, ValueError) as e:
-            # log debug instead of silent suppress. Cache corruption
-            # is recoverable (just rebuild), but tracking it helps spot bugs.
             _logger.debug(
                 "failed to load cache manifest from %s: %s",
                 self.manifest_path,
                 e,
             )
+        finally:
+            self._release_lock(lock)
         return None
 
     def save_manifest(self, manifest: CacheManifest) -> None:
         """Atomically saves the manifest to a binary pickle.
 
+        Acquires a cross-process lock (R-P0-8) to prevent concurrent
+        writes from different processes (pre-commit hook + LSP server).
+        If the lock cannot be acquired within the timeout, the save is
+        skipped (next run will persist).
+
         Uses ``tempfile.mkstemp`` for a unique temp filename per call, so
         concurrent invocations on the same project cannot clobber each
-        other's temp file before the atomic ``os.replace``. Previously
-        used a fixed ``cache.pkl.tmp`` name, which under concurrent writes
-        produced interleaved pickle bytes (self-healing via
-        ``load_manifest`` catching the bad pickle, but a single slow
-        cold-cache run was the observable cost).
+        other's temp file before the atomic ``os.replace``.
         """
         if not self.enabled:
+            return
+        lock = self._acquire_lock()
+        if lock is None and self.enabled:
+            _logger.debug("cache lock: save_manifest skipped — another process holds the lock")
             return
         try:
             self.ensure_cache_dir()
@@ -219,28 +343,19 @@ class CacheManager:
                     pickle.dump(manifest, f, protocol=pickle.HIGHEST_PROTOCOL)
                 os.replace(tmp_path, self.manifest_path)
             except BaseException:
-                # Clean up the temp file if anything went wrong (write
-                # error, rename failure, KeyboardInterrupt, ...). The
-                # previously persisted manifest at ``manifest_path`` is
-                # left untouched because os.replace has not happened yet.
-                # Cleanup failures are swallowed silently — best-effort.
-                # Note: ``contextlib.suppress`` is intentionally avoided
-                # here — see ``test_no_contextlib_suppress_in_core_cache``
-                # for the migration contract that requires explicit
-                # try/except in this module.
                 try:  # noqa: SIM105
                     os.unlink(tmp_path)
                 except OSError:
                     pass
                 raise
         except (OSError, pickle.PickleError) as e:
-            # log debug instead of silent suppress. Save failure is
-            # recoverable (next run rebuilds), but indicates disk issues.
             _logger.debug(
                 "failed to save cache manifest to %s: %s",
                 self.manifest_path,
                 e,
             )
+        finally:
+            self._release_lock(lock)
 
     @staticmethod
     def compute_global_hash(analyzer: SenpyAnalyzer) -> str:
