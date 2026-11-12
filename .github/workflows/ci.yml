@@ -18,7 +18,10 @@
 # Что делает (lint job, CI-1):
 #   - Ruff check (blocking) — style-нарушения падают CI
 #   - Ruff format --check (blocking) — неправильное форматирование падает CI
-#   - mypy (non-blocking, warn-only) — сообщения о типах, не блокирует PR
+#   - mypy (blocking) — type errors fail CI. Conforms to pyproject.toml
+#     [tool.mypy] (no --warn-unreachable, no strict). The 3 pre-existing
+#     unreachable-statement warnings from --warn-unreachable are tracked
+#     separately — they are intentional defensive code paths.
 # =============================================================================
 name: CI
 
@@ -74,9 +77,12 @@ jobs:
   # style-нарушения (unused imports, bare except, type comparisons, и т.д.).
   # Конфиг в pyproject.toml [tool.ruff].
   #
-  # mypy запускается как warn-only (continue-on-error: true) — он не блокирует
-  # PR, но сообщает о проблемах с типами. Когда QUA-7 (95% типизация) будет
-  # закрыт, можно сделать mypy блокирующим.
+  # mypy теперь блокирующий (Protocols выровнены с
+  # SenpyAnalyzer surface). Конфиг в pyproject.toml
+  # [tool.mypy]; --warn-unreachable убран намеренно: он не входит в
+  # проектный конфиг и поверхностно ругается на 3 pre-existing defensive
+  # code path (unrpyc.py placeholder, pipeline plugin-output isinstance
+  # filter, loader.py pre-3.9 fallback). Чинить их — отдельная задача.
   lint:
     name: Ruff + mypy + Rule count sync
     runs-on: ubuntu-latest
@@ -111,9 +117,11 @@ jobs:
         continue-on-error: true
         run: ruff format --check .
 
-      - name: mypy (non-blocking, warn-only)
-        continue-on-error: true
-        run: mypy senpy/ --warn-unreachable --no-error-summary || true
+      - name: mypy (blocking)
+        # Type errors fail CI. Configured via [tool.mypy] in pyproject.toml.
+        # `pip install -e .` above installs runtime deps (pygls, lsprotocol,
+        # pydantic, rich) so mypy can resolve imports during type checking.
+        run: mypy senpy/
 
   # ===========================================================================
   # 1. Matrix-тесты: Python × OS
