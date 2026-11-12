@@ -36,7 +36,13 @@ def _get_server_mod():
 def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
     """Semantic hints when hovering the cursor over variables, labels and screens."""
     server_mod = _get_server_mod()
-    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+    # migration: state access via _lsp_server.<attr> (property
+    # accessor on SenpyLSPServer) instead of module-level _<attr> globals.
+    # Both paths hit the same state — the property delegates to the global.
+    # Once all handlers are migrated (Phase 3.3+), the module globals are
+    # removed and the properties become real instance attributes (Phase 3.4).
+    lsp_server = server_mod._lsp_server
+    if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return None
 
     doc = ls.workspace.get_text_document(params.text_document.uri)
@@ -77,9 +83,9 @@ def hover(ls: LanguageServer, params: lsp.HoverParams) -> lsp.Hover | None:
 
     # Then user-defined symbols: variable → label → screen.
     return (
-        _hover_variable(word, server_mod)
-        or _hover_label(word, server_mod)
-        or _hover_screen(word, server_mod)
+        _hover_variable(word, lsp_server)
+        or _hover_label(word, lsp_server)
+        or _hover_screen(word, lsp_server)
     )
 
 
@@ -194,13 +200,17 @@ def _hover_api_doc(word: str) -> lsp.Hover | None:
     return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=api_content))
 
 
-def _hover_variable(word: str, server_mod) -> lsp.Hover | None:
+def _hover_variable(word: str, lsp_server) -> lsp.Hover | None:
     """Try hover for a `define`/`default` variable.
 
     Resolves dotted access (`player.name` → look up `name`) against the
     snapshot. Returns None if `word` is not a declared variable.
+
+    takes ``lsp_server: SenpyLSPServer`` instead of ``server_mod``.
+    The snapshot is accessed via ``lsp_server.symbol_snapshot`` (property
+    delegating to module global ``_symbol_snapshot``).
     """
-    variables = server_mod._symbol_snapshot["variables"]
+    variables = lsp_server.symbol_snapshot["variables"]
     target_var = word if word in variables else word.split(".")[-1]
     if target_var not in variables:
         return None
@@ -210,6 +220,12 @@ def _hover_variable(word: str, server_mod) -> lsp.Hover | None:
     kind = "Constant (`define`)" if var.is_constant else "Variable (`default`)"
     # UX: clickable Markdown link to file:// URI with #L<line> anchor.
     # VS Code opens the file at the right line on click in the hover card.
+    #
+    # ``_path_to_uri`` is a module-level function, not state —
+    # still accessed via ``server_mod``. Will move to a method on
+    # ``SenpyLSPServer`` in a later phase.
+    from senpy.lsp import server as server_mod
+
     decl_uri = server_mod._path_to_uri(var.file_path)
     content = (
         f"**Ren'Py {kind}** — `{target_var}`\n\n"
@@ -219,14 +235,19 @@ def _hover_variable(word: str, server_mod) -> lsp.Hover | None:
     return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
 
 
-def _hover_label(word: str, server_mod) -> lsp.Hover | None:
-    """Try hover for a label, including clickable jump-target links."""
-    labels = server_mod._symbol_snapshot["labels"]
+def _hover_label(word: str, lsp_server) -> lsp.Hover | None:
+    """Try hover for a label, including clickable jump-target links.
+
+    takes ``lsp_server: SenpyLSPServer`` instead of ``server_mod``.
+    """
+    labels = lsp_server.symbol_snapshot["labels"]
     if word not in labels:
         return None
 
     lbl = labels[word]
     fname = os.path.basename(lbl.file_path)
+    from senpy.lsp import server as server_mod
+
     decl_uri = server_mod._path_to_uri(lbl.file_path)
     info_lines = [
         f"**Ren'Py Label** — `{word}`\n\n"
@@ -256,14 +277,19 @@ def _hover_label(word: str, server_mod) -> lsp.Hover | None:
     )
 
 
-def _hover_screen(word: str, server_mod) -> lsp.Hover | None:
-    """Try hover for a screen declaration."""
-    screens = server_mod._symbol_snapshot["screens"]
+def _hover_screen(word: str, lsp_server) -> lsp.Hover | None:
+    """Try hover for a screen declaration.
+
+    takes ``lsp_server: SenpyLSPServer`` instead of ``server_mod``.
+    """
+    screens = lsp_server.symbol_snapshot["screens"]
     if word not in screens:
         return None
 
     scr = screens[word]
     fname = os.path.basename(scr.file_path)
+    from senpy.lsp import server as server_mod
+
     decl_uri = server_mod._path_to_uri(scr.file_path)
     content = (
         f"**Ren'Py Screen** — `{word}`\n\n"
