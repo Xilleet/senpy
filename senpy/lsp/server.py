@@ -231,6 +231,25 @@ class SenpyLSPServer:
     P1'-7: 9 module globals → class fields (gradual migration)
     P1'-8: per-URI debounce dict[str, Timer] (in 0.6.0-11) ✅
     P1'-9: reader-writer lock for analysis_lock (in 0.6.0-12) ✅
+
+    Added @property accessors for the 8
+    module-level globals so handlers can be migrated incrementally to
+    use ``_lsp_server.<attr>`` instead of ``server_mod._<attr>``. Both
+    access patterns hit the SAME state — the property delegates
+    read/write to the module global. Once all handlers are migrated,
+    the module globals become dead and can be removed.
+
+    Migration plan (one handler per commit):
+      - Add @property accessors. Zero behavior
+        change — module globals remain canonical.
+      - Migrate handlers one at a time. Each migration is a
+        single commit that changes ``server_mod._active_analyzer`` →
+        ``server_mod._lsp_server.active_analyzer`` (or, equivalently,
+        accepts a ``server: SenpyLSPServer`` parameter).
+      - Remove module globals. ``SenpyLSPServer`` instance
+        attributes become the canonical state.
+      - Rewrite LSP tests to use a fresh ``SenpyLSPServer()``
+        per test instead of mutating the module singleton.
     """
 
     def __init__(self):
@@ -253,6 +272,154 @@ class SenpyLSPServer:
         # for full-scan workers (full scans are not URI-specific).
         self.change_generations: dict[str, int] = {}
         self.full_generation: int = 0
+
+    # ------------------------------------------------------------------
+    # @property accessors for module-level globals.
+    #
+    # Each property delegates read/write to the corresponding module
+    # global. This means ``_lsp_server.active_analyzer`` and
+    # ``_active_analyzer`` (module global) are the SAME state — mutating
+    # either is visible from both. Properties exist so future handler
+    # migrations can choose ``_lsp_server.attr`` style without behavior
+    # change. Once all handlers are migrated, the module globals can be
+    # deleted and these properties become real instance attributes
+    # (Phase 3.4).
+    #
+    # Why @property instead of just an instance attribute mirroring the
+    # global? For primitive types (bool, None, int), reassignment in one
+    # place wouldn't reflect in the other. @property with a getter AND
+    # setter ensures both access paths stay in sync.
+    # ------------------------------------------------------------------
+
+    @property
+    def active_analyzer(self) -> SenpyAnalyzer | None:
+        """The currently active SenpyAnalyzer instance for the workspace.
+
+        Delegates to module global ``_active_analyzer``.
+        Set by ``initialized`` handler (workspace root → SenpyAnalyzer).
+        Read by every LSP handler that needs to inspect symbols or run
+        analysis.
+        """
+        return _active_analyzer
+
+    @active_analyzer.setter
+    def active_analyzer(self, value: SenpyAnalyzer | None) -> None:
+        global _active_analyzer
+        _active_analyzer = value
+
+    @property
+    def is_initialized(self) -> bool:
+        """True after ``initialized`` LSP notification has been processed.
+
+        Delegates to module global ``_is_initialized``.
+        Reading handlers bail out (return empty results) when this is
+        False — they need the analyzer to be set up first.
+        """
+        return _is_initialized
+
+    @is_initialized.setter
+    def is_initialized(self, value: bool) -> None:
+        global _is_initialized
+        _is_initialized = value
+
+    @property
+    def current_workspace_root(self) -> str | None:
+        """Workspace root path received from the ``initialized`` notification.
+
+        Delegates to module global ``_current_workspace_root``.
+        Used by ``_uri_to_path`` for workspace containment checks and
+        by ``_get_workspace_root`` as a fallback.
+        """
+        return _current_workspace_root
+
+    @current_workspace_root.setter
+    def current_workspace_root(self, value: str | None) -> None:
+        global _current_workspace_root
+        _current_workspace_root = value
+
+    @property
+    def latest_diagnostics_by_path(
+        self,
+    ) -> dict[str, list[tuple[Diagnostic, lsp.Diagnostic]]]:
+        """Cache of the most recent diagnostics per file path.
+
+        Delegates to module global ``_latest_diagnostics_by_path``.
+        Used by ``code_action`` (QuickFix) to find the diagnostics for
+        the file the user is hovering over.
+        """
+        return _latest_diagnostics_by_path
+
+    @latest_diagnostics_by_path.setter
+    def latest_diagnostics_by_path(
+        self,
+        value: dict[str, list[tuple[Diagnostic, lsp.Diagnostic]]],
+    ) -> None:
+        global _latest_diagnostics_by_path
+        _latest_diagnostics_by_path = value
+
+    @property
+    def previously_diagnosed_uris(self) -> set[str]:
+        """URIs that had diagnostics in the previous run.
+
+        Delegates to module global ``_previously_diagnosed_uris``.
+        Used to clear stale diagnostics from files that no longer have
+        any — without this, fixed files would still show old squiggles.
+        """
+        return _previously_diagnosed_uris
+
+    @previously_diagnosed_uris.setter
+    def previously_diagnosed_uris(self, value: set[str]) -> None:
+        global _previously_diagnosed_uris
+        _previously_diagnosed_uris = value
+
+    @property
+    def change_timer(self) -> threading.Timer | None:
+        """Single debounce timer for ``did_change`` events.
+
+        Delegates to module global ``_change_timer``.
+        Note: ``change_timers`` (plural, per-URI dict) is the newer
+        mechanism (P1'-8); this single timer is kept for back-compat
+        with the full-scan path.
+        """
+        return _change_timer
+
+    @change_timer.setter
+    def change_timer(self, value: threading.Timer | None) -> None:
+        global _change_timer
+        _change_timer = value
+
+    @property
+    def full_timer(self) -> threading.Timer | None:
+        """Debounce timer for full-project re-scan events.
+
+        Delegates to module global ``_full_timer``.
+        Fires when a ``did_save`` arrives and a deeper re-analysis is
+        needed (e.g. to refresh cross-file references).
+        """
+        return _full_timer
+
+    @full_timer.setter
+    def full_timer(self, value: threading.Timer | None) -> None:
+        global _full_timer
+        _full_timer = value
+
+    @property
+    def symbol_snapshot(self) -> dict[str, dict]:
+        """Snapshot of labels/screens/transforms/images/variables for
+        autocomplete/rename/hover.
+
+        Delegates to module global ``_symbol_snapshot``.
+        Refreshed by ``_refresh_symbol_snapshot()`` after every full
+        project scan so reading handlers see ALL project symbols, even
+        if ``analyze_file_only`` (called on ``did_change``) cleared
+        ``active_analyzer.labels`` from other files.
+        """
+        return _symbol_snapshot
+
+    @symbol_snapshot.setter
+    def symbol_snapshot(self, value: dict[str, dict]) -> None:
+        global _symbol_snapshot
+        _symbol_snapshot = value
 
 
 # Singleton instance for future use.
