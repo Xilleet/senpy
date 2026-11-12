@@ -4,7 +4,7 @@ import os
 from typing import Any
 
 from senpy.core.analysis_pipeline import AnalysisPipeline
-from senpy.core.cache import CacheManager
+from senpy.core.cache import CachedFileEntry, CacheManager
 from senpy.core.config import load_config, validate_config
 from senpy.core.file_collector import (
     FileCollector,
@@ -16,6 +16,7 @@ from senpy.core.file_collector import (
 from senpy.core.logging import get_logger
 from senpy.core.models import AnalysisResult, Diagnostic, FileScope
 from senpy.core.paths import normalize_path
+from senpy.core.scope import ScopeStack
 from senpy.core.symbol_table import SymbolTable
 from senpy.core.symbols import (
     ImageSymbol,
@@ -331,14 +332,31 @@ class SenpyAnalyzer:
         noqa_map = self._get_noqa_map_for_file(diag.file_path)
         self._add_diagnostic(diag, noqa_map)
 
-    def _collect_all_symbols(self, *args, **kwargs):
-        return self._collector._collect_all_symbols(*args, **kwargs)
+    def _collect_all_symbols(
+        self, rpy_files: list[str], cached_files: dict, quiet: bool
+    ) -> tuple[dict[str, str], dict[str, list]]:
+        return self._collector._collect_all_symbols(rpy_files, cached_files, quiet)
 
-    def _analyze_all_files(self, *args, **kwargs):
-        return self._pipeline._analyze_all_files(*args, **kwargs)
+    def _analyze_all_files(
+        self,
+        rpy_files: list[str],
+        cached_files: dict,
+        file_hashes: dict[str, str],
+        stage1_diags_map: dict[str, list],
+        is_global_unchanged: bool,
+        quiet: bool,
+    ) -> dict[str, CachedFileEntry]:
+        return self._pipeline._analyze_all_files(
+            rpy_files, cached_files, file_hashes, stage1_diags_map, is_global_unchanged, quiet
+        )
 
-    def _finalize_results(self, *args, **kwargs):
-        return self._pipeline._finalize_results(*args, **kwargs)
+    def _finalize_results(
+        self,
+        tl_rpy: list[str],
+        new_cached_entries: dict[str, CachedFileEntry],
+        current_global_hash: str,
+    ) -> None:
+        return self._pipeline._finalize_results(tl_rpy, new_cached_entries, current_global_hash)
 
     def _differential_purge_file(self, norm_path: str, file_path: str) -> None:
         """Differentially removes symbols of only one file — delegates to SymbolTable."""
@@ -372,46 +390,120 @@ class SenpyAnalyzer:
     def _emit_encoding_error(self, file_path: str, err: UnicodeDecodeError) -> None:
         emit_encoding_error(file_path, err, self.diagnostics)
 
-    def _collect_default(self, *args, **kwargs):
-        return self._collector._collect_default(*args, **kwargs)
+    def _collect_default(
+        self,
+        m_def,
+        clean: str,
+        line: str,
+        file_path: str,
+        idx: int,
+        scope: FileScope,
+    ) -> None:
+        return self._collector._collect_default(m_def, clean, line, file_path, idx, scope)
 
-    def _collect_define(self, *args, **kwargs):
-        return self._collector._collect_define(*args, **kwargs)
+    def _collect_define(
+        self,
+        m_define,
+        clean: str,
+        line: str,
+        file_path: str,
+        idx: int,
+        scope: FileScope,
+    ) -> None:
+        return self._collector._collect_define(m_define, clean, line, file_path, idx, scope)
 
-    def _collect_define_audio(self, *args, **kwargs):
-        return self._collector._collect_define_audio(*args, **kwargs)
+    def _collect_define_audio(self, m_audio_def, scope: FileScope) -> None:
+        return self._collector._collect_define_audio(m_audio_def, scope)
 
-    def _collect_screen_transform(self, *args, **kwargs):
-        return self._collector._collect_screen_transform(*args, **kwargs)
+    def _collect_screen_transform(
+        self,
+        m_screen_def,
+        m_trans,
+        clean: str,
+        line: str,
+        file_path: str,
+        idx: int,
+        scope: FileScope,
+    ) -> str | None:
+        return self._collector._collect_screen_transform(
+            m_screen_def, m_trans, clean, line, file_path, idx, scope
+        )
 
-    def _collect_label(self, *args, **kwargs):
-        return self._collector._collect_label(*args, **kwargs)
+    def _collect_label(
+        self,
+        m_label,
+        clean: str,
+        file_path: str,
+        idx: int,
+        scope: FileScope,
+        current_global_label: str | None,
+        lines: list[str] | None = None,
+        previous_label: str | None = None,
+    ) -> tuple[str, str, str | None]:
+        return self._collector._collect_label(
+            m_label, clean, file_path, idx, scope, current_global_label, lines, previous_label
+        )
 
-    def _collect_label_body(self, *args, **kwargs):
-        return self._collector._collect_label_body(*args, **kwargs)
+    def _collect_label_body(
+        self,
+        clean: str,
+        file_path: str,
+        idx: int,
+        scope: FileScope,
+        current_label: str | None,
+        current_global_label: str | None,
+        current_screen: str | None,
+    ) -> None:
+        return self._collector._collect_label_body(
+            clean, file_path, idx, scope, current_label, current_global_label, current_screen
+        )
 
-    def _collect_images(self, *args, **kwargs):
-        return self._collector._collect_images(*args, **kwargs)
+    def _collect_images(
+        self,
+        clean: str,
+        clean_line: str,
+        file_path: str,
+        idx: int,
+        lines: list[str],
+        scope: FileScope,
+    ) -> tuple[bool, int]:
+        return self._collector._collect_images(clean, clean_line, file_path, idx, lines, scope)
 
-    def _collect_misc(self, *args, **kwargs):
-        return self._collector._collect_misc(*args, **kwargs)
+    def _collect_misc(
+        self,
+        clean: str,
+        line: str,
+        file_path: str,
+        idx: int,
+        lines: list[str],
+        scope: FileScope,
+    ) -> tuple[bool, int]:
+        return self._collector._collect_misc(clean, line, file_path, idx, lines, scope)
 
-    def _collect_symbols(self, *args, **kwargs):
-        return self._collector._collect_symbols(*args, **kwargs)
+    def _collect_symbols(self, file_path: str) -> None:
+        return self._collector._collect_symbols(file_path)
 
-    def _collect_from_python_block(self, *args, **kwargs):
-        return self._collector._collect_from_python_block(*args, **kwargs)
+    def _collect_from_python_block(
+        self,
+        code_lines: list[str],
+        scope: FileScope | None = None,
+        file_path: str = "",
+        start_line: int = 1,
+    ) -> None:
+        return self._collector._collect_from_python_block(code_lines, scope, file_path, start_line)
 
-    def _consume_block(self, *args, **kwargs):
-        return self._collector._consume_block(*args, **kwargs)
+    def _consume_block(
+        self, lines: list[str], start_idx: int, header_indent: int
+    ) -> tuple[int, list[str]]:
+        return self._collector._consume_block(lines, start_idx, header_indent)
 
     def _parse_noqa(self, line: str) -> tuple[bool, set[str] | None]:
         from senpy.core.file_collector import parse_noqa
 
         return parse_noqa(line)
 
-    def _scan_python_assets(self, *args, **kwargs):
-        return self._collector._scan_python_assets(*args, **kwargs)
+    def _scan_python_assets(self, code_lines: list[str] | str) -> None:
+        return self._collector._scan_python_assets(code_lines)
 
     def _apply_severity(self, diag):
         return self._pipeline._apply_severity(diag)
@@ -440,17 +532,39 @@ class SenpyAnalyzer:
     def _build_noqa_map(self, lines: list[str]) -> dict[int, set[str] | None]:
         return build_noqa_map(lines)
 
-    def _handle_init_python_block(self, *args, **kwargs):
-        return self._collector._handle_init_python_block(*args, **kwargs)
+    def _handle_init_python_block(
+        self,
+        lines: list[str],
+        idx: int,
+        file_path: str,
+        noqa_map: dict,
+        scope_stack: ScopeStack | None = None,
+    ) -> int | None:
+        return self._collector._handle_init_python_block(
+            lines, idx, file_path, noqa_map, scope_stack
+        )
 
-    def _push_label_scope_if_match(self, *args, **kwargs):
-        return self._pipeline._push_label_scope_if_match(*args, **kwargs)
+    def _push_label_scope_if_match(self, clean: str, state: Any, line_indent: int) -> None:
+        return self._pipeline._push_label_scope_if_match(clean, state, line_indent)
 
-    def _push_screen_scope_if_match(self, *args, **kwargs):
-        return self._pipeline._push_screen_scope_if_match(*args, **kwargs)
+    def _push_screen_scope_if_match(self, raw_line: str, state: Any, line_indent: int) -> bool:
+        return self._pipeline._push_screen_scope_if_match(raw_line, state, line_indent)
 
-    def _run_line_checkers(self, *args, **kwargs):
-        return self._pipeline._run_line_checkers(*args, **kwargs)
+    def _run_line_checkers(
+        self,
+        file_path: str,
+        idx: int,
+        next_idx: int,
+        raw_line: str,
+        clean: str,
+        stripped: str,
+        state: Any,
+        noqa_map: dict,
+        lines: list[str],
+    ) -> int:
+        return self._pipeline._run_line_checkers(
+            file_path, idx, next_idx, raw_line, clean, stripped, state, noqa_map, lines
+        )
 
     def _read_file_lines(self, file_path: str) -> list[str] | None:
         return read_file_lines(file_path, self.in_memory_files, self._stage1_lines)
@@ -458,8 +572,17 @@ class SenpyAnalyzer:
     def _write_fixed_file(self, file_path, lines):
         return self._pipeline._write_fixed_file(file_path, lines)
 
-    def _check_and_fix_quoted_strings(self, *args, **kwargs):
-        return self._pipeline._check_and_fix_quoted_strings(*args, **kwargs)
+    def _check_and_fix_quoted_strings(
+        self,
+        file_path: str,
+        line_idx: int,
+        raw_line: str,
+        extra_symbols: set[str],
+        noqa_map: dict,
+    ) -> tuple[str, bool]:
+        return self._pipeline._check_and_fix_quoted_strings(
+            file_path, line_idx, raw_line, extra_symbols, noqa_map
+        )
 
     def _check_unreachable_labels(self) -> None:
         self.diagnostics.extend(self.flow.check_unreachable_labels())
