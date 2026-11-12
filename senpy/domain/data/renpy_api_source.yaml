@@ -1,0 +1,38 @@
+file_hashes:
+  00action_audio.rpy: df5a05cd4cca4d8bf036b4cc3e2f55d4b7c92b294c6997993aac25eefea9cda4
+  00action_control.rpy: 82dc021cd1432a6b20dbe428987a9c721dc1bab9ab4523079f9f8b1af3506acb
+  00action_data.rpy: 7bf9055be4bbdebe74906d5e77af5c116f7d2ba1efd1655a0107543209d8ff31
+  00action_file.rpy: e169ed59643e9c36b09cd40fce8898b78d6e41edbcb0f61bfb5bd7c02a21aad4
+  00action_menu.rpy: 5cf595c1d66aeb883735ed130c7a7d275816c7999f30ae365f0fd603378eaf98
+  00action_other.rpy: 78d0da4dfce5d811ec17fc3ad4ae1244acf3f8c191590754075c027cfeef9f86
+  audio.rst: 4b35915d3122ec2f1afbe5d701f694b99829369d079a94a6db2d0c3d37d3d05e
+  build.rst: 3d75e0e9e763897c04deda9fbd1f6f1fa4aafac12e1f6e905607df8050588f88
+  cdd.rst: ab3b1bf912d64c65ee1e0940ab51bfcca9c5edc136ec4562535b47cc0cc8b6a3
+  cds.rst: 72c7774cc8d2c38058b7de16bef30583df18f7b710f5819334dfe76901a54acd
+  config.rst: c5055e94be512aa0eda5bf8f314235e9e2b3c4bc345ec287d12db9dda4373387
+  displayables.rst: 6a5ea65990aacb7363e65915af596ba4f23f7de66b699d4180f0881624c6ae13
+  drag_drop.rst: e4c4ca4de023f9ae88ccf75be1f60bda092c9d5cd4698b6ab8349664ef54f145
+  gui.rst: ea728e43f78397c75bb3d220428c9f087b1aecf8e50c19e067bd476ef2828a37
+  layeredimage.rst: 9ccf1ac3b6e0c5cd23b4864299adaac5f50e21815287917e9d2f5e5763b826a8
+  model.rst: a2fe66eb92825012861530d74c1d30f0493d8226791f88cd267de4800b8d153e
+  other.rst: b779ae6c21b0257c5f34b8e07b52c1e68e2d38fd8d7442f4db03d03aca024199
+  persistent.rst: 35808608cbefc0648576d01da7f290c78c363608277deb0812d9c9ef4d39eb24
+  preferences.rst: b34516a53b25faaef7770f959b100e811eb51f850ed3536bc787465d6df71198
+  rooms.rst: a9db7f383476d8bcbce417536f3b8c64f8545ab0e9b3e2c9006537a665ffdaab
+  save_load_rollback.rst: 2b537be266057100067ee9a0e162b0cdd3f841110b66f7b87555cdb0a5f7fbe2
+  screen_actions.rst: ef03c937dd2f0552eb08636ceeac0d6d8d8df5180f5525d4ccb36887853c75d7
+  screens.rst: a3d595c1d95a383eb3f6ac086084660a52fde6a862d1e6235f222f52b5f0fde6
+  side_image.rst: 9fde09d7e6dbdf684f81509ee1d7b34426e81c992e059b3bc5472de745a5b46d
+  sprites.rst: ba33c10d1e06f55ed142a524bc97ba0adcfe9f936cee7df9ed75395b9813a983
+  statement_equivalents.rst: d6d416be0accafc2dd123694005fd59a022d54897767a8f44174c2ce6643bb5d
+  style_properties.rst: 993e5bdf901a168a05bbcb507e87ac26589f311160fb6824594610e607f3324d
+  text.rst: 990b84d891baff7eee48548b0ded6da11075245f4aaf5fb996d7acddc3c3cc29
+  transform_properties.rst: 44bec56d94441cd67458594af23a7f0bb56a9889afc0f4129005b39b414ca877
+  transforms.rst: ad21e5551720cee5ec1969dcd36db139b090595018a48a446ab5f7222ad47c24
+  transitions.rst: cadd635b6c67c1a9a11b1d062900c95ce9a18c1ef7a8d7cc156ccd543c920584
+generated_at: '2026-11-12T11:39:25Z'
+renpy_version: 8.5.3
+source_ref: master
+source_urls:
+  common_base: https://raw.githubusercontent.com/renpy/renpy/{ref}/renpy/common/
+  rst_base: https://raw.githubusercontent.com/renpy/renpy/{ref}/sphinx/source/

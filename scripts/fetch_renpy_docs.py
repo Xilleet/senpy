@@ -50,6 +50,31 @@ from typing import Literal
 GITHUB_RAW_BASE = "https://raw.githubusercontent.com/renpy/renpy/master/sphinx/source/"
 GITHUB_RAW_COMMON = "https://raw.githubusercontent.com/renpy/renpy/master/renpy/common/"
 
+# Phase 4.1: source URLs + version can be overridden by the YAML pin config
+# (senpy/domain/data/renpy_api_source.yaml). When the YAML exists and is
+# loaded by update_renpy_api.py, the ref is swapped from "master" to a
+# specific commit/tag. fetch_renpy_docs.py reads the YAML if present,
+# otherwise falls back to the master URLs above.
+_SOURCE_YAML = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "senpy",
+    "domain",
+    "data",
+    "renpy_api_source.yaml",
+)
+try:
+    import yaml as _yaml
+
+    with open(_SOURCE_YAML, encoding="utf-8") as _f:
+        _source_cfg = _yaml.safe_load(_f)
+    _ref = _source_cfg.get("source_ref", "master")
+    _urls = _source_cfg.get("source_urls", {})
+    GITHUB_RAW_BASE = _urls.get("rst_base", GITHUB_RAW_BASE).format(ref=_ref)
+    GITHUB_RAW_COMMON = _urls.get("common_base", GITHUB_RAW_COMMON).format(ref=_ref)
+    del _yaml, _f, _source_cfg, _ref, _urls
+except (ImportError, FileNotFoundError, OSError):
+    pass  # No YAML or PyYAML — use master URLs (legacy behavior)
+
 # RST files to parse. Same list as renpy-magic — covers config/gui/build/
 # transforms/transitions/style_properties/transform_properties/screens/
 # actions/etc.
@@ -95,6 +120,16 @@ RPY_SOURCE_FILES = [
 # past a release we want to track. The version is written into the generated
 # module so consumers can detect staleness.
 TARGET_RENPY_VERSION = "8.5.3"
+# Override from YAML pin config if present (see GITHUB_RAW_BASE above).
+try:
+    import yaml as _yaml
+
+    with open(_SOURCE_YAML, encoding="utf-8") as _f:
+        _source_cfg = _yaml.safe_load(_f)
+    TARGET_RENPY_VERSION = _source_cfg.get("renpy_version", TARGET_RENPY_VERSION)
+    del _yaml, _f, _source_cfg
+except (ImportError, FileNotFoundError, OSError):
+    pass
 
 HEADERS = {"User-Agent": "Mozilla/5.0 Senpy-fetcher"}
 
@@ -503,22 +538,6 @@ def parse_rpy_file(content: str, filename: str) -> list[dict]:
 # =============================================================================
 
 
-def _serialize_entry(entry: dict) -> str:
-    """Render one entry as a Python dict literal block."""
-    fields = []
-    fields.append(f'        "signature": {entry["signature"]!r},')
-    fields.append(f'        "doc": {entry["description"]!r},')
-    if entry.get("category"):
-        fields.append(f'        "category": {entry["category"]!r},')
-    if entry.get("namespace"):
-        fields.append(f'        "namespace": {entry["namespace"]!r},')
-    # Synthesize a docs URL from the namespace (best-effort link to renpy.org).
-    url = _docs_url_for(entry)
-    if url:
-        fields.append(f'        "url": {url!r},')
-    return "    " + repr(entry["name"]) + ": {\n" + "\n".join(fields) + "\n    },"
-
-
 def _docs_url_for(entry: dict) -> str | None:
     """Best-effort docs URL. renpy.org uses section.html#anchor pattern."""
     name = entry["name"]
@@ -542,14 +561,19 @@ def _docs_url_for(entry: dict) -> str | None:
     return None
 
 
-def serialize_python_module(version: str, generated_at: str, entries: list[dict]) -> str:
-    """Render the generated Python module source.
+def serialize_json(version: str, generated_at: str, entries: list[dict]) -> str:
+    """Render the generated JSON resource.
 
-    Output is a single ``RENPY_API_DOCS_GENERATED`` dict literal — same
-    schema as the curated ``RENPY_API_DOCS`` (signature/doc/details/url +
+    replaced ``serialize_python_module`` (which wrote a 4891-line
+    Python literal dict) with JSON output. The JSON is loaded at runtime by
+    ``senpy/domain/renpy_api_generated.py`` (a thin 56-line loader).
+
+    Same schema as the curated ``RENPY_API_DOCS`` (signature/doc/details/url +
     extras: category, namespace) so the merge in renpy_api.py is a plain
     dict update.
     """
+    import json
+
     # Deduplicate by name (keep first occurrence — same as TS).
     seen: set[str] = set()
     unique: list[dict] = []
@@ -562,37 +586,35 @@ def serialize_python_module(version: str, generated_at: str, entries: list[dict]
     # Sort by name for stable diffs.
     unique.sort(key=lambda e: e["name"])
 
-    lines = [
-        '"""Auto-generated Ren\'Py API documentation.',
-        "",
-        f"Source: Ren'Py v{version} RST docs (sphinx/source/) + common/*.rpy.",
-        f"Generated: {generated_at}",
-        "",
-        "DO NOT EDIT BY HAND — re-run ``python scripts/fetch_renpy_docs.py``.",
-        "",
-        "Schema mirrors RENPY_API_DOCS in senpy/domain/renpy_api.py:",
-        "    {signature, doc, [details], [example], [url], [category], [namespace]}",
-        "",
-        "Merge strategy in renpy_api.py:",
-        "    RENPY_API_DOCS_ALL = {**RENPY_API_DOCS_GENERATED, **RENPY_API_DOCS}",
-        "Curated entries win on key collision (they have richer examples/URLs).",
-        '"""',
-        "from __future__ import annotations",
-        "",
-        f'RENPY_DOC_VERSION_GENERATED = "{version}"',
-        f'RENPY_DOC_GENERATED_AT = "{generated_at}"',
-        "",
-        "RENPY_API_DOCS_GENERATED: dict[str, dict[str, str]] = {",
-    ]
+    # Build the docs dict: {name: {signature, doc, ...}}
+    docs: dict[str, dict] = {}
     for entry in unique:
-        lines.append(_serialize_entry(entry))
-    lines.append("}")
-    lines.append("")
-    lines.append(
-        '__all__ = ["RENPY_API_DOCS_GENERATED", "RENPY_DOC_VERSION_GENERATED", "RENPY_DOC_GENERATED_AT"]'
-    )
-    lines.append("")
-    return "\n".join(lines)
+        name = entry["name"]
+        # Map "description" (parser field name) -> "doc" (output schema field).
+        doc_text = entry.get("description") or entry.get("doc") or ""
+        docs[name] = {
+            "signature": entry.get("signature", ""),
+            "doc": doc_text,
+        }
+        if entry.get("details"):
+            docs[name]["details"] = entry["details"]
+        if entry.get("example"):
+            docs[name]["example"] = entry["example"]
+        # URL: use explicit entry URL, or synthesize from namespace/category.
+        url = entry.get("url") or _docs_url_for(entry)
+        if url:
+            docs[name]["url"] = url
+        if entry.get("category"):
+            docs[name]["category"] = entry["category"]
+        if entry.get("namespace"):
+            docs[name]["namespace"] = entry["namespace"]
+
+    data = {
+        "version": version,
+        "generated_at": generated_at,
+        "docs": docs,
+    }
+    return json.dumps(data, ensure_ascii=False, indent=2)
 
 
 # =============================================================================
@@ -684,15 +706,15 @@ def main() -> int:
     if args.output:
         output_path = args.output
     else:
-        # Default: senpy/domain/renpy_api_generated.py
+        # Default output is now JSON, not Python module.
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        output_path = os.path.join(repo_root, "senpy", "domain", "renpy_api_generated.py")
+        output_path = os.path.join(repo_root, "senpy", "domain", "data", "renpy_api_generated.json")
 
     generated_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    module_source = serialize_python_module(TARGET_RENPY_VERSION, generated_at, unique)
+    json_source = serialize_json(TARGET_RENPY_VERSION, generated_at, unique)
 
     with open(output_path, "w", encoding="utf-8", newline="\n") as f:
-        f.write(module_source)
+        f.write(json_source)
 
     print(f"\n[✔] Wrote {len(unique)} entries to: {output_path}")
     print(f"    Ren'Py version: {TARGET_RENPY_VERSION}")

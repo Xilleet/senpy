@@ -1,0 +1,166 @@
+# =============================================================================
+# Scheduled Ren'Py API docs update check
+# =============================================================================
+# Раз в неделю (вторник 09:00 UTC) проверяет, не изменились ли RST/RPY
+# source files в renpy/renpy repo. Если SHA256 любого файла отличается от
+# pinned в senpy/domain/data/renpy_api_source.yaml — открывает GitHub Issue.
+#
+# Что делает:
+#   1. Запускает `python scripts/update_renpy_api.py --check`.
+#   2. Скрипт скачивает все 31 source files (25 RST + 6 RPY) из
+#      renpy/renpy@{source_ref} (по умолчанию master).
+#   3. Вычисляет SHA256 каждого.
+#   4. Сравнивает с file_hashes в YAML.
+#   5. Если что-то отличается — workflow открывает issue с меткой
+#      `renpy-api-update` и списком изменившихся файлов.
+#   6. Если такой issue уже открыт — не дублирует.
+#
+# Зачем: Ren'Py docs — основа для hover-tooltips в LSP. Когда renpy/renpy
+# обновляет документацию (новые функции, изменённые сигнатуры, новые
+# style properties), Senpy должен знать и регенерировать JSON. Регулярная
+# проверка гарантирует, что hover-docs не устаревают месяцами.
+#
+# Безопасность: workflow НЕ делает auto-PR и НЕ обновляет JSON автоматически.
+# Только уведомление. Мейнтейнер проверяет изменения, прогоняет
+# `python scripts/update_renpy_api.py --update` локально, тестирует, и
+# коммитит обновлённые YAML + JSON вручную.
+# =============================================================================
+name: Ren'Py API docs update check
+
+on:
+  schedule:
+    # Каждый вторник 09:00 UTC (= 12:00 MSK) — день после unrpyc-check
+    - cron: '0 9 * * 2'
+  workflow_dispatch:  # ручной запуск из Actions tab
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: Check Ren'Py API docs source hashes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install PyYAML (for update_renpy_api.py)
+        run: pip install pyyaml
+
+      - name: Run update_renpy_api.py --check
+        id: check
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          # update_renpy_api.py --check exits 0 if all hashes match,
+          # exits 1 if any file changed. We capture output for the issue body.
+          OUTPUT=$(python scripts/update_renpy_api.py --check 2>&1) || true
+          echo "$OUTPUT"
+          # Save output to file for issue body (multiline safe).
+          echo "$OUTPUT" > /tmp/check_output.txt
+          # Determine if changes were detected.
+          if echo "$OUTPUT" | grep -q "\[CHANGED\]\|\[NEW\]\|\[REMOVED\]"; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Read pinned version from YAML
+        id: version
+        run: |
+          set -euo pipefail
+          VERSION=$(python -c "
+          import yaml
+          with open('senpy/domain/data/renpy_api_source.yaml') as f:
+              cfg = yaml.safe_load(f)
+          print(cfg.get('renpy_version', 'unknown'), end='')
+          ")
+          REF=$(python -c "
+          import yaml
+          with open('senpy/domain/data/renpy_api_source.yaml') as f:
+              cfg = yaml.safe_load(f)
+          print(cfg.get('source_ref', 'master'), end='')
+          ")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "Pinned version: $VERSION (ref: $REF)"
+
+      - name: Open issue if docs source changed
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ steps.version.outputs.version }}"
+          REF="${{ steps.version.outputs.ref }}"
+
+          # Проверяем, есть ли уже открытый issue с меткой renpy-api-update
+          EXISTING=$(gh issue list --label "renpy-api-update" --state open --json number --jq 'length')
+          if [ "$EXISTING" != "0" ]; then
+            echo "Open issue with label 'renpy-api-update' already exists. Skipping."
+            exit 0
+          fi
+
+          # Читаем output check-скрипта для тела issue.
+          CHECK_OUTPUT=$(cat /tmp/check_output.txt)
+
+          # Создаём issue
+          BODY="## Ren'Py API docs source changed
+
+          **Pinned version:** \`${VERSION}\`
+          **Source ref:** \`${REF}\` (in \`senpy/domain/data/renpy_api_source.yaml\`)
+
+          ### What changed
+
+          \`\`\`
+          ${CHECK_OUTPUT}
+          \`\`\`
+
+          ### What to do
+
+          1. Review upstream changes: https://github.com/renpy/renpy/commits/${REF}
+          2. Run locally:
+             \`\`\`bash
+             python scripts/update_renpy_api.py --update
+             \`\`\`
+             This downloads the changed files, regenerates
+             \`senpy/domain/data/renpy_api_generated.json\`, and updates the YAML hashes.
+          3. Run tests:
+             \`\`\`bash
+             pytest tests/lsp/test_lsp_21_api_docs.py
+             \`\`\`
+          4. If green — commit YAML + JSON, push:
+             \`\`\`bash
+             git add senpy/domain/data/renpy_api_source.yaml senpy/domain/data/renpy_api_generated.json
+             git commit -m \"update renpy api docs to ${VERSION}\"
+             \`\`\`
+          5. Close this issue.
+
+          ### Why this matters
+
+          The Ren'Py API docs power hover-tooltips in the LSP server (754 entries).
+          When \`renpy/renpy\` updates documentation (new functions, changed signatures,
+          new style properties), Senpy's hover docs become stale. This check runs
+          weekly to notify maintainers about upstream doc changes.
+
+          ---
+          *Auto-generated by workflow (\`.github/workflows/renpy-api-check.yml\`)*"
+
+          gh issue create \
+            --title "renpy api docs update available: source files changed" \
+            --body "$BODY" \
+            --label "renpy-api-update,dependencies"
+
+          echo "Issue created."
+
+      - name: Summary (no changes)
+        if: steps.check.outputs.changed == 'false'
+        run: |
+          echo "All Ren'Py API docs source files match pinned hashes."
+          echo "No update needed."

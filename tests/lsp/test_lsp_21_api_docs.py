@@ -47,7 +47,7 @@ from scripts.fetch_renpy_docs import (  # noqa: E402
     collect_description,
     parse_rpy_file,
     parse_rst_file,
-    serialize_python_module,
+    serialize_json,
 )
 from senpy.domain.renpy_api import (  # noqa: E402
     RENPY_API_DOCS,
@@ -473,12 +473,12 @@ class TestExtractSignatureFromInit:
 
 
 # =============================================================================
-# Section 5: serialize_python_module — output writer
+# Section 5: serialize_json — output writer
 # =============================================================================
 
 
-class TestSerializePythonModule:
-    def test_renders_valid_python(self):
+class TestSerializeJson:
+    def test_renders_valid_json(self):
         entries = [
             {
                 "name": "config.name",
@@ -495,42 +495,40 @@ class TestSerializePythonModule:
                 "namespace": "renpy",
             },
         ]
-        out = serialize_python_module("8.5.3", "2026-11-01T00:00:00Z", entries)
-        # Must be valid Python.
-        ns = {}
-        exec(out, ns)
-        assert "RENPY_API_DOCS_GENERATED" in ns
-        assert ns["RENPY_DOC_VERSION_GENERATED"] == "8.5.3"
-        assert ns["RENPY_DOC_GENERATED_AT"] == "2026-11-01T00:00:00Z"
+        out = serialize_json("8.5.3", "2026-11-01T00:00:00Z", entries)
+        import json
 
-        gen = ns["RENPY_API_DOCS_GENERATED"]
-        assert "config.name" in gen
-        assert gen["config.name"]["signature"] == 'config.name = "My Game"'
-        assert gen["config.name"]["category"] == "variable"
-        assert gen["config.name"]["namespace"] == "config"
+        data = json.loads(out)
+        assert data["version"] == "8.5.3"
+        assert data["generated_at"] == "2026-11-01T00:00:00Z"
+
+        docs = data["docs"]
+        assert "config.name" in docs
+        assert docs["config.name"]["signature"] == 'config.name = "My Game"'
+        assert docs["config.name"]["doc"] == "Name of the game."
+        assert docs["config.name"]["category"] == "variable"
+        assert docs["config.name"]["namespace"] == "config"
 
     def test_deduplicates_by_name(self):
         entries = [
             {"name": "dup", "signature": "first", "description": "first", "category": "variable"},
             {"name": "dup", "signature": "second", "description": "second", "category": "variable"},
         ]
-        out = serialize_python_module("8.5.3", "2026-11-01T00:00:00Z", entries)
-        ns = {}
-        exec(out, ns)
-        gen = ns["RENPY_API_DOCS_GENERATED"]
-        # First occurrence wins (matches TS behavior).
-        assert len(gen) == 1
-        assert gen["dup"]["signature"] == "first"
+        out = serialize_json("8.5.3", "2026-11-01T00:00:00Z", entries)
+        import json
+
+        data = json.loads(out)
+        docs = data["docs"]
+        assert len(docs) == 1
+        assert docs["dup"]["signature"] == "first"
 
     def test_sorts_entries_by_name(self):
         entries = [
             {"name": "zeta", "signature": "z", "description": "z", "category": "variable"},
             {"name": "alpha", "signature": "a", "description": "a", "category": "variable"},
         ]
-        out = serialize_python_module("8.5.3", "2026-11-01T00:00:00Z", entries)
-        # alpha should appear before zeta in the source.
-        # repr() of a str uses single quotes by default for short ASCII names.
-        assert out.index("'alpha'") < out.index("'zeta'")
+        out = serialize_json("8.5.3", "2026-11-01T00:00:00Z", entries)
+        assert out.index('"alpha"') < out.index('"zeta"')
 
     def test_synthesizes_url_for_config(self):
         entries = [
@@ -542,7 +540,7 @@ class TestSerializePythonModule:
                 "namespace": "config",
             }
         ]
-        out = serialize_python_module("8.5.3", "2026-11-01T00:00:00Z", entries)
+        out = serialize_json("8.5.3", "2026-11-01T00:00:00Z", entries)
         assert "https://www.renpy.org/doc/html/config.html#var-config-name" in out
 
 
