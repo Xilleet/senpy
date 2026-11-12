@@ -149,21 +149,21 @@ def test_did_close_clears_in_memory_buffer(tmp_path: Path):
 
     norm_file = server_mod._normalize_path(str(script_file))
     # Симулируем что файл был в in-memory буфере
-    assert server_mod._active_analyzer is not None
-    server_mod._active_analyzer.in_memory_files[norm_file] = "label start:"
+    assert server_mod._lsp_server.active_analyzer is not None
+    server_mod._lsp_server.active_analyzer.in_memory_files[norm_file] = "label start:"
 
     mock_ls = MagicMock()
     params = lsp.DidCloseTextDocumentParams(text_document=lsp.TextDocumentIdentifier(uri=uri))
     server_mod.did_close(mock_ls, params)
 
-    assert norm_file not in server_mod._active_analyzer.in_memory_files
+    assert norm_file not in server_mod._lsp_server.active_analyzer.in_memory_files
 
 
 def test_did_close_without_active_analyzer_does_not_crash(tmp_path: Path):
     """did_close при _active_analyzer = None — не должен крашиться."""
     setup_test_workspace(tmp_path)
-    saved_analyzer = server_mod._active_analyzer
-    server_mod._active_analyzer = None
+    saved_analyzer = server_mod._lsp_server.active_analyzer
+    server_mod._lsp_server.active_analyzer = None
     try:
         mock_ls = MagicMock()
         params = lsp.DidCloseTextDocumentParams(
@@ -172,7 +172,7 @@ def test_did_close_without_active_analyzer_does_not_crash(tmp_path: Path):
         # Не должно выбросить
         server_mod.did_close(mock_ls, params)
     finally:
-        server_mod._active_analyzer = saved_analyzer
+        server_mod._lsp_server.active_analyzer = saved_analyzer
 
 
 # =============================================================================
@@ -210,9 +210,9 @@ def test_schedule_full_diagnostics_cancels_previous_timer(tmp_path: Path):
     uri = "file:///test/script.rpy"
 
     # Первый вызов создаёт timer
-    server_mod._full_timer = None
+    server_mod._lsp_server.full_timer = None
     server_mod.schedule_full_diagnostics(mock_ls, uri)
-    first_timer = server_mod._full_timer
+    first_timer = server_mod._lsp_server.full_timer
     assert first_timer is not None
 
     # Второй вызов должен отменить первый
@@ -222,9 +222,9 @@ def test_schedule_full_diagnostics_cancels_previous_timer(tmp_path: Path):
 
     # Cleanup: отменим timer, иначе он сработает через 0.3s и вызовет
     # run_full_project_diagnostics, который может упасть на cross-mount path.
-    if server_mod._full_timer is not None:
-        server_mod._full_timer.cancel()
-        server_mod._full_timer = None
+    if server_mod._lsp_server.full_timer is not None:
+        server_mod._lsp_server.full_timer.cancel()
+        server_mod._lsp_server.full_timer = None
 
 
 # =============================================================================
@@ -242,9 +242,9 @@ def test_schedule_change_diagnostics_cancels_previous_timer(tmp_path: Path):
     mock_ls = MagicMock()
     mock_ls.workspace = MockWorkspace(doc)
 
-    server_mod._change_timer = None
+    server_mod._lsp_server.change_timer = None
     server_mod.schedule_change_diagnostics(mock_ls, uri)
-    first_timer = server_mod._change_timer
+    first_timer = server_mod._lsp_server.change_timer
     assert first_timer is not None
 
     with patch.object(first_timer, "cancel") as mock_cancel:
@@ -255,9 +255,9 @@ def test_schedule_change_diagnostics_cancels_previous_timer(tmp_path: Path):
     # run_single_file_diagnostics, который может упасть на cross-mount path
     # (Windows: tmp_path на C:, project на D:). Это причина
     # PytestUnhandledThreadExceptionWarning в последующих test_p0_cli тестах.
-    if server_mod._change_timer is not None:
-        server_mod._change_timer.cancel()
-        server_mod._change_timer = None
+    if server_mod._lsp_server.change_timer is not None:
+        server_mod._lsp_server.change_timer.cancel()
+        server_mod._lsp_server.change_timer = None
     for t in server_mod._lsp_server.change_timers.values():
         t.cancel()
     server_mod._lsp_server.change_timers.clear()
@@ -269,11 +269,11 @@ def test_schedule_change_diagnostics_skips_unknown_uri(tmp_path: Path):
     mock_ls = MagicMock()
     mock_ls.workspace = MockWorkspace(MockDocument("file:///other.rpy", ""))
 
-    server_mod._change_timer = None
+    server_mod._lsp_server.change_timer = None
     # URI которого нет в workspace — не должен упасть
     server_mod.schedule_change_diagnostics(mock_ls, "file:///unknown.rpy")
     # timer не должен быть создан
-    assert server_mod._change_timer is None
+    assert server_mod._lsp_server.change_timer is None
 
 
 def test_schedule_change_diagnostics_per_uri_isolation(tmp_path: Path):
@@ -304,7 +304,7 @@ def test_schedule_change_diagnostics_per_uri_isolation(tmp_path: Path):
     mock_ls.workspace = DualWorkspace()
 
     # Сбросим состояние
-    server_mod._change_timer = None
+    server_mod._lsp_server.change_timer = None
     server_mod._lsp_server.change_timers.clear()
 
     # Schedule для file1
@@ -325,7 +325,7 @@ def test_schedule_change_diagnostics_per_uri_isolation(tmp_path: Path):
     timer1.cancel()
     timer2.cancel()
     server_mod._lsp_server.change_timers.clear()
-    server_mod._change_timer = None
+    server_mod._lsp_server.change_timer = None
 
 
 def test_schedule_change_diagnostics_same_uri_cancels_previous(tmp_path: Path):
@@ -337,7 +337,7 @@ def test_schedule_change_diagnostics_same_uri_cancels_previous(tmp_path: Path):
     mock_ls = MagicMock()
     mock_ls.workspace = MockWorkspace(doc)
 
-    server_mod._change_timer = None
+    server_mod._lsp_server.change_timer = None
     server_mod._lsp_server.change_timers.clear()
 
     server_mod.schedule_change_diagnostics(mock_ls, uri)
@@ -352,9 +352,9 @@ def test_schedule_change_diagnostics_same_uri_cancels_previous(tmp_path: Path):
     for t in server_mod._lsp_server.change_timers.values():
         t.cancel()
     server_mod._lsp_server.change_timers.clear()
-    if server_mod._change_timer is not None:
-        server_mod._change_timer.cancel()
-        server_mod._change_timer = None
+    if server_mod._lsp_server.change_timer is not None:
+        server_mod._lsp_server.change_timer.cancel()
+        server_mod._lsp_server.change_timer = None
 
 
 # =============================================================================
@@ -365,18 +365,18 @@ def test_schedule_change_diagnostics_same_uri_cancels_previous(tmp_path: Path):
 def test_run_single_file_without_active_analyzer_schedules_full(tmp_path: Path):
     """Если _active_analyzer = None — single-file fallback на full scan."""
     setup_test_workspace(tmp_path)
-    saved_analyzer = server_mod._active_analyzer
-    saved_init = server_mod._is_initialized
-    server_mod._active_analyzer = None
-    server_mod._is_initialized = False
+    saved_analyzer = server_mod._lsp_server.active_analyzer
+    saved_init = server_mod._lsp_server.is_initialized
+    server_mod._lsp_server.active_analyzer = None
+    server_mod._lsp_server.is_initialized = False
     try:
         mock_ls = MagicMock()
         with patch.object(server_mod, "schedule_full_diagnostics") as mock_schedule:
             server_mod.run_single_file_diagnostics(mock_ls, "file:///test.rpy", "label start:")
             mock_schedule.assert_called_once()
     finally:
-        server_mod._active_analyzer = saved_analyzer
-        server_mod._is_initialized = saved_init
+        server_mod._lsp_server.active_analyzer = saved_analyzer
+        server_mod._lsp_server.is_initialized = saved_init
 
 
 # =============================================================================

@@ -79,8 +79,8 @@ class TestCrossFileAutocomplete:
 
         analyzer = SenpyAnalyzer(str(tmp_path))
         analyzer.run(quiet=True)
-        server_mod._active_analyzer = analyzer
-        server_mod._is_initialized = True
+        server_mod._lsp_server.active_analyzer = analyzer
+        server_mod._lsp_server.is_initialized = True
         # UX: в реальном LSP server.py это вызывается в run_full_project_diagnostics.
         # В тестах вызываем явно, т.к. тест идёт напрямую через analyzer.run().
         server_mod._refresh_symbol_snapshot()
@@ -137,8 +137,8 @@ class TestCrossFileAutocomplete:
 
         analyzer = SenpyAnalyzer(str(tmp_path))
         analyzer.run(quiet=True)
-        server_mod._active_analyzer = analyzer
-        server_mod._is_initialized = True
+        server_mod._lsp_server.active_analyzer = analyzer
+        server_mod._lsp_server.is_initialized = True
         # UX: refresh snapshot (как делает run_full_project_diagnostics)
         server_mod._refresh_symbol_snapshot()
 

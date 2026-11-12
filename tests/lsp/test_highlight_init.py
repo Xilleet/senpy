@@ -28,7 +28,7 @@ def test_initialized_triggers_full_diagnostics(tmp_path: Path):
     setup_test_workspace(tmp_path)
 
     # Сбросим флаг инициализации
-    server_mod._is_initialized = False
+    server_mod._lsp_server.is_initialized = False
 
     mock_ls = MagicMock()
     mock_ls.workspace.root_path = str(tmp_path)
@@ -37,7 +37,7 @@ def test_initialized_triggers_full_diagnostics(tmp_path: Path):
     server_mod.initialized(mock_ls, lsp.InitializedParams())
 
     # Проверяем, что workspace root сохранён
-    assert server_mod._current_workspace_root == str(tmp_path)
+    assert server_mod._lsp_server.current_workspace_root == str(tmp_path)
 
 
 def test_initialized_without_workspace_root(tmp_path: Path):

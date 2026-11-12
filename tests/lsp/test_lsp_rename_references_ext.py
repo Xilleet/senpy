@@ -63,8 +63,8 @@ def test_rename_variable_updates_declaration_and_usage(tmp_path: Path):
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     server_mod._refresh_symbol_snapshot()
 
     uri = server_mod._path_to_uri(str(script))
@@ -115,8 +115,8 @@ def test_rename_transform_updates_declaration_and_show_at(tmp_path: Path):
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     server_mod._refresh_symbol_snapshot()
 
     uri = server_mod._path_to_uri(str(script))
@@ -165,8 +165,8 @@ def test_rename_screen_updates_declaration_and_use(tmp_path: Path):
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     server_mod._refresh_symbol_snapshot()
 
     uri = server_mod._path_to_uri(str(script))
@@ -219,8 +219,8 @@ def test_references_variable_finds_all_usages(tmp_path: Path):
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     server_mod._refresh_symbol_snapshot()
 
     uri = server_mod._path_to_uri(str(script))
@@ -259,8 +259,8 @@ def test_references_variable_without_declaration(tmp_path: Path):
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     server_mod._refresh_symbol_snapshot()
 
     uri = server_mod._path_to_uri(str(script))
@@ -299,8 +299,8 @@ def test_references_transform_finds_show_at_usages(tmp_path: Path):
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     server_mod._refresh_symbol_snapshot()
 
     uri = server_mod._path_to_uri(str(script))
@@ -340,8 +340,8 @@ def test_references_screen_finds_use_and_call_screen(tmp_path: Path):
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     server_mod._refresh_symbol_snapshot()
 
     uri = server_mod._path_to_uri(str(script))
@@ -380,8 +380,8 @@ def test_rename_label_still_works(tmp_path: Path):
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     server_mod._refresh_symbol_snapshot()
 
     uri = server_mod._path_to_uri(str(script))
@@ -421,8 +421,8 @@ def test_references_label_still_works(tmp_path: Path):
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     server_mod._refresh_symbol_snapshot()
 
     uri = server_mod._path_to_uri(str(script))

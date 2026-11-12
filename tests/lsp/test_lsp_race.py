@@ -61,8 +61,8 @@ label forest_scene:
     )
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     return script_file, analyzer
 
 

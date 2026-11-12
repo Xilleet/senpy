@@ -68,8 +68,8 @@ label deep_cave:
     analyzer.run(quiet=True)
 
     # Инициализируем синглтон анализатора в server.py
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     # UX: refresh symbol snapshot, чтобы autocomplete/hover/rename/
     # workspace_symbol видели labels/screens/transforms (handler'ы теперь
     # используют snapshot, не _active_analyzer.labels напрямую).

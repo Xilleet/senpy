@@ -188,8 +188,8 @@ def _setup_asset_workspace(
 
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     server_mod._refresh_symbol_snapshot()
     return analyzer
 
@@ -516,7 +516,7 @@ class TestAudioHover:
         # Re-run analyzer so the alias is registered.
         analyzer = SenpyAnalyzer(str(tmp_path))
         analyzer.run(quiet=True)
-        server_mod._active_analyzer = analyzer
+        server_mod._lsp_server.active_analyzer = analyzer
         server_mod._refresh_symbol_snapshot()
 
         uri = server_mod._path_to_uri(str(script_path))
@@ -634,9 +634,7 @@ class TestVSCodeOpenExternalCommand:
         )
 
     def test_command_listed_in_package_json(self):
-        pkg = json.loads(
-            (VSCODE_PACKAGE_JSON).read_text("utf-8")
-        )
+        pkg = json.loads((VSCODE_PACKAGE_JSON).read_text("utf-8"))
         commands = pkg.get("contributes", {}).get("commands", [])
         cmd_ids = {c.get("command") for c in commands}
         assert "senpy.openExternal" in cmd_ids, (

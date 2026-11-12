@@ -56,7 +56,7 @@ def workspace_symbol(
         return query in name.lower()
 
     # 1. Labels (SymbolKind.Function = 12)
-    # UX: use the snapshot, not server_mod._active_analyzer.labels —
+    # UX: use the snapshot, not lsp_server.active_analyzer.labels —
     # analyze_file_only clears labels from other files.
     for name, lbl in lsp_server.symbol_snapshot["labels"].items():
         if not _matches(name):

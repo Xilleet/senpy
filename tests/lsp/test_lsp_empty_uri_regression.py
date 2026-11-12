@@ -53,16 +53,16 @@ class TestEmptyTriggerUriNoCrash:
         mock_ls.workspace.root_path = str(tmp_path)
 
         # Reset analyzer state so the scan actually runs.
-        server_mod._active_analyzer = None
-        server_mod._current_workspace_root = None
-        server_mod._is_initialized = False
+        server_mod._lsp_server.active_analyzer = None
+        server_mod._lsp_server.current_workspace_root = None
+        server_mod._lsp_server.is_initialized = False
 
         # Must not raise. The scan runs synchronously in this thread.
         server_mod.run_full_project_diagnostics(mock_ls, "")
 
         # The scan should have initialized the analyzer.
-        assert server_mod._active_analyzer is not None
-        assert server_mod._is_initialized is True
+        assert server_mod._lsp_server.active_analyzer is not None
+        assert server_mod._lsp_server.is_initialized is True
 
     def test_empty_uri_without_workspace_root_returns_silently(self, tmp_path: Path):
         """Empty trigger_uri + missing workspace root → log debug + return, no crash.
@@ -75,15 +75,15 @@ class TestEmptyTriggerUriNoCrash:
         # Force AttributeError on .root_path access.
         del mock_ls.workspace.root_path
 
-        server_mod._active_analyzer = None
-        server_mod._is_initialized = False
+        server_mod._lsp_server.active_analyzer = None
+        server_mod._lsp_server.is_initialized = False
 
         # Must not raise.
         server_mod.run_full_project_diagnostics(mock_ls, "")
 
         # Analyzer should NOT be initialized (we bailed early).
-        assert server_mod._active_analyzer is None
-        assert server_mod._is_initialized is False
+        assert server_mod._lsp_server.active_analyzer is None
+        assert server_mod._lsp_server.is_initialized is False
 
     def test_initialized_handler_with_empty_uri_does_not_crash_thread(self, tmp_path: Path):
         """End-to-end: the `initialized` handler schedules a debounced scan
@@ -102,10 +102,10 @@ class TestEmptyTriggerUriNoCrash:
         mock_ls.workspace.root_path = str(tmp_path)
 
         # Reset state.
-        server_mod._active_analyzer = None
-        server_mod._current_workspace_root = None
-        server_mod._is_initialized = False
-        server_mod._full_timer = None
+        server_mod._lsp_server.active_analyzer = None
+        server_mod._lsp_server.current_workspace_root = None
+        server_mod._lsp_server.is_initialized = False
+        server_mod._lsp_server.full_timer = None
 
         # Trigger the initialized handler — schedules a debounced scan
         # with empty URI (this is the bug repro).
@@ -113,11 +113,11 @@ class TestEmptyTriggerUriNoCrash:
 
         # Wait for the debounce timer to fire (0.3s) plus a margin.
         # The daemon thread should complete without crashing.
-        if server_mod._full_timer is not None:
+        if server_mod._lsp_server.full_timer is not None:
             # Replace the timer's target with a synchronous call so we
             # can observe exceptions directly. The original bug was that
             # the exception went uncaught in the daemon thread.
-            timer = server_mod._full_timer
+            timer = server_mod._lsp_server.full_timer
             timer.cancel()  # don't let the original timer fire
 
             # Run the target function directly in this thread — if the
@@ -126,13 +126,13 @@ class TestEmptyTriggerUriNoCrash:
                 timer.function(*timer.args, **timer.kwargs)
             except Exception as exc:
                 # Cleanup before failing.
-                server_mod._full_timer = None
+                server_mod._lsp_server.full_timer = None
                 raise AssertionError(
                     f"run_full_project_diagnostics crashed on empty trigger_uri: "
                     f"{type(exc).__name__}: {exc}"
                 ) from exc
 
         # Cleanup.
-        if server_mod._full_timer is not None:
-            server_mod._full_timer.cancel()
-            server_mod._full_timer = None
+        if server_mod._lsp_server.full_timer is not None:
+            server_mod._lsp_server.full_timer.cancel()
+            server_mod._lsp_server.full_timer = None

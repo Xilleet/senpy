@@ -54,8 +54,8 @@ def setup_test_workspace(tmp_path: Path):
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
 
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     # UX: snapshot для references (handler'ы теперь используют snapshot)
     server_mod._refresh_symbol_snapshot()
 

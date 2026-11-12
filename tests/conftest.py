@@ -190,16 +190,16 @@ def _clean_lsp_state_after_test():
         # Отменим все timer'ы
         if getattr(server_mod, "_full_timer", None) is not None:
             try:
-                server_mod._full_timer.cancel()
+                server_mod._lsp_server.full_timer.cancel()
             except Exception:
                 pass
-            server_mod._full_timer = None
+            server_mod._lsp_server.full_timer = None
         if getattr(server_mod, "_change_timer", None) is not None:
             try:
-                server_mod._change_timer.cancel()
+                server_mod._lsp_server.change_timer.cancel()
             except Exception:
                 pass
-            server_mod._change_timer = None
+            server_mod._lsp_server.change_timer = None
         # Per-URI timer'ы
         lsp_server = getattr(server_mod, "_lsp_server", None)
         if lsp_server is not None and hasattr(lsp_server, "change_timers"):
@@ -219,8 +219,14 @@ def _clean_lsp_state_after_test():
         # snapshot BEFORE falling back to _active_analyzer.
         snap = getattr(server_mod, "_symbol_snapshot", None)
         if snap is not None:
-            for _k in ("labels", "screens", "transforms", "variables",
-                       "jump_sources", "labels_by_file"):
+            for _k in (
+                "labels",
+                "screens",
+                "transforms",
+                "variables",
+                "jump_sources",
+                "labels_by_file",
+            ):
                 snap[_k] = {}
             snap["images"] = set()
     except ImportError:

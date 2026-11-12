@@ -193,23 +193,23 @@ def _clean_lsp_state():
     # Reset the worker gate — workers block on it until the test releases them.
     _worker_gate.clear()
     # Before
-    server_mod._active_analyzer = None
-    server_mod._is_initialized = False
-    server_mod._current_workspace_root = None
-    server_mod._previously_diagnosed_uris = set()
-    server_mod._latest_diagnostics_by_path = {}
+    server_mod._lsp_server.active_analyzer = None
+    server_mod._lsp_server.is_initialized = False
+    server_mod._lsp_server.current_workspace_root = None
+    server_mod._lsp_server.previously_diagnosed_uris = set()
+    server_mod._lsp_server.latest_diagnostics_by_path = {}
     if getattr(server_mod, "_full_timer", None) is not None:
         try:
-            server_mod._full_timer.cancel()
+            server_mod._lsp_server.full_timer.cancel()
         except Exception:
             pass
-        server_mod._full_timer = None
+        server_mod._lsp_server.full_timer = None
     if getattr(server_mod, "_change_timer", None) is not None:
         try:
-            server_mod._change_timer.cancel()
+            server_mod._lsp_server.change_timer.cancel()
         except Exception:
             pass
-        server_mod._change_timer = None
+        server_mod._lsp_server.change_timer = None
     lsp_server = getattr(server_mod, "_lsp_server", None)
     if lsp_server is not None:
         if hasattr(lsp_server, "change_timers"):
@@ -228,23 +228,23 @@ def _clean_lsp_state():
 
     # After
     _worker_gate.clear()
-    server_mod._active_analyzer = None
-    server_mod._is_initialized = False
-    server_mod._current_workspace_root = None
-    server_mod._previously_diagnosed_uris = set()
-    server_mod._latest_diagnostics_by_path = {}
+    server_mod._lsp_server.active_analyzer = None
+    server_mod._lsp_server.is_initialized = False
+    server_mod._lsp_server.current_workspace_root = None
+    server_mod._lsp_server.previously_diagnosed_uris = set()
+    server_mod._lsp_server.latest_diagnostics_by_path = {}
     if getattr(server_mod, "_full_timer", None) is not None:
         try:
-            server_mod._full_timer.cancel()
+            server_mod._lsp_server.full_timer.cancel()
         except Exception:
             pass
-        server_mod._full_timer = None
+        server_mod._lsp_server.full_timer = None
     if getattr(server_mod, "_change_timer", None) is not None:
         try:
-            server_mod._change_timer.cancel()
+            server_mod._lsp_server.change_timer.cancel()
         except Exception:
             pass
-        server_mod._change_timer = None
+        server_mod._lsp_server.change_timer = None
     lsp_server = getattr(server_mod, "_lsp_server", None)
     if lsp_server is not None:
         if hasattr(lsp_server, "change_timers"):
@@ -268,9 +268,9 @@ def _setup_workspace(tmp_path: Path, initial_content: str) -> tuple[Path, SenpyA
     script_file.write_text(initial_content, encoding="utf-8")
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
-    server_mod._current_workspace_root = str(tmp_path)
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
+    server_mod._lsp_server.current_workspace_root = str(tmp_path)
     server_mod._refresh_symbol_snapshot()
     return script_file, analyzer
 
@@ -472,9 +472,9 @@ class TestPerURIGenerationIndependence:
 
         analyzer = SenpyAnalyzer(str(tmp_path))
         analyzer.run(quiet=True)
-        server_mod._active_analyzer = analyzer
-        server_mod._is_initialized = True
-        server_mod._current_workspace_root = str(tmp_path)
+        server_mod._lsp_server.active_analyzer = analyzer
+        server_mod._lsp_server.is_initialized = True
+        server_mod._lsp_server.current_workspace_root = str(tmp_path)
         server_mod._refresh_symbol_snapshot()
 
         uri_a = server_mod._path_to_uri(str(file_a))

@@ -40,6 +40,8 @@ def _get_server_mod():
 
 def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.CodeAction]:
     server_mod = _get_server_mod()
+    # Phase 3.3c: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     actions: list[lsp.CodeAction] = []
     try:
         uri = params.text_document.uri
@@ -49,7 +51,7 @@ def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.Co
         # which in multi-module projects could pick a QuickFix from the wrong file.
         norm_path = server_mod._normalize_path(server_mod._uri_to_path(uri))
 
-        diags_for_file = server_mod._latest_diagnostics_by_path.get(norm_path)
+        diags_for_file = lsp_server.latest_diagnostics_by_path.get(norm_path)
         # P0-6: basename-fallback REMOVED. If diagnostics for the file are not found
         # via the exact path — return an empty list, as it should be.
         # If the lookup misses, that is a bug in normalization, which should be fixed

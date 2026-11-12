@@ -107,23 +107,23 @@ def _clean_state():
     reset_autoload_state()
     clear_registered_lint_rules()
     # LSP server state
-    server_mod._active_analyzer = None
-    server_mod._is_initialized = False
-    server_mod._current_workspace_root = None
-    server_mod._previously_diagnosed_uris = set()
-    server_mod._latest_diagnostics_by_path = {}
+    server_mod._lsp_server.active_analyzer = None
+    server_mod._lsp_server.is_initialized = False
+    server_mod._lsp_server.current_workspace_root = None
+    server_mod._lsp_server.previously_diagnosed_uris = set()
+    server_mod._lsp_server.latest_diagnostics_by_path = {}
     if getattr(server_mod, "_full_timer", None) is not None:
         try:
-            server_mod._full_timer.cancel()
+            server_mod._lsp_server.full_timer.cancel()
         except Exception:
             pass
-        server_mod._full_timer = None
+        server_mod._lsp_server.full_timer = None
     if getattr(server_mod, "_change_timer", None) is not None:
         try:
-            server_mod._change_timer.cancel()
+            server_mod._lsp_server.change_timer.cancel()
         except Exception:
             pass
-        server_mod._change_timer = None
+        server_mod._lsp_server.change_timer = None
     lsp_server = getattr(server_mod, "_lsp_server", None)
     if lsp_server is not None and hasattr(lsp_server, "change_timers"):
         for t in list(lsp_server.change_timers.values()):
@@ -138,23 +138,23 @@ def _clean_state():
     # After: same cleanup
     reset_autoload_state()
     clear_registered_lint_rules()
-    server_mod._active_analyzer = None
-    server_mod._is_initialized = False
-    server_mod._current_workspace_root = None
-    server_mod._previously_diagnosed_uris = set()
-    server_mod._latest_diagnostics_by_path = {}
+    server_mod._lsp_server.active_analyzer = None
+    server_mod._lsp_server.is_initialized = False
+    server_mod._lsp_server.current_workspace_root = None
+    server_mod._lsp_server.previously_diagnosed_uris = set()
+    server_mod._lsp_server.latest_diagnostics_by_path = {}
     if getattr(server_mod, "_full_timer", None) is not None:
         try:
-            server_mod._full_timer.cancel()
+            server_mod._lsp_server.full_timer.cancel()
         except Exception:
             pass
-        server_mod._full_timer = None
+        server_mod._lsp_server.full_timer = None
     if getattr(server_mod, "_change_timer", None) is not None:
         try:
-            server_mod._change_timer.cancel()
+            server_mod._lsp_server.change_timer.cancel()
         except Exception:
             pass
-        server_mod._change_timer = None
+        server_mod._lsp_server.change_timer = None
     lsp_server = getattr(server_mod, "_lsp_server", None)
     if lsp_server is not None and hasattr(lsp_server, "change_timers"):
         for t in list(lsp_server.change_timers.values()):
@@ -212,9 +212,9 @@ class TestLSPPluginExecutionFullProject:
         # Production LSP path: SenpyAnalyzer(project_root) — no no_cache.
         analyzer = SenpyAnalyzer(str(project))
         analyzer.run(quiet=True)
-        server_mod._active_analyzer = analyzer
-        server_mod._is_initialized = True
-        server_mod._current_workspace_root = str(project)
+        server_mod._lsp_server.active_analyzer = analyzer
+        server_mod._lsp_server.is_initialized = True
+        server_mod._lsp_server.current_workspace_root = str(project)
         server_mod._refresh_symbol_snapshot()
 
         # Recording mock LS with workspace root path set so the LSP
@@ -269,9 +269,9 @@ class TestLSPPluginExecutionSingleFile:
 
         analyzer = SenpyAnalyzer(str(project))
         analyzer.run(quiet=True)
-        server_mod._active_analyzer = analyzer
-        server_mod._is_initialized = True
-        server_mod._current_workspace_root = str(project)
+        server_mod._lsp_server.active_analyzer = analyzer
+        server_mod._lsp_server.is_initialized = True
+        server_mod._lsp_server.current_workspace_root = str(project)
         server_mod._refresh_symbol_snapshot()
 
         # User edits the file to add a TODO comment.
@@ -307,9 +307,9 @@ class TestLSPPluginExecutionSingleFile:
 
         analyzer = SenpyAnalyzer(str(project))
         analyzer.run(quiet=True)
-        server_mod._active_analyzer = analyzer
-        server_mod._is_initialized = True
-        server_mod._current_workspace_root = str(project)
+        server_mod._lsp_server.active_analyzer = analyzer
+        server_mod._lsp_server.is_initialized = True
+        server_mod._lsp_server.current_workspace_root = str(project)
         server_mod._refresh_symbol_snapshot()
 
         doc = _MockDocument(uri, initial_content)

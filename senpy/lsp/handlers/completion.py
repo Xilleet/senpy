@@ -38,12 +38,14 @@ def _get_server_mod():
 def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.CompletionList:
     """Context-aware autocomplete for labels, sprites and screens."""
     server_mod = _get_server_mod()
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     items: list[lsp.CompletionItem] = []
-    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+    if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         _logger.debug(
             "[completions] NOT INITIALIZED: analyzer=%s, init=%s",
-            server_mod._active_analyzer is not None,
-            server_mod._is_initialized,
+            lsp_server.active_analyzer is not None,
+            lsp_server.is_initialized,
         )
         return lsp.CompletionList(is_incomplete=False, items=items)
 
@@ -70,7 +72,7 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams) -> lsp.Complet
         "[completions] RETURN %d items (prefix=%r, snapshot_labels=%d)",
         len(items),
         prefix,
-        len(server_mod._symbol_snapshot["labels"]),
+        len(lsp_server.symbol_snapshot["labels"]),
     )
     return lsp.CompletionList(is_incomplete=False, items=items)
 
@@ -100,8 +102,10 @@ def _collect_completion_items(*, prefix: str, server_mod) -> list[lsp.Completion
 
 def _complete_labels(server_mod) -> list[lsp.CompletionItem]:
     """Branch 1: labels for `jump X` / `call X`. Skip labels starting with `_`."""
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     items: list[lsp.CompletionItem] = []
-    for label_name, lbl in sorted(server_mod._symbol_snapshot["labels"].items()):
+    for label_name, lbl in sorted(lsp_server.symbol_snapshot["labels"].items()):
         if label_name.startswith("_"):
             continue
         items.append(
@@ -116,8 +120,10 @@ def _complete_labels(server_mod) -> list[lsp.CompletionItem]:
 
 def _complete_screens(server_mod) -> list[lsp.CompletionItem]:
     """Branch 2: screens for `show screen X` / `call screen X` / `use X`."""
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     items: list[lsp.CompletionItem] = []
-    for screen_name, scr in sorted(server_mod._symbol_snapshot["screens"].items()):
+    for screen_name, scr in sorted(lsp_server.symbol_snapshot["screens"].items()):
         items.append(
             lsp.CompletionItem(
                 label=screen_name,
@@ -153,13 +159,15 @@ def _complete_show_scene(*, prefix: str, server_mod) -> list[lsp.CompletionItem]
 
 def _complete_positions_and_transforms(server_mod) -> list[lsp.CompletionItem]:
     """Branch 3a: built-in positions + user transforms (after `at`)."""
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     items: list[lsp.CompletionItem] = [
         lsp.CompletionItem(
             label=pos, kind=lsp.CompletionItemKind.EnumMember, detail="Position (Built-in)"
         )
         for pos in _STANDARD_POSITIONS
     ]
-    for trans_name, trans_sym in sorted(server_mod._symbol_snapshot["transforms"].items()):
+    for trans_name, trans_sym in sorted(lsp_server.symbol_snapshot["transforms"].items()):
         items.append(
             lsp.CompletionItem(
                 label=trans_name,
@@ -187,8 +195,10 @@ def _complete_sprite_tokens(*, prefix: str, server_mod) -> list[lsp.CompletionIt
 
 def _complete_sprite_tags(server_mod) -> list[lsp.CompletionItem]:
     """Branch 3b: first tag of every declared image (e.g. `sayori`, `bg`)."""
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     items: list[lsp.CompletionItem] = []
-    all_tags = {img.split()[0] for img in server_mod._symbol_snapshot["images"]}
+    all_tags = {img.split()[0] for img in lsp_server.symbol_snapshot["images"]}
     for tag in sorted(all_tags):
         items.append(
             lsp.CompletionItem(label=tag, kind=lsp.CompletionItemKind.Class, detail="Sprite Tag")
@@ -204,11 +214,11 @@ def _complete_sprite_attributes(*, base_tag: str, server_mod) -> list[lsp.Comple
     (which is NOT cleared). The `_get_tag_known_attributes` helper on the
     analyzer returns the union of declared attributes + auto-discovered ones.
     """
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     items: list[lsp.CompletionItem] = []
-    all_valid = server_mod._active_analyzer.valid_images.union(
-        server_mod._symbol_snapshot["images"]
-    )
-    attrs = server_mod._active_analyzer._get_tag_known_attributes(base_tag, all_valid)
+    all_valid = lsp_server.active_analyzer.valid_images.union(lsp_server.symbol_snapshot["images"])
+    attrs = lsp_server.active_analyzer._get_tag_known_attributes(base_tag, all_valid)
     for attr in sorted(attrs):
         items.append(
             lsp.CompletionItem(
@@ -222,15 +232,17 @@ def _complete_sprite_attributes(*, base_tag: str, server_mod) -> list[lsp.Comple
 
 def _log_completion_request(prefix: str, server_mod) -> None:
     """UX DEBUG: log what we received + snapshot state. Called once per request."""
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     _logger.debug(
         "[completions] prefix=%r, snapshot_labels=%d, live_labels=%d, "
         "snapshot_images=%d, snapshot_screens=%d, snapshot_transforms=%d",
         prefix,
-        len(server_mod._symbol_snapshot["labels"]),
-        len(server_mod._active_analyzer.labels),
-        len(server_mod._symbol_snapshot["images"]),
-        len(server_mod._symbol_snapshot["screens"]),
-        len(server_mod._symbol_snapshot["transforms"]),
+        len(lsp_server.symbol_snapshot["labels"]),
+        len(lsp_server.active_analyzer.labels),
+        len(lsp_server.symbol_snapshot["images"]),
+        len(lsp_server.symbol_snapshot["screens"]),
+        len(lsp_server.symbol_snapshot["transforms"]),
     )
 
 
@@ -285,7 +297,9 @@ def signature_help(ls: LanguageServer, params: lsp.SignatureHelpParams) -> lsp.S
     Returns SignatureHelp with single SignatureInformation otherwise.
     """
     server_mod = _get_server_mod()
-    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
+    if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return None
 
     doc = ls.workspace.get_text_document(params.text_document.uri)
@@ -359,19 +373,21 @@ def _lookup_call_target(*, target_name: str, server_mod):
 
     Returns the label/screen symbol, or None if neither exists.
     """
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     # Handle dotted names (label.sublabel) — take the last part for lookup.
     if "." in target_name:
         target_name = target_name.split(".")[-1]
 
-    labels = server_mod._symbol_snapshot.get("labels", {})
-    screens = server_mod._symbol_snapshot.get("screens", {})
+    labels = lsp_server.symbol_snapshot.get("labels", {})
+    screens = lsp_server.symbol_snapshot.get("screens", {})
 
     # Fallback: if not in snapshot, check analyzer directly (test scenarios,
     # or immediately after did_change before snapshot refresh).
-    if target_name not in labels and server_mod._active_analyzer is not None:
-        labels = server_mod._active_analyzer.labels
-    if target_name not in screens and server_mod._active_analyzer is not None:
-        screens = server_mod._active_analyzer.screens
+    if target_name not in labels and lsp_server.active_analyzer is not None:
+        labels = lsp_server.active_analyzer.labels
+    if target_name not in screens and lsp_server.active_analyzer is not None:
+        screens = lsp_server.active_analyzer.screens
 
     if target_name in labels:
         return labels[target_name]

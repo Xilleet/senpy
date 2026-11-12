@@ -275,8 +275,8 @@ def test_lsp_code_action_quick_fixes(tmp_path: Path):
     analyzer = SenpyAnalyzer(str(tmp_path))
     result = analyzer.run(quiet=True)
 
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     # UX: snapshot для handler'ов (autocomplete/hover/rename)
     server_mod._refresh_symbol_snapshot()
 
@@ -287,7 +287,7 @@ def test_lsp_code_action_quick_fixes(tmp_path: Path):
         if os.path.normcase(os.path.abspath(diag.file_path)) == norm_path:
             lsp_diag = server_mod._create_lsp_diagnostic(diag)
             pairs.append((diag, lsp_diag))
-    server_mod._latest_diagnostics_by_path[norm_path] = pairs
+    server_mod._lsp_server.latest_diagnostics_by_path[norm_path] = pairs
 
     mock_ls = MagicMock()
     mock_doc = MockDocument(uri, content)
@@ -366,8 +366,8 @@ def test_lsp_transform_navigation_and_symbols(tmp_path: Path):
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
 
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     # UX: snapshot для handler'ов (autocomplete/hover/rename)
     server_mod._refresh_symbol_snapshot()
 
@@ -384,18 +384,18 @@ def test_lsp_transform_navigation_and_symbols(tmp_path: Path):
         ),
     )
     assert loc is not None, "F12 failed to resolve location for ATL transform 'custom_bounce'"
-    assert loc.range.start.line == 0, (
-        f"Expected definition on line 0, got line {loc.range.start.line}"
-    )
+    assert (
+        loc.range.start.line == 0
+    ), f"Expected definition on line 0, got line {loc.range.start.line}"
 
     # 2. Проверка Document Symbols (Outline / Ctrl+Shift+O)
     symbols = server_mod.document_symbols(
         mock_ls, lsp.DocumentSymbolParams(text_document=lsp.TextDocumentIdentifier(uri=uri))
     )
     trans_sym = next((s for s in symbols if s.name == "custom_bounce"), None)
-    assert trans_sym is not None, (
-        "Document symbols outline is missing ATL transform 'custom_bounce'"
-    )
+    assert (
+        trans_sym is not None
+    ), "Document symbols outline is missing ATL transform 'custom_bounce'"
     assert trans_sym.detail == "Transform"
 
     # 3. Проверка автокомплита после 'at '
@@ -409,7 +409,7 @@ def test_lsp_transform_navigation_and_symbols(tmp_path: Path):
         ),
     )
     comp_labels = {item.label for item in comp_res.items}
-    assert "custom_bounce" in comp_labels, (
-        "Autocomplete missing user-defined transform 'custom_bounce'"
-    )
+    assert (
+        "custom_bounce" in comp_labels
+    ), "Autocomplete missing user-defined transform 'custom_bounce'"
     assert "center" in comp_labels, "Autocomplete missing built-in position 'center'"

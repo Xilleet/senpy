@@ -56,16 +56,16 @@ def _clean_lsp_state():
     # Before: clear timers
     if getattr(server_mod, "_full_timer", None) is not None:
         try:
-            server_mod._full_timer.cancel()
+            server_mod._lsp_server.full_timer.cancel()
         except Exception:
             pass
-        server_mod._full_timer = None
+        server_mod._lsp_server.full_timer = None
     if getattr(server_mod, "_change_timer", None) is not None:
         try:
-            server_mod._change_timer.cancel()
+            server_mod._lsp_server.change_timer.cancel()
         except Exception:
             pass
-        server_mod._change_timer = None
+        server_mod._lsp_server.change_timer = None
     lsp_server = getattr(server_mod, "_lsp_server", None)
     if lsp_server is not None and hasattr(lsp_server, "change_timers"):
         for t in list(lsp_server.change_timers.values()):
@@ -81,16 +81,16 @@ def _clean_lsp_state():
     # but we run early to ensure timers don't fire between tests).
     if getattr(server_mod, "_full_timer", None) is not None:
         try:
-            server_mod._full_timer.cancel()
+            server_mod._lsp_server.full_timer.cancel()
         except Exception:
             pass
-        server_mod._full_timer = None
+        server_mod._lsp_server.full_timer = None
     if getattr(server_mod, "_change_timer", None) is not None:
         try:
-            server_mod._change_timer.cancel()
+            server_mod._lsp_server.change_timer.cancel()
         except Exception:
             pass
-        server_mod._change_timer = None
+        server_mod._lsp_server.change_timer = None
     lsp_server = getattr(server_mod, "_lsp_server", None)
     if lsp_server is not None and hasattr(lsp_server, "change_timers"):
         for t in list(lsp_server.change_timers.values()):
@@ -109,8 +109,8 @@ def _setup_lsp_server(tmp_path: Path, rpy_content: str):
     script_file.write_text(rpy_content, encoding="utf-8")
     analyzer = SenpyAnalyzer(str(tmp_path))
     analyzer.run(quiet=True)
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     return script_file, analyzer
 
 

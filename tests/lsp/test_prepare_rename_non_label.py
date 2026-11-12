@@ -158,14 +158,14 @@ class TestPrepareRenameForTransforms:
         )
         analyzer = SenpyAnalyzer(str(tmp_path))
         analyzer.run(quiet=True)
-        server_mod._active_analyzer = analyzer
-        server_mod._is_initialized = True
+        server_mod._lsp_server.active_analyzer = analyzer
+        server_mod._lsp_server.is_initialized = True
         server_mod._refresh_symbol_snapshot()
 
         # Verify slide_left is in transforms snapshot.
-        assert "slide_left" in server_mod._symbol_snapshot["transforms"], (
+        assert "slide_left" in server_mod._lsp_server.symbol_snapshot["transforms"], (
             "Test setup: slide_left must be in transforms snapshot. "
-            f"Got transforms: {list(server_mod._symbol_snapshot['transforms'])}"
+            f"Got transforms: {list(server_mod._lsp_server.symbol_snapshot['transforms'])}"
         )
 
         uri = f"file://{tmp_path}/game/script.rpy"

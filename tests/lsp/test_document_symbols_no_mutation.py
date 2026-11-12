@@ -62,8 +62,8 @@ def _initialize_lsp_without_full_analysis(project_root: Path) -> SenpyAnalyzer:
     """
     analyzer = SenpyAnalyzer(str(project_root))
     # Deliberately do NOT call analyzer.run() — file_scopes stays empty.
-    server_mod._active_analyzer = analyzer
-    server_mod._is_initialized = True
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
     server_mod._refresh_symbol_snapshot()
     return analyzer
 
@@ -135,8 +135,8 @@ class TestDocumentSymbolsDoesNotMutateUnderReadLock:
         project_root = _setup_project_with_label(tmp_path)
         analyzer = SenpyAnalyzer(str(project_root))
         analyzer.run(quiet=True)  # Full analysis — populates file_scopes.
-        server_mod._active_analyzer = analyzer
-        server_mod._is_initialized = True
+        server_mod._lsp_server.active_analyzer = analyzer
+        server_mod._lsp_server.is_initialized = True
         server_mod._refresh_symbol_snapshot()
 
         script_path = str(project_root / "game" / "script.rpy")

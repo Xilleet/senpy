@@ -40,22 +40,22 @@ def clean_lsp_state():
     later tests would read stale labels. This fixture explicitly clears
     the snapshot so the test's setup is authoritative.
     """
-    saved_analyzer = server_mod._active_analyzer
-    saved_init = server_mod._is_initialized
-    saved_snapshot = dict(server_mod._symbol_snapshot)
-    server_mod._active_analyzer = MagicMock()
-    server_mod._is_initialized = True
+    saved_analyzer = server_mod._lsp_server.active_analyzer
+    saved_init = server_mod._lsp_server.is_initialized
+    saved_snapshot = dict(server_mod._lsp_server.symbol_snapshot)
+    server_mod._lsp_server.active_analyzer = MagicMock()
+    server_mod._lsp_server.is_initialized = True
     # Reset the snapshot to an empty baseline — the handler under test
     # will fall back to _active_analyzer.* when the snapshot is empty.
-    for key in list(server_mod._symbol_snapshot.keys()):
-        val = server_mod._symbol_snapshot[key]
+    for key in list(server_mod._lsp_server.symbol_snapshot.keys()):
+        val = server_mod._lsp_server.symbol_snapshot[key]
         if isinstance(val, (dict, set)):
             val.clear()
     yield server_mod
-    server_mod._active_analyzer = saved_analyzer
-    server_mod._is_initialized = saved_init
-    server_mod._symbol_snapshot.clear()
-    server_mod._symbol_snapshot.update(saved_snapshot)
+    server_mod._lsp_server.active_analyzer = saved_analyzer
+    server_mod._lsp_server.is_initialized = saved_init
+    server_mod._lsp_server.symbol_snapshot.clear()
+    server_mod._lsp_server.symbol_snapshot.update(saved_snapshot)
 
 
 # =============================================================================
@@ -245,12 +245,12 @@ class TestIncomingCallsPerFileIndex:
 
         server_mod._refresh_symbol_snapshot()
 
-        assert "labels_by_file" in server_mod._symbol_snapshot, (
+        assert "labels_by_file" in server_mod._lsp_server.symbol_snapshot, (
             "_symbol_snapshot must include 'labels_by_file' — a per-file "
             "index of labels for O(log N) containing-label lookup in "
             "incoming_calls. Pre-fix code scans all labels per jump source."
         )
-        index = server_mod._symbol_snapshot["labels_by_file"]
+        index = server_mod._lsp_server.symbol_snapshot["labels_by_file"]
         assert isinstance(index, dict)
         # Both files must be present in the index
         indexed_files = {Path(p).name for p in index}

@@ -44,7 +44,9 @@ def _get_server_mod():
 def definition(ls: LanguageServer, params: lsp.DefinitionParams) -> lsp.Location | None:
     """Native F12 navigation to labels, screens, variables, sprites and asset files."""
     server_mod = _get_server_mod()
-    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
+    if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return None
 
     doc = ls.workspace.get_text_document(params.text_document.uri)
@@ -92,6 +94,8 @@ def _resolve_quoted_path(*, line: str, col: int, server_mod) -> lsp.Location | N
     """Phase 1: if the cursor is inside a quoted string, try to resolve it
     as a media-file path (relative to `game/` or as a basename match).
     """
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     for qm in re.finditer(r'("([^"\\]*(?:\\.[^"\\]*)*)"|\'([^\'\\]*(?:\\.[^\'\\]*)*)\')', line):
         if not (qm.start() <= col <= qm.end()):
             continue
@@ -100,7 +104,7 @@ def _resolve_quoted_path(*, line: str, col: int, server_mod) -> lsp.Location | N
         norm_q = re.sub(r"^<[^>]+>\s*", "", norm_q)
         base_q = os.path.basename(norm_q)
 
-        for rel_path, full_path in server_mod._active_analyzer.media_disk_files.items():
+        for rel_path, full_path in lsp_server.active_analyzer.media_disk_files.items():
             clean_rel = rel_path.removeprefix("game/")
             if rel_path == norm_q or clean_rel == norm_q or os.path.basename(rel_path) == base_q:
                 return lsp.Location(
@@ -120,6 +124,8 @@ def _resolve_show_scene_token(
     If neither is a declared image, fall back to a media-file path match
     (e.g. `images/sayori/happy.png` tokenized as `sayori happy`).
     """
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     parts = stripped.split()[1:]
     img_tokens: list[str] = []
     for p in parts:
@@ -143,14 +149,14 @@ def _resolve_show_scene_token(
 
     # Try declared images first (full_tag, then base_tag).
     for candidate in (full_tag, base_tag):
-        if candidate in server_mod._active_analyzer.images:
-            img = server_mod._active_analyzer.images[candidate]
+        if candidate in lsp_server.active_analyzer.images:
+            img = lsp_server.active_analyzer.images[candidate]
             return _location_at_symbol_line(server_mod, img, len(candidate))
 
     # Fall back to media-file path matching (auto-discovered images).
     for candidate in (full_tag, base_tag):
         cand_norm = candidate.lower()
-        for rel_path, full_path in server_mod._active_analyzer.media_disk_files.items():
+        for rel_path, full_path in lsp_server.active_analyzer.media_disk_files.items():
             clean_rel = rel_path.removeprefix("game/")
             clean_no_ext = os.path.splitext(clean_rel)[0]
             tokenized = clean_no_ext.removeprefix("images/").replace("/", " ").replace("_", " ")
@@ -170,7 +176,9 @@ def _resolve_symbol(*, word: str, server_mod) -> lsp.Location | None:
     Returns the first matching `lsp.Location`, or `None` if the word is
     not a declared symbol of any kind.
     """
-    analyzer = server_mod._active_analyzer
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
+    analyzer = lsp_server.active_analyzer
 
     if word in analyzer.labels:
         lbl = analyzer.labels[word]
@@ -218,8 +226,10 @@ def _location_at_symbol_line(server_mod, sym, name_length: int) -> lsp.Location:
 
 def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | None:
     server_mod = _get_server_mod()
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     """Label rename: updates the declaration + all jump/call references."""
-    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+    if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return None
 
     doc = ls.workspace.get_text_document(params.text_document.uri)
@@ -246,16 +256,16 @@ def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | 
     new_name = params.new_name
 
     # rename for labels, variables, transforms, screens.
-    # use the snapshot, not server_mod._active_analyzer.labels —
+    # use the snapshot, not lsp_server.active_analyzer.labels —
     # analyze_file_only clears labels from other files.
-    if word in server_mod._symbol_snapshot["labels"]:
+    if word in lsp_server.symbol_snapshot["labels"]:
         # Existing logic for labels (via jump_sources reverse index)
         return _rename_label(server_mod, word, new_name)
-    elif word in server_mod._symbol_snapshot["variables"]:
+    elif word in lsp_server.symbol_snapshot["variables"]:
         return _rename_symbol_via_text_search(server_mod, word, new_name, "variables")
-    elif word in server_mod._symbol_snapshot["transforms"]:
+    elif word in lsp_server.symbol_snapshot["transforms"]:
         return _rename_symbol_via_text_search(server_mod, word, new_name, "transforms")
-    elif word in server_mod._symbol_snapshot["screens"]:
+    elif word in lsp_server.symbol_snapshot["screens"]:
         return _rename_symbol_via_text_search(server_mod, word, new_name, "screens")
 
     return None
@@ -267,10 +277,12 @@ def _rename_label(server_mod, word: str, new_name: str) -> lsp.WorkspaceEdit | N
     Uses the jump_sources reverse index from the analyzer — more precise than
     text search (does not catch false positives in strings/comments).
     """
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     changes: dict[str, list[lsp.TextEdit]] = {}
 
     # 1. Declaration (label X:)
-    lbl = server_mod._symbol_snapshot["labels"][word]
+    lbl = lsp_server.symbol_snapshot["labels"][word]
     lbl_uri = server_mod._path_to_uri(lbl.file_path)
     lbl_line = max(0, lbl.line_number - 1)  # 0-based
 
@@ -299,7 +311,7 @@ def _rename_label(server_mod, word: str, new_name: str) -> lsp.WorkspaceEdit | N
 
     # 2. All jump/call references (from jump_sources)
     # UX: also from the snapshot, to get references from all files.
-    for ref_path, ref_line in server_mod._symbol_snapshot["jump_sources"].get(word, []):
+    for ref_path, ref_line in lsp_server.symbol_snapshot["jump_sources"].get(word, []):
         ref_uri = server_mod._path_to_uri(ref_path)
         ref_line_0 = max(0, ref_line - 1)  # 0-based
 
@@ -355,10 +367,12 @@ def _find_text_occurrences_in_project(server_mod, word: str) -> list[tuple[str, 
     require AST traversal of all .rpy files, which is slow. For rename/references
     text search is acceptable: the user sees all occurrences and can cancel.
     """
-    if server_mod._active_analyzer is None:
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
+    if lsp_server.active_analyzer is None:
         return []
 
-    project_path = server_mod._active_analyzer.project_path
+    project_path = lsp_server.active_analyzer.project_path
     occurrences: list[tuple[str, int, int]] = []
     pattern = re.compile(_WORD_BOUNDARY_TEMPLATE.format(re.escape(word)))
 
@@ -706,8 +720,10 @@ def _rename_symbol_via_text_search(
 
 def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Location] | None:
     server_mod = _get_server_mod()
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     """Find References: all static jump/call references to the label under the cursor."""
-    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+    if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return None
 
     doc = ls.workspace.get_text_document(params.text_document.uri)
@@ -741,7 +757,7 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
     # retains labels from all files. Other handlers (rename,
     # prepare_rename, incoming_calls, outgoing_calls, workspace_symbol)
     # already use the snapshot — references must be consistent (P1-7).
-    snapshot = server_mod._symbol_snapshot
+    snapshot = lsp_server.symbol_snapshot
     if word in snapshot["labels"]:
         if params.context.include_declaration:
             lbl = snapshot["labels"][word]
@@ -770,9 +786,9 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
     # They have no reverse index (like jump_sources for labels), so we use
     # _find_text_occurrences_in_project — a whole-word grep across all .rpy files.
     if (
-        word in server_mod._symbol_snapshot["variables"]
-        or word in server_mod._symbol_snapshot["transforms"]
-        or word in server_mod._symbol_snapshot["screens"]
+        word in lsp_server.symbol_snapshot["variables"]
+        or word in lsp_server.symbol_snapshot["transforms"]
+        or word in lsp_server.symbol_snapshot["screens"]
     ):
         return _references_via_text_search(server_mod, word, params.context.include_declaration)
 
@@ -787,6 +803,8 @@ def _references_via_text_search(
     Uses _find_text_occurrences_in_project. If include_declaration=False,
     excludes the first location (the declaration) — it is identified via the snapshot.
     """
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     occurrences = _find_text_occurrences_in_project(server_mod, word)
     if not occurrences:
         return []
@@ -794,7 +812,7 @@ def _references_via_text_search(
     # If the declaration should not be included — find it via the snapshot and exclude it.
     declaration_loc: tuple[str, int] | None = None  # (file_path, line_idx_0based)
     for kind in ("variables", "transforms", "screens"):
-        sym = server_mod._symbol_snapshot[kind].get(word)
+        sym = lsp_server.symbol_snapshot[kind].get(word)
         if sym is not None:
             declaration_loc = (sym.file_path, max(0, sym.line_number - 1))
             break
@@ -828,7 +846,9 @@ def document_symbols(
 ) -> list[lsp.DocumentSymbol]:
     """Builds the native symbol tree for Outline (Structure), Breadcrumbs and Ctrl+Shift+O."""
     server_mod = _get_server_mod()
-    if server_mod._active_analyzer is None:
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
+    if lsp_server.active_analyzer is None:
         return []
 
     uri = params.text_document.uri
@@ -847,7 +867,7 @@ def document_symbols(
     # is not yet populated. Returning [] is safe — the scheduled full
     # analysis will populate the scope, and VS Code re-requests the
     # outline on did_change / did_save, so the user sees it within ~1s.
-    scope = server_mod._active_analyzer.file_scopes.get(norm_path)
+    scope = lsp_server.active_analyzer.file_scopes.get(norm_path)
     if not scope:
         return []
 
@@ -998,8 +1018,10 @@ def prepare_rename(
     ls: LanguageServer, params: lsp.PrepareRenameParams
 ) -> lsp.Range | lsp.PrepareRenameResult | None:
     server_mod = _get_server_mod()
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
     """Returns the Range of the word under the cursor for preview before rename."""
-    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+    if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return None
 
     doc = ls.workspace.get_text_document(params.text_document.uri)
@@ -1027,9 +1049,9 @@ def prepare_rename(
             # Previously this only checked labels — F2 silently did
             # nothing on variables/transforms/screens (P1-6 bug).
             #
-            # UX: use the snapshot, not server_mod._active_analyzer.*,
+            # UX: use the snapshot, not lsp_server.active_analyzer.*,
             # so F2 works even after did_change (analyze_file_only).
-            snapshot = server_mod._symbol_snapshot
+            snapshot = lsp_server.symbol_snapshot
             if (
                 word in snapshot["labels"]
                 or word in snapshot["variables"]
@@ -1065,8 +1087,8 @@ def prepare_rename(
 #   3. callHierarchy/outgoingCalls(item) → list[CallHierarchyOutgoingCall] (where does this go?)
 #
 # Sources:
-#   - server_mod._symbol_snapshot["labels"] for label lookup
-#   - server_mod._symbol_snapshot["jump_sources"] for incoming calls (who jumps to this label)
+#   - lsp_server.symbol_snapshot["labels"] for label lookup
+#   - lsp_server.symbol_snapshot["jump_sources"] for incoming calls (who jumps to this label)
 #   - LabelSymbol.outgoing_jumps for outgoing calls (where this label jumps to)
 
 
@@ -1078,7 +1100,9 @@ def prepare_call_hierarchy(
     Returns empty list if cursor is not on a label declaration or reference.
     """
     server_mod = _get_server_mod()
-    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
+    if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return []
 
     doc = ls.workspace.get_text_document(params.text_document.uri)
@@ -1103,9 +1127,9 @@ def prepare_call_hierarchy(
         return []
 
     # Check if word is a label (in snapshot, with fallback to analyzer)
-    labels = server_mod._symbol_snapshot.get("labels", {})
-    if word not in labels and server_mod._active_analyzer is not None:
-        labels = server_mod._active_analyzer.labels
+    labels = lsp_server.symbol_snapshot.get("labels", {})
+    if word not in labels and lsp_server.active_analyzer is not None:
+        labels = lsp_server.active_analyzer.labels
     if word not in labels:
         return []
 
@@ -1136,18 +1160,20 @@ def incoming_calls(
     Uses jump_sources reverse index from analyzer snapshot.
     """
     server_mod = _get_server_mod()
-    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
+    if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return []
 
     target_name = params.item.name
-    labels = server_mod._symbol_snapshot.get("labels", {})
-    jump_sources = server_mod._symbol_snapshot.get("jump_sources", {})
-    labels_by_file = server_mod._symbol_snapshot.get("labels_by_file", {})
+    labels = lsp_server.symbol_snapshot.get("labels", {})
+    jump_sources = lsp_server.symbol_snapshot.get("jump_sources", {})
+    labels_by_file = lsp_server.symbol_snapshot.get("labels_by_file", {})
     # Fallback: if not in snapshot, check analyzer directly
-    if not jump_sources and server_mod._active_analyzer is not None:
-        jump_sources = server_mod._active_analyzer.jump_sources
-    if not labels and server_mod._active_analyzer is not None:
-        labels = server_mod._active_analyzer.labels
+    if not jump_sources and lsp_server.active_analyzer is not None:
+        jump_sources = lsp_server.active_analyzer.jump_sources
+    if not labels and lsp_server.active_analyzer is not None:
+        labels = lsp_server.active_analyzer.labels
     # Build labels_by_file on-the-fly if the snapshot is stale or empty —
     # keeps the handler correct even before the first _refresh_symbol_snapshot.
     if not labels_by_file and labels:
@@ -1222,18 +1248,20 @@ def outgoing_calls(
     Uses LabelSymbol.outgoing_jumps from analyzer snapshot.
     """
     server_mod = _get_server_mod()
-    if server_mod._active_analyzer is None or not server_mod._is_initialized:
+    # Phase 3.3c-e: state via _lsp_server.<attr>.
+    lsp_server = server_mod._lsp_server
+    if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return []
 
     source_name = params.item.name
-    labels = server_mod._symbol_snapshot.get("labels", {})
-    jump_sources = server_mod._symbol_snapshot.get("jump_sources", {})
-    labels_by_file = server_mod._symbol_snapshot.get("labels_by_file", {})
+    labels = lsp_server.symbol_snapshot.get("labels", {})
+    jump_sources = lsp_server.symbol_snapshot.get("jump_sources", {})
+    labels_by_file = lsp_server.symbol_snapshot.get("labels_by_file", {})
     # Fallback: if not in snapshot, check analyzer directly
-    if source_name not in labels and server_mod._active_analyzer is not None:
-        labels = server_mod._active_analyzer.labels
-    if not jump_sources and server_mod._active_analyzer is not None:
-        jump_sources = server_mod._active_analyzer.jump_sources
+    if source_name not in labels and lsp_server.active_analyzer is not None:
+        labels = lsp_server.active_analyzer.labels
+    if not jump_sources and lsp_server.active_analyzer is not None:
+        jump_sources = lsp_server.active_analyzer.jump_sources
     if not labels_by_file and labels:
         labels_by_file = {}
         for name, lbl in labels.items():
