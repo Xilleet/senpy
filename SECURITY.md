@@ -87,19 +87,18 @@ reporting:
   not rely on import-time side effects for trust-gated behaviour.
 - **HTML report CSP** (`senpy/formats/html_report.py`):
   `Content-Security-Policy: default-src 'self'; script-src 'self'
-  'unsafe-inline' https://cdn.jsdelivr.net/npm/mermaid@10/
+  'nonce-{per-render-nonce}' https://cdn.jsdelivr.net/npm/mermaid@10/
   https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/; style-src 'self'
   'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src
-  'self'` + Mermaid `securityLevel: 'strict'`. Diagnostics' `code`,
-  `severity`, `message`, `line_content` and `file_path` are HTML-escaped
-  before interpolation (since 0.7.7) — prevents XSS from plugin rule
-  metadata in generated reports.
-  > **Known limitation:** `script-src` includes `'unsafe-inline'` to
-  > support Mermaid's runtime initialization (which evaluates an inline
-  > script). A nonce-based CSP is planned post-0.8 to remove this. The
-  > Mermaid `securityLevel: 'strict'` setting and the HTML-escaping of
-  > all diagnostic fields mitigate the inline-script risk in the
-  > meantime.
+  'self'` + Mermaid `securityLevel: 'strict'`. The inline `<script>` tag
+  carries a per-render cryptographic nonce (`secrets.token_hex(16)`) —
+  CSP allows only that specific nonce, blocking arbitrary inline scripts.
+  Diagnostics' `code`, `severity`, `message`, `line_content` and
+  `file_path` are HTML-escaped before interpolation (since 0.7.7).
+  > **Note:** `style-src` keeps `'unsafe-inline'` because Mermaid injects
+  > dynamic `<style>` tags at render time that cannot carry a nonce. The
+  > Mermaid `securityLevel: 'strict'` setting and HTML-escaping of all
+  > diagnostic fields mitigate the style-injection risk.
 - **LSP URI scheme validation + workspace containment** (`senpy/lsp/server.py`,
   0.6.2): `_uri_to_path` rejects non-`file:` URIs and (optionally)
   paths outside workspace root.

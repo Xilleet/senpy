@@ -60,22 +60,25 @@ def test_uri_to_path_raises_security_error_for_path_traversal(tmp_path: Path):
         server_mod._uri_to_path(malicious_uri, workspace_root=str(workspace))
 
 
-def test_uri_to_path_security_error_is_catchable_as_value_error():
-    """SecurityError должен ловиться как ValueError (backward compat).
+def test_uri_to_path_security_error_is_NOT_catchable_as_value_error():
+    """Phase 5: SecurityError больше НЕ ловится как ValueError.
 
-    Старый код (до) мог делать `except ValueError:` для _uri_to_path.
-    После этот код должен продолжать работать.
+    ValueError inheritance был удалён.
+    Design principle "Do not inherit from ValueError/TypeError"
+    применяется единообразно. Старые callers с `except ValueError:`
+    должны были мигрировать на `except SecurityError:` или
+    `except SenpyError:` (DeprecationWarning с 0.8.0).
     """
     import senpy.lsp.server as server_mod
+    from senpy.core.exceptions import SecurityError
 
-    # Симулируем старый caller
-    caught_as_value_error = False
+    # SecurityError НЕ должен ловиться через ValueError
     try:
         server_mod._uri_to_path("ftp://evil.com/x.rpy")
     except ValueError:
-        caught_as_value_error = True
-
-    assert caught_as_value_error, "SecurityError should be catchable as ValueError"
+        pytest.fail("SecurityError should NOT be catchable as ValueError after Phase 5")
+    except SecurityError:
+        pass  # правильно — ловится через SecurityError
 
 
 def test_uri_to_path_security_error_is_catchable_as_senpy_error():

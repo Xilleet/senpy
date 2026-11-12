@@ -133,7 +133,7 @@ class PluginError(SenpyError):
     """
 
 
-class SecurityError(SenpyError, ValueError):
+class SecurityError(SenpyError):
     """Security violations: URI scheme, path traversal, unsafe unpickle.
 
     Examples:
@@ -141,28 +141,11 @@ class SecurityError(SenpyError, ValueError):
         - Workspace containment check failed (path outside workspace root).
         - SafeUnpickler rejected dangerous module.
 
-    Note: inherits from ValueError for backward compat — old callers that
-    catch ValueError (e.g. from before) continue to work.
-    New callers should catch SecurityError explicitly.
-
-    The ValueError inheritance is deprecated and will be removed in 1.0.
-    It violates the design principle stated at the top of this file
-    ("Do not inherit from ValueError/TypeError"). A grep of the codebase
-    shows no production callers catch ValueError to reach SecurityError —
-    the inheritance is vestigial. Kept for now to avoid breaking external
-    callers, but a DeprecationWarning is emitted on instantiation.
+    ValueError inheritance removed. The dual inheritance
+    was deprecated since 0.8.0 with a DeprecationWarning; no production
+    callers caught ValueError to reach SecurityError. The design principle
+    ("Do not inherit from ValueError/TypeError") is now upheld uniformly.
     """
-
-    def __init__(self, *args, **kwargs):
-        import warnings
-
-        warnings.warn(
-            "SecurityError inherits from ValueError for backward compat, "
-            "but this will be removed in 1.0. Catch SecurityError explicitly.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        super().__init__(*args, **kwargs)
 
 
 class DecompilationError(SenpyError):

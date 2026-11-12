@@ -203,8 +203,8 @@ def test_can_catch_any_senpy_error_via_base():
 def test_senpy_error_does_not_catch_value_error():
     """SenpyError НЕ ловит ValueError из stdlib.
 
-    NB: SecurityError наследуется от ValueError для backward compat,
-    но это специально. Чистый ValueError из stdlib не ловится SenpyError.
+    SecurityError больше не наследуется от ValueError.
+    Чистый ValueError из stdlib не ловится SenpyError.
     """
     with pytest.raises(ValueError):
         try:
@@ -213,18 +213,24 @@ def test_senpy_error_does_not_catch_value_error():
             pytest.fail("SenpyError caught ValueError — should not happen")
 
 
-def test_security_error_is_also_value_error():
-    """SecurityError наследуется от ValueError для backward compat.
+def test_security_error_is_not_value_error():
+    """SecurityError больше НЕ наследуется от ValueError.
 
-    Это позволяет старым caller'ам с `except ValueError:` продолжать
-    работать после миграции с ValueError на SecurityError.
+    ValueError inheritance был удалён.
+    Design principle "Do not inherit from ValueError/TypeError"
+    теперь применяется единообразно ко всем доменным исключениям.
     """
-    assert issubclass(SecurityError, ValueError)
+    assert not issubclass(SecurityError, ValueError)
     assert issubclass(SecurityError, SenpyError)
+    assert issubclass(SecurityError, Exception)
 
-    # Можно поймать через ValueError (старый код)
-    with pytest.raises(ValueError):
+    # SecurityError НЕ ловится через ValueError (новое поведение)
+    try:
         raise SecurityError("test")
+    except ValueError:
+        pytest.fail("SecurityError should NOT be caught by ValueError after Phase 5")
+    except SecurityError:
+        pass  # правильно — ловится через SecurityError
 
     # Можно поймать через SenpyError (новый код)
     with pytest.raises(SenpyError):

@@ -27,6 +27,7 @@ from pathlib import Path
 import pytest
 
 import senpy.lsp.server as server_mod
+from senpy.core.exceptions import SecurityError
 
 # =============================================================================
 # Scheme validation
@@ -44,25 +45,25 @@ def test_uri_to_path_accepts_file_scheme(tmp_path: Path):
 
 def test_uri_to_path_rejects_http_scheme():
     """`http:` URI должен быть отклонён."""
-    with pytest.raises(ValueError, match="(?i)scheme"):
+    with pytest.raises(SecurityError, match="(?i)scheme"):
         server_mod._uri_to_path("http://evil.example.com/script.rpy")
 
 
 def test_uri_to_path_rejects_https_scheme():
     """`https:` URI должен быть отклонён."""
-    with pytest.raises(ValueError, match="(?i)scheme"):
+    with pytest.raises(SecurityError, match="(?i)scheme"):
         server_mod._uri_to_path("https://evil.example.com/script.rpy")
 
 
 def test_uri_to_path_rejects_ftp_scheme():
     """`ftp:` URI должен быть отклонён."""
-    with pytest.raises(ValueError, match="(?i)scheme"):
+    with pytest.raises(SecurityError, match="(?i)scheme"):
         server_mod._uri_to_path("ftp://evil.example.com/script.rpy")
 
 
 def test_uri_to_path_rejects_empty_scheme():
     """URI без scheme (относительный путь) должен быть отклонён."""
-    with pytest.raises(ValueError, match="(?i)scheme"):
+    with pytest.raises(SecurityError, match="(?i)scheme"):
         server_mod._uri_to_path("just/a/path.rpy")
 
 
@@ -91,7 +92,7 @@ def test_uri_to_path_outside_workspace_rejected(tmp_path: Path):
     outside.parent.mkdir(parents=True)
     outside.write_text("root:x:0:0\n", encoding="utf-8")
     uri = outside.as_uri()
-    with pytest.raises(ValueError, match="(?i)outside.*workspace|containment"):
+    with pytest.raises(SecurityError, match="(?i)outside.*workspace|containment"):
         server_mod._uri_to_path(uri, workspace_root=str(workspace))
 
 
@@ -106,7 +107,7 @@ def test_uri_to_path_path_traversal_rejected(tmp_path: Path):
     target.write_text("secret\n", encoding="utf-8")
     # URI с .. сегментами
     malicious_uri = f"file://{workspace}/sub/../../outside.txt"
-    with pytest.raises(ValueError, match="(?i)outside.*workspace|containment"):
+    with pytest.raises(SecurityError, match="(?i)outside.*workspace|containment"):
         server_mod._uri_to_path(malicious_uri, workspace_root=str(workspace))
 
 

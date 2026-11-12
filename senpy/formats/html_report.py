@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import os
+import secrets
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -12,14 +13,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- P0-11: Content-Security-Policy — disable inline scripts without a nonce,
-         and external scripts except for trusted CDNs. This blocks XSS via
-         HTML injected into the Mermaid graph (if an attacker slips HTML tags
-         (for example, a script) into a label name, CSP prevents it from running).
-         Example: 'script' tag in a label name. -->
+    <!-- Phase 6: Content-Security-Policy — nonce-based script-src.
+         Inline scripts carry a per-render nonce; external scripts
+         are limited to trusted CDNs. This blocks XSS via HTML injected
+         into the Mermaid graph (if an attacker slips a <script> tag
+         into a label name, CSP prevents it from running).
+         style-src keeps 'unsafe-inline' because Mermaid injects dynamic
+         <style> tags at render time — these cannot carry a nonce. -->
     <meta http-equiv="Content-Security-Policy"
           content="default-src 'self';
-                   script-src 'self' 'unsafe-inline'
+                   script-src 'self' 'nonce-{nonce}'
                               https://cdn.jsdelivr.net/npm/mermaid@10/
                               https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/;
                    style-src 'self' 'unsafe-inline';
@@ -153,7 +156,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
 
     <!-- Load Mermaid as an ES module for modern async rendering -->
-    <script type="module">
+    <script type="module" nonce="{nonce}">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
         mermaid.initialize({{
             startOnLoad: false,
@@ -287,6 +290,7 @@ def generate_html_report(
         issue_count=len(diagnostics),
         diagnostics_html="".join(diags_html_parts),
         mermaid_code=js_safe_graph,
+        nonce=secrets.token_hex(16),
     )
 
     with open(out_path, "w", encoding="utf-8") as f:
