@@ -15,6 +15,7 @@ from senpy.core.type_inference import (
     _check_binop_incompatible,
     infer_ast_type,
     infer_default_value,
+    infer_expr_type,  # noqa: F401
 )
 from senpy.domain.text_tags import get_utf16_range, suggest_similar_symbol
 from senpy.text_utils import dedent_python
