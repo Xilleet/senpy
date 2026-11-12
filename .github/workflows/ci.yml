@@ -8,7 +8,7 @@
 #
 # Что делает:
 #   1. Matrix-тесты: Python 3.11/3.12/3.13 × Ubuntu/Windows + macOS (3.12)
-#   2. Pytest с coverage (gate: --cov-fail-under=80)
+#   2. Pytest с coverage (gate: --cov-fail-under=85)
 #
 # НЕ делает:
 #   - Сборку wheel/VSIX (это в release.yml)
@@ -176,16 +176,18 @@ jobs:
           pip install pytest pytest-cov
 
       - name: Run tests with coverage
-        # Coverage gate. --cov-fail-under=80 — повышен с 75% после
-        # WL-609. Фактический coverage ~82% без vendor.
-        # Если упадёт ниже 80% — это сигнал, что что-то сломалось.
-        # Поднимем до 80% после закрытия (типизация до 95%+).
+        # Coverage gate. --cov-fail-under=85 — повышен с 80% после
+        # покрытия Rich-рендеров commands.py и rules_info.py.
+        # Фактический coverage ~86% без vendor.
+        # Industry-пол для static-analysis tools: ~85% (Clang static
+        # analyzer, GCC, pylint). Следующий target — 90% (mypy/ESLint/
+        # TypeScript norm), отдельными PR на каждый файл.
         #
         # Python 3.14 (experimental) — continue-on-error: не блокирует PR.
         # 3.14 beta может ломать deps (pydantic C extensions, pygls).
         # Когда 3.14 stable — убрать continue-on-error.
         continue-on-error: ${{ matrix.experimental || false }}
-        run: pytest tests/ --cov=senpy --cov-fail-under=80 --tb=short
+        run: pytest tests/ --cov=senpy --cov-fail-under=85 --tb=short
 
       - name: Upload coverage (Ubuntu + Python 3.12 only)
         # Upload to codecov.io — для public repos tokenless upload работает
