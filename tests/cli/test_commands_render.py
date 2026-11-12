@@ -135,7 +135,15 @@ class TestHandleInitCi:
         rc = handle_init_ci(_args(path=str(tmp_path)), console, is_tsundere=False)
         assert rc is None
 
-    def test_creates_workflow_and_prints_path(self, tmp_path: Path) -> None:
+    def test_creates_workflow_and_prints_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # handle_init_ci calls os.path.relpath(out_path, os.getcwd()) —
+        # on Windows CI the tmp_path (C:\Users\...\Temp) and the repo
+        # checkout (D:\a\...) are on different drives, and relpath raises
+        # ValueError: path is on mount 'C:', start on mount 'D:'. chdir
+        # to tmp_path so both are on the same drive.
+        monkeypatch.chdir(tmp_path)
         console, buf = _capturing_console()
         args = _args(init_ci=True, path=str(tmp_path))
         rc = handle_init_ci(args, console, is_tsundere=False)
@@ -146,7 +154,9 @@ class TestHandleInitCi:
         workflows = list((tmp_path / ".github" / "workflows").glob("*.yml"))
         assert workflows, "init_ci should create at least one workflow file"
 
-    def test_tsundere_branch(self, tmp_path: Path) -> None:
+    def test_tsundere_branch(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Same cross-mount relpath issue as test_creates_workflow_and_prints_path.
+        monkeypatch.chdir(tmp_path)
         console, buf = _capturing_console()
         args = _args(init_ci=True, path=str(tmp_path))
         rc = handle_init_ci(args, console, is_tsundere=True)
@@ -464,9 +474,12 @@ class TestHandleStubs:
         rc = handle_stubs(_args(path=str(tmp_path)), analyzer, console, is_tsundere=False)
         assert rc is None
 
-    def test_generates_stubs(self, tmp_path: Path) -> None:
+    def test_generates_stubs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         from senpy.core.analyzer import SenpyAnalyzer
 
+        # handle_stubs calls os.path.relpath(out_dir, os.getcwd()) —
+        # cross-mount Windows CI fails with ValueError. chdir to tmp_path.
+        monkeypatch.chdir(tmp_path)
         _write_min_project(tmp_path)
         analyzer = SenpyAnalyzer(str(tmp_path), no_cache=True)
         analyzer.run(quiet=True)
