@@ -21,9 +21,21 @@ def test_same_dir_returns_dot() -> None:
     assert _relpath_to_cwd(os.getcwd()) == "."
 
 
-def test_subdir_returns_relative(tmp_path: Path) -> None:
-    """A path on the same mount as cwd yields a relative path."""
-    result = _relpath_to_cwd(str(tmp_path))
+def test_subdir_returns_relative(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A subdir of cwd yields a relative path.
+
+    On Windows CI the default ``tmp_path`` (``C:\\Users\\...\\Temp``) is
+    on a different drive than the repo checkout (``D:\\a\\...``), so
+    ``os.path.relpath`` raises ``ValueError`` and the helper falls back
+    to the absolute path — which is correct production behaviour but
+    not what this test asserts. ``chdir`` to ``tmp_path`` first so both
+    the cwd and the test path are on the same drive / mount, then the
+    subdir case genuinely yields a relative path on every platform.
+    """
+    monkeypatch.chdir(tmp_path)
+    sub = tmp_path / "subdir"
+    sub.mkdir()
+    result = _relpath_to_cwd(str(sub))
     assert not os.path.isabs(result), f"expected relative path, got absolute: {result!r}"
 
 
