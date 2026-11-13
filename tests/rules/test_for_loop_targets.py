@@ -179,9 +179,9 @@ class TestScreenForTupleUnpacking:
             for d in a.diagnostics
             if d.code == "RPY202" and ("first" in d.message or "rest" in d.message)
         ]
-        assert not rpy202, (
-            f"RPY202 fired on star-unpacked for-loop target. Got: " f"{[d.message for d in rpy202]}"
-        )
+        assert (
+            not rpy202
+        ), f"RPY202 fired on star-unpacked for-loop target. Got: {[d.message for d in rpy202]}"
 
 
 # =============================================================================

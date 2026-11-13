@@ -36,11 +36,11 @@ from senpy.api import Diagnostic, analyze_code
 # Triggers RPY101 (undeclared [unknown_var] in dialogue, default ERROR)
 # AND RPY302 (jump to non-existent label, default ERROR).
 _CODE_RPY101_AND_302 = (
-    "label start:\n" '    "Hello, [unknown_var]!"\n' "    jump nonexistent\n" "    return\n"
+    'label start:\n    "Hello, [unknown_var]!"\n    jump nonexistent\n    return\n'
 )
 
 # Triggers RPY104 ($ affection = 5 without top-level default, default WARNING).
-_CODE_RPY104 = "label chapter_2:\n" "    $ affection = 5\n" "    return\n"
+_CODE_RPY104 = "label chapter_2:\n    $ affection = 5\n    return\n"
 
 
 # =============================================================================
@@ -135,9 +135,7 @@ class TestAnalyzeCodeConfigParam:
         """
         # Screen accessing iap.is_available — iap is a third-party Ren'Py
         # namespace (in-app purchases), NOT in the default BUILTIN_SYMBOLS.
-        code = (
-            "screen iap_status():\n" "    if iap.is_available:\n" '        text "IAP available"\n'
-        )
+        code = 'screen iap_status():\n    if iap.is_available:\n        text "IAP available"\n'
         # Without additional_builtins: RPY202 should fire on `iap`.
         result_without = analyze_code(code, config=None)
         codes_without = {d.code for d in result_without}
@@ -148,9 +146,9 @@ class TestAnalyzeCodeConfigParam:
         # With additional_builtins=["iap"]: RPY202 should be silenced.
         result_with = analyze_code(code, config={"additional_builtins": ["iap"]})
         codes_with = {d.code for d in result_with}
-        assert "RPY202" not in codes_with, (
-            f"RPY202 should be silenced by additional_builtins=['iap'], " f"got codes: {codes_with}"
-        )
+        assert (
+            "RPY202" not in codes_with
+        ), f"RPY202 should be silenced by additional_builtins=['iap'], got codes: {codes_with}"
 
     # ------------------------------------------------------------------
     # Robustness — invalid input, unknown fields

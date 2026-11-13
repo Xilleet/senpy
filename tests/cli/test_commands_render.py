@@ -54,7 +54,7 @@ def _write_min_project(tmp_path: Path) -> Path:
     game = tmp_path / "game"
     game.mkdir(parents=True, exist_ok=True)
     (game / "script.rpy").write_text(
-        "label start:\n" '    "Hello, world."\n' "    return\n",
+        'label start:\n    "Hello, world."\n    return\n',
         encoding="utf-8",
     )
     return tmp_path

@@ -1,2 +1,1 @@
-"""Package marker. Empty by design — enables `--import-mode=importlib`.
-"""
+"""Package marker. Empty by design — enables `--import-mode=importlib`."""

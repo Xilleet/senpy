@@ -440,9 +440,9 @@ class TestDidChangeAndDidSaveOverlap:
 
         # Both workers run — they use different generation counters,
         # so neither is "stale" with respect to the other.
-        assert len(ls.published) >= 1, (
-            "Expected at least 1 publishDiagnostics call from change " "or full worker"
-        )
+        assert (
+            len(ls.published) >= 1
+        ), "Expected at least 1 publishDiagnostics call from change or full worker"
 
         # All publishes should be for our URI (or for URIs that the full
         # scan picked up — at minimum, our URI must be covered).

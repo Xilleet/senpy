@@ -58,7 +58,7 @@ class TestRPY103Deduplication:
         project = tmp_path / "game"
         project.mkdir()
         (project / "script.rpy").write_text(
-            "label start:\n" "    if undefined_var_a and undefined_var_b:\n" "        pass\n",
+            "label start:\n    if undefined_var_a and undefined_var_b:\n        pass\n",
             encoding="utf-8",
         )
         a = SenpyAnalyzer(str(tmp_path))

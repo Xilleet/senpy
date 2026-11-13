@@ -102,9 +102,7 @@ class TestRPY1xxVariables:
     def test_rpy106_from_random_import(self):
         """``from random import ...`` in ``init python:`` triggers RPY106
         (non-deterministic RNG breaks rollback / saves)."""
-        code = (
-            "init python:\n" "    from random import randint\n" "\n" "label start:\n" "    return\n"
-        )
+        code = "init python:\n    from random import randint\n\nlabel start:\n    return\n"
         codes = _codes(analyze_code(code))
         assert "RPY106" in codes, f"Expected RPY106 in {codes}"
 
@@ -137,7 +135,7 @@ class TestRPY3xxDialogue:
 
     def test_rpy305_unescaped_quotes_in_dialogue(self):
         """Dialogue with unescaped inner double quotes triggers RPY305."""
-        code = "label start:\n" '    "She said \\"Hi\\" and smiled."\n' "    return\n"
+        code = 'label start:\n    "She said \\"Hi\\" and smiled."\n    return\n'
         # Note: the bad fixture for RPY305 uses unescaped quotes that break
         # Ren'Py's parser. The exact pattern is dialogue containing a `"`
         # that closes the string early. We construct it carefully here.
@@ -164,7 +162,7 @@ class TestRPY4xxBranching:
 
     def test_rpy403_always_false_if_False(self):
         """``if False:`` triggers RPY403 (always-False condition)."""
-        code = "label start:\n" "    if False:\n" '        "Dead code"\n' "    return\n"
+        code = 'label start:\n    if False:\n        "Dead code"\n    return\n'
         codes = _codes(analyze_code(code))
         assert "RPY403" in codes, f"Expected RPY403 in {codes}"
 
@@ -227,7 +225,7 @@ class TestRPY5xxAssets:
     def test_rpy501_missing_audio_file(self):
         """``play music "missing.ogg"`` triggers RPY501 when the file
         does not exist in ``game/audio/``."""
-        code = "label start:\n" '    play music "bgm/missing_track.ogg"\n' "    return\n"
+        code = 'label start:\n    play music "bgm/missing_track.ogg"\n    return\n'
         codes = _codes(analyze_code(code))
         assert "RPY501" in codes, f"Expected RPY501 in {codes}"
 
@@ -269,7 +267,7 @@ class TestRPY7xxDeadCode:
         canonical fixture (which uses mixed types — only the non-string
         unused defines fire RPY701 there).
         """
-        code = "define unused_setting = 42\n" "label start:\n" "    return\n"
+        code = "define unused_setting = 42\nlabel start:\n    return\n"
         codes = _codes(analyze_code(code))
         assert "RPY701" in codes, f"Expected RPY701 in {codes}"
 
@@ -285,10 +283,7 @@ class TestCleanCode:
     def test_clean_minimal_script(self):
         """A minimal valid script: one label, one dialogue line, return."""
         code = (
-            'default player_name = "Hero"\n'
-            "label start:\n"
-            '    "Hello, [player_name]!"\n'
-            "    return\n"
+            'default player_name = "Hero"\nlabel start:\n    "Hello, [player_name]!"\n    return\n'
         )
         result = analyze_code(code)
         assert result == [], f"Clean code should produce no diagnostics, got: {result}"

@@ -221,10 +221,7 @@ class TestConfigExtensionEndToEnd:
         game = tmp_path / "game"
         game.mkdir()
         (game / "script.rpy").write_text(
-            "screen store():\n"
-            '    text f"Purchases: {iap.total}"\n'
-            "label start:\n"
-            '    "Hello"\n',
+            'screen store():\n    text f"Purchases: {iap.total}"\nlabel start:\n    "Hello"\n',
             encoding="utf-8",
         )
         a = SenpyAnalyzer(str(tmp_path))
