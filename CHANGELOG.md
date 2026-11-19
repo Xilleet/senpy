@@ -152,6 +152,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ``DeprecationWarning`` from ``fork()`` in multi-threaded parents
   (pytest with plugins is multi-threaded).
 
+- **`CONTRIBUTING.md` full audit and rewrite.** The file had
+  drifted significantly from reality since 0.6.x. Specific divergences
+  fixed:
+  - **Fixture coverage table removed.** The old table listed 10 rules
+    (RPY201/202/203/205/301/401/403/404/502/505) as "missing" or
+    "partial" — but all 10 (and all 52 user-facing rules total) have
+    complete `bad_*.rpy` + `bad_*.json` + `good_*.rpy` triples since
+    0.7.6. The table was misleading potential contributors into
+    thinking the highest-value contribution was adding fixtures that
+    already exist.
+  - **Project layout rewritten.** The old layout listed `cli/main.py`
+    as "1163 lines, god-module" (actually 103 lines — the god-module
+    was split into 9 modules in 0.5.x/0.6.x/0.7.x) and
+    `core/analyzer.py` as "1817 lines, god-module" (actually 749 —
+    split into `analysis_pipeline.py` / `file_collector.py` /
+    `symbol_table.py` / etc. in 0.8.0). All ~30 missing files added
+    (renpy_builtins.py, type_inference.py, audit.py, autoload.py,
+    `_shared.py`, `asset_hover.py`, the 6 split navigation handlers,
+    `gitlab.py`/`rdjson.py`/`inspect.py` formats, `paths.py`/
+    `progress.py`/`protocols.py`/`exceptions.py` in core, etc.).
+  - **Rule registration instructions corrected.** The old instructions
+    said to edit `senpy/core/models.py` `RULE_SEVERITY` dict directly —
+    but `RULE_SEVERITY` is derived from `RULES_DATABASE` in
+    `senpy/rules/rules_info.py` at import time. Now the instructions
+    correctly point to `RULES_DATABASE` as the single source of truth.
+  - **Checker pattern updated from function to class.** The old example
+    showed a function-based `def check_line(line, line_no, ...)` —
+    but actual checkers are classes inheriting from `BaseChecker` with
+    a `check_line(self, file_path, idx, next_idx, raw_line, clean_line,
+    scope_stack, noqa_map, lines)` method returning
+    `tuple[int, bool]`. The new example matches `DeadCodeChecker` /
+    `StateChecker` / etc.
+  - **Test count updated** from "700+" to "~2200" (actually 2205 as of
+    this writing).
+  - **"How to add a new lint rule"** now opens with a feature-freeze
+    notice: new core rules (RPY0xx–RPY8xx) are not accepted until 1.0,
+    write a plugin instead. Same for the formatter section.
+  - **New section: "How to add a new fixture".** Even during the freeze,
+    new edge-case fixtures for existing rules are welcome. The new
+    section walks through the fixture triple format, the auto-discovery
+    harness, and the `.json` schema (correcting the old example which
+    used `"line"` without documenting that `message_fragment` is the
+    required substring-match field).
+  - **Good first issues rewritten.** The old section had only 4 items
+    (rules fixtures / doc typos / examples / plugins), with the
+    fixtures item being obsolete. The new section has 7 items, each
+    scoped to the freeze:
+    1. **Report a false positive** (no code required) — points to the
+       `false_positive.yml` issue template, the highest-value
+       contribution for a static analyzer.
+    2. **Doc typo / clarity fixes** — with a list of 5 known stale
+       claims in README.md (DOC-2 territory, but contributors can fix
+       them as one-off PRs without waiting for the maintainer's 0.9.2
+       release).
+    3. **New example .rpy files** — `rules_demo.rpy`,
+       `format_before/after.rpy`, and 3 concrete plugin candidates
+       (MP3 detector, untranslated string detector, label naming
+       convention enforcer).
+    4. **New fixture edge cases** — a table of 9 specific edge cases
+       not yet covered by existing fixtures (deeply nested tuple
+       unpacking for RPY103, file handle for RPY106, type taint through
+       if/else for RPY108, etc.).
+    5. **Translations** — README is English + Russian; Japanese / Chinese
+       / Korean / Spanish / Portuguese / French / German translations
+       are explicitly invited, with a language-switcher link convention.
+    6. **Corpus contributions** — pointing at the 0.9.3 roadmap task:
+       users can propose real OSS VN projects (Katawa Shoujo, Everlasting
+       Summer, Monika After Story, etc.) for inclusion in the FP
+       regression corpus.
+    7. **VS Code extension features** (TypeScript) — status bar
+       diagnostic counter, "Format with senpy" context menu command,
+       QuickFix preview webview, "Save story graph as PNG" button. The
+       extension is not under the same freeze as the Python core.
+  - **"Status: feature freeze → 1.0" section added at the top**,
+    explicitly listing what IS accepted (bugfixes / security / docs /
+    new fixtures / new plugins / new example .rpy files / translations)
+    and what is deferred (new core rules / new output formats /
+    formatter extensions / sandbox R&D / non-VS Code editor clients).
+  - **Release process updated** to mention the new `cache-stress` CI
+    job (R-P0-8) and `bump_version.py` (the single-source-of-truth
+    version bumper that propagates to `pyproject.toml` +
+    `senpy-vscode/package.json`).
+  - **PR checklist** adds the `sync_rule_count.py --check` step that CI
+    runs — contributors who add a rule must sync the doc rule count.
+
+  The new CONTRIBUTING.md is ~660 lines, but the structure
+  is clearer: 11 top-level sections, with the new
+  "How to add a new fixture" section making it explicit that fixtures
+  are the most valuable code contribution during the freeze.
+
 ---
 
 <a id="090"></a>
