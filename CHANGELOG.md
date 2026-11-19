@@ -74,6 +74,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   present-tense.** Now documents the activated behaviour, the
   advisory nature (audit does not block loading), and the first-load-only optimisation.
 
+- **Branch-clear (MAYBE_SET propagation through nested menu).**
+  When a ``menu:`` choice body contained a NESTED ``menu:``, the
+  recursive ``analyze_menu_flow`` call in ``flow.py:_analyze_choice_body``
+  did NOT receive the parent's ``already_guaranteed`` set — the set of
+  variables that were guaranteed-set BEFORE the OUTER menu started
+  (e.g. ``$ score = 0`` immediately above the parent ``menu:``).
+  Without forwarding, the inner menu re-discovered pre-block variables
+  as MAYBE_SET in branches where they were not re-assigned, producing
+  a false-positive RPY404 ("Variable 'score' may be uninitialized
+  (MAYBE_SET) if player took choice 'Shallow' on line N") that blamed
+  the inner "Skip" branch for a "missing" assignment — even though
+  ``score`` was guaranteed-set on every code path through both menus.
+
+  Fix: ``_parse_menu_choices``, ``_analyze_choice_body``, and the
+  recursive ``analyze_menu_flow`` call inside ``_analyze_choice_body``
+  now all accept and forward ``already_guaranteed``. The parent's
+  pre-block guaranteed-set variables propagate to nested menus so the
+  inner ``merge_flow_branches`` correctly excludes them from the
+  MAYBE_SET set.
+
+  Only pre-block variables propagate down (variables set ABOVE the
+  outer menu). Variables assigned INSIDE the parent's choice body are
+  NOT forwarded as ``already_guaranteed`` — they are local to that
+  branch and the inner menu must independently decide whether they
+  remain guaranteed after the inner block.
+
+  Coverage: ``tests/rules/test_branch_clear_nested_menu.py`` (8 new
+  tests, RED → GREEN via TDD) covers: nested menu with pre-declared
+  var (no false RPY404), counter-case (truly uninit var still
+  detected), three-level nested menu, if-inside-menu (regression
+  guard), menu-inside-if (regression guard), ``default``-then-nested
+  menu, and unit-level characterization on ``merge_flow_branches``
+  with ``already_guaranteed``. Existing characterization tests in
+  ``test_merge_flow_branches_characterization.py`` (29 tests) and
+  ``test_state_propagation.py`` (2 tests) continue to pass unchanged.
+
 ---
 
 <a id="090"></a>

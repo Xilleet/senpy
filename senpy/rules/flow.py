@@ -389,11 +389,18 @@ class StoryFlowAnalyzer:
         menu_indent: int,
         file_path: str,
         noqa_map: dict,
+        already_guaranteed: set[str] | None = None,
     ) -> tuple[int, list[FlowBranch], dict[str, tuple[str, ...]]]:
         """Parses choices from a menu block. Returns (idx, choices, uninitialized_vars).
 
         Extracted from analyze_menu_flow in Phase 4 Step 2 (0.5.7).
         Choice-detection + empty-check helpers further split out.
+
+        ``already_guaranteed`` is forwarded to
+        ``_analyze_choice_body`` so that nested ``menu:`` blocks inside
+        a choice body inherit the parent's pre-block guaranteed-set
+        variables. See ``_analyze_choice_body`` docstring for the full
+        rationale.
         """
         from senpy.text_utils import _strip_comment
 
@@ -455,6 +462,7 @@ class StoryFlowAnalyzer:
                     uninitialized_vars,
                     file_path,
                     noqa_map,
+                    already_guaranteed=already_guaranteed,
                 )
                 continue
 
@@ -516,10 +524,32 @@ class StoryFlowAnalyzer:
         uninitialized_vars: dict[str, tuple[str, ...]],
         file_path: str,
         noqa_map: dict,
+        already_guaranteed: set[str] | None = None,
     ) -> tuple[int, FlowBranch, dict[str, tuple[str, ...]]]:
         """Analyzes a choice body (nested menu, jump, $). Returns (idx, choice, uninit).
 
         Extracted from analyze_menu_flow in Phase 4 Step 2 (0.5.7).
+
+        ``already_guaranteed`` is the set of variables that were
+        guaranteed-set BEFORE the OUTER menu started (e.g. ``$ score = 0``
+        immediately above the parent ``menu:``). When a choice body
+        contains a NESTED ``menu:``, this set MUST be forwarded to the
+        recursive ``analyze_menu_flow`` call so the inner menu also
+        excludes pre-block variables from its MAYBE_SET computation.
+        Without forwarding, a variable declared above the outer menu
+        would be re-discovered as MAYBE_SET by the inner menu in
+        branches where it is not re-assigned — producing a false-positive
+        RPY404 that blames the inner "Skip" branch for a "missing"
+        assignment, even though the variable was guaranteed-set on every
+        code path through both menus.
+
+        The outer menu's own ``defined_vars`` (collected via
+        ``current_choice.defined_vars.update(...)`` below) are NOT
+        forwarded as ``already_guaranteed`` to the inner menu — they
+        are local to this branch and the inner menu must independently
+        decide whether they remain guaranteed after the inner block.
+        Only the parent's already_guaranteed (variables set BEFORE the
+        parent block started) propagates down.
         """
         from senpy.core.constants import RE_MENU_START
 
@@ -530,6 +560,7 @@ class StoryFlowAnalyzer:
                 line_indent,
                 file_path=file_path,
                 noqa_map=noqa_map,
+                already_guaranteed=already_guaranteed,
             )
             current_choice.defined_vars.update(sub_guaranteed)
             uninitialized_vars.update(sub_uninit)
@@ -665,11 +696,22 @@ class StoryFlowAnalyzer:
         These are excluded from RPY401 asymmetry diagnostics — they are not
         "missing in branch X", they were initialised above the menu and remain
         guaranteed on every code path through the menu.
+
+        ``already_guaranteed`` is ALSO forwarded to
+        ``_parse_menu_choices`` so that NESTED ``menu:`` blocks inside
+        choice bodies inherit the parent's pre-block guaranteed-set
+        variables. Without this forwarding, the inner menu re-discovers
+        pre-block variables as MAYBE_SET — a false-positive RPY404.
         """
         noqa_map = noqa_map or {}
 
         idx, choices, uninitialized_vars = self._parse_menu_choices(
-            lines, start_idx, menu_indent, file_path, noqa_map
+            lines,
+            start_idx,
+            menu_indent,
+            file_path,
+            noqa_map,
+            already_guaranteed=already_guaranteed,
         )
 
         guaranteed_vars, merged_uninit, all_terminates = self._merge_menu_branches(
