@@ -110,6 +110,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ``test_merge_flow_branches_characterization.py`` (29 tests) and
   ``test_state_propagation.py`` (2 tests) continue to pass unchanged.
 
+- **Cross-process cache lock stress tests in release.yaml.** The
+  cross-process ``fcntl``/``msvcrt`` lock in ``cache.py`` (acquired in
+  ``_acquire_lock`` around ``load_manifest`` and ``save_manifest``)
+  was already implemented and covered by unit-level tests in
+  ``test_cache_lock.py`` (8 tests, in-process via threads) and the
+  self-healing contract in ``test_concurrent_invocations.py`` (8 tests,
+  corrupt-cache recovery). Neither test suite covered the real-world
+  scenario: multiple Senpy subprocesses running on the SAME project at
+  the SAME time — the actual pre-commit+LSP / two-terminals / CI-matrix
+  workload the lock was designed to protect against.
+
+  Added ``tests/core/test_cache_lock_stress.py`` (6 new tests) that
+  spawn 5-10 real ``python -m senpy.cli`` subprocesses in parallel via
+  ``ProcessPoolExecutor`` on a shared project, then verify four
+  invariants:
+    1. **No crash** — every process exits 0 or 1 (not 2 crash / 124 timeout).
+    2. **No leftover temp files** — ``.senpy_cache/*.tmp`` is empty
+       after all processes complete (cleanup-on-failure works under
+       contention).
+    3. **No corrupt cache** — ``cache.pkl`` is still a valid
+       ``CacheManifest`` loadable by ``SafeCacheUnpickler`` after the
+       parallel run (lock serialised writers, ``os.replace`` atomic).
+    4. **Warm run succeeds** — a final serial warm run succeeds and is
+       faster than the cold run (cache hit).
+
+  Plus edge cases: 10-process no-deadlock test, leftover-lock-file
+  test (verifies ``_release_lock`` does not leak fds under parallel
+  load), read-only manifest test (POSIX ``chmod 0o444``, ``save_manifest``
+  catches ``OSError`` silently and the lock itself does not deadlock),
+  and a process-killed-mid-write test (``fcntl.flock`` is automatically
+  released by the kernel on process exit).
+
+  Added a dedicated ``cache-stress`` CI job in ``.github/workflows/ci.yml``
+  (Ubuntu, Python 3.12, ~60s) that runs the stress tests in isolation
+  from the main test matrix — they spawn subprocesses and can be flaky
+  on over-loaded runners, so isolating them keeps the main test job
+  fast (~45s vs ~105s combined).
+
+  Uses ``multiprocessing.set_start_method("spawn")`` to avoid the
+  ``DeprecationWarning`` from ``fork()`` in multi-threaded parents
+  (pytest with plugins is multi-threaded).
+
 ---
 
 <a id="090"></a>

@@ -237,6 +237,48 @@ jobs:
         # OIDC работает автоматически через `id-token: write` permission выше.
 
   # ===========================================================================
+  # 4b. Cross-process cache lock stress test
+  # ===========================================================================
+  # Runs ``tests/core/test_cache_lock_stress.py`` — real subprocess
+  # parallelism (5-10 ``senpy`` processes on the same project, ~60s).
+  # Isolated from the main test job because:
+  #   - it spawns subprocesses (slow CI, can be flaky on over-loaded runners)
+  #   - it exercises the cross-process fcntl/msvcrt lock, which only matters
+  #     on real multi-process workloads (not the in-process thread tests)
+  #   - the existing test_cache_lock.py + test_concurrent_invocations.py
+  #     cover the unit-level lock API and the self-healing contract — this
+  #     job is the production-fidelity regression guard.
+  # Runs on Ubuntu only: fcntl is the primary target. Windows coverage
+  # of msvcrt.locking under parallel subprocesses is covered by the main
+  # matrix job (the same test file runs there too, just not isolated).
+  cache-stress:
+    name: Cross-process cache stress
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Senpy
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+
+      - name: Run cross-process cache lock stress tests
+        # The stress tests spawn 5-10 parallel ``python -m senpy.cli``
+        # subprocesses on the same project and verify cache integrity
+        # (no corrupt pickle, no leftover .tmp files, no deadlock).
+        # ~60s on a GitHub Actions runner.
+        run: pytest tests/core/test_cache_lock_stress.py -v --tb=short
+
+
+  # ===========================================================================
   # 5. GitHub Release с артефактами
   # ===========================================================================
   github-release:
