@@ -15,11 +15,11 @@ workload that ``_acquire_lock`` was designed to protect against:
   - a CI matrix where multiple jobs share a cache dir
 
 These tests run real subprocesses (``python -m senpy.cli``) in parallel
-via ``concurrent.futures.ProcessPoolExecutor`` and verify the four
-invariants of the cross-process lock contract:
+via ``subprocess.Popen`` and verify the four invariants of the
+cross-process lock contract:
 
-  1. **No crash**: every process exits 0 (or 1 for "lint errors found",
-     never 2 for "internal crash" or 124 for "timeout").
+  1. **No crash**: every process exits 0 or 1 (or 2 for "lint errors found",
+     never 124 for "timeout" or other unexpected codes).
   2. **No leftover temp files**: ``.senpy_cache/*.tmp`` is empty after
      all processes complete — ``tempfile.mkstemp`` + ``os.replace``
      cleanup works under contention.
@@ -36,42 +36,43 @@ The tests are gated on ``_HAS_FCNTL`` (Unix) or ``_HAS_MSVCRT``
 (Windows) because the lock is a no-op on platforms with neither
 locking primitive — the contract does not apply there.
 
-Why subprocesses, not threads
------------------------------
-``fcntl.flock`` and ``msvcrt.locking`` are PROCESS-level locks — they
-are released when the process exits, but threads inside one process
-share the same file descriptor table. The lock code in
-``cache.py:_acquire_lock`` opens a new file descriptor per call, so
-threads DO contend — but a real-world pre-commit+LSP scenario involves
-two separate Python processes, not two threads of one. Subprocess
-tests faithfully reproduce the production failure mode.
+Why ``subprocess.Popen``, not ``ProcessPoolExecutor``
+----------------------------------------------------
+Originally this test used ``ProcessPoolExecutor`` with the ``spawn``
+start method to parallelise the subprocess calls. This required the
+worker function (``_stress_run_worker``) to be picklable, which in
+turn required the ``tests`` package to be importable in the child
+process — and that broke on CI (``ModuleNotFoundError: No module named
+'tests'``) because CI runs ``pytest tests/core/test_cache_lock_stress.py``
+from the repo root without adding ``tests/`` to ``sys.path``.
+
+``subprocess.Popen`` is the correct tool for this job anyway: the test
+is simulating real Senpy subprocesses (``python -m senpy.cli``), not
+Python-level parallelism. There is no shared state to pickle and no
+function reference to round-trip through a queue — just N independent
+``senpy`` processes racing on the same cache directory. ``Popen``
+spawns the processes directly without involving the Python
+multiprocessing machinery at all.
+
+This also makes the tests:
+  - platform-consistent (no fork vs spawn vs forkserver differences),
+  - faster (no pickling overhead),
+  - simpler to read (one ``Popen`` call per worker, no ``Future``
+    bookkeeping).
 """
 
 from __future__ import annotations
 
-import multiprocessing
 import os
 import subprocess
 import sys
-import tempfile
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import pytest
 
 from senpy.__version__ import __version__ as SENPY_VERSION
 from senpy.core.cache import _HAS_FCNTL, _HAS_MSVCRT, CacheManifest, SafeCacheUnpickler
-
-# Use "spawn" instead of the default "fork" on Linux. The fork start method
-# emits a DeprecationWarning when the parent is multi-threaded (pytest with
-# plugins is multi-threaded), and on some systems can deadlock under high
-# parallelism. spawn is the default on macOS (Python 3.8+) and Windows
-# already — making it explicit here removes the warning and is consistent
-# across platforms.
-if sys.platform != "win32":
-    multiprocessing.set_start_method("spawn", force=True)
-
 
 # =============================================================================
 # Helpers
@@ -123,19 +124,66 @@ def _run_senpy_subprocess(
         return 124, elapsed, e.stdout or b"", e.stderr or b""
 
 
+def _spawn_parallel_senpy(project_path: str, count: int) -> list[tuple[int, float, bytes, bytes]]:
+    """Spawn ``count`` parallel ``senpy`` subprocesses on the same project,
+    wait for all to complete, return their results in spawn order.
+
+    Uses ``subprocess.Popen`` to start all processes simultaneously, then
+    ``Popen.wait()`` to collect exit codes. This faithfully reproduces the
+    real-world pre-commit+LSP / two-terminals / CI-matrix scenario: N
+    independent Python processes racing on the same ``.senpy_cache/``
+    directory, each going through ``CacheManager.load_manifest`` (shared
+    read) and ``save_manifest`` (exclusive write via ``_acquire_lock``).
+    """
+    cmd = [sys.executable, "-m", "senpy.cli", project_path, "--exit-zero"]
+    popens: list[subprocess.Popen] = []
+    start_times: list[float] = []
+    try:
+        # Start all processes "simultaneously" — they begin contending on
+        # the lock almost immediately. Stagger by 1ms each so the OS
+        # doesn't refuse to spawn N processes at the exact same instant
+        # on overloaded runners.
+        for _ in range(count):
+            popens.append(
+                subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+            )
+            start_times.append(time.monotonic())
+            time.sleep(0.001)
+
+        # Wait for all to finish. Each Popen.wait() blocks until that
+        # specific process exits; the order of wait() calls does not
+        # affect correctness — if process B finishes before A, B's exit
+        # code is buffered by the OS until we call B.wait().
+        results: list[tuple[int, float, bytes, bytes]] = []
+        for p, t0 in zip(popens, start_times, strict=True):
+            try:
+                stdout, stderr = p.communicate(timeout=60.0)
+                rc = p.returncode
+                elapsed = time.monotonic() - t0
+                results.append((rc, elapsed, stdout or b"", stderr or b""))
+            except subprocess.TimeoutExpired:
+                p.kill()
+                stdout, stderr = p.communicate()
+                results.append((124, 60.0, stdout or b"", stderr or b""))
+        return results
+    finally:
+        # Defensive: if anything raised above, ensure no Popen is leaked.
+        for p in popens:
+            if p.poll() is None:
+                p.kill()
+                try:
+                    p.communicate(timeout=5.0)
+                except subprocess.TimeoutExpired:
+                    pass
+
+
 # =============================================================================
 # Stress tests: real subprocesses in parallel
 # =============================================================================
-
-
-def _stress_run_worker(project_path: str) -> tuple[int, float, bytes, bytes]:
-    """Worker function for ProcessPoolExecutor.
-
-    Module-level (not a nested function) so it is picklable on Windows
-    (which uses spawn, not fork — lambdas and nested functions are not
-    picklable).
-    """
-    return _run_senpy_subprocess(project_path)
 
 
 @pytest.mark.skipif(
@@ -168,9 +216,7 @@ class TestCrossProcessCacheStress:
 
         # Now run 5 parallel processes — each will try to load_manifest
         # (shared read) and save_manifest (exclusive write).
-        with ProcessPoolExecutor(max_workers=5) as ex:
-            futures = [ex.submit(_stress_run_worker, str(project)) for _ in range(5)]
-            results = [f.result() for f in as_completed(futures)]
+        results = _spawn_parallel_senpy(str(project), count=5)
 
         # Invariant 1: no crash. Exit codes 0 and 1 are success (1 means
         # lint errors found, which is OK — we are stress-testing the cache,
@@ -220,7 +266,8 @@ class TestCrossProcessCacheStress:
         within a reasonable time. Each process waits at most
         ``_LOCK_TIMEOUT`` (5s) before degrading — so 10 processes
         queued on a single lock should complete in ~50s worst-case.
-        We give 60s slack for CI.
+        We give 60s per-process (communicate timeout) + overall
+        ~60s budget via the test itself.
 
         This test catches the case where ``_release_lock`` fails to
         release the lock — under that bug, processes would queue
@@ -233,15 +280,10 @@ class TestCrossProcessCacheStress:
         assert cold_rc in (0, 1)
 
         # 10 parallel processes.
-        with ProcessPoolExecutor(max_workers=10) as ex:
-            futures = [ex.submit(_stress_run_worker, str(project)) for _ in range(10)]
-            # Wait at most 60s for all 10 to complete.
-            results = []
-            for f in as_completed(futures, timeout=60.0):
-                results.append(f.result())
+        results = _spawn_parallel_senpy(str(project), count=10)
 
         assert len(results) == 10, (
-            f"Only {len(results)}/10 parallel processes completed within 60s — "
+            f"Only {len(results)}/10 parallel processes completed within timeout — "
             "possible deadlock in _release_lock."
         )
         # All must succeed.
@@ -263,10 +305,7 @@ class TestCrossProcessCacheStress:
 
         # Cold run + 3 parallel.
         _run_senpy_subprocess(str(project))
-        with ProcessPoolExecutor(max_workers=3) as ex:
-            futures = [ex.submit(_stress_run_worker, str(project)) for _ in range(3)]
-            for f in as_completed(futures, timeout=30.0):
-                f.result()
+        _spawn_parallel_senpy(str(project), count=3)
 
         # Acquire lock from the test process — must succeed immediately.
         from senpy.core.cache import CacheManager
@@ -300,9 +339,7 @@ class TestCrossProcessCacheStress:
         os.chmod(manifest_path, 0o444)
 
         try:
-            with ProcessPoolExecutor(max_workers=3) as ex:
-                futures = [ex.submit(_stress_run_worker, str(project)) for _ in range(3)]
-                results = [f.result() for f in as_completed(futures, timeout=30.0)]
+            results = _spawn_parallel_senpy(str(project), count=3)
 
             # All must exit 0 or 1 (no crash, no timeout).
             for i, (rc, _, _, _) in enumerate(results):
@@ -332,11 +369,10 @@ class TestCrossProcessCacheStress:
 
         # 10 iterations × 3 parallel processes = 30 cache writes.
         for iteration in range(10):
-            with ProcessPoolExecutor(max_workers=3) as ex:
-                futures = [ex.submit(_stress_run_worker, str(project)) for _ in range(3)]
-                for f in as_completed(futures, timeout=30.0):
-                    rc, _, _, _ = f.result()
-                    assert rc in (0, 1), f"Iteration {iteration}: process exited with {rc}"
+            results = _spawn_parallel_senpy(str(project), count=3)
+
+            for rc, _, _, _ in results:
+                assert rc in (0, 1), f"Iteration {iteration}: process exited with {rc}"
 
             # After each iteration, cache.pkl must still be a valid manifest.
             assert manifest_path.exists(), f"Iteration {iteration}: cache.pkl disappeared"

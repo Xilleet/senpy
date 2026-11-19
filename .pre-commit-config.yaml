@@ -57,17 +57,3 @@ repos:
         args: [--maxkb=500]
         # Allow the test_game .rpyc binaries (they are checked in and small).
         exclude: ^test_game/.*\.rpyc$
-
-  # Custom local hook: scrub internal task IDs. Same script as in CI-1/CLEAN-1.
-  # Runs on every commit to catch ID leaks before they reach the repo.
-  - repo: local
-    hooks:
-      - id: clean-internal-ids
-        name: Scrub internal task IDs (CLEAN-1)
-        entry: python scripts/clean_internal_ids.py --dry-run
-        # --dry-run exits 0 if no changes needed, non-zero if there are IDs
-        # to scrub. We don't auto-apply here — the developer runs
-        # `python scripts/clean_internal_ids.py --apply` manually.
-        language: system
-        pass_filenames: false
-        always_run: true

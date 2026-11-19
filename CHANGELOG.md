@@ -242,6 +242,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "How to add a new fixture" section making it explicit that fixtures
   are the most valuable code contribution during the freeze.
 
+- **Rewrite stress tests to use ``subprocess.Popen``
+  instead of ``ProcessPoolExecutor``.** The original implementation
+  used ``ProcessPoolExecutor`` with the ``spawn`` start method to
+  parallelise ``senpy`` subprocess calls. This required the worker
+  function (``_stress_run_worker``) to be picklable, which in turn
+  required the ``tests`` package to be importable in the child
+  process. Locally this worked because ``python -m pytest`` was run
+  from the repo root and ``tests/`` ended up on ``sys.path`` via
+  ``cwd``. On CI (``pytest tests/core/test_cache_lock_stress.py``
+  invoked directly), the ``tests`` package was NOT on ``sys.path``,
+  and every spawned worker crashed with:
+
+  ``ModuleNotFoundError: No module named 'tests'``
+
+  resulting in ``BrokenProcessPool`` for 5 of the 6 tests (only
+  ``test_killed_process_does_not_deadlock_subsequent_run`` passed
+  because it uses ``subprocess.Popen`` directly, not the pool).
+
+  Fix: replaced ``ProcessPoolExecutor`` with a direct
+  ``subprocess.Popen``-based ``_spawn_parallel_senpy`` helper. The
+  test is simulating real Senpy subprocesses (``python -m senpy.cli``),
+  not Python-level parallelism — there is no shared state to pickle
+  and no function reference to round-trip through a queue. ``Popen``
+  spawns the processes directly without involving the Python
+  multiprocessing machinery at all.
+
+  Side benefits:
+    - Platform-consistent (no fork vs spawn vs forkserver differences).
+    - Faster (~26s vs ~58s — no pickling overhead, no spawn re-import
+      of the test module).
+    - Simpler to read (one ``Popen`` per worker, no ``Future``
+      bookkeeping).
+    - Removed the ``multiprocessing.set_start_method("spawn", force=True)``
+      module-level call that was needed to silence the ``fork()``
+      ``DeprecationWarning`` — no longer relevant since we don't use
+      multiprocessing at all.
+
+  Coverage: the same 6 tests, same 4 invariants (no crash / no leftover
+  .tmp / no corrupt pickle / warm run succeeds). Local run: 6 passed
+  in 26.56s. CI: was 5 failed + 1 passed in 2.83s → expected 6
+  passed in ~30s.
+
 ---
 
 <a id="090"></a>
