@@ -180,28 +180,61 @@ def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
     """
     plugin_name = getattr(entry_point, "name", "<unknown>")
 
-    # Run import-time audit BEFORE the trust prompt.
-    # The audit reads the plugin's .py source files via importlib.metadata.files()
-    # (no import — the plugin module is never loaded) and scans for dangerous
-    # patterns (subprocess, socket, eval/exec, os.system, ctypes, pickle).
-    # Warnings are stored in the trust store and shown to the user before [y/N].
-    try:
-        from senpy.plugins.audit import audit_plugin_via_entry_point
-        from senpy.plugins.security import store_audit_warnings
+    # Run import-time audit BEFORE the trust prompt — but ONLY if the
+    # plugin is not already trusted. A pre-trusted plugin has already
+    # been audited on its first load (TOFU: trust-on-first-use), and
+    # re-running the audit on every subsequent invocation would:
+    #   1. re-scan all .py source files on every Senpy start (slow,
+    #      especially in LSP mode where the analyzer boots per session),
+    #   2. overwrite previously-stored audit_warnings with potentially
+    #      different results if the plugin package was upgraded between
+    #      Senpy runs — confusing for the user who trusted based on a
+    #      specific warning set.
+    # The first-load audit result is preserved in the trust store's
+    # ``audit_warnings`` dict and is shown again on demand via
+    # ``senpy --trust-plugin NAME`` (which prints existing warnings
+    # before re-prompting).
+    #
+    # If the plugin's source has changed since trust was granted (e.g.
+    # the user ``pip install --upgrade``d it), the user can explicitly
+    # re-audit via ``senpy --untrust-plugin NAME && senpy --trust-plugin NAME``
+    # — that flow re-runs the audit because the plugin is no longer
+    # trusted when load_plugin is called.
+    from senpy.plugins.security import is_plugin_trusted
 
-        audit_result = audit_plugin_via_entry_point(plugin_name, entry_point)
-        if audit_result.has_warnings:
-            store_audit_warnings(plugin_name, audit_result.warnings)
-            _logger.info(
-                "Audit warnings for plugin %r (%d files scanned): %s",
-                plugin_name,
-                audit_result.files_scanned,
-                audit_result.warnings,
-            )
-        elif audit_result.error:
-            _logger.debug("Audit skipped for %r: %s", plugin_name, audit_result.error)
-    except Exception as e:
-        _logger.debug("Audit failed for %r: %s", plugin_name, e)
+    if not is_plugin_trusted(plugin_name):
+        # Run the AST audit. Reads plugin .py source via
+        # importlib.metadata.files() — the plugin module is NEVER imported
+        # (no top-level code execution). Scans for: subprocess, socket,
+        # eval/exec, os.system, ctypes, pickle.load, __import__, os.fork,
+        # multiprocessing, marshal. Warnings are stored in the trust store's
+        # ``audit_warnings`` dict and shown to the user before the [y/N]
+        # prompt in ``_default_trust_callback``.
+        try:
+            from senpy.plugins.audit import audit_plugin_via_entry_point
+            from senpy.plugins.security import store_audit_warnings
+
+            audit_result = audit_plugin_via_entry_point(plugin_name, entry_point)
+            if audit_result.has_warnings:
+                store_audit_warnings(plugin_name, audit_result.warnings)
+                _logger.info(
+                    "Audit warnings for plugin %r (%d files scanned): %s",
+                    plugin_name,
+                    audit_result.files_scanned,
+                    audit_result.warnings,
+                )
+            elif audit_result.error:
+                _logger.debug("Audit skipped for %r: %s", plugin_name, audit_result.error)
+        except Exception as e:
+            # Audit failure must never block plugin loading — audit is
+            # advisory, not a security gate. The trust prompt is the gate.
+            _logger.debug("Audit failed for %r: %s", plugin_name, e)
+    else:
+        _logger.debug(
+            "Plugin %r is already trusted — skipping import-time audit "
+            "(audit_warnings from first load are preserved in trust store).",
+            plugin_name,
+        )
 
     # Step 1: Trust check (SEC-P2) — MUST run before entry_point.load().
     # The trust decision is based solely on the plugin name (a string),

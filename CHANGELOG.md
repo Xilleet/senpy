@@ -34,6 +34,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > new features, no new output formats. Bug fixes, false-positive reports,
 > security advisories, and documentation improvements are still accepted.
 
+### Added
+
+- **Plugin import-time audit activated.** The AST-based audit
+  scanner (`senpy/plugins/audit.py`, landed in master after 0.9.0
+  release) is now wired into the plugin loading pipeline with
+  first-load-only semantics:
+  - On **first load** (plugin not yet in trust store): `load_plugin()`
+    reads the plugin's `.py` source files via `importlib.metadata.files()`
+    (no import — the plugin module is never loaded for the audit) and
+    runs an AST scan for dangerous patterns: `subprocess`, `socket`,
+    `ctypes`, `pickle.load/loads/Unpickler`, `marshal`, `multiprocessing`,
+    `eval`/`exec`/`__import__`, `os.system`/`os.popen`/`os.execv*`/
+    `os.spawn*`/`os.fork`. Warnings are stored in the trust store's
+    `audit_warnings` dict (schema v2, prepared in R-P0-2) and shown to
+    the user on stderr before the `[y/N]` trust prompt.
+  - On **subsequent loads** (plugin already trusted): the audit is
+    **skipped** — the previously-stored `audit_warnings` are preserved
+    and shown on demand. This avoids re-scanning all `.py` source files
+    on every Senpy start (slow in LSP mode) and prevents a package
+    upgrade from silently overwriting the original audit result the user
+    trusted based on. To re-audit after an upgrade:
+    `senpy --untrust-plugin NAME && senpy --trust-plugin NAME` —
+    untrust clears both trust and audit_warnings, so the next load
+    re-runs the audit.
+  - The audit is **advisory**: a failed audit (syntax errors, missing
+    package metadata for editable installs, scan exceptions) does not
+    block plugin loading. The trust prompt is the security gate; the
+    audit informs the trust decision.
+  - Coverage: `tests/plugins/test_audit_integration.py` (7 new tests)
+    verifies the end-to-end integration: load_plugin → audit → trust
+    store → default trust callback. Existing `tests/plugins/test_audit.py`
+    (23 unit tests) and `tests/plugins/test_plugin_tofu_before_load.py`
+    (7 trust-before-load tests) continue to pass unchanged.
+
+### Fixed
+
+- **`SECURITY.md` Description updated from future-tense to
+  present-tense.** Now documents the activated behaviour, the
+  advisory nature (audit does not block loading), and the first-load-only optimisation.
+
 ---
 
 <a id="090"></a>

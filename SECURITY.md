@@ -85,6 +85,34 @@ reporting:
   `_REGISTERED_LINT_RULES` when trust is declined, and a malicious
   plugin cannot run arbitrary code at load time. Plugin authors should
   not rely on import-time side effects for trust-gated behaviour.
+- **Plugin import-time audit** (`senpy/plugins/audit.py`):
+  before the trust prompt, Senpy reads the plugin's `.py` source files
+  via `importlib.metadata.files()` (no import — the plugin module is
+  never loaded for the audit) and runs an AST-based scan for dangerous
+  patterns:
+  - `subprocess` module (run, Popen, call, check_output, etc.)
+  - `socket` module (network connections)
+  - `ctypes` module (arbitrary C function calls)
+  - `pickle.load` / `pickle.loads` / `pickle.Unpickler` (code execution
+    during deserialization)
+  - `marshal` module (deserialization)
+  - `multiprocessing` module (child process spawning)
+  - `eval()` / `exec()` / `__import__()`
+  - `os.system` / `os.popen` / `os.execv*` / `os.spawn*` / `os.fork`
+
+  Warnings are stored in the trust store's `audit_warnings` dict (schema
+  v2) and shown to the user on stderr before the `[y/N]` prompt. The
+  audit is **advisory** — it informs the trust decision but does not
+  block loading. A plugin that fails the audit can still be trusted
+  (the user is responsible for the decision).
+
+  The audit runs **only on first load** (when the plugin is not yet in
+  the trust store). Subsequent loads skip the audit and preserve the
+  original `audit_warnings` entry — this avoids re-scanning all `.py`
+  files on every Senpy start (especially in LSP mode) and prevents a
+  package upgrade from silently overwriting the original audit result
+  the user trusted based on. To re-audit after an upgrade:
+  `senpy --untrust-plugin NAME && senpy --trust-plugin NAME`.
 - **HTML report CSP** (`senpy/formats/html_report.py`):
   `Content-Security-Policy: default-src 'self'; script-src 'self'
   'nonce-{per-render-nonce}' https://cdn.jsdelivr.net/npm/mermaid@10/
