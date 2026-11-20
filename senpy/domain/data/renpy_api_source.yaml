@@ -9,7 +9,7 @@ file_hashes:
   build.rst: 3d75e0e9e763897c04deda9fbd1f6f1fa4aafac12e1f6e905607df8050588f88
   cdd.rst: ab3b1bf912d64c65ee1e0940ab51bfcca9c5edc136ec4562535b47cc0cc8b6a3
   cds.rst: 72c7774cc8d2c38058b7de16bef30583df18f7b710f5819334dfe76901a54acd
-  config.rst: c5055e94be512aa0eda5bf8f314235e9e2b3c4bc345ec287d12db9dda4373387
+  config.rst: 5c47c9ba4b36e821cf80450ee79322c3dd0c3f52bcb84f2a70ec040d4459005e
   displayables.rst: 6a5ea65990aacb7363e65915af596ba4f23f7de66b699d4180f0881624c6ae13
   drag_drop.rst: e4c4ca4de023f9ae88ccf75be1f60bda092c9d5cd4698b6ab8349664ef54f145
   gui.rst: ea728e43f78397c75bb3d220428c9f087b1aecf8e50c19e067bd476ef2828a37
@@ -30,9 +30,9 @@ file_hashes:
   transform_properties.rst: 44bec56d94441cd67458594af23a7f0bb56a9889afc0f4129005b39b414ca877
   transforms.rst: ad21e5551720cee5ec1969dcd36db139b090595018a48a446ab5f7222ad47c24
   transitions.rst: cadd635b6c67c1a9a11b1d062900c95ce9a18c1ef7a8d7cc156ccd543c920584
-generated_at: '2026-11-12T11:39:25Z'
-renpy_version: 8.5.3
-source_ref: master
+generated_at: '2026-11-20T22:23:35Z'
+renpy_version: 8.6.1
+source_ref: 8.6.1.26111705
 source_urls:
   common_base: https://raw.githubusercontent.com/renpy/renpy/{ref}/renpy/common/
   rst_base: https://raw.githubusercontent.com/renpy/renpy/{ref}/sphinx/source/
