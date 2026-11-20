@@ -1,6 +1,6 @@
 ---
 title: Senpy Plugin Development — Write Your Own Lint Rules
-description: Senpy has a plugin system — write your own lint rules as pip packages. The plugin API is stable (v1.0), supports entry-point discovery, trust-on-first-use security, and per-rule QuickFix. Two example plugins ship in the repo: my_senpy_plugin (RPY901, hardcoded dialogue) and todo_comment_plugin (RPY902, TODO comments).
+description: Senpy has a plugin system — write your own lint rules as pip packages. The plugin API is stable (v1.0), supports entry-point discovery, trust-on-first-use security with import-time AST audit, and per-rule QuickFix. Two example plugins ship in the repo: my_senpy_plugin (RPY901, hardcoded dialogue) and todo_comment_plugin (RPY902, TODO comments).
 tags:
   - plugins
   - development
@@ -11,7 +11,8 @@ tags:
 
 Senpy has a plugin system — you can write your own lint rules as
 pip packages. The plugin API is stable (v1.0), supports entry-point
-discovery, trust-on-first-use security, and per-rule QuickFix.
+discovery, trust-on-first-use security with import-time AST audit,
+and per-rule QuickFix.
 
 This page walks through:
 
@@ -31,7 +32,7 @@ in the repository.
 
 ## Why write a plugin?
 
-Most Ren'Py linting needs are covered by Senpy's 51 built-in rules.
+Most Ren'Py linting needs are covered by Senpy's 53 built-in rules.
 But every project has domain-specific checks that don't belong in
 core:
 
@@ -209,6 +210,58 @@ systems that don't sandbox (like VS Code extensions, Neovim plugins,
 etc.). The first run is interactive (TTY required); subsequent
 runs are silent. CI environments (no TTY) auto-skip untrusted
 plugins — fail-safe.
+
+### Import-time audit
+
+Before the trust prompt, Senpy runs an **AST-based audit** of the
+plugin's source code. The audit reads the plugin's `.py` files via
+`importlib.metadata.files()` (no import — the plugin module is never
+loaded for the audit) and scans for dangerous patterns:
+
+- `subprocess` module (`run`, `Popen`, `call`, `check_output`, etc.)
+- `socket` module (network connections)
+- `ctypes` module (arbitrary C function calls)
+- `pickle.load` / `pickle.loads` / `pickle.Unpickler`
+- `marshal` module (deserialization)
+- `multiprocessing` module (child process spawning)
+- `eval()` / `exec()` / `__import__()`
+- `os.system` / `os.popen` / `os.execv*` / `os.spawn*` / `os.fork`
+
+Warnings are stored in the trust store's `audit_warnings` dict
+(schema v2) and shown to the user on stderr before the `[y/N]`
+prompt:
+
+```
+[senpy] Audit warnings for plugin 'my-senpy-plugin':
+  ⚠ Plugin uses subprocess — can execute arbitrary system commands.
+  ⚠ Plugin calls eval() — can execute arbitrary code from a string.
+
+[senpy] Plugin 'my-senpy-plugin' wants to load. Trust and enable? [y/N]:
+```
+
+The audit is **advisory** — it informs the trust decision but does
+not block loading. A plugin that fails the audit (e.g. syntax
+errors, missing package metadata for editable installs) can still be
+trusted. The trust prompt is the security gate; the audit informs
+it.
+
+The audit runs **only on first load** (when the plugin is not yet in
+the trust store). Subsequent loads skip the audit and preserve the
+original `audit_warnings` entry — this avoids re-scanning all `.py`
+files on every Senpy start (especially in LSP mode) and prevents a
+package upgrade from silently overwriting the original audit result.
+To re-audit after an upgrade:
+
+```bash
+senpy --untrust-plugin my-senpy-plugin
+senpy --trust-plugin my-senpy-plugin   # re-runs the audit
+```
+
+**For plugin authors:** the audit is not a sandbox. Your plugin
+still runs with full process privileges once trusted. Follow the
+[hardening checklist](https://github.com/Xilleet/senpy/blob/main/SECURITY.md#hardening-checklist-for-plugin-authors)
+in `SECURITY.md`: no `exec`/`eval`, no `subprocess`, no network,
+no file writes outside the project, pin your dependencies.
 
 ---
 

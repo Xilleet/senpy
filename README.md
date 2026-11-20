@@ -42,7 +42,7 @@ Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github
 
 ## Status: Feature Freeze → 1.0
 
-Senpy 0.9.0 is production-stable for users. Until 1.0, I'm focusing on
+Senpy 0.9.1 is production-stable for users. Until 1.0, I'm focusing on
 architecture hardening and `senpy.api` contract stabilization —
 **no new rules, no new features, no new output formats**.
 
@@ -52,11 +52,11 @@ documented but absent from `args.py`", "`setup_logging()` never
 called"). Symptoms visible in code: facade wrappers in `analyzer.py`
 that erase type signatures, LSP server state held in module-level
 globals (97 cyclic-import workarounds via `TYPE_CHECKING` / lazy
-import), oversized modules (`python_ast.py` 2143 lines,
-`lsp/handlers/navigation.py` 1326 lines), tests coupled to internals
-(485 imports from `senpy.core/rules/cli/lsp` vs 18 from the public
-`senpy.api`). I want to close this systematically before declaring
-1.0 API stability.
+import), oversized modules (`python_ast.py` 1772 lines,
+`lsp/handlers/navigation.py` split into 6 sub-modules in 0.6.0), tests
+coupled to internals (485 imports from `senpy.core/rules/cli/lsp` vs
+18 from the public `senpy.api`). I want to close this systematically
+before declaring 1.0 API stability.
 
 **What's accepted during the freeze:** bug fixes, false-positive
 reports, security advisories, documentation improvements.
@@ -68,13 +68,33 @@ formatter extensions, sandbox R&D, editor clients beyond VS Code.
 ---
 ## What's New
 
+### 0.9.1 — Plugin audit activation + branch-clear fix + cache stress tests + docs audit (patch)
+
+A patch release closing **3 tasks** from the 0.9.0, plus a full documentation audit. All changes are correctness fixes, security hardening, and infrastructure.
+
+| Area | What Was Broken | What Changed |
+|---|---|---|
+| **Plugin import-time audit activated** | The AST-based audit scanner (`senpy/plugins/audit.py`) existed in the codebase but was not wired into the loading pipeline — users saw no warnings before the `[y/N]` trust prompt, even for plugins using `subprocess.run` or `eval()`. | `load_plugin()` now runs the audit on first load (when the plugin is not yet trusted), stores warnings in the trust store's `audit_warnings` dict (schema v2, prepared in 0.9.0), and shows them on stderr before the trust prompt. Subsequent loads skip the audit (preserves original warnings, avoids re-scanning on every Senpy start). Re-audit via `senpy --untrust-plugin NAME && senpy --trust-plugin NAME`. |
+| **Branch-clear (MAYBE_SET through nested menu)** | When a `menu:` choice body contained a NESTED `menu:`, the recursive `analyze_menu_flow` call did NOT receive the parent's `already_guaranteed` set — variables declared before the outer menu were re-flagged as MAYBE_SET by the inner menu. False-positive RPY404 on pre-declared variables. | `_parse_menu_choices`, `_analyze_choice_body`, and the recursive `analyze_menu_flow` call now all forward `already_guaranteed`. Pre-block variables propagate to nested menus so the inner `merge_flow_branches` correctly excludes them from the MAYBE_SET set. |
+| **Cross-process cache lock stress tests** | The `fcntl`/`msvcrt` lock in `cache.py` was implemented and unit-tested (in-process via threads), but no test ran real parallel subprocesses on the same project — the actual pre-commit+LSP / two-terminals / CI-matrix workload. | New `tests/core/test_cache_lock_stress.py` (6 tests) spawns 5–10 real `python -m senpy.cli` subprocesses in parallel via `subprocess.Popen` and verifies: no crash, no leftover `.tmp` files, no corrupt `cache.pkl`, warm run succeeds. Dedicated CI job in `release.yaml`. |
+| **: CONTRIBUTING.md full audit** | The file had drifted since 0.6.x: fixture coverage table listed 10 rules as "missing" (all 53 now have fixtures), project layout listed `cli/main.py` as "1163 lines, god-module" (actually 103), `core/analyzer.py` as "1817 lines" (actually 749), checker example was function-based (actual checkers are classes), rule registration pointed to the wrong file. | Full rewrite: 11 sections, 7 concrete "good first issues" scoped to the freeze, accurate project layout with all ~30 missing files, correct class-based checker pattern, new "How to add a new fixture" section. |
+
+**Plus**: `SECURITY.md` updated to present-tense for R-P0-1 (audit is
+now active, not "tracked as R&D"). `docs/comparison.md` and
+`docs/renpy-vscode-extension.md` semantic-tokens claim fixed (❌ planned,
+not ✅).
+
+Full details in [`CHANGELOG.md`](CHANGELOG.md#091).
+
+---
+
 ### 0.9.0 — Security hardening + soundness fixes + FP fixes from user feedback
 
 A minor release closing **6 P0 tasks** from the post-0.8.4 roadmap plus
 **4 user-feedback false-positive fixes**. Two new public APIs:
 - **Trust store schema v2** with auto-migration from v1
-  (R-P0-2) — `audit_warnings` dict added for the upcoming R-P0-1 plugin
-  import-time audit.
+  (R-P0-2) — `audit_warnings` dict added for the R-P0-1 plugin
+  import-time audit (activated in 0.9.1).
 - **`senpy.toml [tool.senpy]` runtime extension of Ren'Py built-ins**
   — `additional_builtins` / `additional_actions` lists let users
   declare third-party namespaces (e.g. `iap`, `updater`) and custom
@@ -82,8 +102,8 @@ A minor release closing **6 P0 tasks** from the post-0.8.4 roadmap plus
 
 **1964 tests** (up from 1836 in 0.8.4, +128). No new rules — all
 changes are correctness fixes, security hardening, and infrastructure
-for the upcoming R-P0-1 plugin audit / R-P0-7 branch-clear / R-P0-8
-cross-process cache lock work scheduled for 0.9.1.
+for the R-P0-1 plugin audit / R-P0-7 branch-clear / R-P0-8
+cross-process cache lock work (all closed in 0.9.1).
 
 | Area | What Was Broken | What Changed |
 |---|---|---|
@@ -411,7 +431,7 @@ The two tools are **complementary, not replacements**. Senpy catches a class of 
 | **Find references** | ❌ | ✅ across the whole project |
 | **Hover docs** | ❌ | ✅ renpy API + asset previews |
 | **Rename symbol** | ❌ | ✅ labels, screens |
-| **Semantic tokens** | ❌ | ✅ |
+| **Semantic tokens** | ❌ (planned) | ✅ |
 | **Story graph visualization** | ❌ | ✅ Mermaid diagram of branching routes |
 | **Save / rollback safety checks** | ❌ | ✅ |
 | **Translation validator** | ❌ | ✅ `game/tl/` mismatch detection + coverage |
@@ -567,7 +587,7 @@ senpy "path/to/game" --tsundere
 
 ## Rules Overview
 
-Senpy includes **51 specialized semantic rules** across 28 tags:
+Senpy includes **53 rules** (52 user-facing + 1 internal) across 28 tags:
 
 | Series | Category | Description |
 | :--- | :--- | :--- |

@@ -8,7 +8,7 @@ tags:
 
 # All Senpy Rules
 
-Senpy includes **51 specialized lint rules** for Ren'Py visual novels,
+Senpy includes **53 lint rules** (52 user-facing + 1 internal) for Ren'Py visual novels,
 organized into 8 categories by prefix. This page is a navigator —
 each category links to its detail page on this site, and each rule
 links to its canonical entry in

@@ -122,9 +122,9 @@ senpy format --diff game/script.rpy
 echo 'label start:\n\t"Hi"\n' | senpy format --stdin-filename test.rpy
 ```
 
-## Future work
+## Future work (post-1.0)
 
-The following are tracked for a future release (not yet scheduled):
+The following formatter rules are tracked for **post-1.0**. They are not yet implemented because Senpy is in feature freeze until 1.0:
 
 - **FMT-LABEL-ALIGN** — align `label X:` declarations in a column.
 - **FMT-ATL-ALIGN** — align ATL statement blocks.

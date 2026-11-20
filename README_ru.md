@@ -42,15 +42,15 @@ pip install senpy-linter
 
 ## Статус: заморозка фичей → 1.0
 
-Senpy 0.9.0 production-stable для пользователей. До 1.0 фокус — на
+Senpy 0.9.1 production-stable для пользователей. До 1.0 фокус — на
 hardening архитектуры и стабилизации контракта `senpy.api` —
 **без новых правил, без новых фичей, без новых форматов вывода**.
 
 Почему: ядро накопило architectural debt, на который changelog намекает. Симптомы видны в коде: facade-врапперы в `analyzer.py`,
 стирающие типизацию, LSP-стейт в module-level globals (97
 cyclic-import workarounds через `TYPE_CHECKING` / lazy import),
-oversized-модули (`python_ast.py` 2143 строки, `lsp/handlers/navigation.py`
-1326 строк), тесты, coupled с internals (485 импортов из
+oversized-модули (`python_ast.py` 1772 строки, `lsp/handlers/navigation.py`
+разбит на 6 sub-modules в 0.6.0), тесты, coupled с internals (485 импортов из
 `senpy.core/rules/cli/lsp` против 18 из публичного `senpy.api`).
 Хочу закрыть это системно до объявления 1.0 API stability.
 
@@ -65,13 +65,33 @@ RPY9xx plugin ecosystem), новые форматы вывода, новые CLI
 
 ## Что нового
 
+### 0.9.1 — Активация plugin audit + branch-clear фикс + cache stress тесты + аудит доков (patch)
+
+Patch-релиз: закрыты **3 задачи** из roadmap 0.9.0, плюс полный аудит документации.
+
+| Область | Что было сломано | Что изменилось |
+|---|---|---|
+| **Активация plugin import-time audit** | AST-based audit-сканер (`senpy/plugins/audit.py`) существовал в кодовой базе, но не был подключён к pipeline загрузки — пользователи не видели warnings перед `[y/N]` trust prompt, даже для плагинов с `subprocess.run` или `eval()`. | `load_plugin()` теперь запускает audit при первой загрузке (когда плагин ещё не доверен), сохраняет warnings в trust store `audit_warnings` (schema v2, подготовлена в 0.9.0), показывает их в stderr перед trust prompt. При повторных загрузках audit skip'ается (сохраняются оригинальные warnings, avoids re-scanning при каждом запуске). Re-audit через `senpy --untrust-plugin NAME && senpy --trust-plugin NAME`. |
+| **Branch-clear (MAYBE_SET через nested menu)** | Когда `menu:` choice body содержал NESTED `menu:`, рекурсивный вызов `analyze_menu_flow` НЕ получал `already_guaranteed` родителя — переменные, объявленные до внешнего menu, повторно флагались как MAYBE_SET внутренним menu. False-positive RPY404 на pre-declared переменные. | `_parse_menu_choices`, `_analyze_choice_body` и рекурсивный `analyze_menu_flow` теперь все пробрасывают `already_guaranteed`. Pre-block переменные propagируются в nested menus, чтобы внутренний `merge_flow_branches` корректно их исключал из MAYBE_SET. |
+| **Cross-process cache lock stress тесты** | `fcntl`/`msvcrt` lock в `cache.py` был реализован и unit-tested (in-process через threads), но ни один тест не запускал реальные параллельные subprocess'ы на одном проекте — actual pre-commit+LSP / two-terminals / CI-matrix workload. | Новый `tests/core/test_cache_lock_stress.py` (6 тестов) спавнит 5–10 реальных `python -m senpy.cli` subprocess'ов параллельно через `subprocess.Popen` и проверяет: no crash, no leftover `.tmp` files, no corrupt `cache.pkl`, warm run succeeds. Отдельный CI job в `release.yaml`. |
+| **: Полный аудит CONTRIBUTING.md** | Файл дрейфовал с 0.6.x: таблица fixture coverage перечисляла 10 правил как "missing" (все 53 теперь имеют fixtures), project layout указывал `cli/main.py` как "1163 lines, god-module" (реально 103), `core/analyzer.py` как "1817 lines" (реально 749), checker example был function-based (реальные checkers — classes), rule registration указывал на неправильный файл. | Полный rewrite: 11 секций, 7 конкретных "good first issues" scoped к заморозке, точный project layout со всеми ~30 missing файлами, корректный class-based checker pattern, новая секция "How to add a new fixture". |
+
+**Дополнительно**: `SECURITY.md` обновлён в present-tense для R-P0-1
+(audit теперь активен, не "tracked as R&D"). `docs/comparison.md` и
+`docs/renpy-vscode-extension.md` claim про semantic tokens исправлен
+(❌ planned, не ✅).
+
+Полные детали в [`CHANGELOG.md`](CHANGELOG.md#091).
+
+---
+
 ### 0.9.0 — Security hardening + soundness + FP-фиксы из фидбэка пользователей
 
 Minor-релиз: закрыты **6 задач** из post-0.8.4 плюс
 **4 false-positive фикса** из фидбэка. Два новых
 public API:
 - **Trust store schema v2** с авто-миграцией из v1 — добавлено
-  поле `audit_warnings` для будущего plugin import-time audit.
+  поле `audit_warnings` для plugin import-time audit (активирован в 0.9.1).
 - **Runtime-расширение Ren'Py builtins через `senpy.toml [tool.senpy]`**
   — списки `additional_builtins` / `additional_actions` позволяют
   объявлять сторонние namespace'ы (например `iap`, `updater`) и
@@ -80,7 +100,7 @@ public API:
 
 **1964 теста** (было 1836 в 0.8.4, +128). Новых правил нет — все
 изменения: correctness-fixes, security-hardening и инфраструктура для
-будущих plugin audit / branch-clear / cross-process cache lock (запланированы на 0.9.1).
+plugin audit / branch-clear / cross-process cache lock (все закрыты в 0.9.1).
 
 | Область | Что было сломано | Что изменилось |
 |---|---|---|

@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.9.x)**: [Unreleased](#unreleased) | [0.9.0](#090) |
+- **Current (0.9.x)**: [0.9.1](#091) | [0.9.0](#090) |
 
 - **0.8.x**: [0.8.4](#084) | [0.8.3](#083) | [0.8.2](#082) | [0.8.1](#081) | [0.8.0](#080)
 
@@ -25,14 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-<a id="unreleased"></a>
+<a id="091"></a>
 
-## [Unreleased]
+## [0.9.1] — Plugin audit activation + branch-clear fix + cache stress tests + docs audit
 
-> **Feature freeze declared.** Until 1.0, releases focus on architecture
-> hardening and `senpy.api` contract stabilization — no new rules, no
-> new features, no new output formats. Bug fixes, false-positive reports,
-> security advisories, and documentation improvements are still accepted.
+A patch release closing **3 tasks** from the 0.9.0, plus a full documentation audit. All changes are correctness fixes, security hardening, and infrastructure.
 
 ### Added
 
