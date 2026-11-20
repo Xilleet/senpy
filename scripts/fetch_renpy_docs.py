@@ -119,7 +119,10 @@ RPY_SOURCE_FILES = [
 # Ren'Py version this script targets. Bump when renpy/renpy master moves
 # past a release we want to track. The version is written into the generated
 # module so consumers can detect staleness.
-TARGET_RENPY_VERSION = "8.5.3"
+# This is a FALLBACK default — the canonical pin lives in
+# senpy/domain/data/renpy_api_source.yaml (renpy_version field), which
+# overrides this value at runtime when YAML is available.
+TARGET_RENPY_VERSION = "8.6.1"
 # Override from YAML pin config if present (see GITHUB_RAW_BASE above).
 try:
     import yaml as _yaml

@@ -1,7 +1,7 @@
 """Auto-generated Ren'Py API documentation — JSON-backed loader.
 
-Source: Ren'Py v8.5.3 RST docs (sphinx/source/) + common/*.rpy.
-Generated: 2026-11-01T12:38:50Z
+Source: Ren'Py v8.6.1 RST docs (sphinx/source/) + common/*.rpy.
+Generated: 2026-11-20T22:23:35Z
 
 DO NOT EDIT — re-run ``python scripts/fetch_renpy_docs.py``.
 

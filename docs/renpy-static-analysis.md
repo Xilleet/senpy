@@ -91,8 +91,9 @@ that actually exist: labels, screens, transforms, images, audio files.
   (typo) → `Exception: Screen 'inventory_menuu' is not known`. Senpy
   rule: `RPY204`.
 - **Missing audio files** — `play music "bgm/non_existent.ogg"` when
-  the file doesn't exist on disk or in any `.rpa` archive. Senpy rule:
-  `RPY501`.
+  the file doesn't exist on disk or in the file-name index of any
+  `.rpa` archive (RPA-2.0/3.0 only — content bytes are not validated).
+  Senpy rule: `RPY501`.
 - **Unresolved sprites / transforms** — `show sayori 99z_crazy_pose`
   when neither the image nor any `layeredimage` defines that attribute.
   Senpy rule: `RPY502`.

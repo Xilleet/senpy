@@ -60,7 +60,7 @@ senpy/
 │   ├── assets.py            # AssetManager — image/audio file discovery, .rpa scanning, NON_ASSET_EXTENSIONS
 │   ├── image_size.py        # PNG/JPEG/WEBP/GIF/BMP header parser for hover previews
 │   ├── renpy_api.py         # 220+ Ren'Py built-in API definitions (curated, for hover/completion)
-│   ├── renpy_api_generated.py # 754 auto-generated entries from Ren'Py 8.5.3 RST (4.4× boost)
+│   ├── renpy_api_generated.py # 755 auto-generated entries from Ren'Py 8.6.1 RST (4.4× boost)
 │   ├── rpa.py               # RPA archive reading (safe_load_rpa_index)
 │   ├── text_tags.py         # {b}, {color}, [var] parser — RPY101/301/304 checks
 │   └── tsundere.py          # Easter egg UI mode (Russian/English flavor text)

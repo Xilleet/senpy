@@ -230,10 +230,31 @@ sandbox is in a temporary directory that is cleaned up after analysis.
 
 ### Does Senpy support `.rpa` archives?
 
-Yes. Senpy can read the index of `.rpa` archives to check that audio
-and image files referenced in scripts actually exist inside the
-archive. This catches the "image file exists in archive but path is
-wrong" class of bug.
+Partially. Senpy can read the **file-name index** of `.rpa` archives
+(RPA-2.0 and RPA-3.0 only) via `safe_load_rpa_index()` in
+`senpy/domain/rpa.py` — this lets RPY501/RPY503 know that a file named
+`bgm/track.ogg` exists inside `game/archive.rpa` even when it is not
+present on disk. Index reads use a sandboxed pickle decoder with opcode
+allowlisting and decompression-bomb protection.
+
+What Senpy does **not** do today (as of 0.9.x):
+
+- **Content extraction** — Senpy does not unpack archive bytes to verify
+  that the indexed file is actually a valid OGG/PNG/etc. A corrupted
+  archive whose index lists `bgm/track.ogg` but whose payload is zero
+  bytes will not be flagged.
+- **CRC32 / segment-length validation** — segment prefix handling and
+  CRC32 verification are not implemented. Malformed segments that would
+  crash Ren'Py at load time are not detected.
+- **RPA-1.0 archives** — the legacy RPA-1.0 format is not supported;
+  such archives are silently skipped.
+- **Archive-name heuristic** — only archives whose base name matches a
+  small heuristic (`script`, `archive`, `data`, `game`, `code`) are
+  scanned for embedded `.rpy`/`.rpyc` files. Asset-only archives are
+  always scanned by name.
+
+Full content resolution, CRC32 verification, RPA-1.0 support, and a
+public `senpy unpack` CLI/API are scheduled for the 0.9.4 patch release and the post-1.0 - `1.6.0` minor release.
 
 ### How fast is Senpy?
 

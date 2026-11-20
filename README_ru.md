@@ -74,7 +74,7 @@ Patch-релиз: закрыты **3 задачи** из roadmap 0.9.0, плюс
 | **Активация plugin import-time audit** | AST-based audit-сканер (`senpy/plugins/audit.py`) существовал в кодовой базе, но не был подключён к pipeline загрузки — пользователи не видели warnings перед `[y/N]` trust prompt, даже для плагинов с `subprocess.run` или `eval()`. | `load_plugin()` теперь запускает audit при первой загрузке (когда плагин ещё не доверен), сохраняет warnings в trust store `audit_warnings` (schema v2, подготовлена в 0.9.0), показывает их в stderr перед trust prompt. При повторных загрузках audit skip'ается (сохраняются оригинальные warnings, avoids re-scanning при каждом запуске). Re-audit через `senpy --untrust-plugin NAME && senpy --trust-plugin NAME`. |
 | **Branch-clear (MAYBE_SET через nested menu)** | Когда `menu:` choice body содержал NESTED `menu:`, рекурсивный вызов `analyze_menu_flow` НЕ получал `already_guaranteed` родителя — переменные, объявленные до внешнего menu, повторно флагались как MAYBE_SET внутренним menu. False-positive RPY404 на pre-declared переменные. | `_parse_menu_choices`, `_analyze_choice_body` и рекурсивный `analyze_menu_flow` теперь все пробрасывают `already_guaranteed`. Pre-block переменные propagируются в nested menus, чтобы внутренний `merge_flow_branches` корректно их исключал из MAYBE_SET. |
 | **Cross-process cache lock stress тесты** | `fcntl`/`msvcrt` lock в `cache.py` был реализован и unit-tested (in-process через threads), но ни один тест не запускал реальные параллельные subprocess'ы на одном проекте — actual pre-commit+LSP / two-terminals / CI-matrix workload. | Новый `tests/core/test_cache_lock_stress.py` (6 тестов) спавнит 5–10 реальных `python -m senpy.cli` subprocess'ов параллельно через `subprocess.Popen` и проверяет: no crash, no leftover `.tmp` files, no corrupt `cache.pkl`, warm run succeeds. Отдельный CI job в `release.yaml`. |
-| **: Полный аудит CONTRIBUTING.md** | Файл дрейфовал с 0.6.x: таблица fixture coverage перечисляла 10 правил как "missing" (все 53 теперь имеют fixtures), project layout указывал `cli/main.py` как "1163 lines, god-module" (реально 103), `core/analyzer.py` как "1817 lines" (реально 749), checker example был function-based (реальные checkers — classes), rule registration указывал на неправильный файл. | Полный rewrite: 11 секций, 7 конкретных "good first issues" scoped к заморозке, точный project layout со всеми ~30 missing файлами, корректный class-based checker pattern, новая секция "How to add a new fixture". |
+| **: Полный аудит CONTRIBUTING.md** | Файл дрейфовал с 0.6.x: таблица fixture coverage перечисляла 45 правил как "missing" (все 53 теперь имеют fixtures), project layout указывал `cli/main.py` как "1163 lines, god-module" (реально 103), `core/analyzer.py` как "1817 lines" (реально 749), checker example был function-based (реальные checkers — classes), rule registration указывал на неправильный файл. | Полный rewrite: 11 секций, 7 конкретных "good first issues" scoped к заморозке, точный project layout со всеми ~30 missing файлами, корректный class-based checker pattern, новая секция "How to add a new fixture". |
 
 **Дополнительно**: `SECURITY.md` обновлён в present-tense для R-P0-1
 (audit теперь активен, не "tracked as R&D"). `docs/comparison.md` и
@@ -371,7 +371,7 @@ translate russian welcome_1:
 Senpy ловит их на этапе линтера — ещё до того, как они дойдут до игроков.
 **Вот почему вам это нужно.**
 
-Полный список из 53 правила с примерами — см.  **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**.
+Полный список из 53 правил с примерами — см.  **[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)**.
 
 ---
 
@@ -590,7 +590,7 @@ senpy "path/to/game" --tsundere
 
 ## Справочник диагностик
 
-Senpy включает **51 специализированное семантическое правило** с 28 тегами:
+Senpy включает **53 специализированное семантическое правило** с 28 тегами:
 
 | Серия | Категория | Описание |
 | :--- | :--- | :--- |

@@ -15,10 +15,18 @@ audio files, image sprites, transforms, and audio channel
 registrations. These rules catch the "the game launches but crashes
 the moment a sprite appears or a song starts" class of bug.
 
-Senpy scans the project's `game/` directory, `.rpa` archives, and
-`image` / `define audio.X` declarations to build a complete asset
-inventory. Rules check that every reference in your scripts points
-to a real asset on disk or in an archive.
+Senpy scans the project's `game/` directory and `image` / `define audio.X`
+declarations to build a complete asset inventory. For `.rpa` archives
+(RPA-2.0/3.0 only), Senpy reads the **file-name index** of each archive
+— it does **not** extract or validate archive contents (CRC32, segment
+lengths, byte-level integrity). RPA-1.0 archives are not supported.
+See [Ren'Py linter — `.rpa` coverage](../renpy-linter.md#does-senpy-support-rpa-archives)
+for the exact contract and the roadmap for the planned full content
+resolution work.
+
+Rules check that every reference in your scripts points to a file that
+exists on disk, in the `audio/` / `images/` directories, in the file-name
+index of a `.rpa` archive, or as a `define audio.X = "..."` alias.
 
 ---
 
@@ -29,7 +37,7 @@ to a real asset on disk or in an archive.
 **Severity:** `ERROR`
 
 Audio file referenced in `play` or `queue` was not found on disk, in
-`audio/`, or inside `.rpa` archives.
+`audio/`, or in the file-name index of any `.rpa` archive.
 
 ```renpy
 # Bad — bgm/non_existent_track.ogg doesn't exist
@@ -42,7 +50,8 @@ play music "bgm/existing_track.ogg"
 Senpy searches:
 
 - The `audio/` directory relative to the project root
-- Every `.rpa` archive in `game/`
+- The **file-name index** of every `.rpa` archive in `game/`
+  (RPA-2.0/3.0 only — content bytes are not extracted or validated)
 - Any `define audio.X = "..."` aliases
 
 → [Full reference](https://github.com/Xilleet/senpy/blob/main/RULES.md#rpy501)

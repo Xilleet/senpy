@@ -1,7 +1,12 @@
 from __future__ import annotations
 
-# Ren'Py documentation version pinned in this database
-RENPY_DOC_VERSION = "8.5.3"
+# Ren'Py documentation version pinned in this database.
+# NOTE: This is a HISTORICAL label for the curated hand-written entries
+# below. The canonical source of truth for the generated docs version is
+# RENPY_DOC_VERSION_GENERATED in renpy_api_generated.py (read from
+# senpy/domain/data/renpy_api_generated.json). Both should reference the
+# same Ren'Py release — kept in sync via scripts/update_renpy_api.py.
+RENPY_DOC_VERSION = "8.6.1"
 
 RENPY_API_DOCS: dict[str, dict[str, str]] = {
     "Call": {

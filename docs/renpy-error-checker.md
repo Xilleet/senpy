@@ -77,7 +77,7 @@ senpy --traceback /path/to/traceback.txt
 | Fallthrough: scene A bleeds into scene B | `RPY308` | Label `scene_a` ends without `jump`/`return`, label `scene_b` declared immediately after. |
 | `call` to label missing required arguments | `RPY310` | `call dungeon()` when `label dungeon(difficulty)` requires `difficulty`. |
 | `use screen` with wrong parameters | `RPY207` | `use inventory()` when `screen inventory(category)` requires `category`. |
-| Missing audio file | `RPY501` | `play music "bgm/missing.ogg"` — file not on disk or in any `.rpa`. |
+| Missing audio file | `RPY501` | `play music "bgm/missing.ogg"` — file not on disk or in the file-name index of any `.rpa` archive (RPA-2.0/3.0 only; content bytes are not validated). |
 | Sprite not found | `RPY502` | `show sayori 99z_crazy_pose` — attribute doesn't exist in any image/layeredimage. QuickFix suggests closest match. |
 | Image override silently masks another image | `RPY504` | `image bg room = "day.png"` and `image bg room = "night.png"` — second one silently overrides the first. |
 | Audio channel not registered | `RPY505` | `play ambient "rain.ogg"` when `ambient` was never registered via `renpy.music.register_channel()`. |

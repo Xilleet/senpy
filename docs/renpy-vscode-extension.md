@@ -107,7 +107,7 @@ Hover over a symbol to see context-sensitive info:
 
 | Hover target | What you see |
 |---|---|
-| Ren'Py built-in function (`renpy.show`, `Character(...)`, `play`, `nvl`, ...) | Documentation for 975 Ren'Py API entries (auto-collected from Ren'Py 8.5.3 RST sources) |
+| Ren'Py built-in function (`renpy.show`, `Character(...)`, `play`, `nvl`, ...) | Documentation for 967 Ren'Py API entries (755 auto-collected from Ren'Py 8.6.1 RST sources + 221 hand-curated; curated wins on key collision) |
 | Label name (`jump my_label`) | File path + line + a one-line preview of the label's content |
 | Screen name (`use my_screen`) | File path + parameters |
 | Image reference (`show sayori 1a`) | Inline preview of the sprite with size metadata (PNG/JPEG/WEBP/GIF/BMP header parsed; no Pillow needed) |
@@ -123,7 +123,10 @@ Context-aware completions:
 - After `show <character>`: every attribute of that character's
   layeredimage (e.g. `1a`, `1b`, `2a`, `happy`, `sad`).
 - After `play` / `queue` / `stop`: registered audio channels + every
-  audio file in `audio/` and `.rpa` archives.
+  audio file in `audio/` and in the file-name index of `.rpa` archives
+  (RPA-2.0/3.0 only — content extraction is not performed; see
+  [Ren'Py linter — `.rpa` coverage](renpy-linter.md#does-senpy-support-rpa-archives)
+  for the exact coverage).
 - After `$` / `if` / `while`: every `default` and `define` variable
   in scope.
 
