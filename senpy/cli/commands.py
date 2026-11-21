@@ -82,14 +82,30 @@ def handle_traceback(args, console: Console, is_tsundere: bool) -> int | None:
 
 
 def handle_init_ci(args, console: Console, is_tsundere: bool) -> int | None:
-    """--init-ci: create a GitHub Actions workflow."""
+    """--init-ci: create a GitHub Actions workflow.
+
+    If the workflow file already exists and ``--force`` was not passed,
+    print a WARNING and leave the existing file untouched (preserves
+    user's manual edits to the workflow — extra steps, matrix, env vars,
+    etc.). Returns 0 either way: a no-op overwrite-skip is not an error.
+    """
     if not args.init_ci:
         return None
 
     from senpy.formats.ci import init_ci_workflow
 
-    out_path, _created = init_ci_workflow(args.path)
+    force = bool(getattr(args, "force", False))
+    out_path, was_created = init_ci_workflow(args.path, force=force)
     rel_out = _relpath_to_cwd(out_path)
+    if not was_created:
+        # File already existed and we did NOT overwrite (force=False).
+        console.print(
+            f"[bold yellow]⚠ GitHub Actions workflow already exists:[/bold yellow] "
+            f"[bold cyan]{rel_out}[/bold cyan]\n"
+            "[dim]Left untouched to preserve manual edits. "
+            "Pass --force to overwrite.[/dim]\n"
+        )
+        return 0
     if is_tsundere:
         console.print(
             f"[bold magenta]{TSUNDERE_UI['init_ci'].format(path=rel_out)}[/bold magenta]\n"

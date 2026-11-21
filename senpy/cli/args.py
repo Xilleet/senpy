@@ -292,6 +292,11 @@ def _add_tools_args(parser: argparse.ArgumentParser) -> None:
         help="Generate a GitHub Actions workflow (.github/workflows/senpy.yml) with automated SARIF scanning",
     )
     g.add_argument(
+        "--force",
+        action="store_true",
+        help="With --init-ci: overwrite an existing senpy.yml workflow file. Without --force, --init-ci leaves an existing workflow untouched (to preserve manual edits).",
+    )
+    g.add_argument(
         "--traceback",
         nargs="?",
         const="traceback.txt",

@@ -664,7 +664,12 @@ def test_init_ci_generates_workflow_file(tmp_path: Path):
     content = wf_file.read_text(encoding="utf-8")
     assert "upload-sarif@v3" in content
     assert "security-events: write" in content
-    assert "senpy game/ --format sarif" in content
+    # scan_target is now derived from target_path rather than
+    # hardcoded from the ``game/`` basename check. When ``target_path``
+    # points at ``tmp_path/game``, the relpath is ``game`` (no trailing
+    # slash). Senpy accepts both ``senpy game`` and ``senpy game/`` —
+    # they are equivalent (both resolve to the same directory).
+    assert "senpy game --format sarif" in content
 
 
 def test_translation_coverage_calculation(tmp_path: Path):
