@@ -118,4 +118,10 @@ def generate_gitlab_json(diagnostics: list[Diagnostic], project_path: str) -> st
             }
         )
 
-    return json.dumps(findings, ensure_ascii=False)
+    # ``sort_keys=True`` makes the output deterministic across runs (the
+    # docstring above promises this). Without it, dict insertion order
+    # (which is stable in Python 3.7+ but depends on the literal above)
+    # would be the only guarantee — fragile if someone reorders the
+    # literal. Matches ``inspect_dispatch.py:206`` and ``rule_dispatch.py``
+    # which both use ``sort_keys=True`` for CI snapshot testing.
+    return json.dumps(findings, ensure_ascii=False, sort_keys=True)

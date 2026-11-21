@@ -57,6 +57,14 @@ __all__ = [
     "TransformSymbol",
     # CLI
     "main",
+    # CLI — unrpyc helpers (re-exported for backward compat; previously
+    # imported but missing from __all__, so ``from senpy import *`` did
+    # not expose them even though ``from senpy import extract_scripts_from_rpa``
+    # worked. Adding to __all__ makes the wildcard import consistent with
+    # the explicit import form.)
+    "decompile_to_sandbox",
+    "extract_scripts_from_rpa",
+    "find_unrpyc_executable",
     # Version
     "__version__",
     "VERSION_WITH_PREFIX",

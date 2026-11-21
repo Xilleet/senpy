@@ -16,9 +16,13 @@ __version__ = "0.9.1"
 # (e.g. the LSP server often needs "v0.4.7" with the prefix).
 VERSION_WITH_PREFIX = f"v{__version__}"
 
-# Semver parsing for complex checks (e.g. cache invalidation by major.minor)
-MAJOR: int = 0
-MINOR: int = 9
-PATCH: int = 1
+# Semver parsing for complex checks (e.g. cache invalidation by major.minor).
+# Derived from ``__version__`` so a manual edit of the string above (without
+# also updating these three ints) cannot silently desync cache invalidation
+# logic. Previously these were independent hardcoded ints — anyone who
+# bumped only ``__version__`` left MAJOR/MINOR/PATCH on the old values,
+# and ``CacheManager.compute_environment_fingerprint`` (which hashes
+# ``MAJOR.MINOR``) would produce wrong hashes.
+MAJOR, MINOR, PATCH = (int(x) for x in __version__.split("."))
 
 __all__ = ["__version__", "VERSION_WITH_PREFIX", "MAJOR", "MINOR", "PATCH"]

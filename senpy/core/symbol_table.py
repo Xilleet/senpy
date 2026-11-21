@@ -137,6 +137,14 @@ class SymbolTable:
         self.labels.clear()
         self.screens.clear()
         self.images.clear()
+        # Also clear these three registries before the update loop below.
+        # Without the clear, calling ``rebuild_from_scopes`` without a prior
+        # ``reset()`` (e.g. from a plugin or LSP fast-path extension)
+        # accumulates stale entries from the previous scope set —
+        # ``setdefault().update()`` only adds, never removes.
+        self.transforms.clear()
+        self.screen_action_jumps.clear()
+        self.used_screens.clear()
         self.jump_sources.clear()
         self.screen_uses.clear()
 

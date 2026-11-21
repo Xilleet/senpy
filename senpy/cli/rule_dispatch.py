@@ -302,8 +302,16 @@ def _emit(text: str, args) -> int:
 
 
 def _emit_json(payload: Any, args) -> int:
-    """Serialize payload to JSON and write to stdout or file. Return 0."""
-    text = json.dumps(payload, indent=2, ensure_ascii=False)
+    """Serialize payload to JSON and write to stdout or file. Return 0.
+
+    ``sort_keys=True`` is required for CI snapshot testing — without it,
+    ``senpy rule list --format json`` produces non-deterministic key order
+    (dict insertion order, which depends on plugin registration order).
+    Two runs on the same project could give different JSON, breaking
+    snapshot diffing. Matches ``inspect_dispatch.py:206`` which already
+    uses ``sort_keys=True``.
+    """
+    text = json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True)
     if args.output_file:
         with open(args.output_file, "w", encoding="utf-8") as f:
             f.write(text + "\n")

@@ -273,6 +273,15 @@ class SenpyLSPServer:
         # for full-scan workers (full scans are not URI-specific).
         self.change_generations: dict[str, int] = {}
         self.full_generation: int = 0
+        # Lock guarding ``full_generation`` and ``change_generations`` increments.
+        # ``+=`` is NOT atomic in Python — it expands to LOAD_ATTR / BINARY_ADD
+        # / STORE_ATTR, and the GIL can release between these bytecodes. Two
+        # concurrent ``schedule_full_diagnostics`` (e.g. did_save + did_open
+        # overlapping) could both load 5, both store 6, both proceed with
+        # ``new_gen=6`` — defeating the stale-worker guard. The lock makes
+        # the increment atomic. Held for ~microseconds (just the int bump),
+        # so contention is negligible.
+        self._generation_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # @property accessors for module-level globals.
@@ -727,8 +736,12 @@ def schedule_full_diagnostics(ls: LanguageServer, uri: str):
     global _full_timer
     if _full_timer is not None:
         _full_timer.cancel()
-    _lsp_server.full_generation += 1
-    new_gen = _lsp_server.full_generation
+    # Atomic increment under ``_generation_lock`` — see ``__init__`` for why.
+    # ``new_gen`` is captured INSIDE the lock so no two concurrent callers
+    # can end up with the same value.
+    with _lsp_server._generation_lock:
+        _lsp_server.full_generation += 1
+        new_gen = _lsp_server.full_generation
     _full_timer = threading.Timer(0.3, run_full_project_diagnostics, args=[ls, uri, new_gen])
     _full_timer.daemon = True
     _full_timer.start()
@@ -765,8 +778,11 @@ def schedule_change_diagnostics(ls: LanguageServer, uri: str):
     # increment generation for this URI. Stale workers (with older
     # gen) bail out before publishing, even if ``Timer.cancel()`` lost
     # the TOCTOU race (cancel called after worker already started).
-    new_gen = _lsp_server.change_generations.get(uri, 0) + 1
-    _lsp_server.change_generations[uri] = new_gen
+    # Atomic under ``_generation_lock`` — same reasoning as
+    # ``schedule_full_diagnostics`` above.
+    with _lsp_server._generation_lock:
+        new_gen = _lsp_server.change_generations.get(uri, 0) + 1
+        _lsp_server.change_generations[uri] = new_gen
 
     new_timer = threading.Timer(
         0.15, run_single_file_diagnostics, args=[ls, uri, doc.source, new_gen]
