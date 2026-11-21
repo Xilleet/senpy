@@ -1,18 +1,19 @@
 """End-to-end integration test for plugin rule execution during analysis.
 
-Regression for B2 (T-003): the plugin system was metadata-only —
-``Rule.check(ctx)`` was never invoked from the analyzer's lint loop.
-A user who installed and trusted an example plugin (e.g.
-``todo_comment_plugin``) would see RPY902 in ``senpy rule list`` output
-but RPY902 would never fire on actual ``.rpy`` files.
+Regression: the plugin system was metadata-only — ``Rule.check(ctx)``
+was never invoked from the analyzer's lint loop. A user who installed
+and trusted an example plugin (e.g. ``todo_comment_plugin``) would
+see RPY902 in ``senpy rule list`` output but RPY902 would never fire
+on actual ``.rpy`` files.
 
 These tests verify that:
   1. With ``enable_plugins = true`` in senpy.toml, registered plugin
      rules run during ``analyzer.run()``.
-  2. Without ``enable_plugins``, plugin rules are silent (default false
-     in 0.8.0 — see T-003 in WORKLOG).
+  2. Without ``enable_plugins``, plugin rules are silent (default false —
+     opt-in until plugin API stabilises, see roadmap post-1.0).
   3. Plugin rule diagnostics honour ``# noqa`` directives (because
-     they go through ``_add_diagnostic_by_file``, see T-004).
+     they go through ``_add_diagnostic_by_file``, same contract as
+     built-in cross-file rules like dead_code.py).
   4. A broken plugin rule (one whose ``check()`` raises) is isolated —
      it does not crash the analyzer, other rules continue to run.
 """
@@ -154,7 +155,7 @@ def test_plugin_rule_silent_when_enable_plugins_false(todo_plugin_registered, tm
 
 
 # =============================================================================
-# 4. Plugin rule diagnostics honour # noqa directives (T-004 integration)
+# 4. Plugin rule diagnostics honour # noqa directives (cross-file emission contract)
 # =============================================================================
 
 
@@ -162,8 +163,9 @@ def test_plugin_rule_diagnostic_honours_noqa(todo_plugin_registered, tmp_path: P
     """A plugin rule diagnostic must be suppressable via # noqa.
 
     This re-uses the per-file noqa_map populated during _analyze_file
-    (see T-004), so plugin rule diagnostics go through
-    ``_add_diagnostic_by_file`` rather than being appended directly.
+    (same contract as built-in cross-file rules), so plugin rule
+    diagnostics go through ``_add_diagnostic_by_file`` rather than
+    being appended directly.
     """
     (tmp_path / "senpy.toml").write_text("[senpy]\nenable_plugins = true\n", encoding="utf-8")
 

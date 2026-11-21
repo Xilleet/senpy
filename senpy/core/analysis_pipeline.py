@@ -379,8 +379,8 @@ class AnalysisPipeline:
         # Plugin rules run after the built-in BaseChecker dispatch — they
         # are per-file just like the built-in checkers, but operate on the
         # whole file (Rule.check returns list[Diagnostic] for ctx.lines).
-        # Gated by config['enable_plugins'] (default false in 0.8.0,
-        # see T-003 in WORKLOG).
+        # Gated by config['enable_plugins'] (default false — opt-in until
+        # plugin API stabilises, see roadmap post-1.0).
         if a.enable_plugins:
             self._run_plugin_rules(file_path, lines)
 
@@ -513,7 +513,8 @@ class AnalysisPipeline:
         rule receives a RuleContext with the file's lines and a snapshot
         of the analyzer's symbol registries; its returned Diagnostics are
         emitted through ``_add_diagnostic_by_file`` so that inline
-        ``# noqa`` directives are honoured (see T-004 in WORKLOG).
+        ``# noqa`` directives are honoured (same contract as built-in
+        cross-file rules like dead_code.py).
 
         Isolation: a rule whose ``check()`` raises is logged at WARNING
         and skipped — the analyzer must not crash because a third-party
@@ -597,7 +598,7 @@ class AnalysisPipeline:
                     continue
                 # Plugin diagnostics flow through _add_diagnostic_by_file
                 # so that # noqa directives on the offending line are
-                # honoured the same way as built-in rules (T-004).
+                # honoured the same way as built-in cross-file rules.
                 a._add_diagnostic_by_file(diag)
 
     def _write_fixed_file(self, file_path: str, lines: list[str]) -> None:

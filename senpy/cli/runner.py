@@ -301,8 +301,8 @@ def _apply_noqa_comments(diagnostics, analyzer) -> list[str]:
 
             if has_noqa and existing_codes is not None:
                 # Merge into the existing directive: append the new codes
-                # to the comma-separated list inside `# noqa: ...`.
-                # noqa_re is compiled once at the top of this function.
+                # to the comma-separated list inside the noqa comment.
+                # `noqa_re` is compiled once at the top of this function.
                 merged_codes = sorted(existing_codes | codes_to_add)
                 merged_str = ", ".join(merged_codes)
                 # Use a lambda with default argument to bind merged_str at
@@ -325,14 +325,14 @@ def _apply_noqa_comments(diagnostics, analyzer) -> list[str]:
                     + line_ending
                 )
             elif has_noqa and existing_codes is None:
-                # Bare `# noqa` (suppress all) — nothing to add, it
+                # Bare noqa (suppress all) — nothing to add, it
                 # already suppresses everything. Skip.
                 continue
             else:
                 # No existing noqa — append a new directive.
-                # Format: `  # noqa: RPY101` (two spaces before # for
-                # readability, matching the convention used in the
-                # project's own source files).
+                # Format: two spaces, then a noqa comment with the
+                # sorted codes, matching the convention used in the
+                # project's own source files.
                 # Sort codes for deterministic output.
                 codes_str = ", ".join(sorted(codes_to_add))
                 # Preserve any trailing whitespace before the newline by
@@ -639,7 +639,7 @@ def main():
     # and remember the flag so the final exit code can be forced to non-zero.
     had_failed_writes = _print_failed_writes_summary(result, console, is_quiet_mode)
 
-    # --add-noqa: append `# noqa: RPYxxx` comments to source files for every
+    # --add-noqa: append RPYxxx noqa comments to source files for every
     # diagnostic, so the next run suppresses them. Writes files back via the
     # same _write_fixed_file pipeline as --fix, so failed writes surface
     # through the existing failed_writes path (already handled above + the

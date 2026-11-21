@@ -145,8 +145,8 @@ ignore = [
     "N806",    # non-lowercase variable in function — стилистическое
     "N802",    # function name should be lowercase — ломает ast.NodeVisitor.visit_*
     # (visit_If, visit_ImportFrom, etc.) — это Python AST API, нельзя переименовать.
-    "UP038",   # isinstance(x, (A, B)) → isinstance(x, A | B) — deprecated rule,
-    # меняет семантику на Python 3.9- (где A | B для типов не работает в isinstance).
+    # UP038 (isinstance x, (A, B) → isinstance x, A | B) was removed from ruff
+    # in 0.9.x — no longer needed in the ignore list.
     "SIM110",  # reimplemented-builtin (any/all вместо for) — иногда читаемость важнее
 ]
 

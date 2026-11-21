@@ -128,9 +128,10 @@ class SenpyAnalyzer:
             # the config value: --strict forces strict=True even if
             # senpy.toml says strict=false. None (default) = use config.
             self.strict = bool(strict) if strict is not None else bool(cfg.get("strict", False))
-            # Plugin rule execution is opt-in for 0.8.0 (default False).
+            # Plugin rule execution is opt-in (default False).
             # When True, registered Rule subclasses are invoked per-file
-            # during _analyze_file (see T-003 in WORKLOG).
+            # during _analyze_file (stays off until plugin API stabilises,
+            # see roadmap post-1.0).
             self.enable_plugins = bool(cfg.get("enable_plugins", False))
             # User-extended Ren'Py built-ins / screen actions
             # (`senpy.toml [tool.senpy].additional_builtins` /
