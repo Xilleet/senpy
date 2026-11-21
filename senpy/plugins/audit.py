@@ -45,6 +45,12 @@ _DANGEROUS_IMPORTS: dict[str, str] = {
     "pickle": "Plugin uses pickle.load/loads — can execute arbitrary code during deserialization.",
     "marshal": "Plugin uses marshal — can execute arbitrary code during deserialization.",
     "multiprocessing": "Plugin uses multiprocessing — can spawn child processes.",
+    # ``importlib.import_module`` is the modern recommended replacement for
+    # ``__import__`` — same dynamic-import capability, same security risk for
+    # a plugin. Without flagging it, a plugin could bypass audit by writing
+    # ``importlib.import_module("os").system("...")`` instead of
+    # ``__import__("os").system(...)``.
+    "importlib": "Plugin uses importlib.import_module — can dynamically import any module.",
     "pathlib": "",  # pathlib is fine, don't flag
 }
 
@@ -106,10 +112,21 @@ _PICKLE_ATTRS = dict.fromkeys(
     "Plugin uses pickle.load/loads/Unpickler — can execute code during deserialization.",
 )
 
+# ``importlib.import_module`` — flag the call site explicitly so a plugin
+# that does ``import importlib`` followed by ``importlib.import_module("os")``
+# gets a warning at the call, not just the import. Without this, only the
+# ``import importlib`` line would fire (and only because we added
+# ``importlib`` to ``_DANGEROUS_IMPORTS`` above) — the actual call would be
+# indistinguishable from a benign ``importlib.resources`` access.
+_IMPORTLIB_ATTRS = {
+    "import_module": "Plugin calls importlib.import_module() — dynamically imports any module.",
+}
+
 _DANGEROUS_MODULE_ATTRS: dict[str, dict[str, str]] = {
     "os": _DANGEROUS_OS_ATTRS,
     "subprocess": _DANGEROUS_SUBPROCESS_ATTRS,
     "pickle": _PICKLE_ATTRS,
+    "importlib": _IMPORTLIB_ATTRS,
 }
 
 

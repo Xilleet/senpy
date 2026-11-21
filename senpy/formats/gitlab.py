@@ -82,7 +82,12 @@ def _fingerprint(diag: Diagnostic, rel_path: str) -> str:
     migration to BLAKE2b/3 is tracked separately in the worklog.
     """
     payload = f"{diag.code}|{rel_path}|{diag.line_number}|{diag.message}"
-    return hashlib.md5(payload.encode("utf-8")).hexdigest()
+    # ``usedforsecurity=False`` is required for non-cryptographic hashing on
+    # FIPS-enabled systems (RHEL/Fedora, corporate images). Without it,
+    # ``hashlib.md5()`` raises ``ValueError: [digital envelope routines]
+    # unsupported`` and the entire GitLab renderer crashes. Available since
+    # Python 3.9+ (Senpy requires 3.11+).
+    return hashlib.md5(payload.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def generate_gitlab_json(diagnostics: list[Diagnostic], project_path: str) -> str:

@@ -500,7 +500,12 @@ def _create_lsp_diagnostic(diag: Diagnostic) -> lsp.Diagnostic:
     if diag.end_col > diag.col:
         start_char, end_char = diag.col, diag.end_col
     else:
-        raw_text = diag.line_content
+        # ``diag.line_content`` can be None for project-level diagnostics
+        # (not bound to a specific source line) or if a rule forgot to
+        # populate it. ``len(None)`` raises ``TypeError`` and the entire
+        # ``publishDiagnostics`` for this file crashes — fall back to a
+        # whole-line range (col 0, end 1) which the editor clamps.
+        raw_text = diag.line_content or ""
         indent = len(raw_text) - len(raw_text.lstrip())
         start_char = indent
         end_char = max(indent + 1, len(raw_text.rstrip()))

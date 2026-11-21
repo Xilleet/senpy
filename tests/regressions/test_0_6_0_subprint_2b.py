@@ -539,6 +539,11 @@ class TestTrustStore:
     def test_write_trust_store_leaves_no_tmp_file_on_success(self, monkeypatch, tmp_path):
         """Atomic write: after a successful write, no leftover .tmp file
         remains in the trust store directory.
+
+        Note: a ``trusted_plugins.json.lock`` file MAY remain — it is the
+        cross-process lock file (added in 0.9.2) and is intentionally
+        persistent between runs (same pattern as ``cache.lock`` in
+        ``senpy/core/cache.py``). Only ``.tmp`` files indicate a leak.
         """
         monkeypatch.setenv("SENPY_HOME", str(tmp_path))
         from senpy.plugins import security
@@ -550,7 +555,9 @@ class TestTrustStore:
         leftover = [
             name
             for name in os.listdir(store_dir)
-            if name.startswith("trusted_plugins.json") and name != "trusted_plugins.json"
+            if name.startswith("trusted_plugins.json")
+            and name != "trusted_plugins.json"
+            and not name.endswith(".lock")
         ]
         assert (
             leftover == []

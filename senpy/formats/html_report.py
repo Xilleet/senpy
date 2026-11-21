@@ -255,7 +255,12 @@ def generate_html_report(
             # onerror=alert(document.cookie)>'`` executes in the browser when
             # the user opens the HTML report.
             safe_msg = html.escape(diag.message)
-            safe_code = html.escape(diag.line_content.strip())
+            # ``diag.line_content`` can be None for project-level diagnostics
+            # (not bound to a specific source line) or if a rule forgot to
+            # populate it. ``None.strip()`` raises ``AttributeError`` and the
+            # entire HTML report crashes on a single bad diagnostic — fall
+            # back to empty string.
+            safe_code = html.escape((diag.line_content or "").strip())
             safe_rule_code = html.escape(diag.code or "")
             safe_severity = html.escape(diag.severity or "")
             file_name = html.escape(os.path.basename(diag.file_path))

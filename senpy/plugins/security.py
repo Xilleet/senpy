@@ -41,13 +41,53 @@ import json
 import os
 import re
 import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
+from types import ModuleType
 
 from senpy.core.exceptions import PluginError
 from senpy.core.logging import get_logger
 
 _logger = get_logger("plugins.security")
+
+# =============================================================================
+# Cross-process lock for trust store read-modify-write
+# =============================================================================
+# Same pattern as ``senpy/core/cache.py`` — when pre-commit and LSP server
+# run simultaneously on the same project (or two CLI invocations), both may
+# try to ``trust_plugin`` / ``untrust_plugin`` / ``store_audit_warnings`` at
+# the same time. Without a lock around the read-modify-write cycle, one
+# process's write clobbers the other's grant (data loss: P1 reads {A},
+# P2 reads {A}, P1 writes {A,B}, P2 writes {A,C} → B lost).
+#
+# The lock file (trusted_plugins.lock) lives next to trusted_plugins.json.
+# On Unix we use ``fcntl.flock(LOCK_EX)``; on Windows ``msvcrt.locking``.
+# If the lock cannot be acquired within 5 seconds, the operation degrades
+# gracefully: the RMW proceeds without locking (same as before this
+# fix — rare concurrent trust operations may still lose grants, but a
+# single trust operation never blocks indefinitely).
+
+_fcntl: ModuleType | None = None
+try:
+    import fcntl as _fcntl_mod  # Unix only
+
+    _fcntl = _fcntl_mod
+    _HAS_FCNTL = True
+except ImportError:
+    _HAS_FCNTL = False
+
+_msvcrt: ModuleType | None = None
+try:
+    import msvcrt as _msvcrt_mod  # Windows only
+
+    _msvcrt = _msvcrt_mod
+    _HAS_MSVCRT = True
+except ImportError:
+    _HAS_MSVCRT = False
+
+_TRUST_LOCK_TIMEOUT = 5.0  # seconds to wait before degrading
+_TRUST_LOCK_RETRY_INTERVAL = 0.1  # seconds between lock attempts
 
 # =============================================================================
 # API version (unchanged from Stage 1)
@@ -243,6 +283,134 @@ def _write_trust_store(data: dict) -> None:
         raise
 
 
+def _trust_lock_path() -> str:
+    """Path to the lock file (``trusted_plugins.lock`` next to the JSON)."""
+    json_path = get_trust_store_path()
+    return json_path + ".lock"
+
+
+def _acquire_trust_lock() -> int | None:
+    """Acquire an exclusive cross-process lock for trust store RMW.
+
+    Returns a file descriptor if acquired, ``None`` if the lock could not
+    be acquired within ``_TRUST_LOCK_TIMEOUT`` seconds (graceful
+    degradation: caller proceeds without locking — same behaviour as
+    before this lock was added, rare concurrent trust operations may
+    still lose grants).
+
+    Pattern mirrors ``CacheManager._acquire_lock`` in ``senpy/core/cache.py``.
+    """
+    lock_path = _trust_lock_path()
+    store_dir = os.path.dirname(lock_path)
+    if store_dir:
+        os.makedirs(store_dir, exist_ok=True)
+
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
+    except OSError as e:
+        _logger.debug("trust lock: cannot open %s: %s", lock_path, e)
+        return None
+
+    deadline = time.monotonic() + _TRUST_LOCK_TIMEOUT
+    while True:
+        try:
+            if _HAS_FCNTL:
+                assert _fcntl is not None
+                _fcntl.flock(fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+                return fd  # acquired on Unix
+            elif _HAS_MSVCRT:
+                # msvcrt.locking / LK_NBLCK / LK_UNLCK are Windows-only;
+                # on Unix mypy cannot see them. Runtime is guarded by
+                # ``_HAS_MSVCRT`` so the call is never reached on Linux.
+                assert _msvcrt is not None
+                _msvcrt.locking(fd, _msvcrt.LK_NBLCK, 1)
+                return fd  # acquired on Windows
+            else:
+                os.close(fd)
+                return None  # no locking primitive available
+        except (OSError, PermissionError):
+            # Lock is held by another process. Retry or degrade.
+            if time.monotonic() >= deadline:
+                _logger.debug(
+                    "trust lock: could not acquire %s within %.1fs — "
+                    "degrading (RMW proceeds without lock, concurrent "
+                    "trust operations may still lose grants)",
+                    lock_path,
+                    _TRUST_LOCK_TIMEOUT,
+                )
+                try:  # noqa: SIM105
+                    os.close(fd)
+                except OSError:
+                    pass
+                return None
+            time.sleep(_TRUST_LOCK_RETRY_INTERVAL)
+
+
+def _release_trust_lock(lock_handle: int | None) -> None:
+    """Release the cross-process lock acquired by ``_acquire_trust_lock``."""
+    if lock_handle is None:
+        return
+    fd = lock_handle  # int file descriptor
+    try:
+        if _HAS_FCNTL:
+            assert _fcntl is not None
+            _fcntl.flock(fd, _fcntl.LOCK_UN)
+        elif _HAS_MSVCRT:
+            # Seek back to start and unlock 1 byte.
+            assert _msvcrt is not None
+            os.lseek(fd, 0, os.SEEK_SET)
+            _msvcrt.locking(fd, _msvcrt.LK_UNLCK, 1)
+    except OSError:
+        pass  # best-effort
+    finally:
+        try:  # noqa: SIM105
+            os.close(fd)
+        except OSError:
+            pass
+
+
+@contextlib.contextmanager
+def _with_trust_store_lock():
+    """Context manager that acquires the trust store lock for the duration
+    of a read-modify-write cycle.
+
+    Usage::
+
+        with _with_trust_store_lock():
+            store = _read_trust_store()
+            store["plugins"].append(name)
+            _write_trust_store(store)
+
+    The lock is best-effort: if it cannot be acquired within
+    ``_TRUST_LOCK_TIMEOUT`` seconds, the RMW proceeds without locking (same
+    behaviour as before this lock was added — better to proceed than to
+    block the CLI indefinitely).
+    """
+    lock_handle = _acquire_trust_lock()
+    try:
+        yield
+    finally:
+        _release_trust_lock(lock_handle)
+
+
+def _modify_trust_store(mutator):
+    """Run ``mutator(store)`` inside the trust store lock, then persist.
+
+    ``mutator`` receives the current store dict and may mutate it in place.
+    The result is written back atomically. The whole RMW cycle is guarded
+    by ``_with_trust_store_lock()`` so concurrent calls (LSP + CLI, or two
+    parallel CLI invocations) cannot lose grants.
+
+    This is the canonical entry point for any trust store mutation —
+    ``trust_plugin`` / ``untrust_plugin`` / ``store_audit_warnings`` all
+    delegate to it.
+    """
+    with _with_trust_store_lock():
+        store = _read_trust_store()
+        mutator(store)
+        _write_trust_store(store)
+
+
 def is_plugin_trusted(plugin_name: str) -> bool:
     """Check if plugin is in trust store (previously trusted by user).
 
@@ -263,12 +431,14 @@ def trust_plugin(plugin_name: str) -> None:
     Args:
         plugin_name: Name of the plugin to trust.
     """
-    store = _read_trust_store()
-    if plugin_name not in store["plugins"]:
-        store["plugins"].append(plugin_name)
-    # Update trusted_at timestamp (ISO 8601 UTC)
-    store["trusted_at"][plugin_name] = datetime.now(UTC).isoformat()
-    _write_trust_store(store)
+
+    def _mutator(store: dict) -> None:
+        if plugin_name not in store["plugins"]:
+            store["plugins"].append(plugin_name)
+        # Update trusted_at timestamp (ISO 8601 UTC)
+        store["trusted_at"][plugin_name] = datetime.now(UTC).isoformat()
+
+    _modify_trust_store(_mutator)
 
 
 def untrust_plugin(plugin_name: str) -> bool:
@@ -284,13 +454,25 @@ def untrust_plugin(plugin_name: str) -> bool:
     Returns:
         True if plugin was trusted and is now removed, False if it wasn't trusted.
     """
-    store = _read_trust_store()
-    if plugin_name not in store["plugins"]:
+    # Read once outside the lock to decide whether to do anything at all.
+    # The lock-protected RMW below re-reads and mutates — there's a small
+    # race window between this check and the lock acquisition, but it's
+    # benign: if the plugin is untrusted concurrently between the check and
+    # the lock, the inner ``if plugin_name not in store["plugins"]`` returns
+    # False (idempotent).
+    if not is_plugin_trusted(plugin_name):
         return False
-    store["plugins"].remove(plugin_name)
-    store["trusted_at"].pop(plugin_name, None)
-    store.get("audit_warnings", {}).pop(plugin_name, None)
-    _write_trust_store(store)
+
+    def _mutator(store: dict) -> None:
+        # Re-check inside the lock — another caller may have untrusted
+        # between our outer check and the lock acquisition.
+        if plugin_name not in store["plugins"]:
+            return
+        store["plugins"].remove(plugin_name)
+        store["trusted_at"].pop(plugin_name, None)
+        store.get("audit_warnings", {}).pop(plugin_name, None)
+
+    _modify_trust_store(_mutator)
     return True
 
 
@@ -315,9 +497,11 @@ def store_audit_warnings(plugin_name: str, warnings: list[str]) -> None:
     Persists to disk immediately (same pattern as trust_plugin/untrust_plugin).
     Overwrites any existing warnings for this plugin.
     """
-    store = _read_trust_store()
-    store.setdefault("audit_warnings", {})[plugin_name] = warnings
-    _write_trust_store(store)
+
+    def _mutator(store: dict) -> None:
+        store.setdefault("audit_warnings", {})[plugin_name] = warnings
+
+    _modify_trust_store(_mutator)
 
 
 def get_audit_warnings(plugin_name: str) -> list[str]:
