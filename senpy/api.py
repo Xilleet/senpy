@@ -68,13 +68,27 @@ Why this module exists (0.6.0):
     are updated, and plugin code keeps working.
 
 Migration guide:
-    OLD (still works, but deprecated):
-        from senpy import SenpyAnalyzer, Diagnostic, RULE_SEVERITY
+    There are two valid entry points depending on whether you are analyzing
+    a code snippet or a project on disk:
 
-    NEW (recommended for new code):
+    1. Analyzing a code snippet (no project files needed):
         from senpy.api import Diagnostic, RULE_SEVERITY, analyze_code
+        diags = analyze_code('label start:\\n    "Hi"\\n    return\\n')
 
-The ``from senpy.api import *`` works — ``__all__`` lists all public names.
+    2. Analyzing a project on disk (SenpyAnalyzer is re-exported by
+       ``senpy/__init__.py`` for this use case — it is NOT deprecated,
+       despite earlier notes; ``senpy.api`` does not yet expose a
+       project-level convenience function, so SenpyAnalyzer is the
+       canonical path for disk analysis):
+        from senpy import SenpyAnalyzer
+        analyzer = SenpyAnalyzer("/path/to/game")
+        result = analyzer.run()
+
+    ``from senpy.api import *`` works — ``__all__`` lists all public names.
+    Note that ``SenpyAnalyzer`` itself is NOT in ``senpy.api.__all__``
+    (its constructor signature is still considered an internal surface
+    pending stabilisation in 0.10.0 API-6 — use the ``senpy`` top-level
+    re-export in the meantime).
 
 Status (0.9.x):
     Senpy is in feature freeze until 1.0. The public names listed above
@@ -196,7 +210,8 @@ def analyze_code(code: str, config: dict[str, Any] | None = None) -> list[Diagno
         >>> diags = analyze_code(code, config={"severity": {"RPY104": "ERROR"}})
 
     Note:
-        For analyzing files on disk, use SenpyAnalyzer directly:
+        For analyzing files on disk, use ``SenpyAnalyzer`` directly (re-exported
+        by ``senpy/__init__.py`` — see module-level migration guide above):
             from senpy import SenpyAnalyzer
             analyzer = SenpyAnalyzer("/path/to/game")
             result = analyzer.run()
