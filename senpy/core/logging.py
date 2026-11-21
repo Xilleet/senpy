@@ -27,10 +27,9 @@ Wired in production:
     as defense-in-depth (idempotent — replaces handlers, no duplication).
     This covers the case where `start_lsp` is invoked directly by an
     embedded host without going through `main()`.
-  - `--verbose` / `--log-file` CLI flags are NOT yet wired (planned in
-    P3-1). Until then, callers wanting verbose output must call
-    `setup_logging(verbose=True)` explicitly before invoking senpy as
-    a library.
+  - `--verbose` / `--log-file` CLI flags are NOT yet wired. Callers
+    wanting verbose output must call `setup_logging(verbose=True)`
+    explicitly before invoking senpy as a library.
 
 Usage in plugins/loader.py:
   from senpy.core.logging import get_logger

@@ -20,7 +20,7 @@ Hierarchy:
 Design principles:
   - Do not inherit from ValueError/TypeError. Goal: the caller catches Senpy
     exceptions separately from stdlib.
-  - Each exception accepts (message: str, cause: Exception | None = None).
+  - Each exception accepts (message: str, cause: BaseException | None = None).
     If cause is passed — it is set as __cause__ (Python chaining).
   - No custom __str__ — Exception.__str__ is enough.
 
@@ -69,7 +69,7 @@ class SenpyError(Exception):
             into a domain exception — preserves traceback for debugging.
     """
 
-    def __init__(self, message: str, *, cause: BaseException | None = None) -> None:  # noqa: UP045
+    def __init__(self, message: str, *, cause: BaseException | None = None) -> None:
         super().__init__(message)
         if cause is not None:
             self.__cause__ = cause

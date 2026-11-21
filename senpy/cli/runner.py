@@ -556,7 +556,9 @@ def main():
     # WARNING level) and write to stderr. In LSP mode stderr is the
     # JSON-RPC transport, so unsilenced WARNINGs corrupt the protocol.
     # verbose=False installs a NullHandler: records are swallowed
-    # silently. Use --verbose (when wired, see P3-1) for stderr output.
+    # silently. CLI flags `--verbose` / `--log-file` are not yet wired;
+    # callers wanting verbose output must invoke `setup_logging(verbose=True)`
+    # explicitly before calling `main()`.
     from senpy.core.logging import setup_logging
 
     setup_logging(verbose=False)

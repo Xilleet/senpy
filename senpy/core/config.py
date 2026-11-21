@@ -73,12 +73,11 @@ class SenpyConfig(BaseModel):
     # Severity overrides: {"RPY104": "ERROR", ...}
     severity: dict[str, str] = Field(default_factory=dict)
 
-    # Plugin execution — opt-in for 0.8.0 (default false). When False,
-    # plugin rules are loaded and visible in `senpy rule list`, but
-    # their check() methods are NOT invoked during analysis. When True,
-    # registered Rule subclasses are invoked per-file during _analyze_file.
-    # Default flips to True in 0.9.0 after the plugin API stabilises
-    # (see T-003 in WORKLOG).
+    # Plugin execution — opt-in (default false). When False, plugin rules
+    # are loaded and visible in `senpy rule list`, but their check()
+    # methods are NOT invoked during analysis. When True, registered Rule
+    # subclasses are invoked per-file during _analyze_file. Default stays
+    # False until plugin API stabilises (post-1.0, see roadmap).
     enable_plugins: bool = False
 
     # User-extended Ren'Py built-in namespaces / screen actions. These
