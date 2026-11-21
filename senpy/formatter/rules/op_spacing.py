@@ -12,6 +12,8 @@ Unary operators are preserved (no space after):
     $ y = +x    →  $ y = +x
 
 String contents are NOT touched — spacing inside "..." or '...' is preserved.
+``#`` comment interiors are NOT touched — everything after the first real
+``#`` (outside a string) is preserved verbatim.
 Dialogue lines (first non-whitespace char is " or ') are NOT touched.
 
 Skip: lines inside `# senpy: format off` blocks are NOT touched.
@@ -94,12 +96,25 @@ for op in _BINARY_OPS:
     # require word char or ) ] } on left, word char or digit or ( [ { on right.
     # Replace with " OP " (single space).
     escaped_op = re.escape(op)
+    # The right boundary must also admit unary operators ``- + ~``.
+    # Without them, an assignment / augmented assignment whose right operand
+    # starts with a unary op is never normalised:
+    #   ``x=-5``  → ``=`` lookahead hits ``-`` → FAIL → stays ``x=-5``
+    #   ``x=+y``, ``x +=-1``, ``x=~mask`` — same failure.
+    # Allowing ``- + ~`` as a right boundary is safe for the *binary* ops
+    # too, because a unary ``-``/``+``/``~`` is filtered out by the LEFT
+    # boundary ``(?<=[\w\)\]\}])``: a unary op is preceded by another
+    # operator (``= + - * ( [ { , :`` etc.) or start-of-line, none of which
+    # are in ``[\w\)\]\}]``, so the unary op itself never matches as binary.
+    #   ``x=-5``: ``-`` is preceded by ``=`` → left boundary fails → unary
+    #   preserved; ``=`` is preceded by ``x`` → left ok, right hits ``-`` →
+    #   now allowed → normalised to ``x = -5``. Net result correct.
     pattern = re.compile(
         r"(?<=[\w\)\]\}])"  # left boundary: word char or closing bracket
         r"\s*"
         rf"({escaped_op})"  # the operator (escaped, captured)
         r"\s*"
-        r"(?=[\w\(\'\"\{\[])"  # right boundary: word char, opening bracket, or quote
+        r"(?=[\w\(\'\"\{\[\-\+\~])"  # right boundary: operand start, incl. unary -/+/~
     )
     _OP_PATTERNS.append((pattern, op))
 
@@ -135,14 +150,35 @@ def _process_code_segment(segment: str) -> str:
 def _split_by_strings(line: str) -> list[tuple[str, bool]]:
     """Split a line into segments: (text, is_string).
 
-    is_string=True means the segment is inside a string literal — NOT touched.
-    is_string=False means it's code — operator spacing applies.
+    is_string=True means the segment is inside a string literal OR a
+    ``#`` comment — NOT touched by any spacing rule.
+    is_string=False means it's code — operator/comma/colon spacing applies.
 
     Handles:
     - Double-quoted strings "..."
     - Single-quoted strings '...'
     - Triple-quoted strings \"\"\"...\"\"\" and '''...'''
     - Escape sequences \\" \\' \\\\ (don't end string)
+    - ``#`` comments: once a real ``#`` (outside a string) is reached, the
+      rest of the line is treated as a single preserved segment so that
+      op/comma/colon/string-consistency rules never reformat comment
+      interiors (FIX-92: previously ``$ x = 1  #a=b,c`` was mangled into
+      ``$ x = 1  #a = b, c``). Consumed by op_spacing, comma_spacing,
+      colon_spacing and string_consistency.
+
+    NOTE: this walker is per-line with no cross-line string state, so the
+    interior of a multi-line ``\"\"\"...\"\"\"`` that spans lines is still
+    treated as code on continuation lines. That gap is FIX-93 (intentionally
+    out of scope here — fixing it needs a two-pass / state-carrying rework
+    of _build_contexts, planned together with ARCH-158/159 which moves this
+    helper onto the unified text_utils string-state scanner).
+    NOTE: ops immediately followed by a string literal (e.g. ``x="a"``) are
+    not normalised here because the opening quote lands in the *string*
+    segment, leaving the preceding op at the end of a code segment with no
+    right-boundary char to match. Pre-existing limitation, not introduced
+    or worsened by this change — left as a TODO for a follow-up that either
+    keeps the boundary quote in the code segment or runs the op regexes
+    across segment joins.
     """
     segments: list[tuple[str, bool]] = []
     i = 0
@@ -189,6 +225,18 @@ def _split_by_strings(line: str) -> list[tuple[str, bool]]:
                 # Unterminated string — take rest of line
                 segments.append((line[i:], True))
                 i = n
+            continue
+
+        # Comment (# outside a string literal): the rest of the line is a
+        # comment, preserved verbatim (FIX-92). Reaching this branch means
+        # we are not inside a skipped string (strings `continue` above), so
+        # a ``#`` here is a real comment marker.
+        if ch == "#":
+            if current_code:
+                segments.append((current_code, False))
+                current_code = ""
+            segments.append((line[i:], True))
+            i = n
             continue
 
         # Regular code char

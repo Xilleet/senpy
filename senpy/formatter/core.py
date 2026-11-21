@@ -125,15 +125,20 @@ _RE_FORMAT_OFF = re.compile(r"#\s*senpy:\s*format\s+off", re.IGNORECASE)
 _RE_FORMAT_ON = re.compile(r"#\s*senpy:\s*format\s+on", re.IGNORECASE)
 
 
-def _strip_comment_safe(line: str) -> str:
-    """Strip # comment, but respect quotes (so # inside "..." is not a comment).
+def _find_comment_start(line: str) -> int:
+    """Return the index of the first real ``#`` comment marker (a ``#`` that
+    is NOT inside a single/double-quoted string literal), or -1 if none.
 
-    Simplified version — full implementation is in analyzer._strip_comment.
-    For formatter we don't need full accuracy; comment detection is only
-    used to find # senpy: format off/on directives.
+    Simplified — does not track triple-quoted strings or carry cross-line
+    string state (consistent with the rest of the formatter). Single/double
+    quote tracking is sufficient for the directive-in-string-literal case
+    that addresses; multi-line ``\"\"\"...\"\"\"`` interiors are a
+    separate per-line-scan gap tracked as FIX-93 (see also ARCH-159 for the
+    plan to reuse the unified ``text_utils`` string-state scanner, which
+    would retire this hand-rolled walker alongside ``_strip_comment_safe``).
     """
     if "#" not in line:
-        return line
+        return -1
     in_quote: str | None = None
     i = 0
     n = len(line)
@@ -152,9 +157,22 @@ def _strip_comment_safe(line: str) -> str:
             i += 1
             continue
         if ch == "#":
-            return line[:i]
+            return i
         i += 1
-    return line
+    return -1
+
+
+def _strip_comment_safe(line: str) -> str:
+    """Strip # comment, but respect quotes (so # inside "..." is not a comment).
+
+    Simplified version — full implementation is in analyzer._strip_comment.
+    For formatter we don't need full accuracy; comment detection is only
+    used to find # senpy: format off/on directives.
+    """
+    idx = _find_comment_start(line)
+    if idx == -1:
+        return line
+    return line[:idx]
 
 
 # =============================================================================
@@ -174,10 +192,25 @@ def _build_contexts(lines: list[str], config: FormatConfig) -> list[FormatContex
     skip_block = False
 
     for idx, raw in enumerate(lines):
-        # Detect skip directives (in raw line, before any processing)
-        if _RE_FORMAT_OFF.search(raw):
+        # Detect skip directives ONLY in the comment portion of the line:
+        #  searching the raw line matched ``# senpy: format off``
+        # inside string literals (e.g. ``    "# senpy: format off"`` or
+        # ``$ note = "# senpy: format off until v2"``), silently flipping
+        # ``skip_block`` and making the formatter pass the rest of the file
+        # through untouched until EOF / ``format on``. The directive is a
+        # comment, so it can only legitimately appear at/after the first
+        # real ``#`` marker; a ``#`` inside a string literal is not a
+        # comment marker and must not trigger the directive.
+        # NOTE: multi-line ``\"\"\"...\"\"\"`` interiors are still mishandled
+        # here because this scan is per-line with no cross-line string
+        # state — that gap is FIX-93, intentionally out of scope for this
+        # fix (doing it as a quick patch would be reworked when _split_by_strings
+        # gains cross-line state).
+        comment_idx = _find_comment_start(raw)
+        comment_text = raw[comment_idx:] if comment_idx >= 0 else ""
+        if _RE_FORMAT_OFF.search(comment_text):
             skip_block = True
-        if _RE_FORMAT_ON.search(raw):
+        if _RE_FORMAT_ON.search(comment_text):
             skip_block = False
 
         # Compute indent (in spaces, after tab expansion — but we don't modify raw here)
