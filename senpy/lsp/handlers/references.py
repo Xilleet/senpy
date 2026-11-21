@@ -7,7 +7,6 @@ Finds all references to a symbol across the project via text search
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -21,6 +20,7 @@ from lsprotocol import types as lsp
 from senpy.lsp.handlers._shared import (
     _find_text_occurrences_in_project,
     _get_server_mod,
+    _word_at_position,
 )
 
 
@@ -43,12 +43,9 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
     line = doc.lines[line_idx]
     col = params.position.character
 
-    # Same word extractor as in definition/hover
-    word = None
-    for m in re.finditer(r"[a-zA-Z_][a-zA-Z0-9_\.]*", line):
-        if m.start() <= col <= m.end():
-            word = m.group(0)
-            break
+    # Delegate to the canonical unicode-aware word extractor in
+    # ``_shared.py`` (previously inline ASCII-only regex).
+    word = _word_at_position(line, col)
 
     if not word:
         return None

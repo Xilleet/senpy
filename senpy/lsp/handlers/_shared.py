@@ -30,9 +30,24 @@ def _get_server_mod():
 
 
 def _word_at_position(line: str, col: int) -> str | None:
-    r"""Return the dotted-identifier at the given column (regex `[^\W\d][\w\.]*`)."""
+    r"""Return the dotted-identifier at the given column (regex `[^\W\d][\w\.]*`).
+
+    The regex is unicode-aware: ``[^\W\d]`` matches any letter (including
+    Cyrillic, CJK, etc. — PEP 3131) at the start, then ``[\w\.]*`` for the
+    rest. This is important for non-ASCII labels (Japanese VN with
+    ``はじめ`` or non-Latin identifiers) — the alternative ASCII-only
+    regex ``[a-zA-Z_][a-zA-Z0-9_\.]*`` would silently return None for
+    cursor-on-identifier outside ASCII.
+
+    Off-by-one: ``m.start() <= col < m.end()`` (strict ``<`` on the right
+    boundary). The previous ``<= col <=`` matched BOTH words at the
+    boundary between two identifiers (cursor on the gap between
+    ``foo`` and ``bar`` matched both ``foo`` and ``bar``), which led
+    to inconsistent rename behaviour depending on which word the
+    regex happened to find first.
+    """
     for m in re.finditer(r"[^\W\d][\w\.]*", line):
-        if m.start() <= col <= m.end():
+        if m.start() <= col < m.end():
             return m.group(0)
     return None
 

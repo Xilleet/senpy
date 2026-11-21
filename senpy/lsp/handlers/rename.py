@@ -7,7 +7,6 @@ variables/transforms/screens (via text search + kind filtering).
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -22,6 +21,7 @@ from senpy.lsp.handlers._shared import (
     _filter_occurrences_by_kind,
     _find_text_occurrences_in_project,
     _get_server_mod,
+    _word_at_position,
 )
 
 
@@ -44,12 +44,9 @@ def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | 
     line = doc.lines[line_idx]
     col = params.position.character
 
-    # Extract the word under the cursor
-    word = None
-    for m in re.finditer(r"[a-zA-Z_][a-zA-Z0-9_\.]*", line):
-        if m.start() <= col <= m.end():
-            word = m.group(0)
-            break
+    # Extract the word under the cursor — delegate to the canonical
+    # unicode-aware extractor in ``_shared.py``.
+    word = _word_at_position(line, col)
 
     if not word:
         return None
@@ -218,44 +215,48 @@ def prepare_rename(
     line = doc.lines[line_idx]
     col = params.position.character
 
-    # Find the word under the cursor (same rule as in rename)
-    for m in re.finditer(r"[a-zA-Z_][a-zA-Z0-9_\.]*", line):
-        if m.start() <= col <= m.end():
-            word = m.group(0)
-            # Eligibility: prepare_rename must return a Range for any symbol
-            # type that rename() supports. rename() handles labels (via
-            # _rename_label) and variables/transforms/screens (via
-            # _rename_symbol_via_text_search). If the word is in any of
-            # these snapshot sets, return its Range — VS Code then starts
-            # the F2 session and calls rename().
-            #
-            # Previously this only checked labels — F2 silently did
-            # nothing on variables/transforms/screens (P1-6 bug).
-            #
-            # UX: use the snapshot, not lsp_server.active_analyzer.*,
-            # so F2 works even after did_change (analyze_file_only).
-            snapshot = lsp_server.symbol_snapshot
-            if (
-                word in snapshot["labels"]
-                or word in snapshot["variables"]
-                or word in snapshot["transforms"]
-                or word in snapshot["screens"]
-            ):
-                # Return the Range of the word. pygls/lsprotocol accepts a Range
-                # or PrepareRenameResult(placeholder=...). A Range is enough.
-                # UTF-16 positions for VS Code compatibility.
-                start_utf16 = len(line[: m.start()].encode("utf-16-le")) // 2
-                end_utf16 = start_utf16 + len(word.encode("utf-16-le")) // 2
-                return lsp.Range(
-                    start=lsp.Position(line=line_idx, character=start_utf16),
-                    end=lsp.Position(line=line_idx, character=end_utf16),
-                )
-            # The word exists but is not a rename-able symbol — return None
-            # ("can't rename here"). This includes words inside strings,
-            # comments, and keywords that are not symbol names.
-            return None
-
-    # No word under the cursor
+    # Find the word under the cursor (same rule as in rename) — delegate
+    # to the canonical unicode-aware extractor.
+    word = _word_at_position(line, col)
+    # Eligibility: prepare_rename must return a Range for any symbol
+    # type that rename() supports. rename() handles labels (via
+    # _rename_label) and variables/transforms/screens (via
+    # _rename_symbol_via_text_search). If the word is in any of
+    # these snapshot sets, return its Range — VS Code then starts
+    # the F2 session and calls rename().
+    #
+    # Previously this only checked labels — F2 silently did
+    # nothing on variables/transforms/screens (P1-6 bug).
+    #
+    # UX: use the snapshot, not lsp_server.active_analyzer.*,
+    # so F2 works even after did_change (analyze_file_only).
+    if not word:
+        # No word under the cursor
+        return None
+    snapshot = lsp_server.symbol_snapshot
+    if (
+        word in snapshot["labels"]
+        or word in snapshot["variables"]
+        or word in snapshot["transforms"]
+        or word in snapshot["screens"]
+    ):
+        # Return the Range of the word. pygls/lsprotocol accepts a Range
+        # or PrepareRenameResult(placeholder=...). A Range is enough.
+        # UTF-16 positions for VS Code compatibility.
+        # ``_word_at_position`` returns the matched word but not its
+        # position; re-find it via ``line.find(word)`` (first occurrence).
+        # ``col`` is guaranteed to be inside the match (by _word_at_position),
+        # so the first occurrence is correct for cursor-based rename.
+        word_start = line.find(word)
+        start_utf16 = len(line[:word_start].encode("utf-16-le")) // 2
+        end_utf16 = start_utf16 + len(word.encode("utf-16-le")) // 2
+        return lsp.Range(
+            start=lsp.Position(line=line_idx, character=start_utf16),
+            end=lsp.Position(line=line_idx, character=end_utf16),
+        )
+    # The word exists but is not a rename-able symbol — return None
+    # ("can't rename here"). This includes words inside strings,
+    # comments, and keywords that are not symbol names.
     return None
 
 

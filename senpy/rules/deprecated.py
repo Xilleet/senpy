@@ -4,6 +4,7 @@ import re
 
 from senpy.core.models import Diagnostic
 from senpy.domain.text_tags import get_utf16_range
+from senpy.text_utils import _strip_comment
 
 # Dictionary of deprecated APIs:
 # Function name -> (Advice/explanation, 1-to-1 replacement for autofix or None)
@@ -222,15 +223,39 @@ class DeprecationChecker:
         if not any(term in line for term in FAST_TERMS):
             return []
 
-        # 2. Skip comments
+        # 2. Skip full-line comments
         stripped = line.strip()
         if stripped.startswith("#"):
             return []
+
+        # 3. Determine the inline-comment boundary (if any).
+        # ``_strip_comment`` returns the code portion of the line with the
+        # comment removed (string-literal-aware: ``#`` inside ``"..."`` is
+        # preserved). A deprecated-API match in the comment portion must
+        # NOT produce a diagnostic — otherwise a line like
+        # ``$ x = LiveComposite()  # uses LiveComposite`` gets TWO RPY107
+        # (one for the real call, one for the word "LiveComposite" in the
+        # comment). Both match'ed at the same col (the first occurrence)
+        # which is even more confusing.
+        code_only = _strip_comment(line)
+        comment_start = len(code_only)
+        # If ``_strip_comment`` did not strip anything, ``code_only`` equals
+        # ``line`` (modulo trailing whitespace) and ``comment_start`` is
+        # past the end — every match is in code. If it stripped something,
+        # ``comment_start`` is the index in ``line`` where the ``#``
+        # begins (approximate — ``_strip_comment`` may rstrip whitespace,
+        # but the ``#`` is always at or after ``comment_start``).
 
         diagnostics: list[Diagnostic] = []
         for match in RE_DEPRECATED.finditer(line):
             # If the token is inside dialogue quotes — ignore
             if cls._is_in_quotes(line, match.start()):
+                continue
+
+            # If the token is in the inline-comment portion — ignore.
+            # ``comment_start`` is the boundary; any match at or after it
+            # is in the comment.
+            if match.start() >= comment_start:
                 continue
 
             token = match.group(1)

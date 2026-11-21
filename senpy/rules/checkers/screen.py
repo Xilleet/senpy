@@ -206,7 +206,12 @@ class ScreenChecker(BaseChecker):
             return
 
         # RPY203: button without action
-        if not stripped.endswith(":") and not re.search(r"\baction\b", stripped):
+        # Mask string literals before searching for ``action`` keyword —
+        # otherwise ``textbutton "Read the action Function(x) docs":`` would
+        # match ``action`` inside the dialogue text and skip the RPY203
+        # check (false negative). Same reasoning for RPY206 below.
+        masked = strip_string_literals(stripped)
+        if not stripped.endswith(":") and not re.search(r"\baction\b", masked):
             btn_word = m_btn.group(1)
             start_c, end_c = self.analyzer._get_utf16_range(raw_line, btn_word)
             self.analyzer._add_diagnostic(
@@ -222,7 +227,7 @@ class ScreenChecker(BaseChecker):
                 noqa_map,
             )
         # RPY206: direct function call in action with parentheses
-        m_act = re.search(r"\baction\s+([^\W\d]\w*)\s*\(", stripped)
+        m_act = re.search(r"\baction\s+([^\W\d]\w*)\s*\(", masked)
         if m_act:
             fn_name = m_act.group(1)
             # BUILTIN_ACTIONS is the shipped Ren'Py action library (a

@@ -153,10 +153,20 @@ def _infer_binop(node: ast.BinOp, known_vars: dict | None, depth: int) -> str | 
         if (lt == "list" and rt == "int") or (lt == "int" and rt == "list"):
             return "list"
 
-    # Numeric arithmetic: int + int → int, int + float → float
-    if lt in ("int", "float") and rt in ("int", "float"):
+    # Numeric arithmetic: int + int → int, int + float → float.
+    # Note: ``bool`` is a subtype of ``int`` in Python (True == 1, False == 0),
+    # so ``True + 1 == 2``, ``True * 3 == 3`` and ``True - 1 == 0`` are
+    # legitimate. Treat ``bool`` the same as ``int`` for numeric arithmetic
+    # — fixes false-positive RPY108 on ``$ total = True + 1`` and
+    # ``$ count = enabled * 3``. Result of any bool+numeric op is ``int``
+    # (or ``float`` if either operand is float), matching Python semantics
+    # (``True + True == 2``, not ``True``).
+    _NUMERIC_TYPES = ("int", "float", "bool")
+    if lt in _NUMERIC_TYPES and rt in _NUMERIC_TYPES:
         if "float" in (lt, rt):
             return "float"
+        # Both operands are int/bool — result is int (bool arithmetic
+        # promotes to int in Python).
         return "int"
 
     return None
@@ -177,7 +187,7 @@ def _check_binop_incompatible(
     if not lt or not rt:
         return None
 
-    if {lt, rt} <= {"int", "float"}:
+    if {lt, rt} <= {"int", "float", "bool"}:
         return None
 
     op = node.op
@@ -203,6 +213,15 @@ def _check_add_compat(lt: str, rt: str) -> tuple[str, str, str] | None:
 
 def _check_sub_compat(lt: str, rt: str) -> tuple[str, str, str] | None:
     """Sub (-): only numeric types (int/float already handled by caller)."""
+    # ``bool`` is a subtype of ``int`` in Python — ``True - False == 1`` and
+    # ``True - 1 == 0`` are legitimate. ``_check_binop_incompatible`` already
+    # handled pure ``int`` / ``float`` (they return None before reaching here),
+    # but ``bool`` was excluded from the numeric set (now fixed), so callers
+    # used to land here and get an unconditional "incompatible" verdict.
+    # After the bool fix in ``_infer_binop``, we treat ``bool`` as numeric —
+    # this stub stays correct because it is only reached for non-numeric
+    # operand pairs (``str - str``, ``list - int``, etc.), which ARE
+    # incompatible in Python.
     return (lt, rt, "-")
 
 
@@ -277,8 +296,16 @@ def _infer_method_call(method: str) -> str | None:
         return "bool"
     if method in ("count", "index", "find", "rfind"):
         return "int"
-    if method in ("keys", "values"):
-        return "list"
+    # dict.keys() / dict.values() / dict.items() return view objects in
+    # Python 3 (dict_keys / dict_values / dict_items), NOT lists. Returning
+    # "list" here would make RPY108 consider ``$ ks = d.keys(); $ ks.append(x)``
+    # valid (it's not — AttributeError at runtime). Return None (unknown
+    # type) so the type-inference caller treats it conservatively.
+    #
+    # If we ever introduce proper view types (``dict_keys`` / ``dict_values``
+    # / ``dict_items``), this is the place to return them.
+    if method in ("keys", "values", "items"):
+        return None
     return None
 
 

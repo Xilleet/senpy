@@ -220,7 +220,20 @@ _MANUAL_BUILTIN_SYMBOLS: set[str] = {
     "topright",
     "offscreenleft",
     "offscreenright",
-    "reset",
+    # NOTE: ``"reset"`` was previously listed here under the comment
+    # "Standard Ren'Py positions and base transforms", but it is a
+    # transform PROPERTY (used in ATL like ``transform: reset``), not a
+    # position name — removed in 0.9.2. RPY103/RPY202 now correctly flag
+    # reassignment of ``reset``.
+    #
+    # ``"default"`` stays — it is BOTH a Ren'Py keyword (``default x = 5``)
+    # AND a valid position name (``show layer master at default`` — see
+    # tests/cli/test_show_layer.py::test_show_layer_is_not_an_image_tag).
+    # Removing it would cause a false-positive RPY502 on the legitimate
+    # ``at default`` pattern. The keyword/position duality is fine:
+    # ``$ default = 5`` is rare in real code and the rule checkers already
+    # treat ``default``/``define`` as keywords in declaration contexts
+    # (RPY104/RPY105) without consulting BUILTIN_SYMBOLS.
     "default",
     # Built-in Ren'Py transition classes (for calls with parameters:
     # Dissolve(1.0), Fade(...)).

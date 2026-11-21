@@ -26,6 +26,8 @@ if TYPE_CHECKING:
 
 from lsprotocol import types as lsp
 
+from senpy.lsp.handlers._shared import _word_at_position
+
 
 def _get_server_mod():
     """Lazy access to senpy.lsp.server, breaks the import cycle."""
@@ -225,7 +227,9 @@ def document_highlight(
         return []
 
     line = doc.lines[line_idx]
-    word = _extract_word_at_position(line, params.position.character)
+    # Delegate to the canonical unicode-aware word extractor in
+    # ``_shared.py`` (previously local ASCII-only regex).
+    word = _word_at_position(line, params.position.character)
     if not word:
         return []
 
@@ -233,14 +237,6 @@ def document_highlight(
         return []
 
     return _find_all_occurrences(word, doc.lines)
-
-
-def _extract_word_at_position(line: str, col: int) -> str | None:
-    """Extract the identifier under the cursor position."""
-    for m in re.finditer(r"[a-zA-Z_][a-zA-Z0-9_\.]*", line):
-        if m.start() <= col <= m.end():
-            return m.group(0)
-    return None
 
 
 def _is_user_symbol(word: str, analyzer) -> bool:

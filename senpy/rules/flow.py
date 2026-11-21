@@ -21,7 +21,24 @@ if TYPE_CHECKING:
     from senpy.core.protocols import DiagnosticSinkAndSymbols
     from senpy.core.symbols import LabelSymbol
 
-_MERMAID_RESERVED_IDS = {"end"}
+# Mermaid reserved keywords that cannot be used as bare node ids.
+# Source: Mermaid flowchart grammar — these words trigger parsing as
+# subgraph/click/style/classDef/etc. directives rather than node ids.
+# Without escaping them, a screen named "end" or "graph" breaks the
+# generated diagram exactly on that edge. Note: this list is the
+# commonly-encountered reserved set; Mermaid's full keyword list is
+# version-dependent, so we err on the side of escaping a few extra.
+_MERMAID_RESERVED_IDS = {
+    "end",
+    "graph",
+    "subgraph",
+    "click",
+    "style",
+    "classDef",
+    "linkStyle",
+    "direction",
+    "class",
+}
 
 
 def _mermaid_safe_id(name: str) -> str:
@@ -869,11 +886,19 @@ def _add_screen_use_edges(*, lines: list[str], ctx: _GraphContext) -> bool:
         for tgt in sorted(ctx.screen_uses[src_name]):
             if tgt not in ctx.screens_registry:
                 continue
+            # Sanitize both src and tgt via ``_mermaid_safe_id`` — the
+            # other edge builders (lines 807, 813, 837, 840, 853, 857) all
+            # call it, but this builder was missed. A screen name with a
+            # dot (``main_menu`` is fine, but ``preferences.audio`` is not)
+            # or a reserved word (``end``) would break the Mermaid diagram
+            # exactly on the ``call screen`` / ``use`` edge.
+            src_id = _mermaid_safe_id(src_name)
+            tgt_id = _mermaid_safe_id(tgt)
             if src_name in ctx.labels:
-                lines.append(f"    {src_name} -- call screen --> screen_{tgt}")
+                lines.append(f"    {src_id} -- call screen --> screen_{tgt_id}")
                 added = True
             elif src_name in ctx.screens_registry:
-                lines.append(f"    screen_{src_name} -- use --> screen_{tgt}")
+                lines.append(f"    screen_{src_id} -- use --> screen_{tgt_id}")
                 added = True
     return added
 

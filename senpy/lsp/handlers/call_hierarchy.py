@@ -7,7 +7,6 @@ Prepares call hierarchy for labels — who jumps to this label
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -18,7 +17,7 @@ if TYPE_CHECKING:
 
 from lsprotocol import types as lsp
 
-from senpy.lsp.handlers._shared import _get_server_mod
+from senpy.lsp.handlers._shared import _get_server_mod, _word_at_position
 
 
 def prepare_call_hierarchy(
@@ -45,12 +44,10 @@ def prepare_call_hierarchy(
     line = doc.lines[line_idx]
     col = params.position.character
 
-    # Find word under cursor
-    word = None
-    for m in re.finditer(r"[a-zA-Z_][a-zA-Z0-9_\.]*", line):
-        if m.start() <= col <= m.end():
-            word = m.group(0)
-            break
+    # Find word under cursor — delegate to the canonical unicode-aware
+    # extractor in ``_shared.py`` (previously inline ASCII-only regex,
+    # which silently returned None for non-ASCII labels like ``はじめ``).
+    word = _word_at_position(line, col)
 
     if not word:
         return []

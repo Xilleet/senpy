@@ -1102,6 +1102,14 @@ def outgoing_calls(
 
 
 def start_lsp():
+    # Mark LSP mode via env var so other modules can guard stdout/stderr
+    # writes (e.g. ``senpy/core/progress.py::progress_print`` no-ops when
+    # ``SENPY_LSP=1`` — writing to stdout would corrupt the JSON-RPC
+    # transport). Set before any other code runs so even imports that
+    # happen lazily inside the LSP loop see the flag.
+    import os
+
+    os.environ["SENPY_LSP"] = "1"
     # Initialize logging before the LSP I/O loop starts. LSP uses
     # stderr as the JSON-RPC transport — any unsilenced WARNING+ log
     # record would corrupt the protocol. setup_logging(verbose=False)
