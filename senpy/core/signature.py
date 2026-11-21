@@ -10,6 +10,38 @@ _logger = get_logger("signature")
 
 @dataclass
 class SignatureInfo:
+    """Parsed signature of a Ren'Py callable (label / screen / transform).
+
+    Produced by ``parse_signature(param_str)`` via ``ast.parse`` of a synthetic
+    ``def _d(<param_str>): pass``. ``has_params=False`` means the callable was
+    declared without a parameter list (``label foo:`` / ``screen bar:``) — in
+    that case the call-argument validator (RPY310) does NOT enforce argument
+    counts because there is nothing to compare against.
+
+    Field semantics:
+      - ``min_args``: minimum positional args a caller must pass (positional
+        args without defaults + required kw-only args).
+      - ``max_args``: maximum positional args a caller may pass. ``float("inf")``
+        when ``has_varargs=True`` (a ``*args`` accepts any number). The float
+        type is a sentinel — compare with ``int(sig.max_args)`` (see
+        ``_check_arg_counts_and_kwargs``). A future hardening patch may
+        replace the float sentinel with a cleaner ``has_unlimited_args: bool``
+        field to avoid the int/float mixing.
+      - ``has_varargs`` / ``has_varkwargs``: True if the signature has ``*args`` /
+        ``**kwargs`` respectively. When True the strict arg-count check is
+        skipped (dynamic unpacking can't be statically validated).
+      - ``required_names``: names of params the caller MUST pass (subset of
+        ``all_names``).
+      - ``all_names``: every param name declared (positional + keyword-only).
+        Used to detect "unexpected keyword argument".
+      - ``has_params``: True iff the callable was declared WITH a parameter
+        list. False ⇒ signature is "no params declared", and RPY310 does not
+        enforce argument counts.
+      - ``pos_names``: positional param names in declaration order. Used to
+        detect "got multiple values for argument" when a positional is
+        duplicated via keyword.
+    """
+
     min_args: int = 0
     max_args: float = 0.0
     has_varargs: bool = False

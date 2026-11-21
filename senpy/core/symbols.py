@@ -22,7 +22,17 @@ class VariableSymbol:
 
 @dataclass(slots=True)
 class LabelSymbol:
-    """Represents a story label (label)."""
+    """Represents a story label (label).
+
+    Two jump-related fields model the bidirectional edges of the call graph:
+      - ``outgoing_jumps``: targets this label jumps/calls (forward edges).
+      - ``incoming_jumps``: callers that jump/call into this label (reverse
+        edges). This is the per-label counterpart of
+        ``SymbolTable.jump_sources[label_name]`` — same data, but stored on
+        the LabelSymbol itself for quick access without a separate dict
+        lookup. The two views are kept in sync by ``_collect_misc`` /
+        ``SymbolTable.rebuild_from_scopes``.
+    """
 
     name: str
     file_path: str
@@ -31,7 +41,7 @@ class LabelSymbol:
     signature: SignatureInfo | None = None
     has_return: bool = False
     outgoing_jumps: set[str] = field(default_factory=set)
-    jump_sources: list[tuple[str, int]] = field(default_factory=list)
+    incoming_jumps: list[tuple[str, int]] = field(default_factory=list)
     # Name of the next label in the same file that this label falls
     # through to, when its body does not terminate with ``return``,
     # ``jump``, ``call`` (with ``from``), ``renpy.quit()``, or

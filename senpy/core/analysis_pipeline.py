@@ -287,7 +287,7 @@ class AnalysisPipeline:
 
         a = self.analyzer
 
-        a._check_unreachable_labels()
+        a._check_post_analysis_flow()
         a._check_unused_assets()
         check_unused_declarations(a)
 

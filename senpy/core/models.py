@@ -17,6 +17,24 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class Diagnostic:
+    """A single lint finding emitted by a rule.
+
+    Carries both the location of the finding (file, line, columns) and an
+    optional quick-fix payload used by ``--fix`` and LSP ``textDocument/codeAction``.
+    ``severity`` is normally populated by ``_apply_severity`` after the rule
+    emits the diagnostic (rule itself may leave it None).
+
+    Field groups:
+      - Identification: ``code`` (e.g. "RPY104"), ``message``, ``severity``.
+      - Location: ``file_path``, ``line_number`` (1-based), ``line_content``
+        (raw source line — used by renderers and LSP snippet), ``col`` / ``end_col``
+        (0-based byte offsets into ``line_content``; 0/0 = whole-line / unset).
+      - Quick-fix: ``fix_title`` (label for the Code Action), ``fix_replacement``
+        (new text), ``fix_start_col`` / ``fix_end_col`` (0-based byte offsets into
+        ``line_content`` to replace with ``fix_replacement``). All four are
+        optional — a diagnostic may be unfixable.
+    """
+
     file_path: str
     line_number: int
     line_content: str
@@ -43,6 +61,25 @@ class AnalysisResult:
 
 @dataclass(slots=True)
 class FileScope:
+    """Per-file state collected during Stage 1 (``_collect_symbols``).
+
+    Two parallel models coexist:
+      - ``user_symbols`` / ``declared_symbols``: flat sets of identifier names
+        seen as "declared" in this file. ``user_symbols`` = names declared via
+        user code (``default`` / ``define`` / ``label`` / ``screen`` / ``transform`` /
+        ``image`` / loop targets / ``$`` assignments / params). ``declared_symbols``
+        = ``user_symbols`` PLUS Ren'Py built-in namespaces (``renpy``, ``config``,
+        ``persistent``, …) PLUS user-extended ``additional_builtins``. Rules that
+        decide "is this name declared?" read ``declared_symbols``; rules that
+        decide "is this name a USER symbol?" (e.g. for merge_flow_branches)
+        read ``user_symbols``. Mixing the two caused divergent filters in
+        RPY401 vs RPY404 — a known historical bug class.
+      - The typed registries (``variables`` / ``labels`` / ``screens`` / ``images`` /
+        ``transforms``): full ``*Symbol`` objects, keyed by name. ``jump_sources`` /
+        ``screen_action_jumps`` / ``used_screens`` / ``screen_uses`` are derived
+        cross-reference indexes.
+    """
+
     user_symbols: set[str] = field(default_factory=set)
     declared_symbols: set[str] = field(default_factory=set)
     defined_audio_map: dict[str, str] = field(default_factory=dict)

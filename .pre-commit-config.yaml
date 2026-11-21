@@ -63,3 +63,17 @@ repos:
         args: [--maxkb=500]
         # Allow the test_game .rpyc binaries (they are checked in and small).
         exclude: ^test_game/.*\.rpyc$
+
+  # Local hook: scrub internal task IDs (DOC-1, CLI-17, FIX-42, etc.) from
+  # user-facing files. These IDs are tracking labels for internal work and
+  # must not leak into shipped code. The script is in scripts/clean_internal_ids.py.
+  - repo: local
+    hooks:
+      - id: clean-internal-ids
+        name: clean internal task IDs
+        entry: python scripts/clean_internal_ids.py --dry-run
+        language: system
+        pass_filenames: false
+        # Only check user-facing files (production code + docs). Tests may
+        # legitimately reference IDs in regression docstrings.
+        files: ^(senpy|docs|README|RULES|ARCHITECTURE|SECURITY|CONTRIBUTING|CHANGELOG)(\.|/|$)

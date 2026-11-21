@@ -61,6 +61,55 @@ class SenpyAnalyzer:
         config_path: str | None = None,
         config: dict[str, Any] | None = None,
     ):
+        """Initialise the analyzer for ``project_path``.
+
+        Three mutually exclusive configuration branches (the first non-None
+        argument wins):
+
+        1. ``severity_overrides`` is passed — programmatic full-control mode.
+           The caller owns the severity policy. ``strict`` is forced False,
+           ``enable_plugins`` is forced False, ``additional_builtins`` /
+           ``additional_actions`` are empty. No ``senpy.toml`` is read. Use
+           this when embedding Senpy in a tool that already manages its own
+           severity surface (e.g. the LSP server).
+        2. ``config`` dict is passed — programmatic config that follows the
+           ``senpy.toml [tool.senpy]`` schema (see ``SenpyConfig``). Validated
+           via pydantic. Useful for ``senpy.api.analyze_code(code, config=...)``
+           without writing a TOML file.
+        3. Neither — load ``senpy.toml`` from ``project_path`` (or from
+           ``config_path`` if explicit). Falls back to defaults if no file.
+
+        Args:
+            project_path: Root directory of the Ren'Py project (must contain
+                ``game/`` or be ``game/`` itself).
+            extra_files: Additional ``.rpy`` files outside ``project_path``
+                to include in the analysis (e.g. shared ``definitions.rpy``
+                from a sibling library). Paths are normalised via
+                ``normalize_path``.
+            fix: If True, ``run()`` will write back modified source lines
+                (via ``_write_fixed_file`` with atomic write + OSError catch).
+            in_memory_files: Maps normalised file path to current (possibly
+                unsaved) content. Used by LSP ``did_open`` / ``did_change``
+                so the analyzer does not re-read disk for the just-edited
+                buffer.
+            no_cache: If True, disables both Tier 1 (symbol cache) and
+                Tier 2 (diagnostic cache). Equivalent to CLI ``--no-cache``.
+            severity_overrides: See branch (1) above.
+            strict: If True, every diagnostic is promoted to ERROR severity
+                (after ``severity_overrides`` have been applied, so explicit
+                overrides still win). ``None`` (default) = inherit from
+                config. CLI ``--strict`` forces True even if config says
+                False.
+            cache_dir: Override the default ``<project>/.senpy_cache``
+                location. Used by CI to isolate caches per matrix cell.
+            config_path: Explicit path to ``senpy.toml``. If absent, the
+                standard search order (project root, then ``game/``) is
+                used. WARNING: if ``config_path`` is given but the file does
+                not exist, the path is silently dropped and the default
+                search runs (tracked as a known issue for a future
+                hardening patch — emit a WARNING instead of silent fallback).
+            config: See branch (2) above.
+        """
         self.project_path = os.path.abspath(project_path)
         # cache_dir: passed through to CacheManager (CLI --cache-dir).
         # None = default <project>/.senpy_cache.
@@ -587,7 +636,19 @@ class SenpyAnalyzer:
             file_path, line_idx, raw_line, extra_symbols, noqa_map
         )
 
-    def _check_unreachable_labels(self) -> None:
+    def _check_post_analysis_flow(self) -> None:
+        """Run post-pass flow rules after all files have been collected.
+
+        Combines two related StoryFlowAnalyzer passes:
+          - ``check_unreachable_labels`` (RPY303 — dead labels)
+          - ``check_story_islands`` (RPY309 — disconnected subgraphs)
+
+        Both need the fully-aggregated symbol table (every label in every
+        file, all jump sources) so they can only run after Stage 2
+        (``_collect_all_symbols`` / ``rebuild_from_scopes``). Despite the
+        original name ``_check_unreachable_labels``, this method has always
+        done both — renamed in 0.9.2 to reflect that.
+        """
         self.diagnostics.extend(self.flow.check_unreachable_labels())
         self.diagnostics.extend(self.flow.check_story_islands())
 

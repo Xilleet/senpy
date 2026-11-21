@@ -107,7 +107,7 @@ def _dump_labels(analyzer: SenpyAnalyzer, with_source: bool) -> dict:
             "line_number": sym.line_number,
             "has_return": sym.has_return,
             "outgoing_jumps": sorted(sym.outgoing_jumps),
-            "jump_sources": [[file, line] for file, line in sym.jump_sources],
+            "incoming_jumps": [[file, line] for file, line in sym.incoming_jumps],
         }
         if sym.signature is not None:
             entry["signature"] = _dump_signature(sym.signature)
