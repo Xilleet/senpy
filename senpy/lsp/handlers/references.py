@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 from lsprotocol import types as lsp
 
 from senpy.lsp.handlers._shared import (
+    _filter_occurrences_by_kind,
     _find_text_occurrences_in_project,
     _get_server_mod,
     _word_at_position,
@@ -25,10 +26,10 @@ from senpy.lsp.handlers._shared import (
 
 
 def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Location] | None:
+    """Find References: all static jump/call references to the label under the cursor."""
     server_mod = _get_server_mod()
     # Phase 3.3c-e: state via _lsp_server.<attr>.
     lsp_server = server_mod._lsp_server
-    """Find References: all static jump/call references to the label under the cursor."""
     if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return None
 
@@ -88,27 +89,54 @@ def references(ls: LanguageServer, params: lsp.ReferenceParams) -> list[lsp.Loca
     # references for variables/transforms/screens via text search.
     # They have no reverse index (like jump_sources for labels), so we use
     # _find_text_occurrences_in_project — a whole-word grep across all .rpy files.
-    if (
-        word in lsp_server.symbol_snapshot["variables"]
-        or word in lsp_server.symbol_snapshot["transforms"]
-        or word in lsp_server.symbol_snapshot["screens"]
-    ):
-        return _references_via_text_search(server_mod, word, params.context.include_declaration)
+    #
+    # Resolve the symbol_kind FIRST (the kind in which the word is
+    # declared) and pass it down so the text-search path applies the
+    # same ``_filter_occurrences_by_kind`` filter that ``rename``
+    # uses. Without the filter, Find References shows natural-language
+    # mentions in dialogue that Rename silently ignores — the two
+    # handlers diverge (a user sees 12 references, hits F2, only 7
+    # change). The kind is the FIRST of (variables, transforms, screens)
+    # in which the snapshot has the word; if a name is overloaded
+    # across kinds, the caller already disambiguates via cursor context
+    # in practice.
+    symbol_kind: str | None = None
+    for kind in ("variables", "transforms", "screens"):
+        if word in lsp_server.symbol_snapshot[kind]:
+            symbol_kind = kind
+            break
+    if symbol_kind is not None:
+        return _references_via_text_search(
+            server_mod, word, params.context.include_declaration, symbol_kind
+        )
 
     return None
 
 
 def _references_via_text_search(
-    server_mod, word: str, include_declaration: bool
+    server_mod, word: str, include_declaration: bool, symbol_kind: str
 ) -> list[lsp.Location]:
     """helper: references for variables/transforms/screens.
 
-    Uses _find_text_occurrences_in_project. If include_declaration=False,
-    excludes the first location (the declaration) — it is identified via the snapshot.
+    Uses ``_find_text_occurrences_in_project`` to gather every whole-word
+    match, then applies ``_filter_occurrences_by_kind`` so the result
+    matches what ``rename`` would actually edit (parity: Find References
+    and Rename must agree on which occurrences are real references).
+    If ``include_declaration`` is False, the declaration location —
+    identified via the snapshot — is excluded from the result.
     """
-    # Phase 3.3c-e: state via _lsp_server.<attr>.
+
     lsp_server = server_mod._lsp_server
     occurrences = _find_text_occurrences_in_project(server_mod, word)
+    if not occurrences:
+        return []
+
+    # Filter to real references of the requested kind — same filter
+    # as ``rename._rename_symbol_via_text_search``. This drops
+    # natural-language mentions in dialogue (e.g. ``"You have no gold
+    # left."``) and label/jump/screen-declaration lines that share the
+    # textual token but are not references of ``symbol_kind``.
+    occurrences = _filter_occurrences_by_kind(occurrences, word, symbol_kind)
     if not occurrences:
         return []
 

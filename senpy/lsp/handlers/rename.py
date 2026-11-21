@@ -7,6 +7,7 @@ variables/transforms/screens (via text search + kind filtering).
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 from lsprotocol import types as lsp
 
 from senpy.lsp.handlers._shared import (
+    _WORD_BOUNDARY_TEMPLATE,
     _filter_occurrences_by_kind,
     _find_text_occurrences_in_project,
     _get_server_mod,
@@ -25,11 +27,38 @@ from senpy.lsp.handlers._shared import (
 )
 
 
+def _word_edits_on_line(line: str, line_idx: int, word: str, new_name: str) -> list[lsp.TextEdit]:
+    """Build a ``lsp.TextEdit`` for EVERY whole-word match of ``word`` on ``line``.
+
+    Replaces the previous ``str.find(word)`` approach which only found
+    the FIRST occurrence — on ``$ gold = gold + 1`` the second ``gold``
+    was left untouched and the file became ``$ silver = gold + 1``,
+    a silent corruption. The word-boundary regex (same template as
+    ``_find_text_occurrences_in_project``) finds every whole-word
+    occurrence; each gets its own edit with UTF-16 column offsets.
+    """
+    edits: list[lsp.TextEdit] = []
+    pattern = re.compile(_WORD_BOUNDARY_TEMPLATE.format(re.escape(word)))
+    word_len_utf16 = len(word.encode("utf-16-le")) // 2
+    for m in pattern.finditer(line):
+        start_utf16 = len(line[: m.start()].encode("utf-16-le")) // 2
+        edits.append(
+            lsp.TextEdit(
+                range=lsp.Range(
+                    start=lsp.Position(line=line_idx, character=start_utf16),
+                    end=lsp.Position(line=line_idx, character=start_utf16 + word_len_utf16),
+                ),
+                new_text=new_name,
+            )
+        )
+    return edits
+
+
 def rename(ls: LanguageServer, params: lsp.RenameParams) -> lsp.WorkspaceEdit | None:
+    """Label rename: updates the declaration + all jump/call references."""
     server_mod = _get_server_mod()
     # Phase 3.3c-e: state via _lsp_server.<attr>.
     lsp_server = server_mod._lsp_server
-    """Label rename: updates the declaration + all jump/call references."""
     if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return None
 
@@ -90,20 +119,14 @@ def _rename_label(server_mod, word: str, new_name: str) -> lsp.WorkspaceEdit | N
             file_lines = f.readlines()
         if lbl_line < len(file_lines):
             lbl_content = file_lines[lbl_line]
-            # Find the position of the word in the line
-            word_start = lbl_content.find(word)
-            if word_start >= 0:
-                word_start_utf16 = len(lbl_content[:word_start].encode("utf-16-le")) // 2
-                word_end_utf16 = word_start_utf16 + len(word.encode("utf-16-le")) // 2
-                changes.setdefault(lbl_uri, []).append(
-                    lsp.TextEdit(
-                        range=lsp.Range(
-                            start=lsp.Position(line=lbl_line, character=word_start_utf16),
-                            end=lsp.Position(line=lbl_line, character=word_end_utf16),
-                        ),
-                        new_text=new_name,
-                    )
-                )
+            # Replace EVERY whole-word occurrence on the line (not just
+            # the first ``str.find`` hit) — the declaration line of a
+            # label does not normally repeat the name, but using the
+            # helper keeps the two paths consistent and protects
+            # against pathological ``label gold gold:`` input.
+            changes.setdefault(lbl_uri, []).extend(
+                _word_edits_on_line(lbl_content, lbl_line, word, new_name)
+            )
     except OSError:
         pass
 
@@ -119,20 +142,14 @@ def _rename_label(server_mod, word: str, new_name: str) -> lsp.WorkspaceEdit | N
                 ref_lines = f.readlines()
             if ref_line_0 < len(ref_lines):
                 ref_content = ref_lines[ref_line_0]
-                # Find the position of the word in the line
-                word_start = ref_content.find(word)
-                if word_start >= 0:
-                    word_start_utf16 = len(ref_content[:word_start].encode("utf-16-le")) // 2
-                    word_end_utf16 = word_start_utf16 + len(word.encode("utf-16-le")) // 2
-                    changes.setdefault(ref_uri, []).append(
-                        lsp.TextEdit(
-                            range=lsp.Range(
-                                start=lsp.Position(line=ref_line_0, character=word_start_utf16),
-                                end=lsp.Position(line=ref_line_0, character=word_end_utf16),
-                            ),
-                            new_text=new_name,
-                        )
-                    )
+                # Replace EVERY whole-word occurrence on the line — the
+                # old ``str.find(word)`` returned only the first hit, so
+                # ``$ gold = gold + 1`` became ``$ silver = gold + 1``
+                # (silent corruption: the second reference was left
+                # untouched). The word-boundary regex finds all of them.
+                changes.setdefault(ref_uri, []).extend(
+                    _word_edits_on_line(ref_content, ref_line_0, word, new_name)
+                )
         except OSError:
             pass
 
@@ -197,10 +214,10 @@ def _rename_symbol_via_text_search(
 def prepare_rename(
     ls: LanguageServer, params: lsp.PrepareRenameParams
 ) -> lsp.Range | lsp.PrepareRenameResult | None:
+    """Returns the Range of the word under the cursor for preview before rename."""
     server_mod = _get_server_mod()
     # Phase 3.3c-e: state via _lsp_server.<attr>.
     lsp_server = server_mod._lsp_server
-    """Returns the Range of the word under the cursor for preview before rename."""
     if lsp_server.active_analyzer is None or not lsp_server.is_initialized:
         return None
 
