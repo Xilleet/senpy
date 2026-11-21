@@ -83,7 +83,7 @@ class TestFix90FormatDirectiveInStringLiteral:
 
     def test_legitimate_format_off_still_skips(self, formatter: Formatter) -> None:
         """Regression guard: a real ``# senpy: format off`` comment still
-        activates the skip block (FIX-90 must not break legitimate use)."""
+        activates the skip block."""
         code = "# senpy: format off\n$ x=\t1   \n# senpy: format on\n"
         result = formatter.format_code(code)
         assert "$ x=\t1   " in result, f"legitimate skip block was touched:\n{result!r}"

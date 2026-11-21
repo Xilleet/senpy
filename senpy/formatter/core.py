@@ -133,9 +133,7 @@ def _find_comment_start(line: str) -> int:
     string state (consistent with the rest of the formatter). Single/double
     quote tracking is sufficient for the directive-in-string-literal case
     that addresses; multi-line ``\"\"\"...\"\"\"`` interiors are a
-    separate per-line-scan gap tracked as FIX-93 (see also ARCH-159 for the
-    plan to reuse the unified ``text_utils`` string-state scanner, which
-    would retire this hand-rolled walker alongside ``_strip_comment_safe``).
+    separate per-line-scan gap tracked.
     """
     if "#" not in line:
         return -1
@@ -203,7 +201,7 @@ def _build_contexts(lines: list[str], config: FormatConfig) -> list[FormatContex
         # comment marker and must not trigger the directive.
         # NOTE: multi-line ``\"\"\"...\"\"\"`` interiors are still mishandled
         # here because this scan is per-line with no cross-line string
-        # state — that gap is FIX-93, intentionally out of scope for this
+        # state — that gap, intentionally out of scope for this
         # fix (doing it as a quick patch would be reworked when _split_by_strings
         # gains cross-line state).
         comment_idx = _find_comment_start(raw)

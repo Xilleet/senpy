@@ -162,15 +162,14 @@ def _split_by_strings(line: str) -> list[tuple[str, bool]]:
     - ``#`` comments: once a real ``#`` (outside a string) is reached, the
       rest of the line is treated as a single preserved segment so that
       op/comma/colon/string-consistency rules never reformat comment
-      interiors (FIX-92: previously ``$ x = 1  #a=b,c`` was mangled into
-      ``$ x = 1  #a = b, c``). Consumed by op_spacing, comma_spacing,
+      interiors. Consumed by op_spacing, comma_spacing,
       colon_spacing and string_consistency.
 
     NOTE: this walker is per-line with no cross-line string state, so the
     interior of a multi-line ``\"\"\"...\"\"\"`` that spans lines is still
-    treated as code on continuation lines. That gap is FIX-93 (intentionally
+    treated as code on continuation lines. That gap (intentionally
     out of scope here — fixing it needs a two-pass / state-carrying rework
-    of _build_contexts, planned together with ARCH-158/159 which moves this
+    of _build_contexts, planned together which moves this
     helper onto the unified text_utils string-state scanner).
     NOTE: ops immediately followed by a string literal (e.g. ``x="a"``) are
     not normalised here because the opening quote lands in the *string*
@@ -228,7 +227,7 @@ def _split_by_strings(line: str) -> list[tuple[str, bool]]:
             continue
 
         # Comment (# outside a string literal): the rest of the line is a
-        # comment, preserved verbatim (FIX-92). Reaching this branch means
+        # comment, preserved verbatim. Reaching this branch means
         # we are not inside a skipped string (strings `continue` above), so
         # a ``#`` here is a real comment marker.
         if ch == "#":
