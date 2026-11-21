@@ -42,7 +42,7 @@ Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github
 
 ## Status: Feature Freeze → 1.0
 
-Senpy 0.9.1 is production-stable for users. Until 1.0, I'm focusing on
+Senpy 0.9.2 is production-stable for users. Until 1.0, I'm focusing on
 architecture hardening and `senpy.api` contract stabilization —
 **no new rules, no new features, no new output formats**.
 
@@ -67,6 +67,53 @@ formatter extensions, sandbox R&D, editor clients beyond VS Code.
 
 ---
 ## What's New
+
+### 0.9.2 — Ren'Py 8.6.1 compatibility + 25 critical bugfixes (patch)
+
+A patch release combining **Ren'Py 8.6.1 compatibility** (data refresh + auto-extracted `BUILTIN_SYMBOLS` + extended `DEPRECATED_APIS`) with **25 bugfixes** backported from the 0.9.5 roadmap. After landing the 8.6.1 data refresh, it became clear that a "compat-only" patch would not give users a reason to upgrade — so 5 clusters of high-impact, low-architectural-risk fixes were pulled forward into 0.9.2.
+
+| Area | What Was Broken | What Changed |
+|---|---|---|
+| **Ren'Py 8.6.1 data refresh** | API data was pinned to 8.5.3; new `config.add_to_special_directories` entry (multiple search directories in 8.6) was missing. | `renpy_api_source.yaml` now references `8.6.1.26111705`. `renpy_api_generated.json` regenerated (755 entries, +1). New `scripts/diff_renpy_api.py` script generates `docs/renpy_api_diff.md` with added/removed/changed entries between any two JSON snapshots. |
+| **`BUILTIN_SYMBOLS` auto-extracted from JSON** | Every time Ren'Py added a new runtime namespace, Senpy's RPY202 fired on it before the maintainer noticed. `preferences` namespace (37 entries in 8.6.1) was missing entirely. | `senpy/core/renpy_builtins.py` now derives top-level namespace roots (`config`, `gui`, `build`, `renpy`, `persistent`, `preferences`, `layeredimage`) from the generated JSON at module load. New namespaces appear automatically on the next pin bump — no manual edit needed. |
+| **`DEPRECATED_APIS` extended with `im.*`** | All 18 `im.*` image manipulator functions/methods (deprecated since Ren'Py 7.4.0) were not flagged by RPY107. Users had no warning before upgrading. | 8 `im.*` functions + 10 `im.matrix.*` methods + `config.images_directory` (superseded in 8.5.0) now flagged by RPY107 with concrete Transform-property replacement advice. Total: 15 → 34 deprecated entries. |
+| **FIPS-safe MD5 in GitLab renderer** | `hashlib.md5()` without `usedforsecurity=False` raised `ValueError` on FIPS-enabled systems (RHEL/Fedora, corporate images), crashing the entire GitLab Code Quality renderer. | `hashlib.md5(..., usedforsecurity=False)` — one keyword argument, available since Python 3.9+. |
+| **Trust store cross-process lock** | Concurrent LSP + CLI (or two parallel CLI invocations) could lose grants: P1 reads {A}, P2 reads {A}, P1 writes {A,B}, P2 writes {A,C} → B silently lost. | `senpy/plugins/security.py` now guards the read-modify-write cycle with a cross-process file lock (`fcntl.flock` POSIX / `msvcrt.locking` Windows), same pattern as `CacheManager` in `senpy/core/cache.py`. |
+| **Plugin audit catches `importlib.import_module`** | `importlib.import_module("os").system("...")` bypassed the audit — the modern replacement for `__import__()` was not flagged. | `importlib` added to `_DANGEROUS_IMPORTS`, `import_module` added to `_DANGEROUS_MODULE_ATTRS`. Same security risk, same warning. |
+| **`bool` arithmetic now numeric** | `True + 1`, `True * 3`, `bool += int`, `True - False` triggered RPY108. `bool` is a subtype of `int` in Python (True == 1, False == 0). | `bool` added to the numeric type set in `_infer_binop` / `_check_binop_incompatible`. Result of bool+numeric is `int` (matching Python: `True + True == 2`, not `True`). |
+| **`dict.keys()`/`values()`/`items()` not `list`** | `$ ks = d.keys(); $ ks.append(x)` was considered valid — but `dict_keys` has no `append()`, crashes at runtime. | Returns `None` (unknown type) so RPY108 treats it conservatively. |
+| **LSP word extractor Unicode-aware everywhere** | F12 worked on non-ASCII labels (`золото`, `はじめ`) but Shift+F12 / F2 / call hierarchy / document highlight / workspace symbol silently did nothing — 5 inline ASCII-only regex copies. | All 5 inline copies now delegate to the canonical `_word_at_position` in `_shared.py`. Off-by-one on word boundary also fixed. |
+| **`progress_print` guards stdout in LSP mode** | An accidental `progress_print` call from LSP context corrupted the JSON-RPC transport and the editor dropped the connection. | `progress_print` no-ops when `SENPY_LSP=1` (set by `start_lsp()`) or when stdout is not a TTY. |
+| **`init_ci_workflow` no longer silently overwrites** | `senpy --init-ci` on a project with an existing `.github/workflows/senpy.yml` clobbered manual edits (extra steps, matrix, env vars). | New `--force` CLI flag required to overwrite. Without it, the file is left untouched and a WARNING is printed. `was_created` return value honestly reflects whether the file was written. |
+| **`init_ci_workflow` pins Senpy version + adds gate step** | `pip install --upgrade senpy-linter` in the generated workflow meant every CI run picked up the latest Senpy (~2 releases/day), churning SARIF outputs and rule sets. Also no CI gate — `continue-on-error: true` on the scan step meant CI never failed on ERROR-severity diagnostics. | Generated workflow now uses `pip install senpy-linter==<version>` (pinned). New `--errors-only` gate step (without `continue-on-error`) fails CI on ERROR-severity diagnostics — SARIF step keeps `continue-on-error` so the report is still uploaded. |
+| **`init_ci_workflow` derives `scan_target` from `target_path`** | `senpy --init-ci path/to/my/game` in a monorepo generated a workflow scanning `.` (the entire repo). Paths with spaces (`My Games/foo`) broke the shell command. | `scan_target` is now the repo-relative form of `target_path`. `shlex.quote()` neutralises spaces. |
+| **`__version__.py` MAJOR/MINOR/PATCH derived** | Three independent hardcoded ints — anyone who bumped only `__version__` left them on old values, and `CacheManager.compute_environment_fingerprint` (which hashes `MAJOR.MINOR`) produced wrong hashes. | `MAJOR, MINOR, PATCH = (int(x) for x in __version__.split("."))` — derived, always in sync. |
+| **LSP generation-counter thread-safe** | `full_generation += 1` is not atomic in Python — two concurrent `schedule_full_diagnostics` (e.g. `did_save` + `did_open` overlapping) could both load 5, both store 6, both proceed with `new_gen=6`, defeating the stale-worker guard. | Both generation counters (`full_generation` and per-URI `change_generations`) now guarded by `_lsp_server._generation_lock`. `new_gen` is captured inside the lock so two concurrent callers never get the same value. |
+| **`SymbolTable.rebuild_from_scopes` clears 3 more registries** | `transforms`, `screen_action_jumps`, `used_screens` were not cleared before the update loop — a plugin or LSP fast-path extension calling `rebuild_from_scopes` without a prior `reset()` accumulated stale entries. | All three registries now cleared before the update loop. |
+| **HTML report + LSP null-guard `line_content`** | `diag.line_content.strip()` on `None` (project-level diagnostics, or rules that forgot the field) crashed HTML report / LSP `publishDiagnostics` for the affected file. | `(diag.line_content or "").strip()` in `html_report.py`, `raw_text = diag.line_content or ""` in `lsp/server.py`. |
+| **Mermaid sanitizer extended** | `_add_screen_use_edges` was the only edge builder missing `_mermaid_safe_id()` — a screen named `preferences.audio` or `end` broke the diagram. | Both `src` and `tgt` now sanitized. `_MERMAID_RESERVED_IDS` extended from `{"end"}` to 9 keywords. |
+| **`screen.py` masks string literals before `action` regex** | `textbutton "Read the action Function(x) docs":` produced false-negative RPY203 (word "action" in dialogue text) and false-positive RPY206 (`Function(` from dialogue). | `strip_string_literals(stripped)` before both `\baction\b` (RPY203) and `\baction\s+(\w+)\s*\(` (RPY206) regexes. |
+| **`deprecated.py` skips inline comments** | `$ x = LiveComposite()  # uses LiveComposite` produced TWO RPY107 diagnostics (one for the call, one for the word in the comment). | `_strip_comment` from `text_utils` determines the comment boundary; matches at or after it are ignored. |
+| **`reset` removed from `BUILTIN_SYMBOLS`** | `reset` is a transform property (used in ATL like `transform: reset`), not a position name — RPY103/RPY202 did not flag `$ reset = 5`. | Removed. (`default` was kept — it is both a keyword and a valid position name: `show layer master at default`.) |
+| **JSON `sort_keys=True` in `rule_dispatch` and `gitlab`** | Non-deterministic key order broke CI snapshot testing — two runs on the same project could produce different JSON if plugin registration order changed. GitLab docstring promised "sorted dict keys" but did not pass `sort_keys=True`. | Both now use `sort_keys=True`, matching `inspect_dispatch.py`. |
+| **Pre-commit ruff pin bumped to v0.17.6** | UP038 rule was deprecated in ruff 0.10 and removed in 0.13.0 — the previous pin (v0.7.4) still enforced it (29 violations), blocking commits. | Pin bumped. `ruff-format` hook kept on v0.7.4 to avoid one-shot reformat of 75 files (separate task). |
+| **Local `clean-internal-ids` pre-commit hook** | No automated check prevented internal task IDs (e.g. `DOC-N`, `FIX-N` patterns) from leaking into user-facing files. | New local hook runs `scripts/clean_internal_ids.py --dry-run` on every commit. |
+
+**Plus**: 3 unrpyc imports added to `senpy.__all__`; `senpy.api` migration
+guide resolved (no longer calls `from senpy import SenpyAnalyzer`
+"deprecated"); docstrings on `SenpyAnalyzer.__init__`, `Diagnostic`,
+`FileScope`, `SignatureInfo`, `LabelSymbol`; `LabelSymbol.jump_sources`
+→ `incoming_jumps`; `_check_unreachable_labels` →
+`_check_post_analysis_flow`; `CONTRIBUTING.md` full audit; `README.md`
+badge updated to 8.6; honest `.rpa` archive documentation; stale
+comments cleaned (P3-1, `enable_plugins` flip, `BaseException` docstring,
+`T-003`/`T-004`/`T-024 in WORKLOG` references); 10 ruff false-positive
+noqa warnings cleaned; `pyproject.toml` Python classifiers updated
+(3.11/3.12/3.13/3.14).
+
+Full details in [`CHANGELOG.md`](CHANGELOG.md#092).
+
+---
 
 ### 0.9.1 — Plugin audit activation + branch-clear fix + cache stress tests + docs audit (patch)
 
@@ -688,7 +735,7 @@ Senpy ships a [pre-commit](https://pre-commit.com) hook that runs
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.9.0   # use the latest tag
+    rev: v0.9.2   # use the latest tag
     hooks:
       - id: senpy
 ```

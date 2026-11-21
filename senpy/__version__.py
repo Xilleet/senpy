@@ -10,7 +10,7 @@ update it here and everywhere else automatically).
 
 from __future__ import annotations
 
-__version__ = "0.9.1"
+__version__ = "0.9.2"
 
 # Convenient aliases for use in different parts of the codebase
 # (e.g. the LSP server often needs "v0.4.7" with the prefix).
@@ -23,6 +23,7 @@ VERSION_WITH_PREFIX = f"v{__version__}"
 # bumped only ``__version__`` left MAJOR/MINOR/PATCH on the old values,
 # and ``CacheManager.compute_environment_fingerprint`` (which hashes
 # ``MAJOR.MINOR``) would produce wrong hashes.
+# TODO: отключить или изменить поведение обновление в bump_version, иначе это обновление ломается.
 MAJOR, MINOR, PATCH = (int(x) for x in __version__.split("."))
 
 __all__ = ["__version__", "VERSION_WITH_PREFIX", "MAJOR", "MINOR", "PATCH"]

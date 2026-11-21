@@ -42,7 +42,7 @@ pip install senpy-linter
 
 ## Статус: заморозка фичей → 1.0
 
-Senpy 0.9.1 production-stable для пользователей. До 1.0 фокус — на
+Senpy 0.9.2 production-stable для пользователей. До 1.0 фокус — на
 hardening архитектуры и стабилизации контракта `senpy.api` —
 **без новых правил, без новых фичей, без новых форматов вывода**.
 
@@ -64,6 +64,54 @@ RPY9xx plugin ecosystem), новые форматы вывода, новые CLI
 ---
 
 ## Что нового
+
+### 0.9.2 — Совместимость с Ren'Py 8.6.1 + 25 критических фиксов (patch)
+
+Patch-релиз: **совместимость с Ren'Py 8.6.1** (обновление данных + auto-extract `BUILTIN_SYMBOLS` + расширение `DEPRECATED_APIS`) + **25 багфиксов** из roadmap 0.9.5. После обновления данных 8.6.1 стало ясно, что «только compat»-патч не даст пользователям причины апгрейдиться — поэтому 5 кластеров высокоэффективных низко-рискованных фиксов были перенесены в 0.9.2.
+
+| Область | Что было сломано | Что изменилось |
+|---|---|---|
+| **Обновление данных Ren'Py 8.6.1** | API данные запинены на 8.5.3; новый `config.add_to_special_directories` (multiple search directories в 8.6) отсутствовал. | `renpy_api_source.yaml` теперь ссылается на `8.6.1.26111705`. `renpy_api_generated.json` перегенерирован (755 entries, +1). Новый скрипт `scripts/diff_renpy_api.py` генерирует `docs/renpy_api_diff.md` с добавленными/удалёнными/изменёнными entries между двумя JSON-снапшотами. |
+| **`BUILTIN_SYMBOLS` auto-extract из JSON** | Каждый раз, когда Ren'Py добавлял новый runtime namespace, RPY202 срабатывал до того, как maintainer замечал. Namespace `preferences` (37 entries в 8.6.1) отсутствовал полностью. | `senpy/core/renpy_builtins.py` теперь извлекает top-level namespace roots (`config`, `gui`, `build`, `renpy`, `persistent`, `preferences`, `layeredimage`) из сгенерированного JSON при загрузке модуля. Новые namespaces появляются автоматически при следующем bump — без ручного редактирования. |
+| **`DEPRECATED_APIS` расширен `im.*`** | Все 18 `im.*` функций/методов (deprecated с Ren'Py 7.4.0) не флагались RPY107. | 8 `im.*` функций + 10 `im.matrix.*` методов + `config.images_directory` (superseded в 8.5.0) теперь флагаются RPY107 с конкретным советом по замене на Transform-property. Всего: 15 → 34 deprecated entries. |
+| **FIPS-safe MD5 в GitLab renderer** | `hashlib.md5()` без `usedforsecurity=False` падал на FIPS-системах (RHEL/Fedora), роняя весь GitLab Code Quality renderer. | `hashlib.md5(..., usedforsecurity=False)` — один keyword-аргумент, доступен с Python 3.9+. |
+| **Cross-process lock для trust store** | Concurrent LSP + CLI (или два параллельных CLI) теряли grants: P1 читает {A}, P2 читает {A}, P1 пишет {A,B}, P2 пишет {A,C} → B молча потерян. | `senpy/plugins/security.py` теперь защищает read-modify-write цикл cross-process file lock (`fcntl.flock` POSIX / `msvcrt.locking` Windows), тот же паттерн что в `CacheManager`. |
+| **Plugin audit ловит `importlib.import_module`** | `importlib.import_module("os").system("...")` обходил audit — современная замена `__import__()` не флагалась. | `importlib` добавлен в `_DANGEROUS_IMPORTS`, `import_module` в `_DANGEROUS_MODULE_ATTRS`. |
+| **`bool` arithmetic теперь numeric** | `True + 1`, `True * 3`, `bool += int`, `True - False` триггерили RPY108. `bool` — subtype `int` в Python (True == 1, False == 0). | `bool` добавлен в numeric type set в `_infer_binop` / `_check_binop_incompatible`. Результат bool+numeric — `int` (по семантике Python: `True + True == 2`, не `True`). |
+| **`dict.keys()`/`values()`/`items()` не `list`** | `$ ks = d.keys(); $ ks.append(x)` считался валидным — но `dict_keys` не имеет `append()`, runtime crash. | Возвращает `None` (unknown type), RPY108 обрабатывает консервативно. |
+| **LSP word extractor Unicode-aware везде** | F12 работал на non-ASCII labels (`золото`, `はじめ`), но Shift+F12 / F2 / call hierarchy / document highlight / workspace symbol молча ничего не делали — 5 inline ASCII-only regex копий. | Все 5 копий делегируют к canonical `_word_at_position` в `_shared.py`. Off-by-one на границе слов тоже пофикшен. |
+| **`progress_print` guard stdout в LSP mode** | Случайный `progress_print` из LSP-контекста коррумпировал JSON-RPC transport, editor рвал соединение. | `progress_print` no-op когда `SENPY_LSP=1` (устанавливается `start_lsp()`) или когда stdout не TTY. |
+| **`init_ci_workflow` не перезаписывает молча** | `senpy --init-ci` на проекте с существующим `.github/workflows/senpy.yml` затирал ручные правки (дополнительные steps, matrix, env vars). | Новый `--force` CLI флаг требуется для перезаписи. Без него файл остаётся нетронутым, печатается WARNING. `was_created` return value честно отражает, был ли файл записан. |
+| **`init_ci_workflow` пинит Senpy version + добавляет gate step** | `pip install --upgrade senpy-linter` в workflow означал, что каждый CI run подхватывал последний Senpy (~2 релиза/день), churn SARIF outputs и наборы правил. Также не было CI gate — `continue-on-error: true` на scan step означал, что CI никогда не падал на ERROR-severity diagnostics. | Workflow теперь использует `pip install senpy-linter==<version>` (запинено). Новый `--errors-only` gate step (без `continue-on-error`) падает CI на ERROR-severity diagnostics — SARIF step сохраняет `continue-on-error`, чтобы отчёт загружался даже при найденных issues. |
+| **`init_ci_workflow` выводит `scan_target` из `target_path`** | `senpy --init-ci path/to/my/game` в монорепо генерировал workflow со scan target `.` (весь репозиторий). Пути с пробелами (`My Games/foo`) рвали shell команду. | `scan_target` теперь repo-relative форма `target_path`. `shlex.quote()` нейтрализует пробелы. |
+| **`__version__.py` MAJOR/MINOR/PATCH выведены из `__version__`** | Три независимых hardcoded int'а — кто менял только `__version__`, оставлял MAJOR/MINOR/PATCH на старых значениях, `CacheManager.compute_environment_fingerprint` (хеширует `MAJOR.MINOR`) производил неправильные хеши. | `MAJOR, MINOR, PATCH = (int(x) for x in __version__.split("."))` — выведены, всегда синхронны. |
+| **LSP generation-counter thread-safe** | `full_generation += 1` не атомарный в Python — два concurrent `schedule_full_diagnostics` могли оба load 5, оба store 6, оба proceed с `new_gen=6`, обходя stale-worker guard. | Оба generation counter'а (`full_generation` и per-URI `change_generations`) теперь под `_lsp_server._generation_lock`. `new_gen` захватывается внутри lock, так что два concurrent caller'а никогда не получат одинаковое значение. |
+| **`SymbolTable.rebuild_from_scopes` чистит 3 реестра** | `transforms`, `screen_action_jumps`, `used_screens` не чистились перед update loop — plugin или LSP fast-path extension без prior `reset()` накапливал stale entries. | Все три реестра теперь чистятся перед update loop. |
+| **HTML report + LSP null-guard `line_content`** | `diag.line_content.strip()` на `None` (project-level diagnostics, или rules забывшие поле) ронял HTML report / LSP `publishDiagnostics` для файла. | `(diag.line_content or "").strip()` в `html_report.py`, `raw_text = diag.line_content or ""` в `lsp/server.py`. |
+| **Mermaid sanitizer расширен** | `_add_screen_use_edges` был единственным edge builder без `_mermaid_safe_id()` — screen с именем `preferences.audio` или `end` ломал diagram. | Оба `src` и `tgt` теперь санируются. `_MERMAID_RESERVED_IDS` расширен с `{"end"}` до 9 keywords. |
+| **`screen.py` маскирует string literals перед `action` regex** | `textbutton "Read the action Function(x) docs":` давал false-negative RPY203 (слово "action" в dialogue) и false-positive RPY206 (`Function(` из dialogue). | `strip_string_literals(stripped)` перед обоими regex. |
+| **`deprecated.py` skip'ает inline comments** | `$ x = LiveComposite()  # uses LiveComposite` давал ДВА RPY107 (один для call, один для слова в комментарии). | `_strip_comment` из `text_utils` определяет границу комментария; matches после неё игнорируются. |
+| **`reset` убран из `BUILTIN_SYMBOLS`** | `reset` — transform property (используется в ATL как `transform: reset`), не position name — RPY103/RPY202 не флагали `$ reset = 5`. | Убран. (`default` оставлен — это и keyword, и валидное position name: `show layer master at default`.) |
+| **JSON `sort_keys=True` в `rule_dispatch` и `gitlab`** | Non-deterministic key order ломал CI snapshot testing — два run'а на одном проекте могли дать разный JSON, если порядок plugin registration менялся. GitLab docstring обещал «sorted dict keys», но не передавал `sort_keys=True`. | Оба теперь используют `sort_keys=True`, соответствуя `inspect_dispatch.py`. |
+| **Pre-commit ruff pin bumped до v0.17.6** | UP038 rule был deprecated в ruff 0.10 и удалён в 0.13.0 — предыдущий pin (v0.7.4) всё ещё enforced его (29 violations), блокируя коммиты. | Pin bumped. `ruff-format` hook оставлен на v0.7.4, чтобы избежать one-shot переформатирования 75 файлов (отдельная задача). |
+| **Local `clean-internal-ids` pre-commit hook** | Не было автоматической проверки, предотвращающей утечку internal task IDs (шаблоны вида `DOC-N`, `FIX-N`) в user-facing файлы. | Новый local hook запускает `scripts/clean_internal_ids.py --dry-run` на каждый коммит. |
+
+**Дополнительно**: 3 unrpyc импорта добавлены в `senpy.__all__`;
+`senpy.api` migration guide разрешён (больше не называет
+`from senpy import SenpyAnalyzer` "deprecated"); docstrings на
+`SenpyAnalyzer.__init__`, `Diagnostic`, `FileScope`, `SignatureInfo`,
+`LabelSymbol`; `LabelSymbol.jump_sources` → `incoming_jumps`;
+`_check_unreachable_labels` → `_check_post_analysis_flow`;
+`CONTRIBUTING.md` полный аудит; `README.md` бейдж обновлён до 8.6;
+честная документация `.rpa` архивов; stale комментарии почищены
+(P3-1, `enable_plugins` flip, `BaseException` docstring,
+`T-003`/`T-004`/`T-024 in WORKLOG` ссылки); 10 ruff false-positive
+noqa warnings почищены; `pyproject.toml` Python classifiers обновлены
+(3.11/3.12/3.13/3.14).
+
+Полные детали в [`CHANGELOG.md`](CHANGELOG.md#092).
+
+---
 
 ### 0.9.1 — Активация plugin audit + branch-clear фикс + cache stress тесты + аудит доков (patch)
 
@@ -694,7 +742,7 @@ Senpy поставляет [pre-commit](https://pre-commit.com) хук, кото
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.8.4   # используйте последний тег
+    rev: v0.9.2   # используйте последний тег
     hooks:
       - id: senpy
 ```
