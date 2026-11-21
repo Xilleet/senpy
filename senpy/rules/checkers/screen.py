@@ -166,7 +166,7 @@ class ScreenChecker(BaseChecker):
                             f"This leaks into the global store instead of updating the screen! "
                             f"Use '{correct_act}' instead."
                         ),
-                        severity="ERROR",
+                        severity=RULE_SEVERITY["RPY208"],
                         col=start_c,
                         end_col=end_c,
                         fix_title=f"Replace '{act_name}' with '{correct_act}'",
@@ -204,7 +204,7 @@ class ScreenChecker(BaseChecker):
                             f"Screen action references undeclared variable '{target_var}'{hint}. "
                             "Variable must be declared with 'default' at top-level to ensure save persistence."
                         ),
-                        severity="WARNING",
+                        severity=RULE_SEVERITY["RPY202"],
                         col=start_c,
                         end_col=end_c,
                         fix_title=f"Change to '{matches[0]}'" if matches else None,
@@ -415,7 +415,7 @@ class ScreenChecker(BaseChecker):
                                 f"Invalid parameters in screen '{screen_target}': {err_msg}. "
                                 "Causes runtime Exception."
                             ),
-                            severity="ERROR",
+                            severity=RULE_SEVERITY["RPY207"],
                         ),
                         noqa_map,
                     )
