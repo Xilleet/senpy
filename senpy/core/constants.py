@@ -16,8 +16,56 @@ from senpy.core.renpy_builtins import (  # noqa: F401
 
 # Default cutoff ratio for difflib.get_close_matches suggestions (e.g. "did
 # you mean '...' ?"). Used by senpy.text_utils.suggest_similar() and all
-# rule checkers that suggest closest matches for typos.
+# rule checkers that suggest closest matches for typos (RPY202/204/206/309,
+# RPY502 missing-asset, RPY505 missing channel, RPY108 method call, etc.).
+#
+# Single source — before the 0.9.3 batch every caller hardcoded
+# its own ``cutoff=0.6`` (nine occurrences across screen.py, dialogue.py,
+# asset.py, python_ast.py). They drifted slowly: asset.py used
+# ``cutoff=0.7`` for one of its calls and ``cutoff=0.6`` for another in
+# the same file. Routing them through one named constant makes the value
+# visible and auditable.
 SUGGESTION_CUTOFF = 0.6
+
+# Stricter cutoff for text-tag suggestion (RPY301/RPY502 duplicate-tag
+# hint). Text tags are short strings (``{b}``, ``{color}``) and the 0.6
+# cutoff produced too many false "did you mean" hints (e.g. ``{bp}`` →
+# ``{b}``, ``{i}``, ``{p}`` — all match). The 0.7 cutoff keeps the
+# suggestion list tight and avoids noisy hints on already-confusing
+# tag typos. Was previously the only ``cutoff=0.7`` in the codebase
+# (asset.py:365); now an explicit, documented constant.
+SUGGESTION_CUTOFF_TAGS = 0.7
+
+
+def _normalize_label(name: str) -> str:
+    """Canonical label-name normalisation for cross-call comparison.
+
+    Strip surrounding whitespace + lowercase. Used everywhere Senpy
+    compares label names across rule modules (RPY309 reachability,
+    RPY308 fall-through, story-island collection, jump-target lookup,
+    menu-choice bodies). Before the 0.9.3 batch three inline copies
+    diverged in behaviour:
+
+    * ``flow.py:check_unreachable_labels`` — ``label_name.strip().lower()``
+    * ``flow.py:_collect_story_islands`` — ``label_name.lower()`` (no strip)
+    * ``flow.py:check_story_islands`` (root_labels) — ``lbl.lower()``
+      (no strip, plus a separate ``startswith("_")`` guard done outside)
+
+    A label name written with a trailing space (rare but valid in
+    hand-authored files: ``label "start " :``) would compare unequal
+    across the three sites — flow analysis saw it as a separate node
+    from the dialogue reachability check, producing either an orphan
+    RPY309 (label unreachable from one side, reachable from the other)
+    or missing an RPY308 fall-through hazard. Routing all three sites
+    through this single helper eliminates the divergence.
+
+    The empty-string case is handled explicitly: ``""`` and ``"   "``
+    both return ``""``, which is the natural identity for "no label".
+    Callers that need to distinguish "no label" from "label named
+    empty" check the result before lookup.
+    """
+    return name.strip().lower()
+
 
 BUILTIN_SCREENS = {
     "say",
@@ -102,7 +150,15 @@ SYSTEM_LABELS = {
 #     previous line is NOT a terminator.
 #   - RPY309 (file_collector.py:_collect_label_body) — must set
 #     fall_through_to when the previous line is NOT a terminator.
-#   - StateChecker (state.py) — marks if-branches as terminating.
+#
+# NOTE: ``StateChecker`` (state.py) does NOT consume this regex — branch
+# termination uses ``RE_BRANCH_TERMINATOR`` (below). The two concepts
+# differ: ``RE_TERMINATOR`` keeps ``call`` (because ``call`` returns to
+# the caller's LABEL and the next label is unreachable); ``RE_BRANCH_TERMINATOR``
+# drops ``call`` (because ``call`` returns to the same branch and the
+# branch is still live for merge purposes). Before the 0.9.3 batch
+# this docstring listed ``StateChecker`` as a consumer, causing readers to
+# reach for the wrong regex when auditing branch-merge behaviour.
 #
 # The regex handles:
 #   - leading whitespace (^\\s*)

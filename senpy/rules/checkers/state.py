@@ -12,7 +12,7 @@ from senpy.core.constants import (
     is_branch_terminator_line,
 )
 from senpy.core.scope import ScopeStack
-from senpy.text_utils import dedent_python, extract_for_targets
+from senpy.text_utils import dedent_python, extract_for_targets, strip_string_literals
 
 if TYPE_CHECKING:
     from senpy.core.protocols import DiagnosticSinkAndSymbolsAndFlow
@@ -327,9 +327,29 @@ class StateChecker(BaseChecker):
                 assigned_names = extract_assigned_names(code)
                 if self.if_stack:
                     self.if_stack[-1].current_branch.defined_vars.update(assigned_names)  # type: ignore[union-attr]
+                    # mask string-literal
+                    # contents before scanning ``code`` for terminator
+                    # calls. Without masking, a string literal such as
+                    # ``note = "renpy.jump('ending')"`` inside the
+                    # python: block would match the inline regex, the
+                    # branch would be marked as terminating, and the
+                    # merge of the if/else below would silently drop
+                    # the genuine RPY401 "branch may not be set"
+                    # diagnostic. The masked copy preserves paren
+                    # structure (replaces literal chars with spaces)
+                    # so the ``\s*\(` boundary still anchors the
+                    # match on real call sites only.
+                    #
+                    # TODO: fold this inline regex into the
+                    # canonical ``RE_BRANCH_TERMINATOR`` (constants.py)
+                    # as ``RE_PY_TERMINATOR`` so we have a single
+                    # source of truth for branch-terminator detection
+                    # inside python: blocks. The shared regex can
+                    # then perform string-literal masking itself.
+                    masked_code = strip_string_literals(code)
                     if re.search(
                         r"\brenpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\s*\(",
-                        code,
+                        masked_code,
                     ):
                         self.if_stack[-1].current_branch.terminates = True  # type: ignore[union-attr]
                 else:

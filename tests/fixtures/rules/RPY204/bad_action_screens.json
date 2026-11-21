@@ -3,7 +3,7 @@
     "code": "RPY204",
     "severity": "ERROR",
     "line": 5,
-    "message_fragment": "Screen action references non-existent screen 'inventroy_hud' (did you mean 'inventory_hud' ?). Cause"
+    "message_fragment": "Screen action references non-existent screen 'inventroy_hud'. Causes runtime ScriptError. (did you m"
   },
   {
     "code": "RPY204",

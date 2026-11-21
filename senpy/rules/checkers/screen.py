@@ -12,8 +12,9 @@ from senpy.core.constants import (
     RE_DEFAULT,
     RE_SCREEN_CALL,
     SCREEN_LOCAL_IGNORE,
+    SUGGESTION_CUTOFF,
 )
-from senpy.core.models import Diagnostic
+from senpy.core.models import RULE_SEVERITY, Diagnostic
 from senpy.core.scope import ScopeStack
 from senpy.core.signature import validate_call_arguments
 from senpy.rules.base import BaseChecker
@@ -58,6 +59,65 @@ class ScreenChecker(BaseChecker):
         self._check_screen_call_targets(file_path, idx, raw_line, stripped, noqa_map)
 
         return next_idx, False
+
+    def _emit_rpy204_screen_not_found(
+        self,
+        file_path: str,
+        idx: int,
+        raw_line: str,
+        stripped: str,
+        target_scr: str,
+        message: str,
+        noqa_map: dict[int, set[str] | None],
+    ) -> None:
+        """RPY204: emit a single "non-existent screen" Diagnostic.
+
+        Shared by ``_check_screen_action_targets`` (Show/ShowMenu/Hide)
+        and ``_check_screen_call_targets`` (show screen / call screen /
+        use). Before the 0.9.3 batch the two generators were
+        independent: the first hardcoded ``severity="ERROR"`` and
+        offered a "did you mean" quick-fix; the second left severity
+        unset (relying on ``_apply_severity``) and offered no fix even
+        when a close-match screen existed. Two paths for one rule code
+        drifted, and ``call screen inventroy_hud`` was a worse
+        developer experience than ``action Show("inventroy_hud")``
+        despite being the same bug class.
+
+        The builder:
+          * Looks up ``RULE_SEVERITY["RPY204"]`` once — no severity
+            hardcode, future bumps to ERROR/WARNING in
+            ``RULES_DATABASE`` propagate automatically.
+          * Computes a "did you mean" hint against the union of
+            project screens + ``BUILTIN_SCREENS`` using the shared
+            ``SUGGESTION_CUTOFF`` constant.
+          * Attaches ``fix_title`` / ``fix_replacement`` only when a
+            close match exists, so unreachable screens with no
+            neighbour produce a clean "not declared" message without
+            a misleading fix.
+          * Passes the column range of the actual screen name token
+            (not the whole line) so the LSP squiggle lands on the typo.
+        """
+        all_screens = list(self.analyzer.screens.keys()) + list(BUILTIN_SCREENS)
+        matches = difflib.get_close_matches(target_scr, all_screens, n=1, cutoff=SUGGESTION_CUTOFF)
+        hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
+        start_c, end_c = self.analyzer._get_utf16_range(raw_line, target_scr)
+        self.analyzer._add_diagnostic(
+            Diagnostic(
+                file_path=file_path,
+                line_number=idx + 1,
+                line_content=stripped,
+                code="RPY204",
+                message=f"{message}{hint}",
+                severity=RULE_SEVERITY["RPY204"],
+                col=start_c,
+                end_col=end_c,
+                fix_title=f"Change to '{matches[0]}'" if matches else None,
+                fix_replacement=matches[0] if matches else None,
+                fix_start_col=start_c if matches else None,
+                fix_end_col=end_c if matches else None,
+            ),
+            noqa_map,
+        )
 
     def _check_screen_variable_actions(
         self,
@@ -123,8 +183,14 @@ class ScreenChecker(BaseChecker):
                 and target_var not in local_syms
                 and not target_var.startswith("_")
             ):
+                # use the shared cutoff constant
+                # rather than a hardcoded 0.6 so suggestion quality is
+                # tunable from one place (``SUGGESTION_CUTOFF``).
                 matches = difflib.get_close_matches(
-                    target_var, list(self.analyzer.user_symbols), n=1, cutoff=0.6
+                    target_var,
+                    list(self.analyzer.user_symbols),
+                    n=1,
+                    cutoff=SUGGESTION_CUTOFF,
                 )
                 hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
                 start_c, end_c = self.analyzer._get_utf16_range(raw_line, target_var)
@@ -172,23 +238,16 @@ class ScreenChecker(BaseChecker):
                 continue
             target_scr = m_scr_act.group(1)
             if target_scr not in self.analyzer.screens and target_scr not in BUILTIN_SCREENS:
-                all_screens = list(self.analyzer.screens.keys()) + list(BUILTIN_SCREENS)
-                matches = difflib.get_close_matches(target_scr, all_screens, n=1, cutoff=0.6)
-                hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
-                start_c, end_c = self.analyzer._get_utf16_range(raw_line, target_scr)
-                self.analyzer._add_diagnostic(
-                    Diagnostic(
-                        file_path=file_path,
-                        line_number=idx + 1,
-                        line_content=stripped,
-                        code="RPY204",
-                        message=f"Screen action references non-existent screen '{target_scr}'{hint}. Causes runtime ScriptError.",
-                        severity="ERROR",
-                        col=start_c,
-                        end_col=end_c,
-                        fix_title=f"Change to '{matches[0]}'" if matches else None,
-                        fix_replacement=matches[0] if matches else None,
-                    ),
+                # both RPY204 generators route
+                # through ``_emit_rpy204_screen_not_found`` so severity
+                # and quick-fix availability stay in sync.
+                self._emit_rpy204_screen_not_found(
+                    file_path,
+                    idx,
+                    raw_line,
+                    stripped,
+                    target_scr,
+                    f"Screen action references non-existent screen '{target_scr}'. Causes runtime ScriptError.",
                     noqa_map,
                 )
 
@@ -313,20 +372,19 @@ class ScreenChecker(BaseChecker):
 
         # RPY204: non-existent screen
         if screen_target not in self.analyzer.screens and screen_target not in BUILTIN_SCREENS:
-            all_screens = list(self.analyzer.screens.keys()) + list(BUILTIN_SCREENS)
-            matches = difflib.get_close_matches(screen_target, all_screens, n=1, cutoff=0.6)
-            hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
-            start_c, end_c = self.analyzer._get_utf16_range(raw_line, screen_target)
-            self.analyzer._add_diagnostic(
-                Diagnostic(
-                    file_path=file_path,
-                    line_number=idx + 1,
-                    line_content=stripped,
-                    code="RPY204",
-                    message=f"Screen '{screen_target}' is not declared in project{hint}. Causes runtime ScriptError.",
-                    col=start_c,
-                    end_col=end_c,
-                ),
+            # route through the shared
+            # ``_emit_rpy204_screen_not_found`` builder so
+            # ``show screen`` / ``call screen`` / ``use`` get the same
+            # severity (RULE_SEVERITY["RPY204"]) and the same
+            # "did you mean" quick-fix that ``action Show("...")``
+            # already enjoyed.
+            self._emit_rpy204_screen_not_found(
+                file_path,
+                idx,
+                raw_line,
+                stripped,
+                screen_target,
+                f"Screen '{screen_target}' is not declared in project. Causes runtime ScriptError.",
                 noqa_map,
             )
 

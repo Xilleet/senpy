@@ -10,6 +10,7 @@ from senpy.core.constants import (
     NON_DIALOGUE_STATEMENTS,
     RE_JUMP_CALL,
     RE_LABEL,
+    SUGGESTION_CUTOFF,
 )
 from senpy.core.models import Diagnostic
 from senpy.core.scope import ScopeStack
@@ -194,8 +195,11 @@ class DialogueChecker(BaseChecker):
         noqa_map: dict[int, set[str] | None],
     ) -> None:
         """Emit RPY302 for a jump/call to a non-existent label, with a difflib hint."""
+        # use the shared ``SUGGESTION_CUTOFF``
+        # constant instead of a hardcoded 0.6 so suggestion quality is
+        # tunable in one place.
         matches = difflib.get_close_matches(
-            target_label, list(self.analyzer.labels.keys()), n=1, cutoff=0.6
+            target_label, list(self.analyzer.labels.keys()), n=1, cutoff=SUGGESTION_CUTOFF
         )
         best_match = matches[0] if matches else None
         hint = f" (did you mean '{best_match}' ?)" if best_match else ""
@@ -322,8 +326,9 @@ class DialogueChecker(BaseChecker):
 
             self.analyzer.referenced_labels.add(target_label)
             if target_label not in self.analyzer.labels:
+                # shared cutoff constant.
                 matches = difflib.get_close_matches(
-                    target_label, list(self.analyzer.labels.keys()), n=1, cutoff=0.6
+                    target_label, list(self.analyzer.labels.keys()), n=1, cutoff=SUGGESTION_CUTOFF
                 )
                 best_match = matches[0] if matches else None
                 hint = f" (did you mean '{best_match}' ?)" if best_match else ""

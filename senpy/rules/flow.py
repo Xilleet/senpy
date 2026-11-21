@@ -11,6 +11,7 @@ from senpy.core.constants import (
     RE_MENU_CHOICE,
     RE_STRING_MATCH,
     SYSTEM_LABELS,
+    _normalize_label,
     is_branch_terminator_line,
 )
 from senpy.core.models import Diagnostic
@@ -223,7 +224,14 @@ class StoryFlowAnalyzer:
         """RPY303: Detects labels with no static references (possible dead code)."""
         diagnostics: list[Diagnostic] = []
         for label_name, lbl in self.analyzer.labels.items():
-            clean_name = label_name.strip().lower()
+            # (roadmap 0.9.3): route label-name normalisation
+            # through the shared ``_normalize_label`` helper instead
+            # of an inline ``.strip().lower()`` copy. Two other sites
+            # (``check_story_islands`` root-labels and
+            # ``_collect_story_islands``) used bare ``.lower()`` without
+            # strip — a label with a trailing space compared unequal
+            # across the three sites. The helper unifies them.
+            clean_name = _normalize_label(label_name)
             if clean_name.startswith("_") or clean_name in SYSTEM_LABELS:
                 continue
             if label_name not in self.analyzer.referenced_labels:
@@ -252,7 +260,15 @@ class StoryFlowAnalyzer:
         """RPY309: Finds isolated subgraphs (islands) and cycles unreachable from system entry points."""
         labels = self.analyzer.labels
 
-        root_labels = {lbl for lbl in labels if lbl.lower() in SYSTEM_LABELS or lbl.startswith("_")}
+        # use ``_normalize_label`` so this site
+        # matches the strip+lowercase behaviour of the RPY303 check
+        # above. Previously this used bare ``.lower()`` (no strip), so a
+        # system label written with trailing whitespace would not be
+        # detected as a root and RPY309 would mis-classify it as an
+        # island.
+        root_labels = {
+            lbl for lbl in labels if _normalize_label(lbl) in SYSTEM_LABELS or lbl.startswith("_")
+        }
 
         if not root_labels:
             return []
@@ -331,7 +347,9 @@ class StoryFlowAnalyzer:
         for label_name, lbl in labels.items():
             if label_name in reachable:
                 continue
-            if label_name.startswith("_") or label_name.lower() in SYSTEM_LABELS:
+            # same ``_normalize_label`` helper as
+            # the RPY303 and root-label sites above.
+            if label_name.startswith("_") or _normalize_label(label_name) in SYSTEM_LABELS:
                 continue
 
             has_incoming_jump = label_name in incoming_jumps

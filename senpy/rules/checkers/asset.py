@@ -13,6 +13,8 @@ from senpy.core.constants import (
     RE_AUDIO_STATEMENT,
     RE_SHOW_SCENE,
     RE_STOP_STATEMENT,
+    SUGGESTION_CUTOFF,
+    SUGGESTION_CUTOFF_TAGS,
 )
 
 if TYPE_CHECKING:
@@ -107,7 +109,10 @@ class AssetChecker(BaseChecker):
             and trans_name not in self.analyzer.user_symbols
         ):
             all_candidates = [s for s in self.analyzer.declared_symbols if s.isidentifier()]
-            matches = difflib.get_close_matches(trans_name, all_candidates, n=1, cutoff=0.6)
+            # shared ``SUGGESTION_CUTOFF`` constant.
+            matches = difflib.get_close_matches(
+                trans_name, all_candidates, n=1, cutoff=SUGGESTION_CUTOFF
+            )
             hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
             start_c, end_c = self.analyzer._get_utf16_range(raw_line, trans_name)
             self.analyzer._add_diagnostic(
@@ -307,8 +312,13 @@ class AssetChecker(BaseChecker):
             hint = f" (case mismatch: did you mean '{case_match}' ?)"
             fix_attr = case_match
         else:
-            # Standard difflib fuzzy match (case-sensitive, 0.6 cutoff)
-            matches = difflib.get_close_matches(err_attr, list(valid_attrs), n=1, cutoff=0.6)
+            # Standard difflib fuzzy match (case-sensitive).
+            # the cutoff is the shared
+            # ``SUGGESTION_CUTOFF`` constant (0.6) — the comment used
+            # to be the only place the value was discoverable.
+            matches = difflib.get_close_matches(
+                err_attr, list(valid_attrs), n=1, cutoff=SUGGESTION_CUTOFF
+            )
             hint = f" (did you mean attribute '{matches[0]}' ?)" if matches else ""
             fix_attr = matches[0] if matches else None
         start_c, end_c = self.analyzer._get_utf16_range(raw_line, err_attr)
@@ -361,8 +371,13 @@ class AssetChecker(BaseChecker):
             hint = f" (case mismatch: did you mean '{case_match}' ?)"
             fix_tag = case_match
         else:
-            # Standard difflib fuzzy match (case-sensitive, 0.7 cutoff)
-            matched_tags = difflib.get_close_matches(base_tag, list(all_tags), n=1, cutoff=0.7)
+            # Standard difflib fuzzy match (case-sensitive).
+            # text-tag suggestions use the stricter
+            # ``SUGGESTION_CUTOFF_TAGS`` (0.7) cutoff — short tags like
+            # ``{b}`` produce too many spurious 0.6-ratio matches.
+            matched_tags = difflib.get_close_matches(
+                base_tag, list(all_tags), n=1, cutoff=SUGGESTION_CUTOFF_TAGS
+            )
             hint = f" (did you mean base tag '{matched_tags[0]}' ?)" if matched_tags else ""
             fix_tag = matched_tags[0] if matched_tags else None
 
@@ -411,7 +426,10 @@ class AssetChecker(BaseChecker):
                 continue
             # Transform not found → suggest closest
             all_candidates = [s for s in self.analyzer.declared_symbols if s.isidentifier()]
-            matches = difflib.get_close_matches(trans_name, all_candidates, n=1, cutoff=0.6)
+            # shared ``SUGGESTION_CUTOFF`` constant.
+            matches = difflib.get_close_matches(
+                trans_name, all_candidates, n=1, cutoff=SUGGESTION_CUTOFF
+            )
             hint = f" (did you mean '{matches[0]}' ?)" if matches else ""
             start_c, end_c = self.analyzer._get_utf16_range(raw_line, trans_name)
             self.analyzer._add_diagnostic(

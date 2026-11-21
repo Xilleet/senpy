@@ -4,7 +4,7 @@ import ast
 import difflib
 from typing import TYPE_CHECKING, cast
 
-from senpy.core.constants import BUILTIN_SYMBOLS, SCREEN_LOCAL_IGNORE
+from senpy.core.constants import BUILTIN_SYMBOLS, SCREEN_LOCAL_IGNORE, SUGGESTION_CUTOFF
 from senpy.core.logging import get_logger
 from senpy.core.models import Diagnostic
 from senpy.core.type_inference import (
@@ -1246,7 +1246,10 @@ class PythonAstChecker:
         if (t_name, method_name) in METHOD_SUGGESTIONS:
             hint = f" (did you mean '{METHOD_SUGGESTIONS[(t_name, method_name)]}' ?)"
         else:
-            matches = difflib.get_close_matches(method_name, list(valid_methods), n=1, cutoff=0.6)
+            # shared cutoff constant.
+            matches = difflib.get_close_matches(
+                method_name, list(valid_methods), n=1, cutoff=SUGGESTION_CUTOFF
+            )
             hint = f" (did you mean '.{matches[0]}()' ?)" if matches else ""
 
         self.analyzer._add_diagnostic(
