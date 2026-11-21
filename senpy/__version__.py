@@ -24,6 +24,12 @@ VERSION_WITH_PREFIX = f"v{__version__}"
 # and ``CacheManager.compute_environment_fingerprint`` (which hashes
 # ``MAJOR.MINOR``) would produce wrong hashes.
 # TODO: disable or modify the update behavior in bump_version; otherwise, this update breaks.
+# NOTE confirmed — `python bump_version.py patch` rewrites
+# this file and replaces the derived tuple below with hardcoded ints
+# (0, 9, 3), reintroducing the desync risk above. After running
+# bump_version.py, restore the derived form manually:
+#   MAJOR, MINOR, PATCH = (int(x) for x in __version__.split("."))
+# The proper fix is to teach bump_version.py to preserve this line.
 MAJOR, MINOR, PATCH = (int(x) for x in __version__.split("."))
 
 __all__ = ["__version__", "VERSION_WITH_PREFIX", "MAJOR", "MINOR", "PATCH"]

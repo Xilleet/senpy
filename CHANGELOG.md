@@ -230,6 +230,39 @@ and CI integration improvements. Feature freeze unchanged.
   future GitHub Actions expressions (`${{ ... }}`) in the
   template do not crash the generator with `KeyError`.
 
+
+### Fixed
+
+- **Frozen `senpy.exe` crashed at import (release blocker).** The
+  `build-vsix` job in `release.yml` invoked PyInstaller with raw CLI
+  args (`--onefile ... senpy/cli/main.py`), bypassing `senpy.spec` and
+  therefore never running `collect_all('senpy')`. The runtime-loaded
+  JSON resource `senpy/domain/data/renpy_api_generated.json` — opened at
+  import time by `senpy/domain/renpy_api_generated.py` — was absent from
+  the `_MEI...` extraction tree, so every entry point died. Fixed on two
+  fronts:
+  - `release.yml` now builds via `python -m PyInstaller senpy.spec`, and
+    `senpy.spec` runs `collect_all('senpy')` which auto-bundles every
+    non-.py file in the package (the JSON, the YAML, and any future data
+    file) — so adding a new package data file no longer needs a matching
+    `--add-data` flag.
+  - `renpy_api_generated.py` now resolves the JSON via
+    `importlib.resources.files("senpy.domain").joinpath("data", ...)`
+    instead of `Path(__file__).parent / "data" / ...` — the canonical
+    bundle-aware resource API, honoured by PyInstaller as long as the
+    data file is in the bundle's `datas` list (which `collect_all`
+    guarantees). `Path(__file__)` worked in dev and wheel but was the
+    fragile half of the crash.
+- **`senpy.spec` entry path made portable** (`senpy\\cli\\__main__.py`
+  → `senpy/cli/__main__.py`); forward-slash works on the Windows runner
+  and on Linux/macOS dev builds.
+- **Regression guard added** (`tests/regressions/test_release_resource_
+  bundling.py`): the loader must stay `importlib.resources`-based, the
+  spec must keep `collect_all('senpy')`, the release build must use the
+  spec, the wheel must ship the JSON via `[tool.setuptools.package-data]`,
+  and the JSON must actually load — so the class of bug cannot recur
+  silently.
+
 ### Documentation
 
 - **`senpy.api` migration guide resolved.** The module docstring no
@@ -286,6 +319,16 @@ and CI integration improvements. Feature freeze unchanged.
 - **`pyproject.toml` Python classifiers updated.** 3.11 / 3.12 /
   3.13 / 3.14 (was 3.11 / 3.12 / 3.13). CI matrix includes 3.12
   as required (was in `continue-on-error`).
+
+### Known issue
+
+- `bump_version.py` rewrites `senpy/__version__.py` and replaces the
+  derived `MAJOR, MINOR, PATCH = (int(x) for x in __version__.split("."))`
+  with hardcoded ints, reintroducing the cache-fingerprint desync risk
+  that the derivation was introduced to prevent (the in-file TODO warns
+  about this). The 0.9.3 bump restored the derived form manually; the
+  proper fix (teaching `bump_version.py` to preserve the line) is left
+  for the next release.
 
 ---
 

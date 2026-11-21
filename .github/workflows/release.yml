@@ -144,16 +144,21 @@ jobs:
       - name: Build senpy.exe with PyInstaller
         shell: bash
         run: |
+          # Build from senpy.spec (NOT raw CLI args). The spec runs
+          # collect_all('senpy') which bundles every non-.py file in the
+          # package — notably senpy/domain/data/renpy_api_generated.json,
+          # which is opened at import time by senpy/domain/renpy_api_generated.py.
+          # Building from CLI args alone skipped collect_all, so the JSON
+          # was missing from the _MEI... tree and senpy.exe crashed with
+          # FileNotFoundError on every invocation including --version
+          # (0.9.2 release blocker). The spec is the single source of
+          # truth for entry point, datas, and hiddenimports.
           python -m PyInstaller \
             --noconfirm \
             --clean \
-            --onefile \
-            --name senpy \
-            --paths . \
             --distpath "senpy-vscode/bin" \
             --workpath "build" \
-            --specpath "build" \
-            "senpy/cli/main.py"
+            senpy.spec
 
       - name: Verify senpy.exe
         shell: bash

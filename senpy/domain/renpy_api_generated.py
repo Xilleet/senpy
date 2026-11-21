@@ -34,15 +34,37 @@ Curated entries win on key collision (they have richer examples/URLs).
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from importlib.resources import files
 
 # Load the JSON resource once at module import. The file sits next to
-# this module under data/ — resolved via __file__ so the package works
-# regardless of the caller's CWD (important for LSP server which may
-# be spawned from any directory).
-_JSON_PATH = Path(__file__).parent / "data" / "renpy_api_generated.json"
+# this module under data/ — resolved via ``importlib.resources`` so the
+# path is correct in EVERY distribution shape:
+#
+#   - dev checkout           — files("senpy.domain") → repo source dir
+#   - pip-installed wheel    — files("senpy.domain") → site-packages dir
+#                              (the JSON is shipped via [tool.setuptools.
+#                              package-data] "senpy.domain.data" = ["*.json"])
+#   - PyInstaller onefile    — files("senpy.domain") → the temp _MEI...
+#                              extraction dir, where the JSON is bundled
+#                              by senpy.spec's ``collect_all('senpy')``
+#                              (which runs collect_data_files and copies
+#                              every non-.py file in the package, including
+#                              data/renpy_api_generated.json, into the
+#                              bundle at senpy/domain/data/).
+#
+# This replaces the previous ``Path(__file__).parent / "data" / ...``
+# resolution, which worked in dev and wheel but broke the frozen
+# senpy.exe: when the JSON was not added to the bundle's datas list,
+# ``__file__`` pointed into the _MEI... tree and the data path did not
+# exist, crashing every invocation (including ``--version``) at import
+# time with FileNotFoundError (0.9.2 release blocker).
+#
+# ``importlib.resources`` is the canonical bundle-aware resource API and
+# is honoured by PyInstaller's import machinery as long as the data file
+# is in the bundle's datas list — which collect_all('senpy') guarantees.
+_RESOURCE = files("senpy.domain").joinpath("data", "renpy_api_generated.json")
 
-with _JSON_PATH.open(encoding="utf-8") as _f:
+with _RESOURCE.open(encoding="utf-8") as _f:
     _DATA = json.load(_f)
 
 RENPY_DOC_VERSION_GENERATED: str = _DATA["version"]
