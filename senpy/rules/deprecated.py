@@ -7,8 +7,25 @@ from senpy.domain.text_tags import get_utf16_range
 
 # Dictionary of deprecated APIs:
 # Function name -> (Advice/explanation, 1-to-1 replacement for autofix or None)
+#
+# Sources (in priority order):
+#   1. Ren'Py "Image Manipulators" docs (https://www.renpy.org/doc/html/im.html) —
+#      all ``im.*`` functions explicitly marked as "Deprecated since version 7.4.0"
+#      are listed here with their modern Transform-property replacement.
+#   2. Ren'Py "Incompatible Changes" page (https://www.renpy.org/doc/html/incompatible.html) —
+#      APIs that were removed or superseded in a specific version.
+#   3. Historical knowledge from the Senpy codebase (LiveComposite, anim.*, ui.*).
+#
+# NOTE on RENPY-5 (0.9.2 roadmap): the original plan was to auto-extract
+# these from ``renpy_api_generated.json`` by parsing the ``.. deprecated::``
+# RST directive in ``scripts/fetch_renpy_docs.py``. Investigation showed
+# Ren'Py Sphinx docs do NOT use ``.. deprecated::`` for these APIs — the
+# deprecation is mentioned in prose ("Deprecated since version 7.4.0").
+# Auto-extraction would require NLP over the prose, which is brittle.
+# Manual curation here is the pragmatic compromise; the set should be
+# reviewed on each Ren'Py pin bump (see ``docs/renpy_api_diff.md``).
 DEPRECATED_APIS: dict[str, tuple[str, str | None]] = {
-    # Deprecated Displayables
+    # Deprecated Displayables (legacy composite helpers).
     "LiveComposite": (
         "This function is obsolete or outdated. Use 'Composite' instead.",
         "Composite",
@@ -19,14 +36,14 @@ DEPRECATED_APIS: dict[str, tuple[str, str | None]] = {
         "Deprecated in modern Ren'Py. Use 'Character' with '[var]' interpolation instead.",
         "Character",
     ),
-    # Deprecated animations (replaced by ATL)
+    # Deprecated animations (replaced by ATL).
     "anim.Filmstrip": (
         "Legacy animation helper. Prefer modern ATL (transform / pause) instead.",
         None,
     ),
     "anim.Blink": ("Legacy animation helper. Prefer modern ATL instead.", None),
     "anim.SMAnimation": ("Legacy animation helper. Prefer modern ATL instead.", None),
-    # Deprecated ui.* calls (replaced by Screen Language)
+    # Deprecated ui.* calls (replaced by Screen Language).
     "ui.text": (
         "Legacy 'ui' screen function is obsolete. Use Screen Language 'text' statement.",
         None,
@@ -59,13 +76,107 @@ DEPRECATED_APIS: dict[str, tuple[str, str | None]] = {
         "Legacy 'ui' screen construction is obsolete. Use declarative Screen Language.",
         None,
     ),
+    # Deprecated im.* image manipulators (deprecated since Ren'Py 7.4.0).
+    # Source: https://www.renpy.org/doc/html/im.html
+    # Each has a modern Transform-property replacement.
+    "im.Blur": (
+        "Deprecated since Ren'Py 7.4.0. Use the 'blur' transform property instead.",
+        None,
+    ),
+    "im.Crop": (
+        "Deprecated since Ren'Py 7.4.0. Use the 'crop' transform property instead.",
+        None,
+    ),
+    "im.FactorScale": (
+        "Deprecated since Ren'Py 7.4.0. Use 'zoom', 'xzoom', or 'yzoom' transform properties instead.",
+        None,
+    ),
+    "im.Flip": (
+        "Deprecated since Ren'Py 7.4.0. Use 'xzoom'/'yzoom' with negative values instead.",
+        None,
+    ),
+    "im.Grayscale": (
+        "Deprecated since Ren'Py 7.4.0. Use 'matrixcolor' transform property with SaturationMatrix(0) instead.",
+        None,
+    ),
+    "im.Sepia": (
+        "Deprecated since Ren'Py 7.4.0. Use 'matrixcolor' transform property with SepiaMatrix() instead.",
+        None,
+    ),
+    "im.Tile": (
+        "Deprecated since Ren'Py 7.4.0. Use 'Tile' with the 'xysize' property instead.",
+        None,
+    ),
+    "im.MatrixColor": (
+        "Deprecated since Ren'Py 7.4.0. Use 'Transform' with the 'matrixcolor' property instead.",
+        None,
+    ),
+    # Deprecated im.matrix class methods (deprecated since Ren'Py 7.4.0).
+    # Source: https://www.renpy.org/doc/html/im.html
+    "im.matrix.brightness": (
+        "Deprecated since Ren'Py 7.4.0. Use 'matrixcolor' with BrightnessMatrix() instead.",
+        None,
+    ),
+    "im.matrix.colorize": (
+        "Deprecated since Ren'Py 7.4.0. Use 'matrixcolor' with ColorizeMatrix() instead.",
+        None,
+    ),
+    "im.matrix.contrast": (
+        "Deprecated since Ren'Py 7.4.0. Use 'matrixcolor' with ContrastMatrix() instead.",
+        None,
+    ),
+    "im.matrix.desaturate": (
+        "Deprecated since Ren'Py 7.4.0. Use 'matrixcolor' with SaturationMatrix(0) instead.",
+        None,
+    ),
+    "im.matrix.hue": (
+        "Deprecated since Ren'Py 7.4.0. Use 'matrixcolor' with HueMatrix() instead.",
+        None,
+    ),
+    "im.matrix.identity": (
+        "Deprecated since Ren'Py 7.4.0. Use 'matrixcolor' with IdentityMatrix() instead.",
+        None,
+    ),
+    "im.matrix.invert": (
+        "Deprecated since Ren'Py 7.4.0. Use 'matrixcolor' with InvertMatrix() instead.",
+        None,
+    ),
+    "im.matrix.opacity": (
+        "Deprecated since Ren'Py 7.4.0. Use 'matrixcolor' with OpacityMatrix() instead.",
+        None,
+    ),
+    "im.matrix.saturation": (
+        "Deprecated since Ren'Py 7.4.0. Use 'matrixcolor' with SaturationMatrix() instead.",
+        None,
+    ),
+    "im.matrix.tint": (
+        "Deprecated since Ren'Py 7.4.0. Use 'matrixcolor' with TintMatrix() instead.",
+        None,
+    ),
+    # Superseded config variables (from Ren'Py incompatible changes).
+    # These still work, but are documented as superseded — Senpy warns so
+    # users migrate proactively before a future removal.
+    "config.images_directory": (
+        "Superseded in Ren'Py 8.5.0 by 'config.image_directories' (a list). "
+        'Migrate to: define config.image_directories = [ "myimages" ]',
+        None,
+    ),
 }
 
 # Pre-compiled regular expression for fast lookup
 RE_DEPRECATED = re.compile(r"\b(" + "|".join(re.escape(k) for k in DEPRECATED_APIS) + r")\b")
 
-# Fast substring filter so we don't run the regex on ordinary strings
-FAST_TERMS = ("Live", "anim.", "ui.", "DynamicCharacter")
+# Fast substring filter so we don't run the regex on ordinary strings.
+# Updated in 0.9.2 (RENPY-5) to include "im." and "config.images_directory"
+# so the new im.* and config.images_directory entries trigger the fast path.
+FAST_TERMS = (
+    "Live",
+    "anim.",
+    "ui.",
+    "im.",
+    "DynamicCharacter",
+    "config.images_directory",
+)
 
 
 class DeprecationChecker:

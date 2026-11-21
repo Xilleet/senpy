@@ -30,6 +30,19 @@ Includes:
       ``if achievement.steam:`` without a ``default``). Previously missed
       here, causing RPY202 false positives on the ``developers_info``
       screen.
+    - **Auto-extracted namespace roots from ``renpy_api_generated.json``**
+      (added in 0.9.2): the top-level namespaces that have entries in the
+      generated JSON — ``config``, ``gui``, ``build``, ``renpy``,
+      ``persistent``, ``preferences`` — are merged in at module import
+      time. When Ren'Py adds a new namespace (e.g. ``renpy.clipboard`` in
+      8.6), the next ``scripts/fetch_renpy_docs.py`` run adds it to the
+      JSON, and the namespace root appears in ``BUILTIN_SYMBOLS``
+      automatically — no manual edit needed here. This closes the class
+      of FP where Ren'Py adds a new runtime namespace and Senpy's RPY202
+      starts firing on it before the maintainer notices. (Specific
+      leaf-level entries like ``config.developer`` are NOT auto-added —
+      the namespace root is enough for RPY202 to recognise
+      ``config.developer.foo`` as a declared name.)
 
 ``BUILTIN_ACTIONS`` — the documented Ren'Py screen-action classes that can
 be called with ``()`` in the ``action`` slot of a screen button (i.e. they
@@ -48,7 +61,7 @@ https://www.renpy.org/doc/html/screen_actions.html. Includes:
       positives on ``textbutton "Calibrate" action GamepadCalibrate()``.
 
 Configurable extension
----------------------
+----------------------
 ``senpy.toml`` may extend both sets at runtime via::
 
     [tool.senpy]
@@ -66,21 +79,96 @@ from __future__ import annotations
 
 import builtins
 
+from senpy.core.logging import get_logger
+
+_logger = get_logger("renpy_builtins")
+
+
+# =============================================================================
+# Auto-extracted namespace roots from renpy_api_generated.json
+# =============================================================================
+# These are the top-level names that Ren'Py ships as runtime-provided
+# namespaces (each has at least one entry in renpy_api_generated.json under
+# ``config.*`` / ``gui.*`` / ``build.*`` / ``renpy.*`` / ``persistent.*`` /
+# ``preferences.*``). RPY202 / RPY103 / RPY104 then treat them as declared
+# without a user ``default`` / ``define`` — same as ``audio`` or ``store``.
+#
+# Why auto-extract: Ren'Py regularly adds new namespaces (``renpy.clipboard``
+# in 8.6 is the latest example). Before this auto-extraction, each new
+# namespace needed a manual edit here + a release — and RPY202 fired on
+# every usage until then. By deriving the set from the JSON that
+# ``scripts/fetch_renpy_docs.py`` already regenerates on each Ren'Py pin
+# bump, new namespaces appear automatically on the next pin bump.
+#
+# Why only roots: adding ``config.developer`` etc. here would be redundant
+# — RPY202 already accepts ``config.X`` when ``config`` is in
+# ``BUILTIN_SYMBOLS`` (the rule checks the namespace root, not every leaf).
+# Adding leaves would also balloon the set from ~120 to ~800 entries with
+# no observable benefit.
+def _extract_namespace_roots_from_json() -> set[str]:
+    """Return the set of top-level namespace roots found in the generated JSON.
+
+    Walks every entry name in ``renpy_api_generated.json``. For each name
+    that contains a ``.``, the part before the first ``.`` is a candidate
+    namespace root. Names without a ``.`` (e.g. ``AddToSet``, ``Call``)
+    are skipped — they are class/function names, not namespaces, and are
+    already covered by ``BUILTIN_ACTIONS`` or the manual entries below.
+
+    Failures (missing file, corrupt JSON, etc.) log a WARNING and return
+    an empty set so the rest of ``BUILTIN_SYMBOLS`` still loads.
+    """
+    try:
+        from senpy.domain.renpy_api_generated import RENPY_API_DOCS_GENERATED
+    except ImportError as e:
+        _logger.warning(
+            "cannot import renpy_api_generated for BUILTIN_SYMBOLS auto-extraction: %s. "
+            "Falling back to manual list — RPY202 may fire on newly-added Ren'Py namespaces.",
+            e,
+        )
+        return set()
+
+    roots: set[str] = set()
+    for name in RENPY_API_DOCS_GENERATED:
+        if "." in name:
+            root = name.split(".", 1)[0]
+            # Filter out obviously non-namespace roots: a namespace root is
+            # a Python identifier (so ``config``, ``gui``, ``renpy`` all
+            # pass; ``__main__`` would too but does not appear in the JSON).
+            # Single-letter roots are extremely unlikely to be real
+            # namespaces and would over-broaden BUILTIN_SYMBOLS, so require
+            # length >= 2.
+            if root.isidentifier() and len(root) >= 2:
+                roots.add(root)
+    return roots
+
+
 # =============================================================================
 # Runtime-provided names — recognized as "declared" without user default/define
 # =============================================================================
-BUILTIN_SYMBOLS: set[str] = {
-    # Mutable runtime namespaces.
-    "config",
-    "persistent",
-    "renpy",
-    "audio",
-    "currentuser",
-    "gui",
-    "layout",
+# Manual entries that are NOT in renpy_api_generated.json:
+#   - Mutable namespaces without their own JSON entries (``store``, ``audio``,
+#     ``layout``, ``ui``, ``im``, ``style``).
+#   - Ren'Py globals that are not documented as ``namespace.*`` entries
+#     (``main_menu``, ``_return``, ``_in_replay``, ``name``, ``player``,
+#     ``theme``, ``who``, ``what``, ``prefix_``, ``Action``, ``Preferences``,
+#     ``currentuser``, ``_window_during_functions``, ``_history_list``,
+#     ``_restart``, ``achievement``).
+#   - Transition aliases (``dissolve``, ``fade``, ``vpunch``, …).
+#   - Standard positions and base transforms (``center``, ``left``,
+#     ``topleft``, ``reset``, ``default``, …).
+#   - Transition classes that take parameters (``Dissolve(1.0)``, ``Fade(...)``).
+#
+# Auto-extracted entries (added at module load via _extract_namespace_roots_from_json):
+#   - Namespace roots from the JSON: ``config``, ``gui``, ``build``,
+#     ``renpy``, ``persistent``, ``preferences`` (and any future ones).
+_MANUAL_BUILTIN_SYMBOLS: set[str] = {
+    # Mutable runtime namespaces (no JSON entries of their own).
     "store",
+    "audio",
+    "layout",
     "ui",
     "im",
+    "style",
     # Ren'Py special names.
     "Action",
     "Preferences",
@@ -93,10 +181,10 @@ BUILTIN_SYMBOLS: set[str] = {
     "name",
     "player",
     "theme",
-    "style",
     "who",
     "what",
     "prefix_",
+    "currentuser",
     # Built-in transition aliases.
     "dissolve",
     "fade",
@@ -151,11 +239,12 @@ BUILTIN_SYMBOLS: set[str] = {
     # (https://www.renpy.org/doc/html/achievements.html) — users
     # can write `if achievement.steam:` without a `default`.
     "achievement",
-    # Python's builtins (len, range, True, ...). Splatted at the end
-    # so the set is constructed in one call — same shape as before
-    # the extraction.
-    *dir(builtins),
 }
+
+BUILTIN_SYMBOLS: set[str] = _MANUAL_BUILTIN_SYMBOLS | _extract_namespace_roots_from_json()
+# Python's builtins (len, range, True, ...). Splatted at the end so the set is
+# constructed in one call.
+BUILTIN_SYMBOLS |= set(dir(builtins))
 
 
 # =============================================================================
