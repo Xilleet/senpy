@@ -25,6 +25,63 @@ from senpy.core.paths import normalize_path
 _RE_STRING_LITERAL = re.compile(r"""(["'])(?P<value>(?:\\.|(?!\1).)*)\1""")
 
 
+def _find_tl_dir_index(rel_parts: list[str]) -> int | None:
+    """Return the index of the canonical ``tl`` translation directory in *rel_parts*.
+
+    The Ren'Py translation root is ``game/tl/`` — a ``tl`` directory
+    directly under ``game``. The legacy check ``"tl" in rel_parts``
+    matched a ``tl`` segment ANYWHERE in the path, which mis-routed:
+
+    * ``game/mods/tl/foo.rpy``        → translation (it is NOT — ``tl``
+      is under ``mods``, not ``game``)
+    * ``game/tl/old_backup/tl/russian/file.rpy`` → language ``old_backup``
+      (the FIRST ``tl``) instead of ``russian`` (the LAST ``tl`` inside
+      the canonical root's subtree — a backup layout nested in the real
+      translation tree)
+
+    Resolution rules (in order):
+
+    1. If ``game`` is in the path, the canonical root is the ``tl``
+       that sits directly under ``game``. If there are several ``tl``
+       segments inside that root's subtree (a backup layout like
+       ``game/tl/old_backup/tl/russian/``), the LAST one wins — its
+       next segment is the real language folder.
+    2. If ``game`` is NOT in the path (project root used AS the game
+       dir, no ``game`` wrapper), fall back to the first ``tl`` segment
+       — this preserves backward compat with the legacy behaviour for
+       the canonical single-layout case.
+    3. No ``tl`` at all → ``None``.
+
+    Returns ``None`` when no translation directory applies, so callers
+    can treat the file as a main script.
+    """
+    tl_indices = [i for i, part in enumerate(rel_parts) if part == "tl"]
+    if not tl_indices:
+        return None
+
+    game_idx = rel_parts.index("game") if "game" in rel_parts else None
+
+    if game_idx is None:
+        # No game wrapper — fall back to the first tl (legacy behaviour
+        # for projects whose root IS the game dir).
+        return tl_indices[0]
+
+    # Canonical root: the tl that sits directly under game.
+    root_tl = next((i for i in tl_indices if i == game_idx + 1), None)
+    if root_tl is None:
+        # game present but no tl directly under it — any other tl in
+        # the path (e.g. game/mods/tl/) is NOT a translation root.
+        return None
+
+    # The real translation tree may contain a backup layout with a
+    # nested tl (game/tl/old_backup/tl/russian/). The language folder
+    # is the segment AFTER the LAST tl that lives inside the canonical
+    # root's subtree — i.e. every tl at index >= root_tl. Take the
+    # last such tl; its next segment is the real language.
+    nested = [i for i in tl_indices if i >= root_tl]
+    return nested[-1]
+
+
 def _extract_string_literal(expr: str) -> str | None:
     """Return the first single- or double-quoted string literal in *expr*."""
     if not expr:
@@ -46,7 +103,12 @@ def discover_rpy_files(project_path: str) -> tuple[list[str], list[str]]:
     for root, dirs, filenames in os.walk(project_path, followlinks=False):
         dirs[:] = sorted([d for d in dirs if d not in IGNORED_DIRS])
         rel_parts = os.path.relpath(root, project_path).replace("\\", "/").split("/")
-        is_tl_dir = "tl" in rel_parts
+        # Use the canonical tl-detection helper: ``"tl" in rel_parts``
+        # matched a ``tl`` directory anywhere in the path, mis-routing
+        # ``game/mods/tl/foo.rpy`` to translation analysis. The helper
+        # only counts a ``tl`` that sits directly under ``game`` (or the
+        # first ``tl`` when there is no ``game`` wrapper).
+        is_tl_dir = _find_tl_dir_index(rel_parts) is not None
 
         for f in sorted(filenames):
             if f.endswith((".rpy", "_ren.py")):

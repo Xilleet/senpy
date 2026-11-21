@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from senpy.core.analyzer import SenpyAnalyzer
+from senpy.core.file_discovery import _find_tl_dir_index
 
 
 @dataclass
@@ -32,10 +33,18 @@ def calculate_translation_coverage(project_path: str) -> dict[str, LanguageStats
         norm_path = file_path.replace("\\", "/")
         rel_parts = norm_path.split("/")
 
-        # Determine the language: look for the folder right after 'tl'
-        if "tl" not in rel_parts:
+        # Determine the language: the folder right after the canonical
+        # ``tl`` directory. Use ``_find_tl_dir_index`` instead of
+        # ``rel_parts.index("tl")`` — the latter returns the FIRST ``tl``
+        # in the path, which on a backup layout like
+        # ``game/tl/old_backup/tl/russian/file.rpy`` resolves to
+        # ``old_backup`` instead of the real language ``russian``. The
+        # helper returns the LAST ``tl`` inside the canonical
+        # ``game/tl/`` subtree, so the language folder after it is the
+        # real one.
+        tl_idx = _find_tl_dir_index(rel_parts)
+        if tl_idx is None:
             continue
-        tl_idx = rel_parts.index("tl")
         if tl_idx + 1 >= len(rel_parts):
             continue
 

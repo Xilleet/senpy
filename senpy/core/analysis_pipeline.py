@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 from senpy.core.cache import CachedFileEntry, compute_file_hash
 from senpy.core.constants import RE_LABEL, RE_SCREEN_START
 from senpy.core.file_collector import build_noqa_map
+from senpy.core.file_discovery import _find_tl_dir_index
 from senpy.core.logging import get_logger
 from senpy.core.models import RULE_SEVERITY, AnalysisResult, Diagnostic
 from senpy.core.paths import normalize_path
@@ -710,7 +711,16 @@ class AnalysisPipeline:
         except ValueError:
             rel_parts = file_path.replace("\\", "/").split("/")
         try:
-            if "tl" in rel_parts:
+            # Route to translation analysis ONLY when the file lives
+            # under the canonical ``game/tl/`` subtree. The legacy
+            # ``"tl" in rel_parts`` check matched a ``tl`` directory
+            # anywhere in the path, so ``game/mods/tl/foo.rpy`` was
+            # mis-routed to ``analyze_tl_file`` (which expects
+            # translation-pair syntax and emits a flood of bogus
+            # RPY8xx diagnostics on a normal script). The helper returns
+            # None for any ``tl`` that is not a direct child of ``game``
+            # (or the first ``tl`` when there is no ``game`` wrapper).
+            if _find_tl_dir_index(rel_parts) is not None:
                 from senpy.rules.checkers.translation import analyze_tl_file
 
                 analyze_tl_file(a, file_path)
