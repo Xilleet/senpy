@@ -23,7 +23,7 @@ VERSION_WITH_PREFIX = f"v{__version__}"
 # bumped only ``__version__`` left MAJOR/MINOR/PATCH on the old values,
 # and ``CacheManager.compute_environment_fingerprint`` (which hashes
 # ``MAJOR.MINOR``) would produce wrong hashes.
-# TODO: отключить или изменить поведение обновление в bump_version, иначе это обновление ломается.
+# TODO: disable or modify the update behavior in bump_version; otherwise, this update breaks.
 MAJOR, MINOR, PATCH = (int(x) for x in __version__.split("."))
 
 __all__ = ["__version__", "VERSION_WITH_PREFIX", "MAJOR", "MINOR", "PATCH"]
