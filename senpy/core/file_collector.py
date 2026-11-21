@@ -1025,7 +1025,7 @@ class FileCollector:
             # loop) fire false RPY502. The static evaluator handles
             # string literals, list-literal loop iterables, and simple
             # string concatenation with loop variables — anything more
-            # complex remains a known limitation (users `# noqa`).
+            # complex remains a known limitation (users add a noqa comment).
             self._collect_dynamic_renpy_images(code, file_path, idx + 2)
         return next_idx
 

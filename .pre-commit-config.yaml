@@ -21,10 +21,16 @@
 # with the project config — no separate config file to keep in sync.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.7.4  # ruff version, keep in sync with CI install
+    rev: v0.17.6  # ruff lint version — bumped from 0.7.4 to remove UP038 (deleted in ruff 0.13.0).
+                  # ruff-format stays on v0.7.4 below because newer ruff format changes would
+                  # reformat 75 files in one shot — that's a separate QUA-4 task.
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4  # ruff-format pin kept on 0.7.4 — see comment above.
+    hooks:
       - id: ruff-format
 
   - repo: https://github.com/pre-commit/pre-commit-hooks

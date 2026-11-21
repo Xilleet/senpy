@@ -64,7 +64,7 @@ def _run_cold_then_warm(project_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Tier 2 cache loses `# noqa` for cross-file rules
+# Tier 2 cache loses noqa suppression for cross-file rules
 # ---------------------------------------------------------------------------
 
 
@@ -83,10 +83,10 @@ label start:
 
     cold_rpy701 = [d for d in cold_r.diagnostics if d.code == "RPY701"]
     warm_rpy701 = [d for d in warm_r.diagnostics if d.code == "RPY701"]
-    assert cold_rpy701 == [], f"Cold run should suppress RPY701 via # noqa, got: {cold_rpy701}"
+    assert cold_rpy701 == [], f"Cold run should suppress RPY701 via noqa, got: {cold_rpy701}"
     assert (
         warm_rpy701 == []
-    ), f"Warm run must preserve the # noqa suppression, but RPY701 re-fired: {warm_rpy701}"
+    ), f"Warm run must preserve the noqa suppression, but RPY701 re-fired: {warm_rpy701}"
 
 
 # ---------------------------------------------------------------------------

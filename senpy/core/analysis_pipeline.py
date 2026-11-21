@@ -183,14 +183,14 @@ class AnalysisPipeline:
                     # `generate_defaults_file()` writes an empty file.
                     a.missing_defaults.update(getattr(entry, "missing_defaults", {}) or {})
                     # Restore per-file noqa_map so cross-file rules
-                    # (RPY701-707, RPY802) honour `# noqa` directives on
+                    # (RPY701-707, RPY802) honour noqa directives on
                     # warm runs. Without this, `_add_diagnostic_by_file`
                     # falls back to an empty dict and re-emits diagnostics
                     # the user explicitly suppressed on the cold run.
                     # `build_noqa_map` is a cheap single-pass scan; we
                     # recompute rather than persist to keep the cache
                     # payload small and avoid staleness if the user edits
-                    # `# noqa` directives between runs (Tier 2 cache
+                    # noqa directives between runs (Tier 2 cache
                     # invalidation already covers `.rpy` edits via the
                     # mtime/size/content_hash checks).
                     try:

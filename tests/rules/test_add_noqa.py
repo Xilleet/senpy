@@ -137,9 +137,10 @@ class TestApplyNoqaComments:
         # Manually re-introduce a diagnostic on the same line by removing
         # the noqa and re-adding it twice.
         script = project / "game" / "script.rpy"
-        # Simulate: a line already has # noqa, and we run --add-noqa again.
-        # The analyzer now produces NO diagnostics (noqa suppresses them),
-        # so _apply_noqa_comments has nothing to add. Verify no duplicate.
+        # Simulate: a line already has a noqa directive, and we run
+        # --add-noqa again. The analyzer now produces NO diagnostics
+        # (noqa suppresses them), so _apply_noqa_comments has nothing
+        # to add. Verify no duplicate.
         analyzer2 = SenpyAnalyzer(str(project), no_cache=True)
         result2 = analyzer2.run(quiet=True)
         _apply_noqa_comments(result2.diagnostics, analyzer2)
