@@ -2,8 +2,7 @@
 """Clone a curated corpus of open-source Ren'Py visual novels.
 
 The corpus is used to catch false positives / false negatives in the
-senpy rule set against real-world VN code. See the "Архитектура
-(гибрид)" section in ``roadmap_updated.md`` for the full design.
+senpy rule set against real-world VN code.
 
 Architecture (hybrid):
     - VN source lives in ``tests/_corpus/<project>/`` LOCALLY only.
