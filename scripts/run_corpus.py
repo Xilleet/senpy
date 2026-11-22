@@ -58,6 +58,18 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.table import Table
+
 # Allow running this script from anywhere (``python scripts/run_corpus.py``)
 # by prepending the repo root to sys.path so ``from senpy.core.analyzer``
 # and ``from scripts.collect_corpus`` resolve. Without this, a bare
@@ -74,6 +86,10 @@ from scripts.collect_corpus import CORPUS_DIR, PROJECTS
 from senpy.core.analyzer import SenpyAnalyzer
 
 BASELINE_PATH = REPO_ROOT / "tests" / "_corpus_baseline.json"
+
+# Shared rich console — mirrors collect_corpus.py so the two scripts
+# visually match (same Panel border, same Table styling, same spinner).
+console = Console()
 
 
 def _find_project_root(clone_dir: Path) -> Path:
@@ -104,7 +120,7 @@ def _run_one(slug: str) -> dict | None:
     """
     clone_dir = CORPUS_DIR / slug
     if not clone_dir.exists() or not any(clone_dir.iterdir()):
-        print(f"  [skip] {slug:<28} not cloned — run scripts/collect_corpus.py", file=sys.stderr)
+        # Skip — caller shows status in the summary table.
         return None
 
     project_root = _find_project_root(clone_dir)
@@ -191,21 +207,34 @@ def _save_baseline(baseline: dict) -> None:
 
 
 def _drift_report(slug: str, current: dict, baseline: dict) -> list[str]:
-    """Compare a current run against the baseline. Returns human-readable deltas."""
+    """Compare a current run against the baseline.
+
+    Returns human-readable deltas with rich markup for color-coded
+    ``+/-`` deltas: green when diagnostics decreased (improvement),
+    red when increased (regression), yellow for ``NEW``, blue for
+    fingerprint movement. Lines are printed via ``console.print(...)``
+    in ``main()`` so the markup renders.
+    """
     diffs: list[str] = []
     base = baseline.get(slug, {})
     if not base:
-        diffs.append(f"  {slug}: NEW — no baseline entry (run with --update-baseline)")
+        diffs.append(
+            f"  {slug}: [yellow]NEW[/yellow] — no baseline entry (run with --update-baseline)"
+        )
         return diffs
     if base.get("fingerprint") != current["fingerprint"]:
         diffs.append(
-            f"  {slug}: fingerprint moved {base['fingerprint'][:24]}.. -> {current['fingerprint'][:24]}.."
+            f"  {slug}: [blue]fingerprint moved[/blue] "
+            f"{base['fingerprint'][:24]}.. -> {current['fingerprint'][:24]}.."
         )
     if base.get("total") != current["total_diagnostics"]:
+        delta = current["total_diagnostics"] - base["total"]
+        sign = "+" if delta > 0 else ""
+        # Green when diags decreased (improvement); red when increased (regression).
+        delta_style = "red" if delta > 0 else "green"
         diffs.append(
             f"  {slug}: total {base['total']} -> {current['total_diagnostics']} "
-            f"({'+' if current['total_diagnostics'] > base['total'] else ''}"
-            f"{current['total_diagnostics'] - base['total']})"
+            f"([{delta_style}]{sign}{delta}[/{delta_style}])"
         )
     # Per-code delta.
     base_codes = base.get("by_code", {})
@@ -215,10 +244,88 @@ def _drift_report(slug: str, current: dict, baseline: dict) -> list[str]:
     for code in sorted(all_codes):
         delta = cur_codes.get(code, 0) - base_codes.get(code, 0)
         if delta != 0:
-            code_deltas.append(f"{code}:{'+' if delta > 0 else ''}{delta}")
+            sign = "+" if delta > 0 else ""
+            delta_style = "red" if delta > 0 else "green"
+            code_deltas.append(f"{code}:[{delta_style}]{sign}{delta}[/{delta_style}]")
     if code_deltas:
         diffs.append(f"  {slug}: codes {', '.join(code_deltas)}")
     return diffs
+
+
+# Per-status styling for the summary table (mirrors collect_corpus.py).
+# ``ran`` = analyzed in compare mode; ``baseline`` = analyzed + baseline
+# written in ``--update-baseline`` mode; ``skipped`` = clone absent.
+# TODO: if SenpyAnalyzer.run() ever gains a structured error return
+# (instead of raising), add an ``error`` status here (red ✗) so a
+# single bad project does not kill the whole corpus run.
+_STATUS_STYLE: dict[str, tuple[str, str]] = {
+    "ran": ("green", "✓"),
+    "skipped": ("yellow", "≈"),
+    "baseline": ("blue", "B"),
+}
+
+
+def _run_summary_table(
+    results: list[tuple[str, str, dict | None]],
+) -> Table:
+    """Build the per-project result table shown after the run.
+
+    Each row: ``(slug, status, result_dict_or_None)``. Status drives
+    the mark + color via ``_STATUS_STYLE``; the result dict populates
+    Diags / Files / Codes columns (``-`` when skipped).
+    """
+    table = Table(title="Run results", show_lines=False, expand=True)
+    table.add_column("", width=1)
+    table.add_column("Slug", style="bold", no_wrap=True)
+    table.add_column("Status", no_wrap=True)
+    table.add_column("Diags", justify="right")
+    table.add_column("Files", justify="right")
+    table.add_column("Codes", justify="right")
+    for slug, status, result in results:
+        style, mark = _STATUS_STYLE.get(status, ("white", "?"))
+        if result is not None:
+            diags = str(result["total_diagnostics"])
+            files = str(result["file_count"])
+            codes = str(len(result["by_code"]))
+        else:
+            diags = "-"
+            files = "-"
+            codes = "-"
+        table.add_row(
+            mark,
+            slug,
+            f"[{style}]{status}[/{style}]",
+            diags,
+            files,
+            codes,
+        )
+    return table
+
+
+def _print_list_table() -> None:
+    """Print the corpus run plan as a rich table (``--list`` mode)."""
+    table = Table(title="Corpus run plan", show_lines=False, expand=True)
+    table.add_column("Slug", style="bold cyan", no_wrap=True)
+    table.add_column("Cloned", no_wrap=True)
+    table.add_column("Game/")
+    for p in PROJECTS:
+        clone = CORPUS_DIR / p.slug
+        cloned_yes = (clone / ".git").exists()
+        cloned = "yes" if cloned_yes else "no"
+        if clone.exists():
+            root = _find_project_root(clone)
+            game_rel = str(root.relative_to(clone)).replace("\\", "/")
+        else:
+            game_rel = "?"
+        cloned_style = "green" if cloned_yes else "dim"
+        table.add_row(p.slug, f"[{cloned_style}]{cloned}[/{cloned_style}]", game_rel)
+    console.print(table)
+    baseline_state = "exists" if BASELINE_PATH.exists() else "absent"
+    baseline_style = "green" if BASELINE_PATH.exists() else "red"
+    console.print(
+        f"\nBaseline: [dim]{BASELINE_PATH}[/dim] "
+        f"([{baseline_style}]{baseline_state}[/{baseline_style}])"
+    )
 
 
 def main() -> int:
@@ -246,20 +353,19 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.list:
-        print(f"{'SLUG':<28} {'CLONED':<8} {'GAME/'}")
-        print("-" * 28 + " " + "-" * 8 + " " + "-" * 40)
-        for p in PROJECTS:
-            clone = CORPUS_DIR / p.slug
-            cloned = "yes" if (clone / ".git").exists() else "no"
-            root = _find_project_root(clone) if clone.exists() else clone
-            game_rel = str(root.relative_to(clone)).replace("\\", "/") if clone.exists() else "?"
-            print(f"{p.slug:<28} {cloned:<8} {game_rel}")
-        print(f"\nBaseline: {BASELINE_PATH} ({'exists' if BASELINE_PATH.exists() else 'absent'})")
+        _print_list_table()
         return 0
 
     if args.json_only:
+        # Pure JSON to stdout — no Panel, no Progress, no rich markup.
+        # ``triage_corpus.py`` pipes this output into ``jq`` / CSV import,
+        # so any non-JSON bytes on stdout would break downstream pipes.
         result = _run_one(args.json_only)
         if result is None:
+            print(
+                f"ERROR: project {args.json_only!r} not cloned — " "run scripts/collect_corpus.py",
+                file=sys.stderr,
+            )
             return 1
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
@@ -269,44 +375,91 @@ def main() -> int:
         wanted = {s.strip() for s in args.only.split(",") if s.strip()}
         unknown = wanted - {p.slug for p in PROJECTS}
         if unknown:
-            print(f"ERROR: unknown slug(s): {', '.join(sorted(unknown))}", file=sys.stderr)
+            console.print(f"[red]ERROR:[/red] unknown slug(s): {', '.join(sorted(unknown))}")
+            console.print(f"Run `python {Path(__file__).name} --list` for the catalog.")
             return 2
         selected = tuple(p for p in PROJECTS if p.slug in wanted)
 
-    baseline = _load_baseline() if not args.update_baseline else {}
+    is_update = args.update_baseline
+    mode = "update" if is_update else "compare"
+    baseline = _load_baseline() if not is_update else {}
     new_baseline: dict[str, dict] = {}
     drift: list[str] = []
 
-    print(f"Corpus: {CORPUS_DIR}")
-    print(f"Baseline: {BASELINE_PATH} (mode={'update' if args.update_baseline else 'compare'})\n")
-    counts = {"ran": 0, "skipped": 0}
-    for p in selected:
-        result = _run_one(p.slug)
-        if result is None:
-            counts["skipped"] += 1
-            continue
-        counts["ran"] += 1
-        marker = "+"
-        if args.update_baseline:
-            new_baseline[p.slug] = _baseline_entry(result)
-            marker = "B"  # baseline written
-        else:
-            drift.extend(_drift_report(p.slug, result, baseline))
-        print(
-            f"  [{marker}] {p.slug:<28} diags={result['total_diagnostics']:<4} "
-            f"files={result['file_count']:<3} codes={len(result['by_code'])}"
+    console.print(
+        Panel.fit(
+            f"[bold]Corpus directory[/bold] [dim]{CORPUS_DIR}[/dim]\n"
+            f"[bold]Baseline:[/bold] [dim]{BASELINE_PATH}[/dim] "
+            f"[bold]mode={mode}[/bold]\n"
+            f"[bold]Projects to process:[/bold] {len(selected)}",
+            border_style="cyan",
+        )
+    )
+
+    results: list[tuple[str, str, dict | None]] = []
+    counts = {"ran": 0, "skipped": 0, "baseline": 0}
+
+    # Rich progress bar: spinner + current-slug description + bar + N/M + elapsed.
+    # ``transient=False`` keeps the bar visible after completion so the user
+    # sees the final state; the summary table is printed below it.
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+    )
+    with progress:
+        task = progress.add_task("[cyan]Analyzing corpus…", total=len(selected))
+        for p in selected:
+            # Live description shows the slug currently being analyzed so
+            # the user knows which project the bar is sitting on (matters
+            # for monika_after_story at 122 .rpy — takes 3+ seconds).
+            progress.update(task, description=f"[cyan]Analyzing [bold]{p.slug}[/bold]…")
+            result = _run_one(p.slug)
+            if result is None:
+                counts["skipped"] += 1
+                results.append((p.slug, "skipped", None))
+            elif is_update:
+                new_baseline[p.slug] = _baseline_entry(result)
+                counts["baseline"] += 1
+                results.append((p.slug, "baseline", result))
+            else:
+                drift.extend(_drift_report(p.slug, result, baseline))
+                counts["ran"] += 1
+                results.append((p.slug, "ran", result))
+            progress.advance(task)
+
+    console.print()  # blank line between progress bar and summary table
+    console.print(_run_summary_table(results))
+
+    # Final count line, color-coded by status. Only non-zero counts are
+    # shown — in compare mode ``baseline`` is always 0 (and vice versa),
+    # so we skip the noise.
+    summary_parts: list[str] = []
+    if counts["ran"]:
+        summary_parts.append(f"[green]ran={counts['ran']}[/green]")
+    if counts["baseline"]:
+        summary_parts.append(f"[blue]baseline={counts['baseline']}[/blue]")
+    if counts["skipped"]:
+        summary_parts.append(f"[yellow]skipped={counts['skipped']}[/yellow]")
+    console.print("\n[bold]Done.[/bold] " + "  ".join(summary_parts))
+
+    if is_update and new_baseline:
+        _save_baseline(new_baseline)
+        console.print(
+            f"Wrote baseline ([bold]{len(new_baseline)}[/bold] projects) "
+            f"-> [dim]{BASELINE_PATH}[/dim]"
         )
 
-    print(f"\nDone. ran={counts['ran']} skipped={counts['skipped']}")
-
-    if args.update_baseline and new_baseline:
-        _save_baseline(new_baseline)
-        print(f"Wrote baseline ({len(new_baseline)} projects) -> {BASELINE_PATH}")
-
-    if not args.update_baseline and drift:
-        print("\nDrift vs baseline:")
+    if not is_update and drift:
+        console.print("\n[bold]Drift vs baseline:[/bold]")
         for line in drift:
-            print(line)
+            # Lines from _drift_report carry rich markup tags
+            # (e.g. ``[green]+2[/green]``) — console.print renders them.
+            console.print(line)
         return 1  # signal drift to CI (CORPUS-8 catches this)
 
     return 0
