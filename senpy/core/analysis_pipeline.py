@@ -717,6 +717,33 @@ class AnalysisPipeline:
         post-call symbol table through ``_refresh_symbol_snapshot`` for
         autocomplete/rename; restoring it would break autocomplete
         across the did_change → did_save window.
+
+        NOTE — known edge case (decided NOT to fix for now; soft UX,
+        self-heals on did_save): if file B is deleted from disk (or
+        renamed) and the user then issues a did_change on file A, this
+        method purges ONLY A's scope — B's label/variable/scope entries
+        linger in ``_symbols`` and ``file_scopes``. ``_refresh_symbol_
+        snapshot`` (called after this method in the did_change handler)
+        copies them into the snapshot, so autocomplete briefly offers a
+        ghost label whose file no longer exists. The window is bounded
+        by the next did_save → run() → file_scopes.clear() +
+        _symbols.reset(), which fully purges the stale entries. Handler
+        call sites already tolerate it: ``rename._rename_label`` wraps
+        ``open(lbl.file_path)`` in ``try/except OSError``, so renaming a
+        ghost label silently no-ops instead of crashing. Not deemed
+        worth fixing in the 0.9.x line; revisit if users report it.
+
+        TODO (post-1.0): consider a dedicated sub-analyzer instance for
+        the LSP fast-path — a separate ``SenpyAnalyzer`` whose
+        ``_symbols`` / ``file_scopes`` are NOT shared with the main
+        instance. That would eliminate this edge case entirely (no
+        stale entries ever leak into the snapshot), and would also
+        remove the reader-side race on ``_symbol_snapshot`` (handlers
+        like completion/rename currently read it without the
+        ``rw_lock`` that the writer holds). Out of scope for 0.9.x:
+        LSP handlers depend on the shared analyzer's in-memory file
+        cache and would need a coherent migration; a half-done split
+        would regress autocomplete more than it fixes.
         """
         a = self.analyzer
         file_diags: list[Diagnostic] = []
