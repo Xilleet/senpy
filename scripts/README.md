@@ -28,6 +28,7 @@ CI unless explicitly invoked.
 | [`push_badges_to_gist.py`](#push_badges_to_gistpy) | Docs / badges | Push `.github/badges/*.json` to a GitHub Gist (no commit-back) |
 | [`collect_corpus.py`](#collect_corpuspy) | Corpus | Shallow-clone 15 OSS VN projects into `tests/_corpus/` (gitignored) |
 | [`run_corpus.py`](#run_corpuspy) | Corpus | Run senpy on the corpus → per-project JSON + `tests/_corpus_baseline.json` |
+| [`triage_corpus.py`](#triage_corpuspy) | Corpus | Triage corpus diagnostics into TP/FP/maybe-FP → `tests/_corpus_triage.json` (CSV + interactive) |
 
 ---
 
@@ -304,6 +305,42 @@ python scripts/run_corpus.py --only gifting_game       # run one
 python scripts/run_corpus.py --update-baseline         # regen baseline (committable)
 python scripts/run_corpus.py --list                   # plan only (cloned? + game/ path)
 python scripts/run_corpus.py --json-only gifting_game  # full JSON to stdout (for triage)
+```
+
+### `triage_corpus.py`
+
+**EN:** Triage senpy corpus diagnostics into TP / FP / maybe-FP / skip.
+Reads the per-project JSON written by `run_corpus.py` and lets a
+maintainer classify every diagnostic against the actual VN source.
+Hybrid interface: `--export-csv` dumps every diagnostic to
+`tests/_corpus/_corpus_triage.csv` (gitignored) for offline labelling
+in a spreadsheet; `--import-csv` reads the labelled CSV back and
+writes `tests/_corpus_triage.json` (committed — anonymous triage
+state, no VN source); `--slug <name>` walks one project
+interactively (per-diagnostic prompt, EOF / `q` keeps current);
+`--summary` prints per-project + overall TP / FP / maybe-FP /
+unmarked counts. Downstream CORPUS-5 turns every FP / maybe-FP
+into a RED pytest.
+
+**RU:** Triage диагностик senpy на корпусе в TP / FP / maybe-FP /
+skip. Читает per-project JSON от `run_corpus.py` и позволяет
+мейнтейнеру классифицировать каждый diagnostic против реального
+VN-кода. Гибрид: `--export-csv` выгружает все diagnostic'и в
+`tests/_corpus/_corpus_triage.csv` (gitignored) для оффлайн-разметки
+в таблице; `--import-csv` читает размеченный CSV и пишет
+`tests/_corpus_triage.json` (коммитится — анонимное triage-состояние,
+без VN-кода); `--slug <name>` — интерактив по одному проекту
+(per-diagnostic промпт, EOF / `q` сохраняет текущий статус);
+`--summary` печатает per-project + общий TP / FP / maybe-FP /
+unmarked. Дальнейший CORPUS-5 превращает каждый FP / maybe-FP в
+RED pytest.
+
+```bash
+python scripts/triage_corpus.py --export-csv           # bulk dump to CSV (label offline)
+python scripts/triage_corpus.py --import-csv            # read labelled CSV -> triage.json
+python scripts/triage_corpus.py --slug gifting_game     # interactive triage for one project
+python scripts/triage_corpus.py --summary               # per-project + overall counts
+python scripts/triage_corpus.py --summary --status fp   # FP count only
 ```
 
 ---
