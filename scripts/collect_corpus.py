@@ -193,13 +193,16 @@ def _clone_with_live_progress(url: str, target: Path, task_id: object, progress:
 
     Returns the captured stderr on failure (empty string on success).
 
-    Uses ``select`` + ``os.read`` to poll git's stderr non-blockingly
-    (git writes progress with carriage returns, not newlines, so a
-    plain ``read()`` blocks until 64 bytes accumulate — far too slow
-    for fast clones, and it never updates the bar mid-clone).
+    Uses a **reader thread** instead of ``select.select`` because
+    Windows ``select`` raises ``WinError 10093`` on pipe file
+    descriptors (it only accepts sockets). The reader thread blocks
+    on ``proc.stderr.read()``, hands chunks to the main thread via a
+    ``queue.Queue``, and the main thread drains the queue with a
+    short timeout to update the rich bar. Cross-platform, no
+    ``select``/``os.read`` on pipes, no winsock init needed.
     """
-    import os
-    import select
+    import queue
+    import threading
 
     # --progress forces git to emit progress lines to stderr even when
     # stderr is not a TTY (subprocess pipes are not TTYs, so without
@@ -208,51 +211,114 @@ def _clone_with_live_progress(url: str, target: Path, task_id: object, progress:
         ["git", "clone", "--progress", "--depth", "1", "--single-branch", url, str(target)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=False,  # we decode chunks ourselves for non-blocking read
+        text=False,  # decode chunks ourselves for the live parser
     )
     assert proc.stderr is not None
-    fd = proc.stderr.fileno()
+
+    # Reader thread: block-reads stderr 1 KB at a time and pushes each
+    # chunk (bytes) to a queue. It sets a sentinel (None) when git
+    # closes stderr (clone done). The main thread consumes the queue.
+    chunk_q: queue.Queue[bytes | None] = queue.Queue()
+
+    def _reader() -> None:
+        try:
+            while True:
+                chunk = proc.stderr.read(1024)
+                if not chunk:
+                    break
+                chunk_q.put(chunk)
+        finally:
+            chunk_q.put(None)
+
+    reader_thread = threading.Thread(target=_reader, daemon=True)
+    reader_thread.start()
+
     stderr_buf = bytearray()
     while True:
-        # Poll with a 200ms timeout so we still notice process exit
-        # promptly even if git stops writing for a moment.
-        ready, _, _ = select.select([fd], [], [], 0.2)
-        if ready:
-            try:
-                chunk = os.read(fd, 4096)
-            except OSError:
+        try:
+            item = chunk_q.get(timeout=0.2)
+        except queue.Empty:
+            # No new chunk in 200ms. If the process already exited but
+            # the reader has not flushed the sentinel yet, loop again;
+            # otherwise keep waiting so the bar still animates.
+            if proc.poll() is not None and chunk_q.empty():
+                # Drain anything the reader has not queued yet.
+                remaining = chunk_q.get(timeout=0.5)
+                if remaining is not None:
+                    stderr_buf.extend(remaining)
+                    _update_progress_from_chunk(remaining, task_id, progress)
                 break
-            if not chunk:
-                break
-            stderr_buf.extend(chunk)
-            # Split on \r and \n; git emits progress as "...0%...1%...\r"
-            # so each \r marks the end of one progress line. Take the
-            # last segment that matches a known phase.
-            text = chunk.decode("utf-8", errors="replace")
-            segments = re.split(r"[\r\n]", text)
-            for segment in reversed(segments):
-                segment = segment.strip()
-                if not segment:
-                    continue
-                m = _PROGRESS_RE.search(segment)
-                if m:
-                    # Truncate the raw git line to fit a single terminal row.
-                    short = segment if len(segment) <= 60 else segment[:57] + "…"
-                    progress.update(task_id, description=f"[cyan]{short}")
-                    break
-        elif proc.poll() is not None:
-            # Process exited — drain any remaining stderr.
-            try:
-                rest = os.read(fd, 65536)
-                if rest:
-                    stderr_buf.extend(rest)
-            except OSError:
-                pass
+            continue
+        if item is None:
             break
+        stderr_buf.extend(item)
+        _update_progress_from_chunk(item, task_id, progress)
+
+    reader_thread.join(timeout=1.0)
     proc.wait()
     if proc.returncode != 0:
-        return stderr_buf.decode("utf-8", errors="replace").strip()
+        return _extract_error_lines(stderr_buf.decode("utf-8", errors="replace"))
     return ""
+
+
+def _extract_error_lines(stderr_text: str) -> str:
+    """Filter raw git stderr down to just the fatal/error lines.
+
+    Git mixes live progress (``remote: Counting objects: N%``,
+    ``Receiving objects: N% (size | speed)``) with actual error lines
+    (``fatal:``, ``error:``, ``RPC failed``). When a clone fails,
+    returning the whole stderr makes the summary table balloon to
+    hundreds of rows. We keep only the meaningful error lines and
+    drop the progress noise.
+    """
+    # Progress-line prefixes to drop. Git emits these with \r (carriage
+    # return) separators, so we split on both \r and \n and filter.
+    progress_prefixes = (
+        "remote: Counting",
+        "remote: Compressing",
+        "remote: Enumerating",
+        "remote: Total",
+        "remote: Resolving",
+        "Counting objects:",
+        "Compressing objects:",
+        "Receiving objects:",
+        "Resolving deltas:",
+    )
+    kept: list[str] = []
+    for line in re.split(r"[\r\n]", stderr_text):
+        line = line.strip()
+        if not line:
+            continue
+        if any(line.startswith(p) for p in progress_prefixes):
+            continue
+        # Drop the initial "Cloning into '...'..." banner — it is
+        # informational, not an error, and clutters the table.
+        if line.startswith("Cloning into "):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def _update_progress_from_chunk(chunk: bytes, task_id: object, progress: Progress) -> None:
+    """Parse one stderr chunk for a git progress line and update rich.
+
+    Git writes progress as ``...0%...1%...\r`` (carriage returns, no
+    newlines), so each ``\r`` marks the end of a progress line. We
+    split on ``\r`` and ``\n`` and take the last segment matching a
+    known phase (Counting/Compressing/Receiving/Resolving).
+    """
+    text = chunk.decode("utf-8", errors="replace")
+    segments = re.split(r"[\r\n]", text)
+    for segment in reversed(segments):
+        segment = segment.strip()
+        if not segment:
+            continue
+        m = _PROGRESS_RE.search(segment)
+        if m:
+            # Truncate the raw git line to fit a single terminal row.
+            short = segment if len(segment) <= 60 else segment[:57] + "…"
+            progress.update(task_id, description=f"[cyan]{short}")
+            break
 
 
 def _clone(
