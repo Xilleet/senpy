@@ -1,0 +1,376 @@
+{
+  "aqua_guardians": {
+    "by_code": {
+      "RPY104": 1,
+      "RPY201": 1,
+      "RPY202": 2,
+      "RPY303": 1,
+      "RPY305": 16,
+      "RPY308": 4,
+      "RPY309": 20,
+      "RPY502": 1,
+      "RPY503": 28
+    },
+    "by_severity": {
+      "ERROR": 16,
+      "INFO": 1,
+      "WARNING": 57
+    },
+    "fingerprint": "sha256:756ff3be2cdb3abf53f49ad7fd74a6e3a8e70da2",
+    "total": 74
+  },
+  "avnovel": {
+    "by_code": {
+      "RPY201": 1,
+      "RPY202": 2,
+      "RPY303": 1,
+      "RPY503": 36
+    },
+    "by_severity": {
+      "INFO": 1,
+      "WARNING": 39
+    },
+    "fingerprint": "sha256:a6d9b5c4b4bf1821425d3768f708cc20feeb9037",
+    "total": 40
+  },
+  "bytes_of_love": {
+    "by_code": {
+      "RPY101": 1,
+      "RPY103": 1,
+      "RPY104": 1,
+      "RPY106": 1,
+      "RPY201": 1,
+      "RPY202": 2,
+      "RPY303": 2,
+      "RPY502": 11,
+      "RPY503": 35,
+      "RPY504": 3,
+      "RPY702": 1,
+      "RPY704": 2
+    },
+    "by_severity": {
+      "ERROR": 2,
+      "HINT": 3,
+      "INFO": 2,
+      "WARNING": 54
+    },
+    "fingerprint": "sha256:37c3faee4afd22c0da35c0b99d9b1c376d21cb27",
+    "total": 61
+  },
+  "cold_hands": {
+    "by_code": {
+      "RPY104": 2,
+      "RPY105": 8,
+      "RPY201": 1,
+      "RPY202": 1,
+      "RPY301": 1,
+      "RPY303": 1,
+      "RPY502": 60,
+      "RPY503": 80,
+      "RPY703": 1
+    },
+    "by_severity": {
+      "ERROR": 9,
+      "HINT": 1,
+      "INFO": 1,
+      "WARNING": 144
+    },
+    "fingerprint": "sha256:a626ace190668e77bc2417ecdd3e15d18f624e37",
+    "total": 155
+  },
+  "cross_channel": {
+    "by_code": {
+      "RPY101": 1,
+      "RPY104": 38,
+      "RPY107": 149,
+      "RPY110": 1,
+      "RPY201": 14,
+      "RPY202": 8,
+      "RPY302": 1,
+      "RPY303": 15,
+      "RPY306": 2,
+      "RPY307": 28,
+      "RPY308": 14,
+      "RPY309": 182,
+      "RPY404": 2,
+      "RPY501": 1064,
+      "RPY502": 1,
+      "RPY503": 73,
+      "RPY504": 1,
+      "RPY703": 1
+    },
+    "by_severity": {
+      "ERROR": 1095,
+      "HINT": 1,
+      "INFO": 16,
+      "WARNING": 483
+    },
+    "fingerprint": "sha256:814fea07f2cf3a7d158f1ce19d07c48dc8e5effb",
+    "total": 1595
+  },
+  "ddlc": {
+    "by_code": {
+      "RPY102": 4,
+      "RPY103": 2,
+      "RPY104": 55,
+      "RPY106": 3,
+      "RPY107": 6,
+      "RPY110": 1,
+      "RPY201": 1,
+      "RPY303": 167,
+      "RPY305": 6,
+      "RPY306": 12,
+      "RPY308": 36,
+      "RPY309": 44,
+      "RPY404": 1,
+      "RPY501": 9,
+      "RPY502": 2,
+      "RPY503": 49
+    },
+    "by_severity": {
+      "ERROR": 22,
+      "INFO": 167,
+      "WARNING": 209
+    },
+    "fingerprint": "sha256:60cac160ddb06b85263f9ed8d5ff361937792332",
+    "total": 398
+  },
+  "ddlc_mod_template": {
+    "by_code": {
+      "RPY101": 2,
+      "RPY102": 4,
+      "RPY103": 1,
+      "RPY104": 49,
+      "RPY106": 1,
+      "RPY107": 12,
+      "RPY110": 1,
+      "RPY201": 28,
+      "RPY202": 16,
+      "RPY204": 2,
+      "RPY208": 3,
+      "RPY301": 1,
+      "RPY302": 1,
+      "RPY303": 189,
+      "RPY308": 36,
+      "RPY309": 79,
+      "RPY404": 3,
+      "RPY501": 43,
+      "RPY502": 5,
+      "RPY503": 9,
+      "RPY505": 2
+    },
+    "by_severity": {
+      "ERROR": 58,
+      "INFO": 189,
+      "WARNING": 240
+    },
+    "fingerprint": "sha256:3f33b2d04dfabf98edf39b9dc0bdd5d4a723eba3",
+    "total": 487
+  },
+  "ddlc_mod_template_zchrxh": {
+    "by_code": {
+      "RPY101": 4,
+      "RPY102": 4,
+      "RPY103": 4,
+      "RPY104": 54,
+      "RPY106": 2,
+      "RPY107": 12,
+      "RPY110": 1,
+      "RPY201": 2,
+      "RPY301": 1,
+      "RPY303": 191,
+      "RPY305": 2,
+      "RPY306": 3,
+      "RPY308": 38,
+      "RPY309": 87,
+      "RPY404": 1,
+      "RPY501": 43,
+      "RPY502": 5
+    },
+    "by_severity": {
+      "ERROR": 59,
+      "INFO": 191,
+      "WARNING": 204
+    },
+    "fingerprint": "sha256:f396fdcb387002d1793250652f39b08b0f31f811",
+    "total": 454
+  },
+  "gifting_game": {
+    "by_code": {
+      "RPY104": 15,
+      "RPY201": 1,
+      "RPY202": 2,
+      "RPY303": 1,
+      "RPY305": 16,
+      "RPY503": 17,
+      "RPY703": 1
+    },
+    "by_severity": {
+      "ERROR": 16,
+      "HINT": 1,
+      "INFO": 1,
+      "WARNING": 35
+    },
+    "fingerprint": "sha256:e36246547a25276a804c73fa43063bd91070d004",
+    "total": 53
+  },
+  "learntocode": {
+    "by_code": {
+      "RPY101": 8,
+      "RPY104": 55,
+      "RPY106": 9,
+      "RPY107": 1,
+      "RPY108": 1,
+      "RPY201": 22,
+      "RPY202": 3,
+      "RPY204": 2,
+      "RPY208": 2,
+      "RPY303": 68,
+      "RPY304": 4,
+      "RPY305": 1,
+      "RPY306": 3,
+      "RPY308": 17,
+      "RPY309": 44,
+      "RPY401": 1,
+      "RPY404": 2,
+      "RPY502": 86,
+      "RPY503": 303,
+      "RPY801": 30
+    },
+    "by_severity": {
+      "ERROR": 18,
+      "INFO": 68,
+      "WARNING": 576
+    },
+    "fingerprint": "sha256:9ccf18c86e962ed25b946bb2d28aa6ac8c1ae9c1",
+    "total": 662
+  },
+  "love69": {
+    "by_code": {
+      "RPY002": 2,
+      "RPY101": 1,
+      "RPY103": 1,
+      "RPY110": 1,
+      "RPY201": 3,
+      "RPY202": 2,
+      "RPY203": 11,
+      "RPY206": 22,
+      "RPY303": 1,
+      "RPY305": 4,
+      "RPY501": 159,
+      "RPY502": 2698,
+      "RPY503": 20,
+      "RPY504": 9,
+      "RPY702": 2
+    },
+    "by_severity": {
+      "ERROR": 190,
+      "HINT": 2,
+      "INFO": 6,
+      "WARNING": 2738
+    },
+    "fingerprint": "sha256:8007a8cad55ec510d4ee724dfb9adc21599d8c86",
+    "total": 2936
+  },
+  "monika_after_story": {
+    "by_code": {
+      "RPY101": 73,
+      "RPY102": 34,
+      "RPY103": 3625,
+      "RPY104": 1032,
+      "RPY105": 82,
+      "RPY106": 9,
+      "RPY107": 46,
+      "RPY109": 35,
+      "RPY110": 22,
+      "RPY201": 24,
+      "RPY202": 19,
+      "RPY203": 15,
+      "RPY204": 13,
+      "RPY301": 5,
+      "RPY302": 17,
+      "RPY303": 1257,
+      "RPY305": 36,
+      "RPY306": 12,
+      "RPY308": 869,
+      "RPY309": 415,
+      "RPY401": 9,
+      "RPY404": 29,
+      "RPY501": 30,
+      "RPY502": 721,
+      "RPY503": 527,
+      "RPY504": 3
+    },
+    "by_severity": {
+      "ERROR": 3972,
+      "INFO": 1260,
+      "WARNING": 3727
+    },
+    "fingerprint": "sha256:01f1906a10e79fffd3f9e69dd68721b635bec7ab",
+    "total": 8959
+  },
+  "personal_space2": {
+    "by_code": {
+      "RPY002": 1,
+      "RPY101": 36,
+      "RPY103": 86,
+      "RPY104": 130,
+      "RPY106": 1,
+      "RPY107": 14,
+      "RPY110": 1,
+      "RPY201": 135,
+      "RPY202": 47,
+      "RPY203": 2,
+      "RPY206": 9,
+      "RPY208": 2,
+      "RPY302": 7,
+      "RPY303": 155,
+      "RPY308": 24,
+      "RPY309": 121,
+      "RPY401": 11,
+      "RPY404": 2,
+      "RPY501": 2,
+      "RPY502": 879,
+      "RPY503": 329
+    },
+    "by_severity": {
+      "ERROR": 144,
+      "INFO": 155,
+      "WARNING": 1695
+    },
+    "fingerprint": "sha256:4906ab5d61e3276ec5828a0f0ce2d13cd46152dd",
+    "total": 1994
+  },
+  "renpy_template_ruolin": {
+    "by_code": {
+      "RPY104": 3,
+      "RPY107": 2,
+      "RPY201": 3,
+      "RPY202": 1,
+      "RPY303": 3,
+      "RPY308": 2,
+      "RPY502": 1,
+      "RPY503": 39
+    },
+    "by_severity": {
+      "INFO": 3,
+      "WARNING": 51
+    },
+    "fingerprint": "sha256:4dac171b0a2ea27459577f8cd155e52bc2b6c717",
+    "total": 54
+  },
+  "renpy_vn_template_dual": {
+    "by_code": {
+      "RPY201": 1,
+      "RPY202": 1,
+      "RPY303": 7,
+      "RPY503": 9
+    },
+    "by_severity": {
+      "INFO": 7,
+      "WARNING": 11
+    },
+    "fingerprint": "sha256:17c6681ceab5737ac985ab04cf4a55c4c5b8b341",
+    "total": 18
+  }
+}
