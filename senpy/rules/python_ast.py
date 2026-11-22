@@ -834,14 +834,24 @@ class PythonAstChecker:
         if not expected_t or not op_t:
             return
 
+        # NOTE: Python's ``and`` binds tighter than ``or``, so the
+        # previous form (``a and b or c and d or e and f or g``) parsed
+        # correctly BUT the last disjunct was ``expected_t in ("dict",
+        # "bool")`` with NO ``and`` clause — meaning any dict/bool
+        # expected type fired RPY108 unconditionally. That produced FP
+        # on ``dict += dict`` (which is ``dict.update``, valid) and
+        # ``bool += int`` (``True + 1 == 2``, a legal counter pattern).
+        #
+        # Fix: explicit per-type ``and op_t != ...`` clauses. Dict
+        # accepts dict (update) only; bool accepts bool and int/float
+        # (Python promotes bool to int in arithmetic). Everything else
+        # is a genuine TypeError at runtime.
         is_incompatible = (
-            expected_t == "str"
-            and op_t != "str"
-            or expected_t in ("int", "float")
-            and op_t not in ("int", "float")
-            or expected_t == "list"
-            and op_t not in ("list",)
-            or expected_t in ("dict", "bool")
+            (expected_t == "str" and op_t != "str")
+            or (expected_t in ("int", "float") and op_t not in ("int", "float"))
+            or (expected_t == "list" and op_t not in ("list",))
+            or (expected_t == "dict" and op_t != "dict")
+            or (expected_t == "bool" and op_t not in ("bool", "int", "float"))
         )
 
         if is_incompatible:

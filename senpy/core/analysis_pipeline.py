@@ -700,11 +700,36 @@ class AnalysisPipeline:
                     pass
 
     def analyze_file_only(self, file_path: str) -> list[Diagnostic]:
-        """Fast analysis of only the changed file for LSP without state leakage."""
+        """Fast analysis of only the changed file for LSP without state leakage.
+
+        Restores the integer counters (``total_lines``, ``fixed_count``,
+        ``fixable_count``) and the ``failed_writes`` list to their
+        pre-call values, because each call runs ``_analyze_file`` which
+        unconditionally increments them — without restoration, an LSP
+        session that calls this on every keystroke inflates the
+        reported project counts without bound.
+
+        Does NOT restore ``file_scopes``, ``_noqa_maps``, or the symbol
+        table (``_symbols``): those are mutated in place by
+        ``_differential_purge_file`` (pops the old scope) and
+        ``_collect_symbols`` (adds the new one), which is a replace,
+        not an accumulation. The LSP server deliberately reads the
+        post-call symbol table through ``_refresh_symbol_snapshot`` for
+        autocomplete/rename; restoring it would break autocomplete
+        across the did_change → did_save window.
+        """
         a = self.analyzer
         file_diags: list[Diagnostic] = []
         old_diags = a.diagnostics
         a.diagnostics = file_diags
+        # Snapshot the integer counters + failed_writes length so we can
+        # undo the per-call accumulation in ``finally``. Only these are
+        # restored — see the docstring for why the symbol state is left
+        # mutated for the LSP snapshot refresh.
+        old_total_lines = a.total_lines
+        old_fixed_count = a.fixed_count
+        old_fixable_count = a.fixable_count
+        old_failed_writes_len = len(a.failed_writes)
         norm_path = normalize_path(file_path)
         try:
             rel_parts = os.path.relpath(file_path, a.project_path).replace("\\", "/").split("/")
@@ -730,4 +755,12 @@ class AnalysisPipeline:
                 self._analyze_file(file_path)
         finally:
             a.diagnostics = old_diags
+            # Undo per-call accumulation: restore the counters and trim
+            # any failed_writes appended during this call. See docstring
+            # for why file_scopes / _noqa_maps / _symbols are NOT restored.
+            a.total_lines = old_total_lines
+            a.fixed_count = old_fixed_count
+            a.fixable_count = old_fixable_count
+            if len(a.failed_writes) > old_failed_writes_len:
+                del a.failed_writes[old_failed_writes_len:]
         return file_diags
