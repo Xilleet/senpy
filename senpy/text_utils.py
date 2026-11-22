@@ -30,8 +30,41 @@ import ast
 import difflib
 import textwrap
 import warnings
+from typing import Literal, overload
 
 from senpy.core.constants import SUGGESTION_CUTOFF
+
+
+@overload
+def parse_python_silent(
+    source: str,
+    filename: str = "<unknown>",
+    mode: Literal["exec"] = "exec",
+) -> ast.Module: ...
+
+
+@overload
+def parse_python_silent(
+    source: str,
+    filename: str = "<unknown>",
+    mode: Literal["eval"] = ...,
+) -> ast.Expression: ...
+
+
+@overload
+def parse_python_silent(
+    source: str,
+    filename: str = "<unknown>",
+    mode: Literal["single"] = ...,
+) -> ast.Interactive: ...
+
+
+@overload
+def parse_python_silent(
+    source: str,
+    filename: str = "<unknown>",
+    mode: str = "exec",
+) -> ast.AST: ...
 
 
 def parse_python_silent(
@@ -42,7 +75,7 @@ def parse_python_silent(
     """``ast.parse()`` wrapper that suppresses ``SyntaxWarning`` noise.
 
     Ren'Py VN source often contains non-raw string literals like
-    ``"\\s"`` instead of ``r"\\s"`` — Python 3.12+ emits
+    ``"\\\\s"`` instead of ``r"\\\\s"`` — Python 3.12+ emits
     ``SyntaxWarning: invalid escape sequence`` for each, flooding
     stderr during a corpus run (one project can emit dozens).
 
@@ -53,7 +86,10 @@ def parse_python_silent(
     exactly as with bare ``ast.parse()``.
 
     Drop-in replacement for ``ast.parse(source, filename=..., mode=...)``
-    — same positional args, same kwargs, same return, same exceptions.
+    — same positional args, same kwargs, same return type narrowed by
+    ``mode`` (``Literal["exec"]`` → ``ast.Module``, ``Literal["eval"]``
+    → ``ast.Expression``, ``Literal["single"]`` → ``ast.Interactive``),
+    same exceptions. Overloads mirror ``ast.parse``'s typeshed stubs.
 
     Thread-safety: ``warnings.catch_warnings()`` is not strictly
     thread-safe (warnings filters are process-global). Senpy's LSP
