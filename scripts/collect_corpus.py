@@ -44,6 +44,8 @@ run senpy against it locally. Do not commit anything under
 from __future__ import annotations
 
 import argparse
+import contextlib
+import json
 import shutil
 import subprocess
 import sys
@@ -65,8 +67,53 @@ from rich.table import Table
 # Root of the senpy repo (parent of this script's directory).
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CORPUS_DIR = REPO_ROOT / "tests" / "_corpus"
+MANIFEST_PATH = REPO_ROOT / "tests" / "_corpus_manifest.json"
 
 console = Console()
+
+
+def _load_manifest() -> dict:
+    """Load the committed corpus manifest, or return {} if absent."""
+    if not MANIFEST_PATH.exists():
+        return {}
+    return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+
+
+def _save_manifest(manifest: dict) -> None:
+    """Write manifest back to tests/_corpus_manifest.json (sorted, indented)."""
+    # Strip the _comment and _schema helper keys before writing — they are
+    # documentation, not data. Preserved on read (for human readability),
+    # stripped on write so the file stays compact and diff-stable.
+    data = {k: v for k, v in manifest.items() if not k.startswith("_")}
+    MANIFEST_PATH.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _update_manifest_commit(slug: str, commit_sha: str) -> None:
+    """Update the 'commit' field for one project in the manifest.
+
+    Called after each successful clone. The commit SHA is the only field
+    that changes automatically — license / notes / renpy_version are
+    curated by the maintainer and never overwritten by the script.
+    """
+    manifest = _load_manifest()
+    entry = manifest.get(slug)
+    if entry is None:
+        # New project not yet in manifest — create a minimal entry.
+        # The maintainer fills in license / notes manually.
+        manifest[slug] = {
+            "slug": slug,
+            "repository": "",
+            "commit": commit_sha,
+            "license": "none",
+            "renpy_version": None,
+            "notes": "",
+        }
+    else:
+        entry["commit"] = commit_sha
+    _save_manifest(manifest)
 
 
 @dataclass(frozen=True)
@@ -348,14 +395,10 @@ def _clone(
     if dry_run:
         return ("forced", "dry-run") if is_git_repo else ("cloned", "dry-run")
 
+    was_force_reclone = bool(force and is_git_repo)
     if target.exists():
         # Removes either an existing repo (when force=True) or a stale dir without .git.
-        # Remember whether we are re-cloning (force=True on an existing repo) so
-        # the caller can report ``forced`` rather than ``cloned`` for re-clones.
-        was_force_reclone = force and is_git_repo
         shutil.rmtree(target)
-    else:
-        was_force_reclone = False
 
     # --depth 1 keeps the clone small (shallow). --single-branch avoids
     # pulling other branches' refs. We pin the cloned commit SHA into
@@ -366,13 +409,22 @@ def _clone(
     if err:
         return ("error", err)
 
-    # Record the cloned HEAD SHA.
+    # Record the cloned HEAD sha in .cloned_sha (for run_corpus.py
+    # fingerprint) AND update the manifest's commit field (for
+    # test_corpus_fp.py fingerprint validation + reproducibility).
     sha = ""
-    try:
+    with contextlib.suppress(subprocess.CalledProcessError):
         sha = _git("rev-parse", "HEAD", cwd=target).stdout.strip()
         (target / ".cloned_sha").write_text(sha + "\n", encoding="utf-8")
-    except subprocess.CalledProcessError:
-        pass  # non-fatal — clone succeeded, just can't pin SHA
+
+    # Update manifest commit field (best-effort — don't fail the clone
+    # if the manifest is missing or corrupted).
+    with contextlib.suppress(Exception):
+        if sha:
+            _update_manifest_commit(project.slug, sha)
+
+    status = "forced" if was_force_reclone else "cloned"
+    return (status, sha[:12] if sha else "cloned")
 
     detail = sha[:10] if sha else "HEAD (SHA unavailable)"
     return ("forced" if was_force_reclone else "cloned", detail)

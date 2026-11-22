@@ -16,7 +16,7 @@
       "INFO": 1,
       "WARNING": 57
     },
-    "fingerprint": "sha256:756ff3be2cdb3abf53f49ad7fd74a6e3a8e70da2",
+    "fingerprint": "git:756ff3be2cdb3abf53f49ad7fd74a6e3a8e70da2",
     "total": 74
   },
   "avnovel": {
@@ -30,7 +30,7 @@
       "INFO": 1,
       "WARNING": 39
     },
-    "fingerprint": "sha256:a6d9b5c4b4bf1821425d3768f708cc20feeb9037",
+    "fingerprint": "git:a6d9b5c4b4bf1821425d3768f708cc20feeb9037",
     "total": 40
   },
   "bytes_of_love": {
@@ -54,7 +54,7 @@
       "INFO": 2,
       "WARNING": 54
     },
-    "fingerprint": "sha256:37c3faee4afd22c0da35c0b99d9b1c376d21cb27",
+    "fingerprint": "git:37c3faee4afd22c0da35c0b99d9b1c376d21cb27",
     "total": 61
   },
   "cold_hands": {
@@ -75,7 +75,7 @@
       "INFO": 1,
       "WARNING": 144
     },
-    "fingerprint": "sha256:a626ace190668e77bc2417ecdd3e15d18f624e37",
+    "fingerprint": "git:a626ace190668e77bc2417ecdd3e15d18f624e37",
     "total": 155
   },
   "cross_channel": {
@@ -105,7 +105,7 @@
       "INFO": 16,
       "WARNING": 483
     },
-    "fingerprint": "sha256:814fea07f2cf3a7d158f1ce19d07c48dc8e5effb",
+    "fingerprint": "git:814fea07f2cf3a7d158f1ce19d07c48dc8e5effb",
     "total": 1595
   },
   "ddlc": {
@@ -132,7 +132,7 @@
       "INFO": 167,
       "WARNING": 209
     },
-    "fingerprint": "sha256:60cac160ddb06b85263f9ed8d5ff361937792332",
+    "fingerprint": "git:60cac160ddb06b85263f9ed8d5ff361937792332",
     "total": 398
   },
   "ddlc_mod_template": {
@@ -164,7 +164,7 @@
       "INFO": 189,
       "WARNING": 240
     },
-    "fingerprint": "sha256:3f33b2d04dfabf98edf39b9dc0bdd5d4a723eba3",
+    "fingerprint": "git:3f33b2d04dfabf98edf39b9dc0bdd5d4a723eba3",
     "total": 487
   },
   "ddlc_mod_template_zchrxh": {
@@ -192,7 +192,7 @@
       "INFO": 191,
       "WARNING": 204
     },
-    "fingerprint": "sha256:f396fdcb387002d1793250652f39b08b0f31f811",
+    "fingerprint": "git:f396fdcb387002d1793250652f39b08b0f31f811",
     "total": 454
   },
   "gifting_game": {
@@ -211,7 +211,7 @@
       "INFO": 1,
       "WARNING": 35
     },
-    "fingerprint": "sha256:e36246547a25276a804c73fa43063bd91070d004",
+    "fingerprint": "git:e36246547a25276a804c73fa43063bd91070d004",
     "total": 53
   },
   "learntocode": {
@@ -242,7 +242,7 @@
       "INFO": 68,
       "WARNING": 576
     },
-    "fingerprint": "sha256:9ccf18c86e962ed25b946bb2d28aa6ac8c1ae9c1",
+    "fingerprint": "git:9ccf18c86e962ed25b946bb2d28aa6ac8c1ae9c1",
     "total": 662
   },
   "love69": {
@@ -269,7 +269,7 @@
       "INFO": 6,
       "WARNING": 2738
     },
-    "fingerprint": "sha256:8007a8cad55ec510d4ee724dfb9adc21599d8c86",
+    "fingerprint": "git:8007a8cad55ec510d4ee724dfb9adc21599d8c86",
     "total": 2936
   },
   "monika_after_story": {
@@ -306,7 +306,7 @@
       "INFO": 1260,
       "WARNING": 3727
     },
-    "fingerprint": "sha256:01f1906a10e79fffd3f9e69dd68721b635bec7ab",
+    "fingerprint": "git:01f1906a10e79fffd3f9e69dd68721b635bec7ab",
     "total": 8959
   },
   "personal_space2": {
@@ -338,7 +338,7 @@
       "INFO": 155,
       "WARNING": 1695
     },
-    "fingerprint": "sha256:4906ab5d61e3276ec5828a0f0ce2d13cd46152dd",
+    "fingerprint": "git:4906ab5d61e3276ec5828a0f0ce2d13cd46152dd",
     "total": 1994
   },
   "renpy_template_ruolin": {
@@ -356,7 +356,7 @@
       "INFO": 3,
       "WARNING": 51
     },
-    "fingerprint": "sha256:4dac171b0a2ea27459577f8cd155e52bc2b6c717",
+    "fingerprint": "git:4dac171b0a2ea27459577f8cd155e52bc2b6c717",
     "total": 54
   },
   "renpy_vn_template_dual": {
@@ -370,7 +370,7 @@
       "INFO": 7,
       "WARNING": 11
     },
-    "fingerprint": "sha256:17c6681ceab5737ac985ab04cf4a55c4c5b8b341",
+    "fingerprint": "git:17c6681ceab5737ac985ab04cf4a55c4c5b8b341",
     "total": 18
   }
 }

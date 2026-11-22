@@ -1,0 +1,131 @@
+{
+  "_comment": "Curated manifest of corpus VN projects. Pinned to a specific commit SHA for reproducibility — collect_corpus.py updates the 'commit' field after each clone. The 'license' field is SPDX identifier ('MIT', 'Apache-2.0', 'GPL-3.0', 'BSD-3-Clause') or 'none' if no LICENSE file, or 'NOASSERTION' if GitHub cannot classify the license file (custom license — maintainer should verify). 'renpy_version' is null when not yet determined (planned: auto-detect in 0.11.0 ARCH-10 RenPyVersionDetector).",
+  "_schema": {
+    "slug": "short identifier, also the directory name under tests/_corpus/",
+    "repository": "GitHub owner/name",
+    "commit": "exact git commit SHA the corpus is pinned to",
+    "license": "SPDX identifier or 'none' or 'NOASSERTION'",
+    "renpy_version": "Ren'Py engine version (null if unknown)",
+    "notes": "one-line description for the catalog"
+  },
+  "aqua_guardians": {
+    "slug": "aqua_guardians",
+    "repository": "sk66641/AquaGuardians",
+    "commit": "756ff3be2cdb3abf53f49ad7fd74a6e3a8e70da2",
+    "license": "MIT",
+    "renpy_version": null,
+    "notes": "AquaGuardians VN (~10 .rpy). Small standalone game."
+  },
+  "avnovel": {
+    "slug": "avnovel",
+    "repository": "crcdng/avnovel",
+    "commit": "a6d9b5c4b4bf1821425d3768f708cc20feeb9037",
+    "license": "GPL-3.0",
+    "renpy_version": null,
+    "notes": "Audiovisual novel demo (~4 .rpy). Tiny project — smoke-tests minimal fixtures."
+  },
+  "bytes_of_love": {
+    "slug": "bytes_of_love",
+    "repository": "ufosc/VisualNovel",
+    "commit": "37c3faee4afd22c0da35c0b99d9b1c376d21cb27",
+    "license": "GPL-3.0",
+    "renpy_version": null,
+    "notes": "BytesOfLove VN by ufosc (~29 .rpy). Student-built, university club."
+  },
+  "cold_hands": {
+    "slug": "cold_hands",
+    "repository": "hud0shnik/cold_hands",
+    "commit": "a626ace190668e77bc2417ecdd3e15d18f624e37",
+    "license": "BSD-3-Clause",
+    "renpy_version": null,
+    "notes": "cold_hands VN (~8 .rpy). Small modern VN."
+  },
+  "cross_channel": {
+    "slug": "cross_channel",
+    "repository": "MewX/cross-channel_chinese-localization_project",
+    "commit": "814fea07f2cf3a7d158f1ce19d07c48dc8e5effb",
+    "license": "Apache-2.0",
+    "renpy_version": null,
+    "notes": "cross_channel Chinese localization (~302 .rpy). Largest .rpy count — broad coverage."
+  },
+  "ddlc": {
+    "slug": "ddlc",
+    "repository": "SecondThundeR/DokiDoki-RenPy",
+    "commit": "60cac160ddb06b85263f9ed8d5ff361937792332",
+    "license": "MIT",
+    "renpy_version": null,
+    "notes": "DDLC 1.1.1 decompiled (~35 .rpy). Real-world VN with heavy screen action / python use."
+  },
+  "ddlc_mod_template": {
+    "slug": "ddlc_mod_template",
+    "repository": "Bronya-Rand/DDLCModTemplate2.0",
+    "commit": "3f33b2d04dfabf98edf39b9dc0bdd5d4a723eba3",
+    "license": "none",
+    "renpy_version": null,
+    "notes": "DDLC mod template 2.0 (~40 .rpy). Community-standard mod scaffolding. TODO: no LICENSE file — verify permission to use as corpus or replace with a licensed alternative."
+  },
+  "ddlc_mod_template_zchrxh": {
+    "slug": "ddlc_mod_template_zchrxh",
+    "repository": "zchrxh/Doki-Doki-Mod-Template",
+    "commit": "f396fdcb387002d1793250652f39b08b0f31f811",
+    "license": "MIT",
+    "renpy_version": null,
+    "notes": "Alternate DDLC mod template (~49 .rpy). Different idioms than Bronya-Rand."
+  },
+  "gifting_game": {
+    "slug": "gifting_game",
+    "repository": "alchemmist/gifting-game",
+    "commit": "e36246547a25276a804c73fa43063bd91070d004",
+    "license": "MIT",
+    "renpy_version": null,
+    "notes": "gifting-game VN (~4 .rpy). Holiday-themed short VN."
+  },
+  "learntocode": {
+    "slug": "learntocode",
+    "repository": "freeCodeCamp/LearnToCodeRPG",
+    "commit": "9ccf18c86e962ed25b946bb2d28aa6ac8c1ae9c1",
+    "license": "BSD-3-Clause",
+    "renpy_version": null,
+    "notes": "Educational VN from freeCodeCamp (~60 .rpy). Large, well-structured, modern Ren'Py."
+  },
+  "love69": {
+    "slug": "love69",
+    "repository": "luckykeeper/LOVE69_renpy_remaster",
+    "commit": "8007a8cad55ec510d4ee724dfb9adc21599d8c86",
+    "license": "none",
+    "renpy_version": null,
+    "notes": "LOVE69 Ren'Py remaster (~29 .rpy). Localization-heavy, defines audio channels. TODO: no LICENSE file — verify permission to use as corpus or replace with a licensed alternative."
+  },
+  "monika_after_story": {
+    "slug": "monika_after_story",
+    "repository": "Monika-After-Story/MonikaModDev",
+    "commit": "01f1906a10e79fffd3f9e69dd68721b635bec7ab",
+    "license": "NOASSERTION",
+    "renpy_version": null,
+    "notes": "Monika After Story (~122 .rpy). Largest entry — long-running mod with complex state. NOASSERTION: GitHub cannot classify the LICENSE file (custom license) — maintainer should verify the license terms before public contributor invite."
+  },
+  "personal_space2": {
+    "slug": "personal_space2",
+    "repository": "qirien/personal-space2",
+    "commit": "4906ab5d61e3276ec5828a0f0ce2d13cd46152dd",
+    "license": "NOASSERTION",
+    "renpy_version": null,
+    "notes": "personal-space2 VN (~31 .rpy). Indie VN with translations. NOASSERTION: GitHub cannot classify the LICENSE file (custom license) — maintainer should verify."
+  },
+  "renpy_template_ruolin": {
+    "slug": "renpy_template_ruolin",
+    "repository": "RuolinZheng08/renpy-template",
+    "commit": "4dac171b0a2ea27459577f8cd155e52bc2b6c717",
+    "license": "none",
+    "renpy_version": null,
+    "notes": "Starter template (~11 .rpy). Small, well-commented reference code. TODO: no LICENSE file — verify permission to use as corpus or replace with a licensed alternative."
+  },
+  "renpy_vn_template_dual": {
+    "slug": "renpy_vn_template_dual",
+    "repository": "dualfighter1/Renpy-VN-Template",
+    "commit": "17c6681ceab5737ac985ab04cf4a55c4c5b8b341",
+    "license": "MIT",
+    "renpy_version": null,
+    "notes": "Simple VN template (~10 .rpy). Minimal label/return structure."
+  }
+}

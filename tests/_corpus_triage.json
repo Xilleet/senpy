@@ -592,7 +592,7 @@
         "status": "unmarked"
       }
     ],
-    "fingerprint": "sha256:e36246547a25276a804c73fa43063bd91070d004",
+    "fingerprint": "git:e36246547a25276a804c73fa43063bd91070d004",
     "total": 53
   }
 }

@@ -127,7 +127,11 @@ def _run_one(slug: str) -> dict | None:
     cloned_sha_path = clone_dir / ".cloned_sha"
     fingerprint = "unknown"
     if cloned_sha_path.exists():
-        fingerprint = "sha256:" + cloned_sha_path.read_text(encoding="utf-8").strip()
+        # Prefix is "git:" (not "sha256:") because the value is a git
+        # commit SHA, not a SHA-256 content hash. The prefix lets the
+        # CI job and triage tooling distinguish fingerprint types in the
+        # future (e.g. "content:" for a hash of the VN source itself).
+        fingerprint = "git:" + cloned_sha_path.read_text(encoding="utf-8").strip()
 
     # no_cache=True so each run is independent of any stale Tier-2 cache
     # left from a previous dev run on the same project (the corpus dir

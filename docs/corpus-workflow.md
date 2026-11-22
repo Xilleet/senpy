@@ -320,15 +320,42 @@ only (no VN source bytes, no message text):
 }
 ```
 
-**`fingerprint`** is `sha256:` + the cloned commit SHA from
-`tests/_corpus/<slug>/.cloned_sha`. It lets the CI job detect upstream
-movement — a stale baseline against a moved commit is a smell, not
-necessarily a regression (the VN project itself changed, so diagnostic
-counts are expected to shift).
+**`fingerprint`** is `git:` + the cloned commit SHA from
+`tests/_corpus/<slug>/.cloned_sha`. The `git:` prefix (renamed from
+`sha256:` in 0.9.3) clarifies that the value is a git commit identifier,
+not a SHA-256 content hash — this matters when the fingerprint validation
+guard (Batch 3) compares triage fingerprints against the manifest's
+pinned commit. The fingerprint lets the CI job detect upstream movement
+— a stale baseline against a moved commit is a smell, not necessarily a
+regression (the VN project itself changed, so diagnostic counts are
+expected to shift).
+
+**Manifest:** `tests/_corpus_manifest.json` is the curated catalog that
+pins each project to a specific commit and records its license:
+
+```json
+{
+  "gifting_game": {
+    "slug": "gifting_game",
+    "repository": "alchemmist/gifting-game",
+    "commit": "e36246547a25276a804c73fa43063bd91070d004",
+    "license": "MIT",
+    "renpy_version": null,
+    "notes": "gifting-game VN (~4 .rpy). Holiday-themed short VN."
+  }
+}
+```
+
+`collect_corpus.py` updates the `commit` field automatically after each
+clone. The `license` field is SPDX identifier (`MIT`, `Apache-2.0`,
+`GPL-3.0`, `BSD-3-Clause`) or `none` (no LICENSE file) or `NOASSERTION`
+(custom license GitHub cannot classify — maintainer must verify). The
+`renpy_version` field is `null` until auto-detection lands in 0.11.0
+(ARCH-10 RenPyVersionDetector).
 
 **Commit it:**
 ```bash
-git add tests/_corpus_baseline.json
+git add tests/_corpus_baseline.json tests/_corpus_manifest.json
 git commit -m "feat(corpus): baseline after first full corpus run (15 projects)"
 ```
 
@@ -841,6 +868,19 @@ explains why it fired).
   has 302 .rpy files, some 4000+ lines), this is wasteful. A future
   iteration can switch to enclosing-block extraction (just the
   `screen`/`label`/`init python:` block containing the flagged line).
+- **3 projects without a clear OSS license** — `ddlc_mod_template`,
+  `renpy_template_ruolin`, `love69` have no LICENSE file in their repo.
+  2 more (`monika_after_story`, `personal_space2`) have a custom license
+  GitHub cannot classify (`NOASSERTION`). These are tracked in
+  `tests/_corpus_manifest.json` with `license: "none"` / `"NOASSERTION"`
+  and TODO notes. Before inviting public contributors to the corpus
+  workflow, the maintainer should either obtain permission for these
+  projects or replace them with licensed alternatives.
+- **No fingerprint validation in RED tests** — `test_corpus_fp.py`
+  doesn't yet verify that the cloned commit SHA matches the fingerprint
+  recorded in `tests/_corpus_triage.json`. If a VN project updates
+  upstream, the line numbers in the triage may no longer correspond to
+  the labelled FP. (Planned for Batch 3 — fingerprint validation guard.)
 
 ---
 
@@ -850,13 +890,14 @@ explains why it fired).
 
 | Path | Purpose |
 | ---- | ------- |
-| `scripts/collect_corpus.py` | Shallow-clone 15 OSS VN projects |
+| `scripts/collect_corpus.py` | Shallow-clone 15 OSS VN projects; updates manifest commit field after each clone |
 | `scripts/run_corpus.py` | Run senpy on the corpus, write JSON + baseline |
 | `scripts/triage_corpus.py` | Interactive + CSV triage of diagnostics |
 | `scripts/README.md` | One-liner per script (reference, not workflow) |
 | `tests/rules/test_corpus_fp.py` | RED tests auto-discovered from triage.json |
-| `tests/_corpus_baseline.json` | Committed baseline (anonymised counts) |
-| `tests/_corpus_triage.json` | Committed triage state (anonymous, with notes) |
+| `tests/_corpus_manifest.json` | Curated manifest: slug / repository / pinned commit / license / renpy_version / notes per project |
+| `tests/_corpus_baseline.json` | Committed baseline (anonymised counts, `git:` fingerprint prefix) |
+| `tests/_corpus_triage.json` | Committed triage state (anonymous, with notes, `git:` fingerprint prefix) |
 | `docs/corpus-workflow.md` | This document |
 | `.gitignore` entry for `tests/_corpus/` | VN bytes never enter the repo |
 
