@@ -417,3 +417,92 @@ class TestStaleRPY502NoLongerServedFromWarmCache:
             "invalidate the Tier-2 cache when a .png file is added — "
             "otherwise users see stale 'missing image' errors."
         )
+
+
+# ===========================================================================
+# the additional_builtins/actions fingerprint fix: additional_builtins / additional_actions must be in the fingerprint
+# ===========================================================================
+
+
+class TestAdditionalBuiltinsActionsInFingerprint:
+    """``additional_builtins`` and ``additional_actions`` (from ``senpy.toml``
+    ``[tool.senpy]``) must be part of the environment fingerprint.
+
+    These affect RPY202 (built-in namespace — an unknown ``iap.foo`` call
+    is flagged unless ``iap`` is in ``additional_builtins``) and RPY206
+    (screen actions — ``action Foo`` is flagged unless ``Foo`` is in
+    ``additional_actions``). Toggling either setting must invalidate the
+    Tier-2 cache, same as ``enable_plugins`` already does.
+
+    RED today: ``compute_environment_fingerprint`` hashes
+    ``enable_plugins`` (cache.py:563-564) but NOT ``_additional_builtins``
+    or ``_additional_actions`` — grep confirms neither string appears in
+    cache.py. Changing ``additional_builtins = ["iap"]`` in senpy.toml
+    and re-running warm serves stale RPY202 diagnostics.
+    """
+
+    def test_additional_builtins_change_changes_fingerprint(self, tmp_path: Path):
+        """Adding entries to ``additional_builtins`` must change the
+        environment fingerprint (otherwise warm runs serve stale RPY202).
+        """
+        project = _make_project(tmp_path, "label start:\n    return\n")
+
+        analyzer1 = SenpyAnalyzer(str(project), no_cache=True)
+        analyzer1.run(quiet=True)
+        fp1 = CacheManager.compute_environment_fingerprint(analyzer1)
+
+        # Simulate a senpy.toml change: add additional_builtins.
+        # We mutate the analyzer's private set directly to avoid having
+        # to write and re-read a senpy.toml — the fingerprint is computed
+        # from the in-memory state, so this is equivalent.
+        analyzer1._additional_builtins = {"iap", "steam"}
+        fp2 = CacheManager.compute_environment_fingerprint(analyzer1)
+
+        assert fp1 != fp2, (
+            "Adding entries to additional_builtins did not change the "
+            "environment fingerprint. RPY202 (built-in namespace) depends "
+            "on this set — a warm run after toggling additional_builtins "
+            "must invalidate the Tier-2 cache, same as enable_plugins."
+        )
+
+    def test_additional_actions_change_changes_fingerprint(self, tmp_path: Path):
+        """Adding entries to ``additional_actions`` must change the
+        environment fingerprint (otherwise warm runs serve stale RPY206).
+        """
+        project = _make_project(tmp_path, "label start:\n    return\n")
+
+        analyzer1 = SenpyAnalyzer(str(project), no_cache=True)
+        analyzer1.run(quiet=True)
+        fp1 = CacheManager.compute_environment_fingerprint(analyzer1)
+
+        analyzer1._additional_actions = {"show_menu", "hide_menu"}
+        fp2 = CacheManager.compute_environment_fingerprint(analyzer1)
+
+        assert fp1 != fp2, (
+            "Adding entries to additional_actions did not change the "
+            "environment fingerprint. RPY206 (screen actions) depends on "
+            "this set — a warm run after toggling additional_actions must "
+            "invalidate the Tier-2 cache."
+        )
+
+    def test_additional_builtins_order_independent(self, tmp_path: Path):
+        """Fingerprint must be stable regardless of the iteration order of
+        ``additional_builtins`` (it's a set). Two analyzers with the same
+        set must produce the same fingerprint.
+        """
+        project = _make_project(tmp_path, "label start:\n    return\n")
+
+        a1 = SenpyAnalyzer(str(project), no_cache=True)
+        a1.run(quiet=True)
+        a1._additional_builtins = {"iap", "steam", "achievements"}
+        fp1 = CacheManager.compute_environment_fingerprint(a1)
+
+        a2 = SenpyAnalyzer(str(project), no_cache=True)
+        a2.run(quiet=True)
+        a2._additional_builtins = {"achievements", "steam", "iap"}  # same set
+        fp2 = CacheManager.compute_environment_fingerprint(a2)
+
+        assert fp1 == fp2, (
+            "Same additional_builtins set (different insertion order) must "
+            f"produce the same fingerprint. Got {fp1[:16]}.. vs {fp2[:16]}.."
+        )

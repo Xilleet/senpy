@@ -35,22 +35,76 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from typing import Any
 
 from senpy.core.models import Diagnostic
 
+_logger = logging.getLogger("senpy.formats.gitlab")
+
 # Senpy severity → GitLab severity.
 # GitLab's full list is: blocker, critical, major, minor, info.
-# Senpy has no concept of "blocker" or "critical" — those are reserved
-# for security/availability findings in GitLab's model. We map into
-# the three levels that make sense for a linter.
+# Senpy's own diagnostics only emit ERROR/WARNING/HINT/INFO, but plugins
+# and user-supplied severities may use GitLab's full vocabulary
+# (blocker/critical) or any case variant. We recognize the full GitLab
+# set case-insensitively so a plugin emitting ``severity="critical"``
+# (Python logging convention) is not silently downgraded to ``minor``.
 _SEVERITY_MAP: dict[str, str] = {
     "ERROR": "major",
     "WARNING": "minor",
     "HINT": "info",
     "INFO": "info",
+    # GitLab-only levels: surfaced when a plugin or external source emits
+    # them directly (Senpy itself never produces these). Without these
+    # entries, ``BLOCKER``/``CRITICAL`` would fall through to the
+    # ``minor`` default — a security/availability blocker shown as the
+    # lowest priority in GitLab MR review.
+    "BLOCKER": "blocker",
+    "CRITICAL": "critical",
+    "MAJOR": "major",
+    "MINOR": "minor",
 }
+
+# Code-specific severity overrides. RPY105 mutates a ``define``
+# constant — this breaks rollback/save compatibility, so by consequence
+# it is closer to GitLab's ``critical`` (security/availability) than to
+# the default ``major`` for a regular ERROR. RPY106 imports
+# non-deterministic RNG, which also breaks rollback. Without these
+# overrides the findings silently degrade to ``major`` in GitLab.
+_CRITICAL_RULE_CODES: frozenset[str] = frozenset({"RPY105", "RPY106"})
+
+
+def _map_severity(diag: Diagnostic) -> str:
+    """Map a Senpy Diagnostic to a GitLab severity string.
+
+    Lookup order:
+      1. Code-specific override (RPY105/RPY106 → ``critical``).
+      2. Case-insensitive lookup in ``_SEVERITY_MAP``.
+      3. ``None`` → ``minor`` (a diagnostic that reached the renderer
+         before severity was applied — surface it at the lowest
+         non-info level so it still appears in GitLab MR review).
+      4. Unknown severity → ``minor`` with a WARNING log, so the user
+         sees the degradation instead of it being silent.
+    """
+    if diag.code in _CRITICAL_RULE_CODES:
+        return "critical"
+    sev = diag.severity
+    if sev is None:
+        return "minor"
+    # Case-insensitive: plugins often emit lowercase (Python logging
+    # convention: "error"/"warning"), GitLab docs use lowercase too.
+    upper = sev.upper()
+    if upper in _SEVERITY_MAP:
+        return _SEVERITY_MAP[upper]
+    _logger.warning(
+        "Unknown severity %r on %s — falling back to 'minor' in GitLab "
+        "report. Expected one of ERROR/WARNING/HINT/INFO/BLOCKER/"
+        "CRITICAL/MAJOR/MINOR (case-insensitive).",
+        sev,
+        diag.code,
+    )
+    return "minor"
 
 
 def _relpath(file_path: str, project_path: str) -> str:
@@ -110,7 +164,7 @@ def generate_gitlab_json(diagnostics: list[Diagnostic], project_path: str) -> st
                 "description": diag.message,
                 "check_name": diag.code,
                 "fingerprint": _fingerprint(diag, rel_path),
-                "severity": _SEVERITY_MAP.get(diag.severity or "WARNING", "minor"),
+                "severity": _map_severity(diag),
                 "location": {
                     "path": rel_path,
                     "lines": {"begin": max(1, diag.line_number)},

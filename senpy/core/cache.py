@@ -563,6 +563,24 @@ class CacheManager:
         hasher.update(b"enable_plugins=")
         hasher.update(str(getattr(analyzer, "enable_plugins", False)).encode("utf-8"))
 
+        # additional_builtins / additional_actions: same class of bug as
+        # enable_plugins. These come from senpy.toml ``[tool.senpy]`` and
+        # extend the built-in namespace (RPY202) and screen action set
+        # (RPY206). Changing ``additional_builtins = ["iap"]`` and
+        # re-running warm would serve stale RPY202 from the Tier-2 cache
+        # (the .rpy files are byte-identical, so the symbol hash is
+        # unchanged) — the user added ``iap`` to the namespace but the
+        # cache still flags ``iap.foo`` as an unknown built-in.
+        # Hashing both sets (sorted, so iteration order does not matter)
+        # forces a Tier 2 miss when either setting changes.
+        additional_builtins = sorted(getattr(analyzer, "_additional_builtins", set()))
+        hasher.update(b"additional_builtins=")
+        hasher.update("|".join(additional_builtins).encode("utf-8"))
+
+        additional_actions = sorted(getattr(analyzer, "_additional_actions", set()))
+        hasher.update(b"additional_actions=")
+        hasher.update("|".join(additional_actions).encode("utf-8"))
+
         return hasher.hexdigest()
 
     @staticmethod

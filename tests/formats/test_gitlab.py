@@ -223,3 +223,97 @@ def test_gitlab_path_outside_repo_falls_back_to_raw():
     out = generate_gitlab_json([diag], "/repo")
     obj = json.loads(out)[0]
     assert obj["location"]["path"]
+
+
+# ===========================================================================
+# the gitlab severity-degradation fix: severity degradation — unknown / lowercase / blocker / critical
+# ===========================================================================
+
+
+def test_gitlab_lowercase_severity_does_not_silently_become_minor():
+    """``severity="error"`` (lowercase, e.g. from a plugin) must map to
+    ``major``, NOT silently degrade to ``minor``.
+
+    RED today: ``_SEVERITY_MAP.get(diag.severity or "WARNING", "minor")``
+    treats an unknown key (``"error"`` is not in the map, which has only
+    uppercase ``"ERROR"``) as ``minor`` — the worst GitLab level below
+    ``major``. A plugin that emits lowercase severities (a common
+    convention in Python logging) silently gets the lowest priority in
+    GitLab MR reviews.
+    """
+    diag = _diag(severity="error")
+    out = generate_gitlab_json([diag], "/repo")
+    obj = json.loads(out)[0]
+    assert obj["severity"] == "major", (
+        f"lowercase 'error' must map to 'major' (case-insensitive), got " f"{obj['severity']!r}"
+    )
+
+
+def test_gitlab_blocker_severity_is_recognized():
+    """``severity="BLOCKER"`` must map to ``blocker``, not ``minor``.
+
+    RED today: ``BLOCKER`` is not in ``_SEVERITY_MAP`` (which has only
+    ERROR/WARNING/HINT/INFO), so it falls through to the ``"minor"``
+    default — a security/availability blocker is shown as the lowest
+    priority in GitLab.
+    """
+    diag = _diag(severity="BLOCKER")
+    out = generate_gitlab_json([diag], "/repo")
+    obj = json.loads(out)[0]
+    assert obj["severity"] == "blocker", f"'BLOCKER' must map to 'blocker', got {obj['severity']!r}"
+
+
+def test_gitlab_critical_severity_is_recognized():
+    """``severity="CRITICAL"`` must map to ``critical``."""
+    diag = _diag(severity="CRITICAL")
+    out = generate_gitlab_json([diag], "/repo")
+    obj = json.loads(out)[0]
+    assert (
+        obj["severity"] == "critical"
+    ), f"'CRITICAL' must map to 'critical', got {obj['severity']!r}"
+
+
+def test_gitlab_rpy105_save_corruption_maps_to_critical():
+    """RPY105 (save-corrupting define mutation) must map to ``critical``.
+
+    The roadmap calls this out: RPY105 mutates a ``define`` constant,
+    which breaks rollback/save compatibility — by consequence this is
+    closer to GitLab's ``critical`` (security/availability) than to
+    ``major`` (a regular ERROR-level linter finding). Without a
+    code-specific override, RPY105 silently degrades to ``major``.
+    """
+    diag = _diag(code="RPY105", severity="ERROR")
+    out = generate_gitlab_json([diag], "/repo")
+    obj = json.loads(out)[0]
+    assert obj["severity"] == "critical", (
+        f"RPY105 (save corruption) must map to 'critical', got " f"{obj['severity']!r}"
+    )
+
+
+def test_gitlab_rpy106_rollback_break_maps_to_critical():
+    """RPY106 (non-deterministic RNG, breaks rollback) must map to
+    ``critical`` — same consequence class as RPY105."""
+    diag = _diag(code="RPY106", severity="ERROR")
+    out = generate_gitlab_json([diag], "/repo")
+    obj = json.loads(out)[0]
+    assert obj["severity"] == "critical", (
+        f"RPY106 (rollback break) must map to 'critical', got " f"{obj['severity']!r}"
+    )
+
+
+def test_gitlab_unknown_severity_falls_back_to_minor():
+    """A genuinely unknown severity (not a Senpy level, not a GitLab
+    level) must still produce a valid GitLab severity (``minor``),
+    not crash and not silently become ``info``.
+
+    This guards the the gitlab severity-degradation fix change: we add case-insensitive matching and
+    blocker/critical recognition, but unknown strings still fall back to
+    ``minor`` (the lowest non-info level) so the finding is still
+    surfaced in GitLab MR review.
+    """
+    diag = _diag(severity="WHATEVER")
+    out = generate_gitlab_json([diag], "/repo")
+    obj = json.loads(out)[0]
+    assert (
+        obj["severity"] == "minor"
+    ), f"unknown severity must fall back to 'minor', got {obj['severity']!r}"
