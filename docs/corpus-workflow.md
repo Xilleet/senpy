@@ -350,8 +350,8 @@ pins each project to a specific commit and records its license:
 clone. The `license` field is SPDX identifier (`MIT`, `Apache-2.0`,
 `GPL-3.0`, `BSD-3-Clause`) or `none` (no LICENSE file) or `NOASSERTION`
 (custom license GitHub cannot classify — maintainer must verify). The
-`renpy_version` field is `null` until auto-detection lands in 0.11.0
-(ARCH-10 RenPyVersionDetector).
+`renpy_version` field is `null` until auto-detection lands in a future
+release (RenPyVersionDetector infrastructure).
 
 **Commit it:**
 ```bash
@@ -760,7 +760,7 @@ other cases — pattern recognition builds quickly.
 | RPY107 (deprecated API) | `LiveComposite()`, `im.Scale()`, `config.images_directory` | FP if API is actually current in the project's Ren'Py version |
 | RPY108 (type taint) | `$ x = "str"; $ x += 1` (real TypeError) | FP on `bool + int`, `dict.keys().append()`, view types |
 | RPY109 (init order) | Function used in `init python:` before defined | FP if function is built-in or imported |
-| RPY110 (Python syntax error) | `$ x = (` (unclosed paren) — real SyntaxError | FP if it's a multi-line string opener the parser doesn't recognize (`$ x = """<newline>..."""` — see FIX-75 in roadmap) |
+| RPY110 (Python syntax error) | `$ x = (` (unclosed paren) — real SyntaxError | FP if it's a multi-line string opener the parser doesn't recognize (`$ x = """<newline>..."""` — tracked as a known FP class in the roadmap) |
 | RPY201 (state mutation in screen) | `$ store.x = 1` inside screen | FP on `$ x = ...` (screen-local var) |
 | RPY202 (undeclared in screen) | Real undeclared variable access | FP on function calls (`X()` vs `X`), built-in namespaces |
 | RPY203 (button no action) | `textbutton "X":` with no `action` | FP if action is on next line or in a complex expression |

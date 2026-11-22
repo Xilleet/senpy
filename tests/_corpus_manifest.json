@@ -1,5 +1,5 @@
 {
-  "_comment": "Curated manifest of corpus VN projects. Pinned to a specific commit SHA for reproducibility — collect_corpus.py updates the 'commit' field after each clone. The 'license' field is SPDX identifier ('MIT', 'Apache-2.0', 'GPL-3.0', 'BSD-3-Clause') or 'none' if no LICENSE file, or 'NOASSERTION' if GitHub cannot classify the license file (custom license — maintainer should verify). 'renpy_version' is null when not yet determined (planned: auto-detect in 0.11.0 ARCH-10 RenPyVersionDetector).",
+  "_comment": "Curated manifest of corpus VN projects. Pinned to a specific commit SHA for reproducibility — collect_corpus.py updates the 'commit' field after each clone. The 'license' field is SPDX identifier ('MIT', 'Apache-2.0', 'GPL-3.0', 'BSD-3-Clause') or 'none' if no LICENSE file, or 'NOASSERTION' if GitHub cannot classify the license file (custom license — maintainer should verify). 'renpy_version' is null when not yet determined (planned: auto-detect via RenPyVersionDetector in a future release).",
   "_schema": {
     "slug": "short identifier, also the directory name under tests/_corpus/",
     "repository": "GitHub owner/name",

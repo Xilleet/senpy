@@ -40,6 +40,14 @@ def normalize_diagnostics(diagnostics: list) -> list[dict[str, Any]]:
 def test_rule_fixture(rpy_file: Path, update_snapshots: bool, tmp_path: Path):
     rule_id = rpy_file.parent.name  # Ожидаем структуру: fixtures/rules/RPYxxx/bad_1.rpy
     is_bad = rpy_file.name.startswith("bad_")
+    # ``red_*.rpy`` fixtures are KNOWN false positives — the rule currently
+    # fires on legitimate code, and the fixture documents the FP pattern
+    # until CORPUS-6 fixes it. These tests use ``xfail`` so CI stays green
+    # while the rule is still broken. When the rule is fixed, the test
+    # becomes ``xpass`` (unexpectedly passing) — a signal to rename the
+    # file from ``red_*`` to ``good_*`` and make it a permanent regression
+    # guard.
+    is_red = rpy_file.name.startswith("red_")
 
     # Изолируем запуск, копируя тестируемый файл во временную директорию.
     # Большинство fixtures — обычный UTF-8 текст. Но RPY100 (file not valid
@@ -61,6 +69,21 @@ def test_rule_fixture(rpy_file: Path, update_snapshots: bool, tmp_path: Path):
 
     # Фильтруем диагностики только по целевому правилу (чтобы изолировать тесты друг от друга)
     target_diags = [d for d in result.diagnostics if d.code == rule_id]
+
+    if is_red:
+        # RED fixture: known FP — rule currently fires, we expect it NOT to.
+        # xfail with strict=False so the test is marked as expected failure
+        # even if the rule produces diagnostics. When the rule is fixed
+        # (0 diagnostics), the test becomes xpass — a signal to rename
+        # to good_* and make it a permanent regression guard.
+        if target_diags:
+            pytest.xfail(
+                f"Known FP: rule {rule_id} fires on {rpy_file.name} — "
+                f"this is a documented false positive, not a regression. "
+                f"Fix the rule (CORPUS-6) and rename to good_* to make this a permanent guard."
+            )
+        # If 0 diagnostics — test passes normally (xpass signal).
+        return
 
     if not is_bad:
         # Для позитивных тестов мы ожидаем ровно 0 ошибок по этому правилу
