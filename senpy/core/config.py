@@ -24,11 +24,19 @@ from __future__ import annotations
 import os
 import tomllib
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from senpy.core.logging import get_logger
+from senpy.rules.rules_info import RULES_DATABASE
 
 _logger = get_logger("config")
+
+
+# The four severities Senpy produces and consumes. Matches the set
+# actually present in RULES_DATABASE (see rules_info.py). Used by the
+# severity-dict validator to reject typos like "BLOCKER" or lowercase
+# "error" before they silently fail to override a rule's severity.
+_ALLOWED_SEVERITIES = frozenset({"ERROR", "WARNING", "INFO", "HINT"})
 
 
 # =============================================================================
@@ -72,6 +80,72 @@ class SenpyConfig(BaseModel):
 
     # Severity overrides: {"RPY104": "ERROR", ...}
     severity: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("ignore", "select", "extend_select", "extend_ignore")
+    @classmethod
+    def _validate_rule_codes(cls, value: list[str]) -> list[str]:
+        """Warn (do not reject) on rule codes absent from RULES_DATABASE.
+
+        Why warn-not-reject: plugins register rule codes at runtime
+        (see senpy/plugins/loader.py), and those codes are NOT in the
+        built-in RULES_DATABASE at config-validation time. Rejecting
+        would break any config that references a plugin rule. The
+        validator's job is to surface typos (``RPY014`` instead of
+        ``RPY104``) and clearly-nonexistent codes (``RPY999``) — the
+        user decides what to do with the warning.
+
+        Returns the list unchanged (forward-compat).
+        """
+        if not value:
+            return value
+        unknown = [c for c in value if c not in RULES_DATABASE]
+        if unknown:
+            _logger.warning(
+                "Config: rule code(s) not in built-in RULES_DATABASE: %s. "
+                "If this is a plugin rule, ignore this warning; otherwise "
+                "check for a typo (e.g. RPY014 vs RPY104).",
+                ", ".join(unknown),
+            )
+        return value
+
+    @field_validator("severity")
+    @classmethod
+    def _validate_severity(cls, value: dict[str, str]) -> dict[str, str]:
+        """Validate both keys (rule codes) and values (severities).
+
+        Keys: same warn-not-reject contract as the rule-code filter
+        above — plugin rules may override their own severity with a
+        code not in the built-in database.
+
+        Values: must be one of ERROR / WARNING / INFO / HINT. Invalid
+        values (``"BLOCKER"``, lowercase ``"error"``) are dropped from
+        the returned dict and a WARNING is logged naming the bad pair,
+        because the consumer (``_apply_severity``) compares against the
+        uppercase constants and would silently no-op otherwise.
+        """
+        if not value:
+            return value
+        unknown_keys = [k for k in value if k not in RULES_DATABASE]
+        if unknown_keys:
+            _logger.warning(
+                "Config: severity key(s) not in built-in RULES_DATABASE: %s. "
+                "If this is a plugin rule, ignore this warning; otherwise "
+                "check for a typo.",
+                ", ".join(unknown_keys),
+            )
+        bad_values = {k: v for k, v in value.items() if v not in _ALLOWED_SEVERITIES}
+        if bad_values:
+            _logger.warning(
+                "Config: invalid severity value(s) (allowed: "
+                "ERROR, WARNING, INFO, HINT): %s. "
+                "These overrides will be dropped.",
+                ", ".join(f"{k}={v!r}" for k, v in bad_values.items()),
+            )
+            # Drop the bad pairs so the consumer never sees an
+            # unrecognised severity. Keep valid pairs and unknown-key
+            # pairs (the latter may belong to a plugin rule).
+            value = {k: v for k, v in value.items() if v in _ALLOWED_SEVERITIES}
+        return value
 
     # Plugin execution — opt-in (default false). When False, plugin rules
     # are loaded and visible in `senpy rule list`, but their check()
@@ -170,6 +244,19 @@ def load_config(project_path: str, config_path: str | None = None) -> dict:
     """
     # Build the candidate list. Explicit config_path (CLI --config) and
     # SENPY_CONFIG env var take priority over the default search order.
+    #
+    # the missing-config-path warning fix: if the user passed an explicit ``--config /path`` and that
+    # file does not exist, warn once before the fallback search. Without
+    # this the user believes their config is applied (they typed the
+    # flag deliberately) while in fact load_config silently falls back
+    # to the default candidates and the override has no effect.
+    if config_path and not os.path.isfile(config_path):
+        _logger.warning(
+            "Config: explicit --config %s not found; falling back to "
+            "default search (senpy.toml / pyproject.toml in project, "
+            "parent, and cwd).",
+            config_path,
+        )
     candidates: list[str] = []
     if config_path:
         candidates.append(config_path)
