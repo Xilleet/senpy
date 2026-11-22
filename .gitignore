@@ -105,3 +105,12 @@ pip-delete-this-directory.txt
 # conflicts with maintainer pushes). The existing committed files will be
 # removed in a follow-up commit; this rule prevents re-adding them.
 .github/badges/
+
+# --- Corpus VN source ---
+# tests/_corpus/<project>/ holds shallow-cloned open-source VNs that
+# scripts/collect_corpus.py fetches locally. These are NOT in the repo
+# — they exist only on the dev/CI machine so senpy can be run against
+# real VN code for FP/FN detection (CORPUS-3..7). Metadata
+# (tests/_corpus_baseline.json, tests/_corpus_triage.json) IS
+# committed, but the VN source itself stays out of git.
+tests/_corpus/
