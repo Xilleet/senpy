@@ -18,7 +18,7 @@ from senpy.core.type_inference import (
     infer_expr_type,  # noqa: F401
 )
 from senpy.domain.text_tags import get_utf16_range, suggest_similar_symbol
-from senpy.text_utils import dedent_python
+from senpy.text_utils import dedent_python, parse_python_silent
 
 if TYPE_CHECKING:
     from senpy.core.protocols import FullAnalyzer
@@ -85,7 +85,7 @@ def extract_assigned_names(py_code: str) -> set[str]:
     """
     assigned: set[str] = set()
     try:
-        tree = ast.parse(py_code)
+        tree = parse_python_silent(py_code)
         # Iterate top-level statements only. ``ast.walk`` would recurse
         # into If/For/While/Try/With/FunctionDef/ClassDef bodies and
         # collect conditional assignments as if they were guaranteed.
@@ -241,7 +241,7 @@ class PythonAstChecker:
         refs: set[str] = set()
         code = dedent_python("".join(code_lines))
         try:
-            tree = ast.parse(code)
+            tree = parse_python_silent(code)
             # Iterate top-level statements only. ``ast.walk`` would recurse
             # into If/For/While/Try/With/FunctionDef/ClassDef bodies and
             # register conditional assignments as top-level declarations.
@@ -304,7 +304,7 @@ class PythonAstChecker:
             return
 
         try:
-            tree = ast.parse(py_code)
+            tree = parse_python_silent(py_code)
         except SyntaxError as e:
             _logger.debug("check_init_dependency: ast.parse failed: %s", e)
             return
@@ -423,7 +423,7 @@ class PythonAstChecker:
     ) -> None:
         """RPY201, RPY205, RPY208: Check imperative loops and mutations inside a screen."""
         try:
-            tree = ast.parse(py_code)
+            tree = parse_python_silent(py_code)
         except SyntaxError as e:
             _logger.debug("check_screen_mutation: ast.parse failed: %s", e)
             return
@@ -615,7 +615,7 @@ class PythonAstChecker:
     ) -> None:
         """Parses Python code and runs a recursive AST traversal."""
         try:
-            tree = ast.parse(py_code)
+            tree = parse_python_silent(py_code)
             self._walk_python_nodes(
                 tree.body,
                 file_path,
@@ -1460,7 +1460,7 @@ class PythonAstChecker:
         Thin dispatcher: delegates to 2 helpers.
         """
         try:
-            cond_tree = ast.parse(expr, mode="eval")
+            cond_tree = parse_python_silent(expr, mode="eval")
             self._check_rpy403_condition(
                 cond_tree, expr, file_path, line_idx, line_content, noqa_map
             )
@@ -1724,7 +1724,7 @@ class PythonAstChecker:
     ) -> None:
         """RPY404: Checks an if/elif condition for a variable in MAYBE_SET status."""
         try:
-            tree = ast.parse(expr, mode="eval")
+            tree = parse_python_silent(expr, mode="eval")
             for node in ast.walk(tree):
                 if (
                     isinstance(node, ast.Name)
@@ -1767,7 +1767,7 @@ class PythonAstChecker:
         walrus, AnnAssign, AugAssign) via ``_collect_target_names``.
         """
         try:
-            tree = ast.parse(py_code)
+            tree = parse_python_silent(py_code)
             for node in tree.body:
                 if isinstance(node, ast.Assign):
                     for target in node.targets:

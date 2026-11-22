@@ -63,6 +63,7 @@ from senpy.text_utils import (
     _strip_comment,
     dedent_python,
     extract_for_targets,
+    parse_python_silent,
     strip_string_literals,
 )
 
@@ -1058,7 +1059,7 @@ class FileCollector:
         import ast as _ast
 
         try:
-            tree = _ast.parse(code)
+            tree = parse_python_silent(code)
         except SyntaxError:
             return
 

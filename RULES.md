@@ -14,7 +14,7 @@ Comprehensive guide to all semantic and static rules implemented in the **Senpy*
 - **Assets & Media (RPY5xx)**: [RPY501](#rpy501) | [RPY502](#rpy502) | [RPY503](#rpy503) | [RPY504](#rpy504) | [RPY505](#rpy505)
 - **Translations & Localization (RPY6xx)**: [RPY601](#rpy601) | [RPY602](#rpy602) | [RPY603](#rpy603)
 - **Translation Quality (RPY8xx)**: [RPY801](#rpy801) | [RPY802](#rpy802)
-- **Dead Code*: (RPY7xx): [RPY701](#rpy701) | [RPY702](#rpy702) | [RPY703](#rpy703) | [RPY704](#rpy704) | [RPY705](#rpy705) | [RPY706](#rpy706) | [RPY707](#rpy707)
+- **Dead Code**: (RPY7xx): [RPY701](#rpy701) | [RPY702](#rpy702) | [RPY703](#rpy703) | [RPY704](#rpy704) | [RPY705](#rpy705) | [RPY706](#rpy706) | [RPY707](#rpy707)
 
 ---
 

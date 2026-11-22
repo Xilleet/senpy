@@ -29,8 +29,40 @@ from __future__ import annotations
 import ast
 import difflib
 import textwrap
+import warnings
 
 from senpy.core.constants import SUGGESTION_CUTOFF
+
+
+def parse_python_silent(
+    source: str,
+    filename: str = "<unknown>",
+    mode: str = "exec",
+) -> ast.AST:
+    """``ast.parse()`` wrapper that suppresses ``SyntaxWarning`` noise.
+
+    Ren'Py VN source often contains non-raw string literals like
+    ``"\\s"`` instead of ``r"\\s"`` — Python 3.12+ emits
+    ``SyntaxWarning: invalid escape sequence`` for each, flooding
+    stderr during a corpus run (one project can emit dozens).
+
+    The warnings are not actionable: Senpy doesn't own the VN code,
+    and real syntax errors still surface as ``SyntaxError`` (caught
+    by callers → RPY110 diagnostic). The wrapper only suppresses
+    ``SyntaxWarning``; ``SyntaxError`` and other exceptions propagate
+    exactly as with bare ``ast.parse()``.
+
+    Drop-in replacement for ``ast.parse(source, filename=..., mode=...)``
+    — same positional args, same kwargs, same return, same exceptions.
+
+    Thread-safety: ``warnings.catch_warnings()`` is not strictly
+    thread-safe (warnings filters are process-global). Senpy's LSP
+    serializes analyzer runs via the write lock in ``_RWLock``, so
+    concurrent ``parse_python_silent`` calls do not occur in practice.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        return ast.parse(source, filename=filename, mode=mode)
 
 
 def dedent_python(code: str) -> str:
@@ -547,7 +579,7 @@ def extract_for_targets(line: str) -> set[str]:
     else:
         candidate = stripped + "\n    pass"
     try:
-        tree = ast.parse(candidate, mode="exec")
+        tree = parse_python_silent(candidate, mode="exec")
     except SyntaxError:
         return set()
     for node in tree.body:

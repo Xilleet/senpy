@@ -29,6 +29,7 @@ import ast
 from dataclasses import dataclass, field
 
 from senpy.core.logging import get_logger
+from senpy.text_utils import parse_python_silent
 
 _logger = get_logger("plugins.audit")
 
@@ -201,7 +202,7 @@ def audit_source(source: str, filename: str = "<unknown>") -> list[str]:
     source has a SyntaxError (we scan what we can parse).
     """
     try:
-        tree = ast.parse(source, filename=filename)
+        tree = parse_python_silent(source, filename=filename)
     except SyntaxError as e:
         return [
             f"Plugin source {filename} has a syntax error at line {e.lineno}: {e.msg} — cannot audit fully."

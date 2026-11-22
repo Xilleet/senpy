@@ -4,6 +4,7 @@ import ast
 from dataclasses import dataclass, field
 
 from senpy.core.logging import get_logger
+from senpy.text_utils import parse_python_silent
 
 _logger = get_logger("signature")
 
@@ -59,7 +60,7 @@ def parse_signature(param_str: str | None) -> SignatureInfo:
 
     clean = param_str.strip()
     try:
-        tree = ast.parse(f"def _d({clean}): pass")
+        tree = parse_python_silent(f"def _d({clean}): pass")
         args_node = tree.body[0].args  # type: ignore
 
         all_names = {a.arg for a in args_node.args + args_node.kwonlyargs}
@@ -101,7 +102,7 @@ def parse_call_args(args_str: str) -> tuple[int, set[str], bool, bool] | None:
     """Parses the passed call arguments: (num_positional, passed_kwargs, has_*args, has_**kwargs)."""
     clean = args_str.strip()
     try:
-        tree = ast.parse(f"_d({clean})")
+        tree = parse_python_silent(f"_d({clean})")
         call = tree.body[0].value  # type: ignore
         if isinstance(call, ast.Call):
             num_pos = len(call.args)

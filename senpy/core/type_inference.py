@@ -26,6 +26,8 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING, Any
 
+from senpy.text_utils import parse_python_silent
+
 if TYPE_CHECKING:
     pass  # no type-only imports needed yet
 
@@ -317,7 +319,7 @@ def infer_expr_type(
     if not expr_str or not expr_str.strip():
         return None
     try:
-        tree = ast.parse(expr_str.strip(), mode="eval")
+        tree = parse_python_silent(expr_str.strip(), mode="eval")
         return infer_ast_type(tree.body, known_vars=known_vars)
     except (SyntaxError, ValueError, TypeError):
         return None
