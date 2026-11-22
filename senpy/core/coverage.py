@@ -4,6 +4,9 @@ from dataclasses import dataclass
 
 from senpy.core.analyzer import SenpyAnalyzer
 from senpy.core.file_discovery import _find_tl_dir_index
+from senpy.core.logging import get_logger
+
+_logger = get_logger("core.coverage")
 
 
 @dataclass
@@ -59,7 +62,14 @@ def calculate_translation_coverage(project_path: str) -> dict[str, LanguageStats
         try:
             with open(file_path, encoding="utf-8", newline="") as f:
                 lines = f.readlines()
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as e:
+            # the coverage logging fix: previously this block swallowed the exception with
+            # a bare ``continue`` — the file dropped out of coverage
+            # with no trace, so the user got an empty report and no clue
+            # that a TL file had been skipped (PermissionError, disk
+            # error, encoding). Log a WARNING naming the file and the
+            # error so the skip is observable.
+            _logger.warning("coverage: skipping TL file %s: %s", file_path, e)
             continue
 
         pairs = SenpyAnalyzer._parse_tl_pairs(lines)

@@ -13,8 +13,11 @@ from typing import TYPE_CHECKING
 
 from senpy.core.constants import NON_DIALOGUE_STATEMENTS
 from senpy.core.file_collector import build_noqa_map
+from senpy.core.logging import get_logger
 from senpy.core.models import Diagnostic
 from senpy.core.paths import normalize_path
+
+_logger = get_logger("rules.translation")
 
 if TYPE_CHECKING:
     from senpy.core.protocols import DiagnosticSink, DiagnosticSinkAndSymbolsAndNoqa
@@ -36,7 +39,11 @@ def analyze_tl_file(analyzer: DiagnosticSinkAndSymbolsAndNoqa, file_path: str) -
     except UnicodeDecodeError as e:
         analyzer._emit_encoding_error(file_path, e)
         return
-    except OSError:
+    except OSError as e:
+        # the translation logging fix (site 1): previously a bare ``return`` — the TL file
+        # silently dropped out of analysis. Log a WARNING so the skip
+        # is observable.
+        _logger.warning("translation: skipping TL file %s: %s", file_path, e)
         return
 
     analyzer.total_lines += len(lines)
@@ -301,7 +308,12 @@ def _build_lang_map(tl_files: list[str]) -> dict[str, dict[str, set[str]]]:
         try:
             with open(tl_file, encoding="utf-8", newline="") as f:
                 lines = f.readlines()
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as e:
+            # the translation logging fix (site 2): previously a bare ``continue`` — the TL
+            # file silently dropped out of the language map, so the
+            # cross-file RPY802 check ran on a partial corpus with no
+            # indication. Log a WARNING so the skip is observable.
+            _logger.warning("translation: skipping TL file %s: %s", tl_file, e)
             continue
 
         pairs = parse_tl_pairs(lines)
@@ -365,7 +377,12 @@ def _find_first_occurrence(old_txt: str, lang: str, tl_files: list[str]) -> tupl
         try:
             with open(tl_file, encoding="utf-8", newline="") as f:
                 file_lines = f.readlines()
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as e:
+            # the translation logging fix (site 3): previously a bare ``continue`` — the TL
+            # file silently dropped out of the occurrence lookup, so
+            # _find_first_occurrence returned ("<unknown>", 0) with no
+            # clue why. Log a WARNING so the skip is observable.
+            _logger.warning("translation: skipping TL file %s: %s", tl_file, e)
             continue
         for i, line in enumerate(file_lines, start=1):
             if f'old "{old_txt}"' in line or f"old '{old_txt}'" in line:

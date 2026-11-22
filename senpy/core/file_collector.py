@@ -45,6 +45,7 @@ from senpy.core.constants import (
     RE_TRANSFORM,
     is_terminator_line,
 )
+from senpy.core.logging import get_logger
 from senpy.core.models import Diagnostic, FileScope
 from senpy.core.paths import normalize_path
 from senpy.core.progress import progress_print
@@ -64,6 +65,8 @@ from senpy.text_utils import (
     extract_for_targets,
     strip_string_literals,
 )
+
+_logger = get_logger("core.file_collector")
 
 if TYPE_CHECKING:
     from senpy.core.scope import ScopeStack
@@ -837,8 +840,15 @@ class FileCollector:
 
         except UnicodeDecodeError as e:
             self.analyzer._emit_encoding_error(file_path, e)
-        except OSError:
-            pass
+        except OSError as e:
+            # the collector logging fix: previously this block was a bare ``pass`` — the
+            # file silently dropped out of symbol collection
+            # (PermissionError, disk error, race condition) and the
+            # user saw "0 diagnostics" with no clue that a file had
+            # been skipped. Log a WARNING naming the file and the error
+            # so the skip is observable. UnicodeDecodeError is already
+            # routed to _emit_encoding_error (RPY100) above.
+            _logger.warning("file_collector: skipping %s: %s", file_path, e)
 
     def _collect_from_python_block(
         self,
