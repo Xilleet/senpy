@@ -174,13 +174,104 @@ def _git(*args: str, cwd: Path | None = None, check: bool = True) -> subprocess.
     )
 
 
-def _clone(project: Project, force: bool, dry_run: bool) -> tuple[str, str]:
+# Regex for the live git progress lines git writes to stderr when
+# ``--progress`` is passed. Matches the last progress update of each
+# phase (Counting / Compressing / Receiving / Resolving). Git emits
+# these with carriage returns (no newlines), so we accumulate a
+# buffer and scan it for the latest match.
+import re
+
+_PROGRESS_RE = re.compile(
+    r"(Counting|Compressing|Receiving|Resolving|remote: Enumerating)" r".*?(\d+)%"
+)
+
+
+def _clone_with_live_progress(url: str, target: Path, task_id: object, progress: Progress) -> str:
+    """Shallow-clone ``url`` into ``target``, streaming git's own
+    ``Receiving objects: N% (size | speed)`` progress into the rich
+    task description so the user sees the clone is actually moving.
+
+    Returns the captured stderr on failure (empty string on success).
+
+    Uses ``select`` + ``os.read`` to poll git's stderr non-blockingly
+    (git writes progress with carriage returns, not newlines, so a
+    plain ``read()`` blocks until 64 bytes accumulate — far too slow
+    for fast clones, and it never updates the bar mid-clone).
+    """
+    import os
+    import select
+
+    # --progress forces git to emit progress lines to stderr even when
+    # stderr is not a TTY (subprocess pipes are not TTYs, so without
+    # this flag git is silent and we are back to the stuck-bar bug).
+    proc = subprocess.Popen(
+        ["git", "clone", "--progress", "--depth", "1", "--single-branch", url, str(target)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=False,  # we decode chunks ourselves for non-blocking read
+    )
+    assert proc.stderr is not None
+    fd = proc.stderr.fileno()
+    stderr_buf = bytearray()
+    while True:
+        # Poll with a 200ms timeout so we still notice process exit
+        # promptly even if git stops writing for a moment.
+        ready, _, _ = select.select([fd], [], [], 0.2)
+        if ready:
+            try:
+                chunk = os.read(fd, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            stderr_buf.extend(chunk)
+            # Split on \r and \n; git emits progress as "...0%...1%...\r"
+            # so each \r marks the end of one progress line. Take the
+            # last segment that matches a known phase.
+            text = chunk.decode("utf-8", errors="replace")
+            segments = re.split(r"[\r\n]", text)
+            for segment in reversed(segments):
+                segment = segment.strip()
+                if not segment:
+                    continue
+                m = _PROGRESS_RE.search(segment)
+                if m:
+                    # Truncate the raw git line to fit a single terminal row.
+                    short = segment if len(segment) <= 60 else segment[:57] + "…"
+                    progress.update(task_id, description=f"[cyan]{short}")
+                    break
+        elif proc.poll() is not None:
+            # Process exited — drain any remaining stderr.
+            try:
+                rest = os.read(fd, 65536)
+                if rest:
+                    stderr_buf.extend(rest)
+            except OSError:
+                pass
+            break
+    proc.wait()
+    if proc.returncode != 0:
+        return stderr_buf.decode("utf-8", errors="replace").strip()
+    return ""
+
+
+def _clone(
+    project: Project,
+    force: bool,
+    dry_run: bool,
+    task_id: object,
+    progress: Progress,
+) -> tuple[str, str]:
     """Clone (or re-clone) one project.
 
     Returns ``(status, detail)`` where status is one of
     ``cloned``|``skipped``|``forced``|``error`` and detail is a short
     human-readable note (the cloned SHA, the skip reason, or the
     error message).
+
+    ``task_id`` / ``progress`` are the rich progress task we update
+    with git's live ``Receiving objects: N%`` line so the user can see
+    the clone is actually moving (not stuck on 0/15).
     """
     target = CORPUS_DIR / project.slug
     is_git_repo = target.exists() and (target / ".git").exists()
@@ -205,10 +296,9 @@ def _clone(project: Project, force: bool, dry_run: bool) -> tuple[str, str]:
     # .cloned_sha so CORPUS-3 / baseline tooling can detect upstream
     # movement (a re-clone is needed to pick up new commits).
     target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        _git("clone", "--depth", "1", "--single-branch", project.url, str(target))
-    except subprocess.CalledProcessError as e:
-        return ("error", e.stderr.strip() or "git clone failed")
+    err = _clone_with_live_progress(project.url, target, task_id, progress)
+    if err:
+        return ("error", err)
 
     # Record the cloned HEAD SHA.
     sha = ""
@@ -332,7 +422,13 @@ def main() -> int:
             # Live label shows the slug currently being worked on so
             # the user knows which clone the bar is sitting on.
             progress.update(task, description=f"[cyan]Cloning [bold]{p.slug}[/bold]…")
-            status, detail = _clone(p, force=args.force, dry_run=args.dry_run)
+            status, detail = _clone(
+                p,
+                force=args.force,
+                dry_run=args.dry_run,
+                task_id=task,
+                progress=progress,
+            )
             counts[status] = counts.get(status, 0) + 1
             results.append((p, status, detail))
             progress.advance(task)
