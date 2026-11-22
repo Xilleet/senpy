@@ -164,35 +164,55 @@ A new `README_<lang>.md` should:
 - Translate idiomatic phrases naturally — don't translate "feature freeze"
   literally if your language has a better idiom.
 
-### 6. Corpus contributions (advanced)
+### 6. Corpus FP cleanup (advanced)
 
-The maintainer is building a regression corpus of real OSS VN projects in
-`tests/_corpus/`. If you have or know
-of an open-source Ren'Py VN project that:
+Senpy ships with a curated corpus of 15 open-source Ren'Py VN projects
+(~17 000 diagnostics total) used to catch false positives that
+unit-level fixtures miss. The full workflow — clone, run, triage,
+write RED tests, fix the rule, lock in with regression fixtures — is
+documented end-to-end in **[docs/corpus-workflow.md](docs/corpus-workflow.md)**.
+
+The single most valuable contribution for a static analyzer is
+real-world FP reports that drive rule fixes. Every confirmed FP becomes
+a parametrised RED test in `tests/rules/test_corpus_fp.py` (auto-discovered
+from `tests/_corpus_triage.json` — no test file editing needed).
+
+Quick start:
+
+```bash
+python scripts/collect_corpus.py                   # clone 15 OSS VNs (~3 GB)
+python scripts/run_corpus.py --update-baseline     # write baseline.json
+python scripts/triage_corpus.py --slug gifting_game # label FPs interactively
+                                                    # (or --export-csv / --import-csv)
+pytest tests/rules/test_corpus_fp.py -v             # see RED tests
+```
+
+Start with small projects (`renpy_vn_template_dual` ~18 diags,
+`avnovel` ~40, `gifting_game` ~53) — pattern recognition builds
+quickly. The roadmap target is 30–60 confirmed FP cases per corpus
+sweep.
+
+See [TP/FP decision guide](docs/corpus-workflow.md#tpfp-decision-guide)
+in the workflow doc for concrete per-rule guidance and worked examples.
+
+#### Proposing a new VN for the corpus
+
+If you know of an open-source Ren'Py VN project that:
 
 - is on GitHub with an OSS license (MIT, Apache, GPL, CC-BY, etc.),
 - has >1k lines of `.rpy` code,
 - you have permission to reference (or own it),
 
-— open an issue proposing it for the corpus. The maintainer will shallow-clone
-it into `tests/_corpus/<project>/` and add it to the weekly CI regression job.
+— open an issue proposing it. The maintainer will add it to
+`scripts/collect_corpus.py:PROJECTS` (one-place catalog edit) and
+shallow-clone it into `tests/_corpus/<project>/` on the next run.
 
-Already in the corpus:
-
-- DDLC (Doki Doki Literature Club)
-- LearnToCodeRPG
-- cross_channel localization
-- DDLCModTemplate
-- renpy-template
-
-Good candidates for new additions:
-
-- Katawa Shoujo
-- Everlasting Summer
-- Monika After Story
-- renpy-the-question
-- Frog Fractions 2 (if applicable)
-- and etc.
+Already in the corpus (15 projects as of 0.9.3): DDLC, LearnToCodeRPG,
+DDLCModTemplate 2.0, Monika After Story, alternate DDLC mod template
+(zchrxh), renpy-template (RuolinZheng), Renpy-VN-Template (dualfighter1),
+BytesOfLove (ufosc), avnovel, cross_channel Chinese localization,
+LOVE69 Ren'Py remaster, AquaGuardians, personal-space2, cold_hands,
+gifting-game.
 
 ### 7. VS Code extension features (TypeScript)
 
