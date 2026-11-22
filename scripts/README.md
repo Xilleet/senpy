@@ -141,13 +141,13 @@ python scripts/check_cycles.py --verbose  # print the full graph
 
 ### `clean_internal_ids.py`
 
-**EN:** Scrub internal task IDs (e.g. `CLEAN-1`, `FIX-25`) from
+**EN:** Scrub internal task IDs from
 user-facing files (docstrings, comments, error messages). Internal
 tracker references should not leak into shipped code. `--dry-run`
 shows the diff; `--apply` writes changes; `--paths` restricts the
 scope.
 
-**RU:** Чистит внутренние task-ID (`CLEAN-1`, `FIX-25`, ...) из
+**RU:** Чистит внутренние task-ID из
 пользовательских файлов (docstring'и, комментарии, error messages).
 Внутренние ссылки на трекер не должны попадать в shipped-код.
 `--dry-run` показывает diff; `--apply` применение; `--paths` ограничивает
@@ -324,7 +324,7 @@ into a RED pytest.
 
 **RU:** Triage диагностик senpy на корпусе в TP / FP / maybe-FP /
 skip. Читает per-project JSON от `run_corpus.py` и позволяет
-мейнтейнеру классифицировать каждый diagnostic против реального
+ классифицировать каждый diagnostic против реального
 VN-кода. Гибрид: `--export-csv` выгружает все diagnostic'и в
 `tests/_corpus/_corpus_triage.csv` (gitignored) для оффлайн-разметки
 в таблице; `--import-csv` читает размеченный CSV и пишет
