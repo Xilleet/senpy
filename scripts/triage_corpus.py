@@ -284,11 +284,55 @@ def _import_csv() -> int:
 # --- Interactive triage ------------------------------------------------------
 
 
+def _read_source_context(slug: str, file: str, line: int, context: int = 5) -> str | None:
+    """Read source lines around ``line`` from the corpus clone.
+
+    Returns a formatted string with line numbers and an ``←`` marker on
+    the flagged line, or ``None`` if the source file is not found (corpus
+    not cloned, file moved upstream, encoding error).
+
+    ``context`` lines are shown before and after the flagged line.
+    """
+    source_path = CORPUS_DIR / slug / file
+    if not source_path.exists():
+        return None
+
+    try:
+        lines = source_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+    # Line numbers are 1-based; list index is 0-based.
+    target_idx = line - 1
+    if target_idx < 0 or target_idx >= len(lines):
+        # Line out of range — file may have changed upstream.
+        return None
+
+    start = max(0, target_idx - context)
+    end = min(len(lines), target_idx + context + 1)
+
+    result = []
+    for i in range(start, end):
+        line_no = i + 1
+        marker = " ←" if i == target_idx else "  "
+        # Truncate very long lines so the prompt fits a normal terminal.
+        content = lines[i]
+        if len(content) > 100:
+            content = content[:97] + "..."
+        result.append(f"  {line_no:>5} │{marker} {content}")
+
+    return "\n".join(result)
+
+
 def _prompt_one(slug: str, diag: dict) -> tuple[str, str] | None:
     """Prompt the maintainer for one diagnostic's status + note.
 
     Returns ``(status, note)`` or ``None`` if the user chose to defer
     (keeps the existing status).
+
+    Displays 5 lines of source context around the flagged line (read
+    from the local corpus clone) plus a link to the rule's section in
+    RULES.md so the triager can quickly check the rule's intent.
     """
     print(
         f"\n  {slug} | {diag['file']}:{diag['line']} "
@@ -299,6 +343,23 @@ def _prompt_one(slug: str, diag: dict) -> tuple[str, str] | None:
     if len(msg) > 200:
         msg = msg[:197] + "..."
     print(f"    {msg}")
+
+    # Show source context (5 lines before + flagged line + 5 lines after).
+    # This is the single biggest UX improvement — without it the triager
+    # has to open the VN source file in a separate editor for every
+    # diagnostic, which makes triage ~5x slower.
+    context = _read_source_context(slug, diag["file"], diag["line"])
+    if context:
+        print()
+        print(context)
+        print()
+    else:
+        print("    (source file not found — clone corpus or file moved upstream)")
+
+    # Link to the rule's section in RULES.md. Anchors follow the pattern
+    # ``rpyXXX`` (lowercase) — e.g. RPY202 → RULES.md#rpy202.
+    code_lower = diag["code"].lower()
+    print(f"    See RULES.md#{code_lower} for rule semantics.")
     print("    [t]p  [f]p  [m]aybe-fp  [s]kip  [q]uit (keep current)  [e]dit note")
 
     choice: str | None = None
@@ -362,6 +423,69 @@ def _interactive(slug: str) -> int:
     _save_triage(triage)
     print(f"\nSaved -> {TRIAGE_PATH}")
     _print_summary(triage, only_slug=slug)
+    return 0
+
+
+def _interactive_by_rule(code: str) -> int:
+    """Walk all diagnostics of one rule code across ALL projects.
+
+    Groups diagnostics by rule code so the triager can build pattern
+    recognition faster — e.g. all RPY305 cases across 15 projects
+    are presented consecutively, making it obvious that they share
+    a common FP pattern (multi-line dialogue).
+    """
+    triage = _load_triage()
+    # Collect all matching diagnostics from all projects that have
+    # senpy_results.json. Each case is (slug, diag_dict). The diag_dict
+    # is a reference into the triage entry's diagnostics list, so
+    # modifying it in-place persists when we save triage.
+    cases: list[tuple[str, dict]] = []
+    projects_with_code: set[str] = set()
+    for p in PROJECTS:
+        result = _load_results(p.slug)
+        if result is None:
+            continue
+        entry = triage.get(p.slug) or _empty_entry(result)
+        triage[p.slug] = entry  # ensure entry is in triage for save
+        for d in entry["diagnostics"]:
+            if d["code"] == code:
+                cases.append((p.slug, d))
+                projects_with_code.add(p.slug)
+
+    if not cases:
+        print(
+            f"No diagnostics with code {code} found in corpus.\n"
+            f"Run `python scripts/run_corpus.py` first to generate results.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        f"\nTriage by rule: {code} "
+        f"({len(cases)} cases across {len(projects_with_code)} project(s))"
+    )
+    print("Ctrl-C aborts without saving; 'q' on a row keeps its current status.\n")
+
+    dirty_slugs: set[str] = set()
+    try:
+        for i, (slug, d) in enumerate(cases, 1):
+            print(f"[{i}/{len(cases)}]")
+            verdict = _prompt_one(slug, d)
+            if verdict is not None:
+                d["status"], d["note"] = verdict
+                dirty_slugs.add(slug)
+    except KeyboardInterrupt:
+        print("\n\nAborted — no changes saved.")
+        return 1
+
+    # Recompute by_status for all modified entries (the diag dicts were
+    # modified in-place via shared references; the entries just need
+    # their counts refreshed).
+    for slug in dirty_slugs:
+        triage[slug]["by_status"] = _recompute_by_status(triage[slug])
+    _save_triage(triage)
+    print(f"\nSaved -> {TRIAGE_PATH}")
+    _print_summary(triage, status_filter="fp")
     return 0
 
 
@@ -434,6 +558,12 @@ def main() -> int:
         "--import-csv", action="store_true", help="read labelled CSV -> tests/_corpus_triage.json"
     )
     mode.add_argument("--slug", metavar="NAME", help="interactive triage for one project")
+    mode.add_argument(
+        "--by-rule",
+        metavar="RPYXXX",
+        help="interactive triage for all diagnostics of one rule code across all projects "
+        "(e.g. --by-rule RPY305 — groups all multi-line dialogue FPs together)",
+    )
     mode.add_argument("--summary", action="store_true", help="print triage counts and exit")
     parser.add_argument(
         "--status",
@@ -452,6 +582,16 @@ def main() -> int:
             print(f"ERROR: unknown slug {args.slug!r}", file=sys.stderr)
             return 2
         return _interactive(args.slug)
+    if args.by_rule:
+        code = args.by_rule.upper()
+        if not code.startswith("RPY") or len(code) != 6:
+            print(
+                f"ERROR: rule code must be 'RPY' + 3 digits (e.g. RPY305), "
+                f"got {args.by_rule!r}",
+                file=sys.stderr,
+            )
+            return 2
+        return _interactive_by_rule(code)
     # default: --summary (with optional --status filter)
     triage = _load_triage()
     _print_summary(triage, status_filter=args.status)

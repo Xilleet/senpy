@@ -398,17 +398,63 @@ Senpy was right to fire (TP) or wrong (FP).
 python scripts/triage_corpus.py --slug gifting_game
 ```
 
-Walks each diagnostic for the project, shows file:line:code:message, and
-accepts `t`/`f`/`m`/`s`/`q`/`e`:
+Walks each diagnostic for the project, shows file:line:code:message,
+**5 lines of source context** around the flagged line (with an `←` marker),
+and a link to the rule's section in RULES.md:
 
 ```
 gifting_game | game/olnewyear-5.rpy:675 [RPY202 WARNING]
     Screen 'file_slots' accesses undeclared variable 'CurrentScreenName'. Screens
     can be evaluated in the main menu or before game start, causing a crash.
+
+    670 │ screen file_slots():
+    671 │     # Comment
+    672 │     text "Save"
+    673 │     null
+    674 │
+    675 │ ←   if CurrentScreenName() == "save":
+    676 │         pass
+    677 │
+
+    See RULES.md#rpy202 for rule semantics.
     [t]p  [f]p  [m]aybe-fp  [s]kip  [q]uit (keep current)  [e]dit note
     > f
     note (why FP/maybe? optional): CurrentScreenName() is a function call, not a variable access
 ```
+
+The source context is read from the local corpus clone
+(`tests/_corpus/<slug>/<file>`). If the file is not found (corpus not
+cloned, or the VN project moved upstream and the file changed), the
+prompt shows `(source file not found — clone corpus or file moved upstream)`
+instead of the context block.
+
+**Triage by rule code (recommended for pattern recognition):**
+```bash
+python scripts/triage_corpus.py --by-rule RPY305
+```
+
+Instead of walking one project at a time, this mode collects **all
+diagnostics of one rule code across all 15 projects** and presents them
+consecutively. This lets you build pattern recognition fast — e.g. all
+RPY305 cases (multi-line dialogue) across the corpus are shown one after
+another, making it obvious that they share a common FP pattern.
+
+```
+Triage by rule: RPY305 (47 cases across 8 project(s))
+Ctrl-C aborts without saving; 'q' on a row keeps its current status.
+
+[1/47]
+  aqua_guardians | game/red_route.rpy:39 [RPY305 ERROR]
+    ...
+```
+
+Use `--by-rule` when you want to:
+- Verify that a suspected FP pattern (e.g. multi-line dialogue for
+  RPY305, function calls for RPY202) is consistent across projects
+- Triage all cases of one rule in a single session (faster than
+  switching between projects)
+- Build a mental model of what a rule catches in practice before
+  deciding TP/FP
 
 **CSV mode (recommended for bulk triage of large projects):**
 ```bash
@@ -835,6 +881,13 @@ explains why it fired).
   the future CI job will use.
 - **Rich UX** — progress bars, summary tables, colour-coded drift deltas
   in `collect_corpus.py` / `run_corpus.py`.
+- **Inline source context in triage** — `triage_corpus.py --slug` and
+  `--by-rule` show 5 lines of source code around each flagged line
+  (with an `←` marker on the diagnostic line) plus a link to the rule's
+  section in RULES.md. No need to open the VN source in a separate editor.
+- **Triage by rule code** — `triage_corpus.py --by-rule RPYXXX` groups
+  all diagnostics of one rule code across all 15 projects, letting the
+  triager build pattern recognition faster.
 - **SyntaxWarning suppression** — `ast.parse()` calls in the analyzer
   are wrapped in `parse_python_silent()` (see `senpy/text_utils.py`) so
   VN Python-strings with non-raw escapes (`"\s"` instead of `r"\s"`)
@@ -846,19 +899,11 @@ explains why it fired).
   A weekly cron job is planned but not yet wired up.
 - **No public badge** — corpus size isn't surfaced
   in the README.
-- **No inline source context in triage prompt** — `triage_corpus.py
-  --slug` shows `file:line:code:message` but not the actual source line.
-  You need to open the file in another editor to see the code being
-  flagged. (Planned improvement: show 5 lines of context around the
-  diagnostic.)
 - **No auto-preclassification** — every diagnostic is `unmarked` until
   you manually label it. Many obvious TPs (RPY001 tabs, RPY002 smart
   quotes, RPY107 deprecated APIs) and obvious FPs (RPY202 on built-in
   namespaces) could be auto-labelled by heuristic patterns, leaving
   only the uncertain cases for manual review. (Planned improvement.)
-- **No grouping by rule code** — triage walks one project at a time.
-  An alternative mode that groups all RPY202 cases across all projects
-  would let you build pattern recognition faster. (Planned improvement.)
 - **No regression tests from synthetic fixtures** (CORPUS-7 pending) —
   `test_corpus_fp.py` is skip-if-corpus-absent, so CI can't catch
   regressions to corpus FPs without the clone. Synthetic minimal
