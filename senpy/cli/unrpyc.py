@@ -285,7 +285,15 @@ def extract_scripts_from_rpa(rpa_path: str, dest_dir: str) -> list[str]:
                         seg_len = seg[1] ^ key
                         prefix = seg[2] if len(seg) > 2 else b""
                         f.seek(seg_offset)
-                        file_bytes += prefix + f.read(seg_len - len(prefix))
+                        # Prefix is SEPARATE from seg_len (RPA-4 fix):
+                        # seg_len is the number of bytes of DATA in the
+                        # archive (without prefix). Prefix is prepended
+                        # after reading seg_len bytes.
+                        # Previous code: f.read(seg_len - len(prefix))
+                        # — truncated data by len(prefix), and when
+                        # prefix was longer than seg_len, f.read(-1)
+                        # read the entire remainder of the archive.
+                        file_bytes += prefix + f.read(seg_len)
 
                     os.makedirs(os.path.dirname(dest), exist_ok=True)
                     with open(dest, "wb") as out:
