@@ -7,22 +7,42 @@
 # Output: https://xilleet.github.io/senpy/
 #
 # The site is built with MkDocs Material (same as Ruff, FastAPI, Pydantic,
-# Typer) and published directly to GitHub Pages via the official
+# Typer) and published to GitHub Pages via the official
 # actions/upload-pages-artifact + actions/deploy-pages pair.
 #
-# Single-job design (0.9.3 hotfix): the original 2-job design (build →
-# upload-artifact → download-artifact → upload-pages-artifact → deploy)
-# failed intermittently with "No artifacts named 'github-pages' were
-# found for this workflow run" — see actions/deploy-pages#305 and the
-# Oct 2026 intermittent-lookup thread. The cross-job artifact dance
-# also required actions/upload-artifact@v7 + actions/download-artifact@v8
-# to be in sync (download-artifact@v8 is not a stable release on
-# github.com — latest stable is v4 as of Oct 2026).
+# Version pinning policy (0.9.3 hotfix #2):
+#   `upload-pages-artifact@v3` + `deploy-pages@v4` are the officially
+#   recommended stable combination (GitHub blog Dec 5 2024: "must be
+#   updated to use actions/upload-pages-artifact@v3 actions/deploy-pages@v4").
+#   The newer v5/v5 pair exhibited two intermittency bugs on this repo:
+#     1. "No artifacts named 'github-pages' were found" — when the
+#        deploy step ran immediately after upload (race in GitHub's
+#        artifact metadata storage; documented in actions/deploy-pages#305).
+#     2. "Multiple artifacts named 'github-pages' were unexpectedly found.
+#        Artifact count is 2" — when previous cancelled runs (cancelled
+#        by `concurrency: cancel-in-progress: true`) left orphaned
+#        `github-pages` artifacts in storage that listArtifacts() picked
+#        up alongside the current run's artifact (documented in
+#        actions/deploy-pages#338 and #451).
+#   Rolling back to v3 + v4 sidesteps both bugs: v3's upload path has
+#   been stable since 2024 and does not exhibit the duplicate-metadata
+#   behaviour, and v4's deploy path has a longer track record with the
+#   GitHub Pages backend.
 #
-# Folding build + deploy into one job eliminates both the version
-# mismatch and the cross-job artifact lookup race: the Pages artifact
-# (`github-pages`) is produced and consumed in the same workflow run,
-# same job, with no intermediate `senpy-docs-site` transfer.
+# Cleanup step: `actions/delete-artifact@v4` runs BEFORE upload to wipe
+# any `github-pages` artifacts left by previously-cancelled runs of this
+# same workflow. This is belt-and-suspenders against the duplicate-
+# metadata bug (#338): if listArtifacts() returns stale entries from an
+# aborted sibling run, those entries are gone before the new upload
+# produces the canonical `github-pages` artifact for the current run.
+#
+# Single-job design: the original 2-job design (build → upload-artifact
+# → download-artifact → upload-pages-artifact → deploy) was folded into
+# one job in hotfix #1 to eliminate the cross-job artifact lookup race.
+# That decision stands — `mkdocs build --strict` writes `site/` on the
+# same runner that then calls `configure-pages` → `upload-pages-artifact`
+# → `deploy-pages`. If `mkdocs build --strict` fails, none of the deploy
+# steps run — no partial site is ever published.
 #
 # Permissions: pages:write + id-token:write are required by
 # actions/deploy-pages (the official GitHub Pages deploy action).
@@ -41,7 +61,9 @@ on:
   workflow_dispatch:  # manual run from Actions tab
 
 # Cancel a previous run of the same workflow on the same ref — saves CI
-# minutes when pushing many small doc fixes in a row.
+# minutes when pushing many small doc fixes in a row. NOTE: cancelled
+# runs leave orphaned `github-pages` artifacts in storage — the cleanup
+# step below deletes them before the new upload.
 concurrency:
   group: docs-${{ github.ref }}
   cancel-in-progress: true
@@ -50,6 +72,7 @@ permissions:
   contents: read   # read the repo to build docs (no gh-pages branch push — Pages deploys via the API)
   pages: write     # deploy-pages needs this to publish the Pages site
   id-token: write  # deploy-pages uses OIDC for authentication
+  actions: write   # delete-artifact needs this to delete orphaned artifacts from cancelled runs
 
 jobs:
   build-and-deploy:
@@ -81,19 +104,72 @@ jobs:
         # no partial site is ever published.
         run: mkdocs build --strict
 
+      - name: Delete orphaned github-pages artifacts from cancelled runs
+        # Belt-and-suspenders against actions/deploy-pages#338: when
+        # `concurrency: cancel-in-progress: true` aborts a previous run
+        # mid-upload, the partial `github-pages` artifact can linger in
+        # storage and cause `deploy-pages` to see "Artifact count is 2"
+        # on the next run. This step enumerates artifacts from THIS
+        # workflow (not just this run — listWorkflowRunArtifacts does
+        # not include siblings, but listArtifacts for the repo does)
+        # and deletes any `github-pages` ones that do not belong to the
+        # current run_id. Safe to run before upload: there is nothing
+        # named `github-pages` yet in this run.
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const currentRunId = context.runId;
+
+            // Page through ALL artifacts in the repo (recent first).
+            // listArtifacts for the repo returns artifacts across all
+            // workflow runs — we filter to `github-pages` ones that are
+            // NOT from the current run_id.
+            let page = 1;
+            let deleted = 0;
+            while (true) {
+              const resp = await github.rest.actions.listArtifacts({
+                owner,
+                repo,
+                per_page: 100,
+                page,
+              });
+              if (resp.data.artifacts.length === 0) break;
+              for (const art of resp.data.artifacts) {
+                if (art.name !== 'github-pages') continue;
+                if (String(art.workflow_run?.id) === String(currentRunId)) continue;
+                core.info(`Deleting orphan github-pages artifact ${art.id} from run ${art.workflow_run?.id} (created ${art.created_at})`);
+                try {
+                  await github.rest.actions.deleteArtifact({ owner, repo, artifact_id: art.id });
+                  deleted++;
+                } catch (e) {
+                  // Already expired or deleted — not an error.
+                  core.info(`  skip (already gone): ${e.message}`);
+                }
+              }
+              if (resp.data.artifacts.length < 100) break;
+              page++;
+            }
+            core.info(`Deleted ${deleted} orphan github-pages artifact(s).`);
+
       - name: Configure GitHub Pages
         # Sets the Pages metadata (page_url output for the environment
         # url field above). Required before upload-pages-artifact.
-        uses: actions/configure-pages@v6
+        uses: actions/configure-pages@v4
 
       - name: Upload Pages artifact
         # Bundles site/ into the canonical `github-pages` artifact that
-        # deploy-pages@v5 expects. The artifact lives in the current
-        # workflow run — same job, no cross-job transfer.
-        uses: actions/upload-pages-artifact@v5
+        # deploy-pages@v4 expects. v3 is the officially-recommended
+        # stable version (GitHub blog Dec 5 2024); v5 exhibited the
+        # duplicate-metadata bug on this repo.
+        uses: actions/upload-pages-artifact@v3
         with:
           path: site/
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        # v4 is the officially-recommended stable version. v5 exhibited
+        # the "Multiple artifacts named github-pages" intermittency
+        # (actions/deploy-pages#338, #451) on this repo.
+        uses: actions/deploy-pages@v4
