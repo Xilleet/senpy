@@ -121,7 +121,7 @@ senpy/
 │   ├── src/extension.ts     # Extension entry point, commands, crash watcher
 │   ├── package.json         # Extension manifest, LSP configuration
 │   └── language-configuration.json
-├── tests                    # all tests (1964+ as of 0.9.0)
+├── tests                    # all tests (2329+ as of 0.9.3)
 └── examples                 # examples and your plugins with new rules
 ```
 
@@ -528,7 +528,7 @@ observable at DEBUG level.
 
 ## Testing
 
-- **1964 tests** across 138 test files.
+- **2329 tests** across 171 test files.
 - **Fixture-based**: `tests/fixtures/rules/RPYxxx/` with `bad_*.rpy` +
   `bad_*.json` (expected diagnostics) + `good_*.rpy` (should pass).
 - **Characterization tests**: Subprocess-based CLI tests that verify

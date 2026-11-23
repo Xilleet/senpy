@@ -43,7 +43,7 @@ pip install senpy-linter
 
 ## Статус: заморозка фичей → 1.0
 
-Senpy 0.9.2 production-stable для пользователей. До 1.0 фокус — на
+Senpy 0.9.3 production-stable для пользователей. До 1.0 фокус — на
 hardening архитектуры и стабилизации контракта `senpy.api` —
 **без новых правил, без новых фичей, без новых форматов вывода**.
 
@@ -65,6 +65,27 @@ RPY9xx plugin ecosystem), новые форматы вывода, новые CLI
 ---
 
 ## Что нового
+
+### 0.9.3 — Финализация инфраструктуры корпуса + catch-up по ченджлогу post-0.9.2 (patch)
+
+Patch-релиз: закрывает **инфраструктуру корпуса FP-pipeline** как стабильную, готовую для контрибьюторов поверхность — плюс догоняет FIX-задачи, которые попали в master после `v0.9.2` (и несколько, которые были в `v0.9.2`, но не упомянуты в его ченджлоге).
+
+**2329 тестов** (было 2234 в 0.9.2, +95). **Новых правил нет.** Feature freeze неизменён. GREEN-фиксы правил под FP-кейсы из triage (CORPUS-6) перенесены в **1.1.0** — массовая правка правил нарушает заморозку.
+
+| Область | Что было сломано | Что изменилось |
+|---|---|---|
+| **Инфраструктура корпуса FP-pipeline** | Не было способа ловить ложные срабатывания на реальном VN-коде. Корпус из 5 VN из 0.8.2 (DDLC, LearnToCodeRPG, cross_channel, DDLCModTemplate, renpy-template) был слишком мал, чтобы выявлять регрессии правил. | Три новых скрипта (`collect_corpus.py`, `run_corpus.py`, `triage_corpus.py`) клонируют 15 OSS VN проектов (~3 GB, gitignored), запускают senpy per-project и триажат диагностики в TP/FP/maybe-FP. `tests/rules/test_corpus_fp.py` auto-discovers labelled FPs из `tests/_corpus_triage.json` и превращает каждый в параметризованный RED pytest. `tests/_corpus_manifest.json` пиннит каждый VN к конкретному commit SHA с SPDX license metadata. Подробный `docs/corpus-workflow.md` + секция в `CONTRIBUTING.md` делают пайплайн готовым для контрибьюторов. |
+| **Еженедельный regression CI workflow** | Инфраструктура корпуса существовала, но никто не запускал её по расписанию — дрейф между изменениями правил и baseline корпуса оставался незамеченным. | Новый `.github/workflows/corpus-regression.yml`: weekly cron (пн 06:00 UTC) + `workflow_dispatch`. Клонирует корпус, запускает `run_corpus.py` (drift check vs `tests/_corpus_baseline.json` — reported, не gated), запускает `tests/rules/test_corpus_fp.py` (RED state ожидаемо pre-1.0 — reported, не gated), загружает summary artifact + JUnit XML с retention 28 дней. |
+| **Corpus-count badge** | Не было публичного сигнала что корпус существует или активен — контрибьюторы не могли узнать, что пайплайн жив. | Новая `_build_corpus_badge()` в `scripts/update_badges.py` читает `tests/_corpus_manifest.json` + `tests/_corpus_triage.json`, пишет `.github/badges/corpus.json` (пушится в существующий GitHub Gist через `push_badges_to_gist.py`). Цвет сигнализирует health: `red` = нет корпуса, `yellow` = не размечен (проекты есть, FP не размечены), `brightgreen` = хотя бы один FP размечен. Badge добавлен в `README.md` + `README_ru.md`. |
+| **`docs.yml` single-job build + deploy** | Исходный 2-job дизайн (build → upload-artifact → download-artifact → upload-pages-artifact → deploy) периодически падал с "No artifacts named 'github-pages'" — `actions/download-artifact@v8` не stable release на github.com (latest stable — v4 по Oct 2026). | Схлопнут в один job: `mkdocs build --strict` пишет `site/` на том же runner, который затем вызывает `configure-pages` → `upload-pages-artifact` → `deploy-pages`. Если `mkdocs build --strict` падает, deploy-шаги не запускаются — частичный сайт никогда не публикуется. |
+| **`docs.yml` пин к официально рекомендованной stable паре + cleanup orphan-artifacts** | `upload-pages-artifact@v5` + `deploy-pages@v5` демонстрировали "Multiple artifacts named 'github-pages' were unexpectedly found. Artifact count is 2" (actions/deploy-pages#338, #451) — отменённые sibling runs оставляли orphaned `github-pages` артефакты в storage. | Откат к `upload-pages-artifact@v3` + `deploy-pages@v4` (GitHub blog Dec 5 2024: "must be updated to use actions/upload-pages-artifact@v3 actions/deploy-pages@v4"). Добавлен cleanup-шаг `actions/github-script@v7` перед upload: перечисляет все `github-pages` артефакты в репо через `github.rest.actions.listArtifactsForRepo` и удаляет те, что не принадлежат текущему `context.runId`. |
+| **`mkdocs build --strict` link fixes** | Три страницы существовали в `docs/`, но не были в `nav`: `FORMAT_STYLE_GUIDE.md`, `corpus-workflow.md`, `renpy_api_diff.md`. `corpus-workflow.md` ссылался на файлы корня репо через `../` (mkdocs видит только `docs/`). Anchor `#current-capabilities--limitations` не匹配 с выводом Material slugifier. | 4 уникальные ссылки переписаны на `https://github.com/Xilleet/senpy/blob/main/<file>` (тот же паттерн, что в `docs/index.md`). Anchor исправлен: `#current-capabilities--limitations` → `#current-capabilities-limitations`. 3 записи добавлены в `Reference` nav. `site/` добавлен в `.gitignore`. |
+| **`clean_internal_ids` whitelist sync** | `docs/corpus-workflow.md` был в `_WHITELIST_PATHS` скрипта `scripts/clean_internal_ids.py`, но НЕ в mirror-списке в `tests/core/test_clean_internal_ids.py` — drift пойман `test_whitelist_in_sync_with_script`. | Добавлен `"docs/corpus-workflow.md"` в whitelist теста (однострочное добавление). |
+| **Post-0.9.2 FIX-* catch-up в ченджлоге** | FIX-90/91/92 (formatter: `_find_comment_start`, unary right-boundary, `#`-comment split в `_split_by_strings`) и PyInstaller-spec fix (`senpy.spec` `collect_all` + `importlib.resources` loader) попали в код `v0.9.2`, но не были упомянуты в release notes 0.9.2. | Закрыто catch-up секцией в CHANGELOG 0.9.3 с недостающими записями + commit SHAs для git-blame traceability. |
+
+Подробности в [`CHANGELOG.md`](CHANGELOG.md#093).
+
+---
 
 ### 0.9.2 — Совместимость с Ren'Py 8.6.1 + 25 критических фиксов (patch)
 
@@ -638,7 +659,7 @@ Senpy поставляет [pre-commit](https://pre-commit.com) хук, кото
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.9.2   # используйте последний тег
+    rev: v0.9.3   # используйте последний тег
     hooks:
       - id: senpy
 ```

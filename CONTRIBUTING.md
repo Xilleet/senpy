@@ -22,7 +22,7 @@ This document covers:
 
 ## Status: feature freeze → 1.0
 
-Senpy 0.9.0 is **production-stable**. Until 1.0 is focusing on
+Senpy 0.9.3 is **production-stable**. Until 1.0 is focusing on
 architecture hardening and `senpy.api` contract stabilization. **No new rules,
 no new features, no new output formats** are accepted during the freeze.
 

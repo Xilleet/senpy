@@ -43,7 +43,7 @@ Download the latest `senpy-vscode-X.X.X.vsix` from the [Releases](https://github
 
 ## Status: Feature Freeze → 1.0
 
-Senpy 0.9.2 is production-stable for users. Until 1.0, I'm focusing on
+Senpy 0.9.3 is production-stable for users. Until 1.0, I'm focusing on
 architecture hardening and `senpy.api` contract stabilization —
 **no new rules, no new features, no new output formats**.
 
@@ -68,6 +68,27 @@ formatter extensions, sandbox R&D, editor clients beyond VS Code.
 
 ---
 ## What's New
+
+### 0.9.3 — Corpus infrastructure finalisation + post-0.9.2 changelog catch-up (patch)
+
+A patch release closing the **corpus FP-pipeline** as a stable, contributor-ready surface — and catching up on FIX tasks that landed in master after `v0.9.2` (and a few that were already in `v0.9.2` but absent from its changelog).
+
+**2329 tests** (up from 2234 in 0.9.2, +95). **No new rules.** Feature freeze unchanged. The corpus GREEN-fix work (CORPUS-6: rule edits under 30–60 FP cases from triage) is deferred to **1.1.0** — mass rule-editing violates the freeze.
+
+| Area | What Was Broken | What Changed |
+|---|---|---|
+| **Corpus FP-pipeline infrastructure** | No way to catch false positives on real-world VN code. The 5-VN corpus from 0.8.2 (DDLC, LearnToCodeRPG, cross_channel, DDLCModTemplate, renpy-template) was too small to surface rule regressions. | Three new scripts (`collect_corpus.py`, `run_corpus.py`, `triage_corpus.py`) clone 15 OSS VN projects (~3 GB, gitignored), run senpy per-project, and triage diagnostics into TP/FP/maybe-FP. `tests/rules/test_corpus_fp.py` auto-discovers labelled FPs from `tests/_corpus_triage.json` and turns each into a parametrised RED pytest. `tests/_corpus_manifest.json` pins each VN to a specific commit SHA with SPDX license metadata. Comprehensive `docs/corpus-workflow.md` + `CONTRIBUTING.md` section make the pipeline contributor-ready. |
+| **Weekly regression CI workflow** | Corpus infrastructure existed but nothing ran it on a schedule — drift between rule changes and the corpus baseline went undetected. | New `.github/workflows/corpus-regression.yml`: weekly cron (Mon 06:00 UTC) + `workflow_dispatch`. Clones the corpus, runs `run_corpus.py` (drift check vs `tests/_corpus_baseline.json` — reported, not gated), runs `tests/rules/test_corpus_fp.py` (RED state expected pre-1.0 — reported, not gated), uploads summary artifact + JUnit XML with 28-day retention. |
+| **Corpus-count badge** | No public signal that the corpus existed or was active — contributors had no way to know the pipeline was alive. | New `_build_corpus_badge()` in `scripts/update_badges.py` reads `tests/_corpus_manifest.json` + `tests/_corpus_triage.json`, writes `.github/badges/corpus.json` (pushed to the existing GitHub Gist by `push_badges_to_gist.py`). Color signals pipeline health: `red` = no corpus, `yellow` = unstaffed (projects but zero FPs labelled), `brightgreen` = at least one FP labelled. Badge added to `README.md` + `README_ru.md`. |
+| **`docs.yml` single-job build + deploy** | Original 2-job design (build → upload-artifact → download-artifact → upload-pages-artifact → deploy) failed intermittently with "No artifacts named 'github-pages'" — `actions/download-artifact@v8` is not a stable release on github.com (latest stable is v4 as of Oct 2026). | Collapsed into one job: `mkdocs build --strict` writes `site/` on the same runner that then calls `configure-pages` → `upload-pages-artifact` → `deploy-pages`. If `mkdocs build --strict` fails, deploy steps do not run — no partial site is ever published. |
+| **`docs.yml` pinned to official stable pair + orphan-artifact cleanup** | `upload-pages-artifact@v5` + `deploy-pages@v5` exhibited "Multiple artifacts named 'github-pages' were unexpectedly found. Artifact count is 2" (actions/deploy-pages#338, #451) — cancelled sibling runs left orphaned `github-pages` artifacts in storage. | Rolled back to `upload-pages-artifact@v3` + `deploy-pages@v4` (GitHub blog Dec 5 2024: "must be updated to use actions/upload-pages-artifact@v3 actions/deploy-pages@v4"). Added `actions/github-script@v7` cleanup step before upload: enumerates all `github-pages` artifacts in the repo via `github.rest.actions.listArtifactsForRepo` and deletes any not belonging to the current `context.runId`. |
+| **`mkdocs build --strict` link fixes** | Three pages existed in `docs/` but were not in `nav`: `FORMAT_STYLE_GUIDE.md`, `corpus-workflow.md`, `renpy_api_diff.md`. `corpus-workflow.md` linked to repo-root files via `../` (mkdocs only sees `docs/`). Anchor `#current-capabilities--limitations` did not match the Material slugifier output. | 4 unique links rewritten to `https://github.com/Xilleet/senpy/blob/main/<file>` (same pattern as `docs/index.md`). Anchor fixed: `#current-capabilities--limitations` → `#current-capabilities-limitations`. 3 entries added to `Reference` nav. `site/` added to `.gitignore`. |
+| **`clean_internal_ids` whitelist sync** | `docs/corpus-workflow.md` was in `_WHITELIST_PATHS` of `scripts/clean_internal_ids.py` but NOT in the mirror list in `tests/core/test_clean_internal_ids.py` — drift caught by `test_whitelist_in_sync_with_script`. | Added `"docs/corpus-workflow.md"` to the test's whitelist (single-line addition). |
+| **Post-0.9.2 FIX-* catch-up in changelog** | FIX-90/91/92 (formatter: `_find_comment_start`, unary right-boundary, `#`-comment split in `_split_by_strings`) and the PyInstaller-spec fix (`senpy.spec` `collect_all` + `importlib.resources` loader) landed in `v0.9.2` code but were absent from the 0.9.2 release notes. | Closed catch-up section in CHANGELOG 0.9.3 with the missing entries + commit SHAs for git-blame traceability. |
+
+Full details in [`CHANGELOG.md`](CHANGELOG.md#093).
+
+---
 
 ### 0.9.2 — Ren'Py 8.6.1 compatibility + 25 critical bugfixes (patch)
 
@@ -628,7 +649,7 @@ Senpy ships a [pre-commit](https://pre-commit.com) hook that runs
 ```yaml
 repos:
   - repo: https://github.com/Xilleet/senpy
-    rev: v0.9.2   # use the latest tag
+    rev: v0.9.3   # use the latest tag
     hooks:
       - id: senpy
 ```
