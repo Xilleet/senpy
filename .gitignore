@@ -114,3 +114,12 @@ pip-delete-this-directory.txt
 # (tests/_corpus_baseline.json, tests/_corpus_triage.json) IS
 # committed, but the VN source itself stays out of git.
 tests/_corpus/
+
+# --- MkDocs build output ---
+# `mkdocs build` (and `mkdocs serve`) write the rendered site to site/.
+# CI (.github/workflows/docs.yml) builds the same output and deploys it
+# to gh-pages — the local directory is a build artefact and must NOT be
+# committed. Without this rule, anyone running `mkdocs build --strict`
+# locally to verify a doc fix ends up with `?? site/` in `git status`,
+# which is easy to accidentally `git add -A` into an unrelated commit.
+site/

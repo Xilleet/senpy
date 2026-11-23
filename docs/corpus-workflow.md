@@ -30,7 +30,7 @@ source code.
   - [Step 9. CI workflow](#step-9-ci-workflow)
   - [Step 10. Public badge](#step-10-public-badge)
 - [TP/FP decision guide](#tpfp-decision-guide)
-- [Current capabilities & limitations](#current-capabilities--limitations)
+- [Current capabilities & limitations](#current-capabilities-limitations)
 - [File inventory](#file-inventory)
 - [Troubleshooting](#troubleshooting)
 
@@ -589,7 +589,7 @@ module:
 | `RPY107` | Deprecated APIs | `senpy/rules/deprecated.py` |
 
 For rule semantics and what each rule is supposed to catch, see
-**[RULES.md](../RULES.md)** — open it in a separate tab while fixing.
+**[RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md)** — open it in a separate tab while fixing.
 
 **Common FP fix patterns:**
 
@@ -724,7 +724,7 @@ other cases — pattern recognition builds quickly.
 
 ### General principles
 
-1. **Read the rule's intent in [RULES.md](../RULES.md).** Each rule has
+1. **Read the rule's intent in [RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md).** Each rule has
    a "Why" section explaining what it's supposed to catch. If the code
    really has that issue → TP. If the rule misidentified the pattern →
    FP.
@@ -1069,8 +1069,8 @@ changed.
 
 ## See also
 
-- [RULES.md](../RULES.md) — what each of the 53 rules is supposed to catch
-- [ARCHITECTURE.md](../ARCHITECTURE.md) — Senpy internals (analyzer pipeline, checkers, LSP)
-- [CONTRIBUTING.md](../CONTRIBUTING.md) — general contributor guide (this doc is linked from section 6)
-- [scripts/README.md](../scripts/README.md) — one-liner reference for every script in `scripts/`
+- [RULES.md](https://github.com/Xilleet/senpy/blob/main/RULES.md) — what each of the 53 rules is supposed to catch
+- [ARCHITECTURE.md](https://github.com/Xilleet/senpy/blob/main/ARCHITECTURE.md) — Senpy internals (analyzer pipeline, checkers, LSP)
+- [CONTRIBUTING.md](https://github.com/Xilleet/senpy/blob/main/CONTRIBUTING.md) — general contributor guide (this doc is linked from section 6)
+- [scripts/README.md](https://github.com/Xilleet/senpy/blob/main/scripts/README.md) — one-liner reference for every script in `scripts/`
 - [docs/FORMAT_STYLE_GUIDE.md](FORMAT_STYLE_GUIDE.md) — analogous workflow doc for the formatter
