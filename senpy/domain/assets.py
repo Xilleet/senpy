@@ -327,6 +327,87 @@ class AssetManager:
             return hit
         return None
 
+    def resolve_asset_in_archive(self, name: str) -> tuple[str, int, int, bytes] | None:
+        """Resolve an asset name to its location inside a parsed RPA archive.
+
+        Returns ``(archive_path, offset, length, prefix)`` for the first
+        matching entry's first segment across all archives in
+        ``rpa_index_cache``, or ``None`` if no archive contains the asset.
+        The tuple is DECODED — ``offset`` is an absolute byte offset within
+        the archive file, ``length`` is the true in-archive data byte count,
+        and ``prefix`` is the verbatim prefix to prepend (RPA-4 semantics:
+        prefix is separate from ``length``). A consumer can locate the asset
+        via ``open(archive_path, "rb"); f.seek(offset); f.read(length)``
+        or, better, hand the segment to ``senpy.domain.rpa.read_rpa_segment``.
+
+        Name matching mirrors ``resolve_image_path`` so that a reference
+        which resolves on disk also resolves inside an archive: tries the
+        name as-given (lowercased, forward-slashed), its ``game/``-prefixed
+        and ``game/``-stripped forms, underscore↔space variants, and finally
+        a basename scan (so ``"bg.png"`` or an image name matches
+        ``game/images/bg.png``). Lookups are case-insensitive — the cache
+        keys entries by lowercased filename.
+
+        This is the resolve primitive. It is deliberately NOT wired
+        into ``resolve_image_path`` / ``resolve_audio_path``'s return value:
+        those methods return a real disk path (verified with
+        ``os.path.exists``) and the LSP hover consumers
+        (``build_image_hover`` / ``build_audio_hover``) treat that path as a
+        real file — ``os.path.getsize``, ``file://`` URI, inline image /
+        audio preview. Returning an archive-internal path from those methods
+        would render a broken-preview hover for archive-only assets (a
+        regression vs. the current "no hover" behaviour). The fallback is
+        consumed at the hover layer (RPA-11): on a disk miss, hover calls
+        this method directly and renders a "found inside archive" hint
+        instead of a preview. This keeps the resolve primitive's contract
+        honest and avoids a broken-preview window between RPA-2 and RPA-11.
+
+        Multi-segment caveat: an entry may store a file across several
+        segments (rare — most archives use one segment per file). This
+        method returns only the FIRST segment's tuple, which is enough to
+        locate the asset for the hover hint. A consumer that needs the full
+        file contents (e.g. RPA-9 sandbox extraction) should read every
+        segment via the ``RpaEntry`` reachable from ``rpa_index_cache``
+        rather than this tuple.
+        """
+        if not name:
+            return None
+        raw = name.replace("\\", "/")
+        lower = raw.lower()
+        # Full-path candidate keys for the O(1) dict lookup on cache entries
+        # (which are keyed by lowercased, forward-slashed filename).
+        full_candidates: list[str] = []
+
+        def _add(c: str) -> None:
+            if c and c not in full_candidates:
+                full_candidates.append(c)
+
+        _add(lower)
+        if lower.startswith("game/"):
+            _add(lower.removeprefix("game/"))
+        else:
+            _add(f"game/{lower}")
+        _add(lower.replace(" ", "_"))
+        _add(lower.replace("_", " "))
+
+        base = os.path.basename(lower)
+        for idx in self.rpa_index_cache.values():
+            for key in full_candidates:
+                entry = idx.entries.get(key)
+                if entry is not None:
+                    seg = entry.segments[0]
+                    return (entry.archive_path, seg.offset, seg.length, seg.prefix)
+            # Basename fallback: a reference like "bg.png" or an image name
+            # matches an entry whose basename equals it. Only runs when the
+            # full-path lookup missed (O(n) per archive, acceptable since
+            # archive entry counts are modest).
+            if base:
+                for entry in idx.entries.values():
+                    if os.path.basename(entry.filename).lower() == base:
+                        seg = entry.segments[0]
+                        return (entry.archive_path, seg.offset, seg.length, seg.prefix)
+        return None
+
     def is_video_file(self, path: str) -> bool:
         """Return True if *path* has a video extension. Used by hover to
         switch from inline image preview to a "Play in default app" link
