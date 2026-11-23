@@ -69,6 +69,7 @@ _WHITELIST_PATHS = [
     ".senpy_cache/**",
     "__pycache__/**",
     "*.pyc",
+    "docs/corpus-workflow.md",
 ]
 
 # Lines containing any of these substrings are skipped (false-positive
