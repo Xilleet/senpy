@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.9.x)**: [0.9.3](#093) | [0.9.2](#092) | [0.9.1](#091) | [0.9.0](#090) |
+- **Current (0.9.x)**: [0.9.4 (unreleased)](#094) | [0.9.3](#093) | [0.9.2](#092) | [0.9.1](#091) | [0.9.0](#090) |
 
 - **0.8.x**: [0.8.4](#084) | [0.8.3](#083) | [0.8.2](#082) | [0.8.1](#081) | [0.8.0](#080)
 
@@ -22,6 +22,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.5.x**: [0.5.8](#058) | [0.5.7](#057) | [0.5.6](#056) | [0.5.5](#055) | [0.5.4 ⚠️](#054) | [0.5.3](#053) | [0.5.2](#052) | [0.5.1](#051) | [0.5.0](#050)
 
 - **0.4.x**: [0.4.8](#048) | [0.4.7](#047)
+
+---
+
+<a id="094"></a>
+
+## [0.9.4] — Unreleased
+
+### Summary
+Begins the **RPA content extraction** track (closing the long-standing gap that `docs/renpy-linter.md` promises asset validation inside `.rpa` archives) plus a backlog of bugfixes carried over from 0.9.5. This release lays the parsed-archive substrate and DRYs segment I/O into a single reader on top of the existing security layer; user-facing resolution / hover / sandbox-cache tasks build on this substrate in subsequent 0.9.4 tasks.
+
+---
+
+### Added
+
+#### RPA content extraction substrate
+* **`RpaSegment` / `RpaEntry` / `RpaArchiveIndex`** dataclasses in `senpy/domain/rpa.py` — a typed model for a parsed RPA archive. `RpaSegment` stores DECODED `(offset, length, prefix)` (the XOR obfuscation key is applied once at parse time, so consumers seek/read without knowing the key — closing the "where does the key live" hole). `RpaEntry` keeps the original-case filename (extraction-faithful; lowercasing is a lookup concern). `RpaArchiveIndex` retains the per-archive key and version for future RPA-1.0 legacy (RPA-7) and integrity/CRC checks (RPA-5/6).
+* **`AssetManager.rpa_index_cache`** (`dict[str, RpaArchiveIndex]`) — a parallel index populated by `_read_rpa_index` alongside the existing `known_assets` registration. Non-breaking: `known_assets` semantics are unchanged; the cache is cleared on every `index()` call with the rest of the asset state (no long-lived cross-scan cache). Substrate for RPA-2 (`resolve_asset_in_archive` fallback), RPA-9 (sandbox asset cache) and RPA-11 (LSP hover "found inside archive").
+* **`parse_rpa_archive(rpa_path)`** — the single header + index parser, shared by `AssetManager._read_rpa_index` and `extract_scripts_from_rpa`. Whitespace-split, key-aware: handles both RPA-2.0 and RPA-3.0 regardless of hex-field width. Segment decoding is defensive — a single malformed segment is skipped rather than aborting the archive, so a partially-corrupt archive still yields its valid entries.
+* **`read_rpa_segment(f, segment)`** — the single DRY segment reader (RPA-3). Seeks to `offset`, reads `length` bytes, prepends `prefix`. Preserves the RPA-4 semantics exactly (prefix is separate from length); length-integrity validation is deliberately deferred to RPA-5.
+* Tests: `tests/assets/test_rpa_parse_and_cache.py` (23 cases) covering dataclass construction, header parsing for both RPA-2.0/3.0 and both hex-width fixture formats, XOR key decoding, prefix preservation, defensive malformed-segment/non-str-key handling, segment reading, and `AssetManager.rpa_index_cache` population/clearing/original-case retention.
+
+---
+
+### Changed
+
+#### RPA readers unified (DRY)
+* `AssetManager._read_rpa_index` now delegates header + index parsing to `parse_rpa_archive` and stores the result in `rpa_index_cache`, instead of its previous inline fixed-width `header[8:24]` parse that discarded segment tuples.
+* `extract_scripts_from_rpa` now delegates header + index parsing to `parse_rpa_archive` and per-segment reading to `read_rpa_segment`, instead of its previous inline whitespace-split parse with duplicated segment-reading logic. Signature and observable behaviour (path-traversal guard, mtime cache, `.rpy`/`.rpyc` filtering) are unchanged.
+
+---
+
+### Fixed
+
+#### RPA header parsing
+* Closed a latent bug where `AssetManager._read_rpa_index` used a fixed-width `header[8:24]` slice for the index offset, which silently mis-parsed archives whose offset field was not exactly 16 hex chars wide (e.g. the `8`-hex-offset fixture format used by `tests/cli/test_unrpyc_helpers.py`): the slice grabbed a space + key digits and raised `ValueError`, so the archive's contents were never registered in `known_assets`. The unified whitespace-split parser handles both widths. No user-visible behaviour change for well-formed real archives (which use the 16-hex width), but archives produced by some tooling variants now index correctly.
 
 ---
 

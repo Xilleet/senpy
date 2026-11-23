@@ -14,7 +14,7 @@ from senpy.core.constants import (
 )
 from senpy.core.logging import get_logger
 from senpy.core.models import Diagnostic
-from senpy.domain.rpa import safe_load_rpa_index
+from senpy.domain.rpa import RpaArchiveIndex, parse_rpa_archive
 
 _logger = get_logger("domain.assets")
 
@@ -142,6 +142,17 @@ class AssetManager:
         self.image_name_to_path: dict[str, str] = {}
         self.audio_name_to_path: dict[str, str] = {}
         self.used_asset_keys: set[str] = set()
+        # Parallel index of parsed RPA archives, keyed by the
+        # archive's path. Each value is a decoded ``RpaArchiveIndex`` whose
+        # ``entries`` map lowercased filename -> ``RpaEntry`` (with decoded
+        # segments). This is the substrate for RPA-2 (resolve_asset_in_archive
+        # fallback), RPA-9 (sandbox asset cache) and RPA-11 (LSP hover "found
+        # inside archive"). Populated lazily by ``_read_rpa_index`` and
+        # cleared on every ``index()`` call together with the rest of the
+        # asset state — there is no long-lived cross-scan cache (the old
+        # class-level ``_asset_cache`` was removed precisely because it
+        # accumulated stale entries in the long-lived LSP process).
+        self.rpa_index_cache: dict[str, RpaArchiveIndex] = {}
 
     def index(self) -> None:
         """Scans the project directory and RPA archives, indexing all media files.
@@ -167,6 +178,9 @@ class AssetManager:
         self.image_name_to_path.clear()
         self.audio_name_to_path.clear()
         self.used_asset_keys.clear()
+        # Drop parsed archive indexes too — a re-scan must not retain
+        # entries from an archive that was deleted or replaced on disk.
+        self.rpa_index_cache.clear()
 
     def _index_disk_files(self) -> None:
         """Walk the project directory, registering disk files and RPA archives.
@@ -344,19 +358,21 @@ class AssetManager:
         # exist at all). Skip silently — hover just won't resolve.
 
     def _read_rpa_index(self, rpa_path: str) -> None:
+        """Parse an RPA archive and register its contents.
+
+        In addition to registering filenames in
+        ``known_assets`` (the pre-existing, non-breaking contract), the
+        parsed :class:`RpaArchiveIndex` is stored in ``rpa_index_cache``
+        so downstream tasks can read segment data without re-parsing the
+        archive. Parsing is delegated to ``senpy.domain.rpa.parse_rpa_archive``
+        — the single header/index parser shared with
+        ``extract_scripts_from_rpa``. This also fixes a latent
+        bug in the previous fixed-width ``header[8:24]`` slice, which
+        silently mis-parsed archives whose offset field was not exactly 16
+        hex chars wide.
+        """
         try:
-            with open(rpa_path, "rb") as f:
-                header = f.read(40)
-                if header.startswith((b"RPA-3.0 ", b"RPA-2.0 ")):
-                    offset = int(header[8:24], 16)
-                    f.seek(offset)
-                    index = safe_load_rpa_index(f.read())
-                    for filename in index:
-                        clean_fn = filename.replace("\\", "/").lower()
-                        self.known_assets.add(clean_fn)
-                        self.known_assets.add(os.path.basename(clean_fn))
-                        if clean_fn.startswith("game/"):
-                            self.known_assets.add(clean_fn[5:])
+            parsed = parse_rpa_archive(rpa_path)
         except (
             OSError,
             zlib.error,
@@ -370,12 +386,23 @@ class AssetManager:
             # registered); but tracking it helps spot corrupt .rpa files.
             # TypeError: safe_load_rpa_index raises it when the pickle root
             #   is not a dict (e.g. a list or None).
-            # AttributeError: `for filename in index:` with non-str keys
-            #   crashes on `filename.replace(...)` because int/None has no
-            #   `.replace`. Catching here prevents a malformed .rpa from
-            #   crashing the analyzer if `_read_rpa_index` is ever activated
-            #   from the production path.
+            # AttributeError: previously raised by `filename.replace` on
+            #   non-str keys — now guarded inside parse_rpa_archive, but
+            #   kept here as defence-in-depth for any future decode path.
+            # ValueError: bad hex in the header, or decompression-bomb
+            #   limit exceeded inside safe_load_rpa_index.
             _logger.debug("failed to read RPA index %s: %s", rpa_path, e)
+            return
+        if parsed is None:
+            # Not a recognized RPA archive (wrong magic / too-short header).
+            return
+        self.rpa_index_cache[rpa_path] = parsed
+        for entry in parsed.entries.values():
+            clean_fn = entry.filename.lower()
+            self.known_assets.add(clean_fn)
+            self.known_assets.add(os.path.basename(clean_fn))
+            if clean_fn.startswith("game/"):
+                self.known_assets.add(clean_fn[5:])
 
     def mark_used(self, asset_ref: str) -> None:
         """Registers usage of an asset in the code."""

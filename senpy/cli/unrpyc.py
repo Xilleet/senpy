@@ -23,7 +23,7 @@ from rich.console import Console
 from senpy.core.logging import get_logger
 from senpy.core.paths import normalize_path
 from senpy.core.progress import progress_print
-from senpy.domain.rpa import safe_load_rpa_index
+from senpy.domain.rpa import parse_rpa_archive, read_rpa_segment
 from senpy.domain.tsundere import IS_RU
 
 _logger = get_logger("cli.unrpyc")
@@ -242,63 +242,59 @@ def find_unrpyc_executable(
 
 
 def extract_scripts_from_rpa(rpa_path: str, dest_dir: str) -> list[str]:
-    """Quickly and incrementally extracts .rpy and .rpyc from a .rpa archive into an isolated sandbox with Path Traversal protection."""
-    extracted = []
+    """Quickly and incrementally extracts .rpy and .rpyc from a .rpa archive into an isolated sandbox with Path Traversal protection.
+
+    Header parsing + index loading are delegated to
+    ``senpy.domain.rpa.parse_rpa_archive`` (the single shared parser, also
+    used by ``AssetManager._read_rpa_index``), and per-segment reading is
+    delegated to ``read_rpa_segment``. This removes the duplicated header
+    parse that previously lived here and ensures code-extraction and
+    asset-indexing interpret the RPA byte format identically.
+    """
+    extracted: list[str] = []
     rpa_mtime = os.path.getmtime(rpa_path) if os.path.exists(rpa_path) else 0.0
     dest_dir_abs = os.path.abspath(dest_dir)
 
     try:
+        parsed = parse_rpa_archive(rpa_path)
+        if parsed is None:
+            return []
+        # Re-open the archive for segment reads. parse_rpa_archive opened
+        # the file only to read the header + index (then closed it); segment
+        # data lives in a different byte range (the data region, before the
+        # index), so a second read-only open is needed. The OS page cache
+        # makes the overlap cheap, and RPA-9's sandbox cache will cut
+        # repeated reads on subsequent runs.
         with open(rpa_path, "rb") as f:
-            header = f.read(50)
-            parts = header.split()
-            if not parts or not parts[0].startswith((b"RPA-3.0", b"RPA-2.0")):
-                return []
+            for entry in parsed.entries.values():
+                base_fn = os.path.basename(entry.filename)
+                if not base_fn.endswith((".rpyc", ".rpy")):
+                    continue
 
-            offset = int(parts[1], 16)
-            key = int(parts[2], 16) if len(parts) > 2 and parts[0].startswith(b"RPA-3.0") else 0
+                dest = os.path.abspath(os.path.join(dest_dir, entry.filename))
 
-            f.seek(offset)
-            index = safe_load_rpa_index(f.read())
-
-            for filename, segments in index.items():
-                clean_name = filename.replace("\\", "/")
-                base_fn = os.path.basename(clean_name)
-
-                if base_fn.endswith((".rpyc", ".rpy")):
-                    dest = os.path.abspath(os.path.join(dest_dir, clean_name))
-
-                    # Path Traversal protection: block attempts to write outside dest_dir (e.g. ../../malicious.rpy)
-                    try:
-                        if os.path.commonpath([dest, dest_dir_abs]) != dest_dir_abs:
-                            continue
-                    except ValueError:
+                # Path Traversal protection: block attempts to write outside dest_dir (e.g. ../../malicious.rpy)
+                try:
+                    if os.path.commonpath([dest, dest_dir_abs]) != dest_dir_abs:
                         continue
+                except ValueError:
+                    continue
 
-                    # Cache: if the file is already extracted and newer than the archive, skip reading bytes
-                    if os.path.exists(dest) and os.path.getmtime(dest) >= rpa_mtime:
-                        extracted.append(dest)
-                        continue
-
-                    file_bytes = b""
-                    for seg in segments:
-                        seg_offset = seg[0] ^ key
-                        seg_len = seg[1] ^ key
-                        prefix = seg[2] if len(seg) > 2 else b""
-                        f.seek(seg_offset)
-                        # Prefix is SEPARATE from seg_len (RPA-4 fix):
-                        # seg_len is the number of bytes of DATA in the
-                        # archive (without prefix). Prefix is prepended
-                        # after reading seg_len bytes.
-                        # Previous code: f.read(seg_len - len(prefix))
-                        # — truncated data by len(prefix), and when
-                        # prefix was longer than seg_len, f.read(-1)
-                        # read the entire remainder of the archive.
-                        file_bytes += prefix + f.read(seg_len)
-
-                    os.makedirs(os.path.dirname(dest), exist_ok=True)
-                    with open(dest, "wb") as out:
-                        out.write(file_bytes)
+                # Cache: if the file is already extracted and newer than the archive, skip reading bytes
+                if os.path.exists(dest) and os.path.getmtime(dest) >= rpa_mtime:
                     extracted.append(dest)
+                    continue
+
+                # Read every segment of this entry via the shared DRY reader
+                # . read_rpa_segment preserves the RPA-4 semantics:
+                # prefix is prepended AFTER reading segment.length data bytes
+                # (prefix is NOT subtracted from length).
+                file_bytes = b"".join(read_rpa_segment(f, seg) for seg in entry.segments)
+
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "wb") as out:
+                    out.write(file_bytes)
+                extracted.append(dest)
     except (OSError, ValueError, TypeError, zlib.error, pickle.PickleError) as e:
         # log debug instead of silent suppress. RPA extraction failure
         # is recoverable (just no .rpy from this archive); but tracking it
