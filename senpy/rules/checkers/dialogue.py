@@ -110,13 +110,22 @@ class DialogueChecker(BaseChecker):
         # `python:` — control flow may or may not return, but the next label
         # is not a direct fall-through hazard in the same way).
         if prev_clean and not is_terminator_line(prev_clean) and not prev_clean.endswith(":"):
+            # Resolve the label name for the message (0.9.4): a sublabel
+            # like `.sublabel` is displayed as `parent.sublabel` — the
+            # raw `.sublabel` is confusing because it does not match the
+            # fully-qualified name that Ren'Py uses in jump/call targets.
+            raw_lbl_name = m_label.group(1)
+            if raw_lbl_name.startswith(".") and self.current_global_label:
+                resolved_name = self.current_global_label + raw_lbl_name
+            else:
+                resolved_name = raw_lbl_name
             self.analyzer._add_diagnostic(
                 Diagnostic(
                     file_path=file_path,
                     line_number=idx + 1,
                     line_content=stripped,
                     code="RPY308",
-                    message=f"Label '{m_label.group(1)}' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through.",
+                    message=f"Label '{resolved_name}' is preceded by regular statements without 'return' or 'jump'. Control flow will unintentionally fall through.",
                     severity="WARNING",
                 ),
                 noqa_map,

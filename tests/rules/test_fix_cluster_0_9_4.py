@@ -1,15 +1,15 @@
 """RED tests for fix-corruption cluster.
 
-All three bugs share the same root cause: a fix-path or parser walks
-the raw source line character-by-character (or applies a regex) without
-first masking string-literal contents via ``strip_string_literals``.
-This lets smart quotes / parens / commas inside a string literal bleed
-into code-level logic, producing either false-positive diagnostics or
-broken QuickFix replacements that corrupt valid source.
+The first three share the same root cause: a fix-path
+or parser walks the raw source line without masking string-literal
+contents. The remaining five are about synthetic
+``line_content``/``code_line``/``body`` fields and a multi-line
+``$``-statement skip bug.
 
 Each test below is the RED state: senpy currently fires the diagnostic
 or produces the broken replacement. The corresponding GREEN fix masks
-string literals before the relevant scan.
+string literals before the relevant scan, or replaces the synthetic
+field with the real source line.
 """
 
 from __future__ import annotations
@@ -225,3 +225,248 @@ class TestSplitAtClauseWithStringLiteral:
             'ease("hello world")',
             "other",
         ], f"_split_at_clause regression on string literal without paren; got: {parts!r}"
+
+
+# =============================================================================
+# FIX-18: _verify_assign_target writes synthetic line_content
+# =============================================================================
+
+
+class TestRPY104LineContentIsRealSource:
+    """RPY104 diagnostics from ``_verify_assign_target`` must carry the
+    REAL source line in ``line_content``, not the synthetic
+    ``f"{var_name} = ..."``.
+
+    Before FIX-18: ``$ score = 10`` (with no ``default score``) produced
+    a diagnostic with ``line_content="score = ..."`` — a fabricated
+    string that does not appear in the source file. In JUnit SARIF,
+    GitHub annotations, and the terminal, the snippet column did not
+    match the actual code.
+
+    After FIX-18: ``line_content`` is ``raw_line.strip()`` (the real
+    source line), with a fallback to the synthetic string only when
+    ``raw_line`` is empty.
+    """
+
+    def test_rpy104_line_content_is_real_source_not_synthetic(self) -> None:
+        """RED: ``line_content`` is currently ``f"{var_name} = ..."``."""
+        code = textwrap.dedent(
+            """
+            label start:
+                $ score = 10
+                return
+            """
+        )
+        diags, _ = _analyze(code)
+        rpy104 = [d for d in diags if d.code == "RPY104"]
+        assert rpy104, "Expected RPY104 for $ score without default"
+        d = rpy104[0]
+        # The real source line is "$ score = 10" — the synthetic
+        # placeholder would be "score = ...".
+        assert "score = 10" in d.line_content, (
+            f"line_content must be the real source line "
+            f"(containing 'score = 10'), not a synthetic placeholder. "
+            f"Got: {d.line_content!r}"
+        )
+        assert d.line_content != "score = ...", (
+            f"line_content is the synthetic placeholder 'score = ...' — "
+            f"must be the real source line. Got: {d.line_content!r}"
+        )
+
+
+# =============================================================================
+# FIX-58: Synthetic code_line for Python block variables
+# =============================================================================
+
+
+class TestPythonBlockVariableCodeLine:
+    """Variables found in ``init python:`` blocks must carry the REAL
+    source line in ``VariableSymbol.code_line``, not the synthetic
+    ``f"# definition of {name}"``.
+
+    Before FIX-58: ``init python: score = 10`` produced a
+    ``VariableSymbol`` with ``code_line="# definition of score"`` — a
+    fabricated comment that does not appear in the source. LSP hover
+    showed this fake string instead of the real ``$ score = 10`` line.
+
+    After FIX-58: ``code_line`` is ``code_lines[line_offset - 1].strip()``
+    (the real source line from the Python block).
+    """
+
+    def test_code_line_is_real_source_not_synthetic(self) -> None:
+        """RED: ``code_line`` is currently ``# definition of score``."""
+        code = textwrap.dedent(
+            """
+            init python:
+                score = 10
+            label start:
+                return
+            """
+        )
+        diags, _ = _analyze(code)
+        # The variable 'score' should be registered in analyzer.variables.
+        # We need to access the analyzer directly — _analyze returns
+        # diagnostics, not the analyzer. Use a separate run.
+        import tempfile
+
+        with tempfile.TemporaryDirectory(prefix="senpy_094_") as tmp:
+            game_dir = Path(tmp) / "game"
+            game_dir.mkdir(parents=True, exist_ok=True)
+            (game_dir / "script.rpy").write_text(code, encoding="utf-8")
+            analyzer = SenpyAnalyzer(str(tmp), no_cache=True)
+            analyzer.run(quiet=True)
+            var_sym = analyzer.variables.get("score")
+            assert var_sym is not None, "Variable 'score' must be registered"
+            # The real source line is "score = 10" — the synthetic
+            # placeholder would be "# definition of score".
+            assert "score = 10" in var_sym.code_line, (
+                f"code_line must be the real source line "
+                f"(containing 'score = 10'), not a synthetic placeholder. "
+                f"Got: {var_sym.code_line!r}"
+            )
+            assert var_sym.code_line != "# definition of score", (
+                f"code_line is the synthetic placeholder "
+                f"'# definition of score' — must be the real source line. "
+                f"Got: {var_sym.code_line!r}"
+            )
+
+
+# =============================================================================
+# FIX-59: Synthetic body="" for dynamic images
+# =============================================================================
+
+
+class TestDynamicImageBodyNotEmpty:
+    """Images registered via ``renpy.image(NAME, ...)`` in
+    ``init python:`` blocks must carry a non-empty ``body`` in
+    ``ImageSymbol``, not the synthetic empty string.
+
+    Before FIX-59: ``renpy.image("bg_room", ...)`` produced an
+    ``ImageSymbol`` with ``body=""``. LSP hover showed an empty string
+    instead of the actual ``renpy.image("bg_room", ...)`` call.
+
+    After FIX-59: ``body`` is the real source line (or at least
+    ``f"renpy.image({name_val!r}, ...)"`` as a fallback).
+    """
+
+    def test_body_is_not_empty_for_dynamic_renpy_image(self) -> None:
+        """RED: ``body`` is currently ``""``."""
+        code = textwrap.dedent(
+            """
+            init python:
+                renpy.image("bg_room", "images/bg_room.png")
+            label start:
+                return
+            """
+        )
+        import tempfile
+
+        with tempfile.TemporaryDirectory(prefix="senpy_094_") as tmp:
+            game_dir = Path(tmp) / "game"
+            game_dir.mkdir(parents=True, exist_ok=True)
+            (game_dir / "script.rpy").write_text(code, encoding="utf-8")
+            analyzer = SenpyAnalyzer(str(tmp), no_cache=True)
+            analyzer.run(quiet=True)
+            img_sym = analyzer.images.get("bg_room")
+            assert img_sym is not None, "Image 'bg_room' must be registered from renpy.image() call"
+            assert img_sym.body, (
+                f"body must not be empty for dynamic renpy.image() "
+                f"registration — LSP hover shows nothing. Got: {img_sym.body!r}"
+            )
+            assert (
+                "renpy.image" in img_sym.body or "bg_room" in img_sym.body
+            ), f"body must contain the renpy.image() call or the image name. Got: {img_sym.body!r}"
+
+
+# =============================================================================
+# FIX-62: dialogue.py raw label name in message
+# =============================================================================
+
+
+class TestRPY308MessageUsesResolvedLabelName:
+    """RPY308 message for a sublabel (``.sublabel``) must use the
+    RESOLVED label name (``parent.sublabel``), not the raw
+    ``.sublabel``.
+
+    Before FIX-62: ``label .sublabel:`` preceded by fall-through
+    produced ``message="Label '.sublabel' is preceded by..."`` —
+    confusing because the actual label name after resolution is
+    ``parent.sublabel``.
+
+    After FIX-62: the message uses the resolved name.
+    """
+
+    def test_rpy308_message_uses_resolved_sublabel_name(self) -> None:
+        """RED: message currently shows '.sublabel' not 'parent.sublabel'."""
+        code = textwrap.dedent(
+            """
+            label parent:
+                "hello"
+            label .sublabel:
+                return
+            """
+        )
+        diags, _ = _analyze(code)
+        rpy308 = [d for d in diags if d.code == "RPY308"]
+        assert rpy308, "Expected RPY308 for label fallthrough"
+        d = rpy308[0]
+        # The resolved label name is "parent.sublabel", not ".sublabel".
+        assert "parent.sublabel" in d.message, (
+            f"RPY308 message must use the resolved label name "
+            f"'parent.sublabel', not the raw '.sublabel'. "
+            f"Got: {d.message!r}"
+        )
+        assert "'.sublabel'" not in d.message, (
+            f"RPY308 message must not show the raw '.sublabel' — "
+            f"it should be resolved to 'parent.sublabel'. "
+            f"Got: {d.message!r}"
+        )
+
+
+# =============================================================================
+# FIX-63: state.py $ line returns idx+1 instead of next_idx
+# =============================================================================
+
+
+class TestPythonInlineMultiLineContinuation:
+    """``$``-statements with backslash continuation must consume ALL
+    physical lines of the logical line, not just the first one.
+
+    Before FIX-63: ``_check_python_inline`` returned ``idx + 1``
+    instead of ``next_idx``. For a multi-line ``$ x = 1 + \\
+    2`` statement, ``_get_logical_line`` joined both physical lines
+    into one logical line starting at ``idx`` and ending at
+    ``next_idx``. Returning ``idx + 1`` skipped the second physical
+    line, so any diagnostics on the continuation line were lost and
+    the line counter drifted.
+
+    After FIX-63: ``_check_python_inline`` returns ``next_idx``.
+    """
+
+    def test_multiline_dollar_continuation_not_skipped(self) -> None:
+        """RED: lines after ``$ \\`` continuation are currently skipped.
+
+        We test this by placing an undefined variable reference on the
+        continuation line — if the line is skipped, no RPY104 fires for
+        the continuation's assignment.
+        """
+        code = textwrap.dedent(
+            """
+            label start:
+                $ total = 1 + \\
+                    2
+                $ undefined_var = total
+                return
+            """
+        )
+        diags, _ = _analyze(code)
+        # 'undefined_var' is assigned without a 'default' — RPY104 must
+        # fire. If the continuation line of the first `$` was skipped
+        # (FIX-63 bug), the analyzer's line counter drifts and the
+        # second `$` statement may be mis-processed.
+        rpy104 = [d for d in diags if d.code == "RPY104" and "undefined_var" in d.message]
+        assert rpy104, (
+            "RPY104 must fire for 'undefined_var' — if the multi-line "
+            "$ continuation was skipped (FIX-63 bug), the line counter "
+            "drifted and the second $ statement was mis-processed."
+        )

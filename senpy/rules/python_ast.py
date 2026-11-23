@@ -1411,7 +1411,7 @@ class PythonAstChecker:
                 Diagnostic(
                     file_path=file_path,
                     line_number=line_idx,
-                    line_content=f"{var_name} = ...",
+                    line_content=(raw_line.strip() if raw_line else f"{var_name} = ..."),
                     code="RPY105",
                     message=(
                         f"Variable '{var_name}' was declared with 'define' (constant), but is reassigned dynamically. "
@@ -1430,7 +1430,7 @@ class PythonAstChecker:
                 Diagnostic(
                     file_path=file_path,
                     line_number=line_idx,
-                    line_content=f"{var_name} = ...",
+                    line_content=(raw_line.strip() if raw_line else f"{var_name} = ..."),
                     code="RPY104",
                     message=(
                         f"Variable '{var_name}' is assigned dynamically without a top-level 'default'{hint}. "

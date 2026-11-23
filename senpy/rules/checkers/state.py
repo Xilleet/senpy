@@ -114,7 +114,7 @@ class StateChecker(BaseChecker):
 
         # $ python code (single line)
         result = self._check_python_inline(
-            file_path, idx, raw_line, stripped, scope_stack, noqa_map, lines, is_in_screen
+            file_path, idx, next_idx, raw_line, stripped, scope_stack, noqa_map, lines, is_in_screen
         )
         if result is not None:
             return result
@@ -226,6 +226,7 @@ class StateChecker(BaseChecker):
         self,
         file_path: str,
         idx: int,
+        next_idx: int,
         raw_line: str,
         stripped: str,
         scope_stack: ScopeStack,
@@ -269,7 +270,7 @@ class StateChecker(BaseChecker):
                 self.if_stack[-1].current_branch.defined_vars.update(assigned_names)  # type: ignore[union-attr]
             else:
                 self.guaranteed_vars.update(assigned_names)
-        return idx + 1, False
+        return next_idx, False
 
     def _check_python_block(
         self,

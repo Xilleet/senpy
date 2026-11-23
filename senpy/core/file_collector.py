@@ -880,7 +880,11 @@ class FileCollector:
                     name=name,
                     file_path=file_path,
                     line_number=real_line,
-                    code_line=f"# definition of {name}",
+                    code_line=(
+                        code_lines[line_offset - 1].strip()
+                        if 0 < line_offset <= len(code_lines)
+                        else f"# definition of {name}"
+                    ),
                     is_constant=False,
                 )
                 if scope is not None:
@@ -1154,13 +1158,13 @@ class FileCollector:
                     _visit(node.body, loop_vars)
                 elif isinstance(node, _ast.Expr) and isinstance(node.value, _ast.Call):
                     self._maybe_register_renpy_image(
-                        node.value, loop_vars, _eval_name_expr, file_path, start_line
+                        node.value, loop_vars, _eval_name_expr, file_path, start_line, code
                     )
 
         _visit(tree.body, {})
 
     def _maybe_register_renpy_image(
-        self, call_node, loop_vars, eval_fn, file_path: str, start_line: int
+        self, call_node, loop_vars, eval_fn, file_path: str, start_line: int, code: str = ""
     ) -> None:
         """If ``call_node`` is a ``renpy.image(NAME, ...)`` call, register NAME."""
         import ast as _ast
@@ -1179,15 +1183,27 @@ class FileCollector:
         name_vals = eval_fn(call_node.args[0], loop_vars)
         if not name_vals:
             return
+        # Extract the real source line for the body field (0.9.4):
+        # ``call_node.lineno`` is 1-based in ``code``. We split ``code``
+        # into lines and index by ``lineno - 1``. If the lineno is
+        # unavailable or out of range, fall back to a synthetic string
+        # that at least names the call — better than the empty string
+        # that LSP hover previously showed.
+        source_line = ""
+        if code:
+            code_lines_list = code.splitlines()
+            lineno = getattr(call_node, "lineno", 0)
+            if 0 < lineno <= len(code_lines_list):
+                source_line = code_lines_list[lineno - 1].strip()
         for name_val in name_vals:
             # Register as a known image. Use a synthetic ImageSymbol so
             # downstream checks (RPY502, hover, completion) see it.
-            # The `body` field is left empty — we don't track layered
-            # attributes from dynamic registration.
+            # The `body` field carries the real source line (0.9.4) so
+            # LSP hover shows the actual `renpy.image(...)` call.
             img_sym = ImageSymbol(
                 name=name_val,
                 file_path=file_path,
                 line_number=start_line,
-                body="",
+                body=source_line or f"renpy.image({name_val!r}, ...)",
             )
             self.analyzer.images[name_val] = img_sym
