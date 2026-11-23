@@ -801,6 +801,28 @@ class SenpyAnalyzer:
             lines.append(f"default {var} = {val}\n")
 
         try:
+            # If the file already exists, back it up before overwriting
+            # (0.9.4): user edits (# noqa directives, comments, custom
+            # defaults) would be lost without warning.
+            if os.path.exists(out_file):
+                backup = out_file + ".bak"
+                try:
+                    import shutil
+
+                    shutil.copy2(out_file, backup)
+                    _logger.warning(
+                        "senpy_defaults.rpy already exists — backed up to %s "
+                        "before overwrite. Move it back if you want to keep "
+                        "your edits.",
+                        backup,
+                    )
+                except OSError as be:
+                    _logger.warning(
+                        "Could not back up existing %s to %s: %s — overwriting directly.",
+                        out_file,
+                        backup,
+                        be,
+                    )
             with open(out_file, "w", encoding="utf-8") as f:
                 f.writelines(lines)
         except OSError as e:

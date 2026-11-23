@@ -98,38 +98,46 @@ class AnalysisPipeline:
         """
         a = self.analyzer
         self._dry_run_callback = dry_run_callback
-        a._run_reset()
+        try:
+            a._run_reset()
 
-        a._index_assets()
-        main_rpy, tl_rpy = a._get_rpy_files()
-        rpy_files = main_rpy + a.extra_files
+            a._index_assets()
+            main_rpy, tl_rpy = a._get_rpy_files()
+            rpy_files = main_rpy + a.extra_files
 
-        old_manifest = a.cache_manager.load_manifest() if not a.fix else None
-        cached_files = old_manifest.files if old_manifest else {}
+            old_manifest = a.cache_manager.load_manifest() if not a.fix else None
+            cached_files = old_manifest.files if old_manifest else {}
 
-        file_hashes, stage1_diags_map = a._collect_all_symbols(rpy_files, cached_files, quiet)
+            file_hashes, stage1_diags_map = a._collect_all_symbols(rpy_files, cached_files, quiet)
 
-        a._rebuild_aggregates()
+            a._rebuild_aggregates()
 
-        current_global_hash = a.cache_manager.compute_combined_hash(a)
-        is_global_unchanged = (
-            old_manifest is not None and old_manifest.global_symbol_hash == current_global_hash
-        )
+            current_global_hash = a.cache_manager.compute_combined_hash(a)
+            is_global_unchanged = (
+                old_manifest is not None and old_manifest.global_symbol_hash == current_global_hash
+            )
 
-        new_cached_entries = self._analyze_all_files(
-            rpy_files, cached_files, file_hashes, stage1_diags_map, is_global_unchanged, quiet
-        )
+            new_cached_entries = self._analyze_all_files(
+                rpy_files, cached_files, file_hashes, stage1_diags_map, is_global_unchanged, quiet
+            )
 
-        self._finalize_results(tl_rpy, new_cached_entries, current_global_hash)
+            self._finalize_results(tl_rpy, new_cached_entries, current_global_hash)
 
-        return AnalysisResult(
-            diagnostics=a.diagnostics,
-            file_count=len(rpy_files) + len(tl_rpy),
-            total_lines=a.total_lines,
-            fixed_count=a.fixed_count,
-            fixable_count=a.fixable_count,
-            failed_writes=list(a.failed_writes),
-        )
+            return AnalysisResult(
+                diagnostics=a.diagnostics,
+                file_count=len(rpy_files) + len(tl_rpy),
+                total_lines=a.total_lines,
+                fixed_count=a.fixed_count,
+                fixable_count=a.fixable_count,
+                failed_writes=list(a.failed_writes),
+            )
+        finally:
+            # Clean up _dry_run_callback (0.9.4): if run() raised an
+            # exception (e.g. _analyze_all_files or _finalize_results
+            # failed), the callback would stay set — a subsequent run()
+            # without the callback would still behave as dry-run (files
+            # not written to disk). try/finally guarantees cleanup.
+            self._dry_run_callback = None
 
     def _analyze_all_files(
         self,

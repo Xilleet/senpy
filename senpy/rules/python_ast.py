@@ -657,6 +657,29 @@ class PythonAstChecker:
 
         except SyntaxError as e:
             _logger.debug("check_python_ast: ast.parse failed: %s", e)
+            # Retry for bare triple-quoted string openers (0.9.4):
+            # ``_get_logical_line`` does not join lines when the ``$``
+            # statement opens a triple-quoted string without brackets or
+            # backslash continuation (``$ x = """<newline>..."""``). The
+            # single-line ``py_code`` (``x = """``) fails ast.parse with
+            # "unterminated triple-quoted string". We retry by joining
+            # subsequent lines until the triple-quote closes, then
+            # re-parse. If the retry succeeds, the code is valid Python
+            # and RPY110 is suppressed.
+            if (
+                lines
+                and e.msg
+                and ("triple" in e.msg.lower() or "string" in e.msg.lower() or "EOL" in e.msg)
+            ):
+                retry_code = self._retry_join_triple_string(py_code, start_line, lines)
+                if retry_code is not None:
+                    try:
+                        parse_python_silent(retry_code)
+                        # Retry succeeded — the code is valid multi-line
+                        # Python. Suppress RPY110.
+                        return
+                    except SyntaxError:
+                        pass  # Retry also failed — fall through to RPY110
             # Emit RPY110: report Python syntax errors in $-statements and
             # init python blocks instead of silently swallowing them.
             # Ren'Py would crash with a traceback at this line — Senpy
@@ -1343,6 +1366,35 @@ class PythonAstChecker:
             if handler.name:
                 h_scope.add(handler.name)
             self._walk_python_nodes(handler.body, file_path, start_line, noqa_map, lines, h_scope)
+
+    def _retry_join_triple_string(
+        self, py_code: str, start_line: int, lines: list[str]
+    ) -> str | None:
+        """Try to join subsequent lines until a triple-quoted string closes.
+
+        Called from ``check_python_ast`` when ``ast.parse`` fails with a
+        string-related SyntaxError on a single-line ``py_code``. The
+        ``$``-statement may have opened a triple-quoted string without
+        brackets or backslash, so ``_get_logical_line`` returned only the
+        first physical line. This helper joins subsequent lines from the
+        file until the triple-quote count is even (string closed), then
+        returns the combined code. Returns ``None`` if the string never
+        closes within a reasonable lookahead.
+        """
+        # start_line is 1-based; lines is 0-based.
+        idx = start_line - 1
+        if idx < 0 or idx >= len(lines):
+            return None
+        combined = py_code
+        max_lookahead = 50
+        for i in range(idx + 1, min(idx + 1 + max_lookahead, len(lines))):
+            combined += "\n" + lines[i].rstrip("\r\n")
+            # Count triple-quote markers — if even, the string is closed.
+            if combined.count('"""') % 2 == 0 and combined.count("'''") % 2 == 0:
+                return combined
+        # String never closed within lookahead — return None to fall
+        # through to the normal RPY110 diagnostic.
+        return None
 
     def _walk_python_nodes(
         self,

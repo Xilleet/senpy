@@ -68,11 +68,7 @@ _WHITELIST_PATHS = [
     "senpy-vscode/package-lock.json",  # auto-generated, contains versions
     "senpy.sarif",  # auto-generated SARIF report
     "scripts/clean_internal_ids.py",  # this script — describes IDs as objects
-    "tests/core/test_clean_internal_ids.py",  # this test — describes IDs as objects
-    "tests/integration/test_no_russian_comments.py",  # CLEAN-2 guard — references CLEAN-1 and CLEAN-2
-    "tests/integration/test_ruff_clean.py",  # CI-1 test — describes IDs in comments
-    "tests/rules/test_fix_cluster_0_9_4.py",  # 0.9.4 fix-corruption cluster — references FIX-61/65/66 in docstrings
-    "tests/formats/test_fix_79_html_xss.py",  # 0.9.4 security cluster — references FIX-79/85/89 in docstrings
+    "tests/**",
     ".pre-commit-config.yaml",  # CI-8 config — references CLEAN-1 hook
     ".github/workflows/ci.yml",  # CI workflow — references CI-1, QUA-7, etc. in comments
     ".github/PULL_REQUEST_TEMPLATE.md",  # meta-doc about ID format itself

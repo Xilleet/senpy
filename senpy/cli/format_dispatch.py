@@ -124,7 +124,7 @@ def _process_files(
     for f in files:
         try:
             original = f.read_text(encoding="utf-8")
-        except OSError as e:
+        except (OSError, UnicodeDecodeError) as e:
             console.print(f"[red]Error reading {f}: {e}[/red]")
             continue
 
