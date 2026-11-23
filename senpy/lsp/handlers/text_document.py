@@ -85,7 +85,14 @@ def did_close(ls, params: lsp.DidCloseTextDocumentParams) -> None:
     # functions, not state.
     lsp_server = server_mod._lsp_server
     if lsp_server.active_analyzer is not None:
-        norm_file = server_mod._normalize_path(server_mod._uri_to_path(uri))
+        # Pass _current_workspace_root for containment check (0.9.4):
+        # defense-in-depth against path traversal via malicious URIs.
+        try:
+            norm_file = server_mod._normalize_path(
+                server_mod._uri_to_path(uri, server_mod._current_workspace_root)
+            )
+        except server_mod.SecurityError:
+            return
         with lsp_server.rw_lock.write_lock():
             # Re-check inside the lock: active_analyzer could have been
             # swapped out by run_full_project_diagnostics between the

@@ -229,6 +229,14 @@ def _clean_lsp_state_after_test():
             ):
                 snap[_k] = {}
             snap["images"] = set()
+        # Reset _current_workspace_root so that the next test's handlers
+        # do not inherit a stale workspace root from the previous test.
+        # Without this, the containment check (passing
+        # _current_workspace_root to _uri_to_path) rejects URIs from
+        # the new test's tmp_path because they are outside the previous
+        # test's workspace.
+        if hasattr(server_mod, "_current_workspace_root"):
+            server_mod._current_workspace_root = None
     except ImportError:
         # senpy.lsp.server ещё не импортирован этим тестом — ничего не делаем
         pass

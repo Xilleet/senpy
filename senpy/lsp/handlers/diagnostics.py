@@ -49,7 +49,14 @@ def code_action(ls: LanguageServer, params: lsp.CodeActionParams) -> list[lsp.Co
         # like everywhere else. Previously this used os.path.normcase()
         # without abspath, so lookups missed and the basename-fallback fired,
         # which in multi-module projects could pick a QuickFix from the wrong file.
-        norm_path = server_mod._normalize_path(server_mod._uri_to_path(uri))
+        # Pass _current_workspace_root for containment check (0.9.4):
+        # defense-in-depth against path traversal via malicious URIs.
+        try:
+            norm_path = server_mod._normalize_path(
+                server_mod._uri_to_path(uri, server_mod._current_workspace_root)
+            )
+        except server_mod.SecurityError:
+            return actions
 
         diags_for_file = lsp_server.latest_diagnostics_by_path.get(norm_path)
         # P0-6: basename-fallback REMOVED. If diagnostics for the file are not found

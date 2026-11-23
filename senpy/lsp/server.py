@@ -604,7 +604,20 @@ def run_full_project_diagnostics(ls: LanguageServer, trigger_uri: str, gen: int 
         # case fall back to the workspace root path; if that's also
         # missing, log and return silently — there is nothing to scan.
         if trigger_uri:
-            file_path = _uri_to_path(trigger_uri)
+            # Pass _current_workspace_root for containment check (0.9.4):
+            # if the workspace root is already established, a malicious
+            # trigger_uri like file:///etc/passwd is rejected by
+            # _uri_to_path's SecurityError before it can override the
+            # workspace root via _get_workspace_root's dirname fallback.
+            try:
+                file_path = _uri_to_path(trigger_uri, _current_workspace_root)
+            except SecurityError:
+                _logger.warning(
+                    "run_full_project_diagnostics: trigger_uri %r "
+                    "rejected by workspace containment check — skipping scan",
+                    trigger_uri,
+                )
+                return
             project_root = _get_workspace_root(ls, file_path)
         else:
             try:
@@ -691,7 +704,19 @@ def run_single_file_diagnostics(ls: LanguageServer, uri: str, content: str, gen:
             if latest_gen != gen:
                 return
 
-        file_path = _uri_to_path(uri)
+        # Pass _current_workspace_root for containment check (0.9.4):
+        # run_single_file_diagnostics runs AFTER init, so _current_workspace_root
+        # is known. A malicious did_change with file:///etc/passwd is rejected
+        # here before it reaches analyze_file_only.
+        try:
+            file_path = _uri_to_path(uri, _current_workspace_root)
+        except SecurityError:
+            _logger.warning(
+                "run_single_file_diagnostics: uri %r rejected by "
+                "workspace containment check — skipping analysis",
+                uri,
+            )
+            return
         norm_file = _normalize_path(file_path)  # P0-6: unified normalization
 
         _active_analyzer.in_memory_files[norm_file] = content

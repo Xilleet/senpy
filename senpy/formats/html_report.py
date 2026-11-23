@@ -264,6 +264,13 @@ def generate_html_report(
             safe_rule_code = html.escape(diag.code or "")
             safe_severity = html.escape(diag.severity or "")
             file_name = html.escape(os.path.basename(diag.file_path))
+            # ``diag.line_number`` is typed as ``int``, but Python does not
+            # enforce type hints at runtime. A malicious plugin rule can pass
+            # ``Diagnostic(line_number="<script>alert(1)</script>")`` — the
+            # string flows through to the browser without escaping. Every
+            # other user-influenced field is escaped above; ``line_number``
+            # was the only one missed. Coerce to ``str`` and escape.
+            safe_line_number = html.escape(str(diag.line_number))
             # The CSS variable lookup ``var(--{severity})`` uses the
             # unescaped severity as a token name (CSS identifiers cannot
             # contain quotes or brackets), so we use the escaped form
@@ -280,10 +287,10 @@ def generate_html_report(
             <div class="diag-card {safe_severity}">
                 <div class="diag-header">
                     <span class="diag-rule" style="color: var(--{safe_css_severity})">{safe_rule_code} ({safe_severity})</span>
-                    <span class="diag-loc">{file_name}:{diag.line_number}</span>
+                    <span class="diag-loc">{file_name}:{safe_line_number}</span>
                 </div>
                 <div class="diag-msg">{safe_msg}</div>
-                <div class="code-snippet">{diag.line_number} | {safe_code}</div>
+                <div class="code-snippet">{safe_line_number} | {safe_code}</div>
             </div>
             """
             diags_html_parts.append(card)

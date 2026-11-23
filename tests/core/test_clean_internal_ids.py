@@ -59,6 +59,7 @@ _WHITELIST_PATHS = [
     "tests/integration/test_no_russian_comments.py",
     "tests/integration/test_ruff_clean.py",
     "tests/rules/test_fix_cluster_0_9_4.py",  # 0.9.4 fix-corruption cluster — references FIX-61/65/66 in docstrings
+    "tests/formats/test_fix_79_html_xss.py",  # 0.9.4 security cluster — references FIX-79/85/89 in docstrings
     ".pre-commit-config.yaml",
     ".github/workflows/ci.yml",
     ".github/PULL_REQUEST_TEMPLATE.md",

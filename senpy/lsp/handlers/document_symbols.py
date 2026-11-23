@@ -32,7 +32,13 @@ def document_symbols(
         return []
 
     uri = params.text_document.uri
-    file_path = server_mod._uri_to_path(uri)
+    # Pass _current_workspace_root for containment check (0.9.4):
+    # defense-in-depth against path traversal via malicious URIs. If the
+    # URI is outside the workspace, return [] — do not crash the handler.
+    try:
+        file_path = server_mod._uri_to_path(uri, server_mod._current_workspace_root)
+    except server_mod.SecurityError:
+        return []
     norm_path = server_mod._normalize_path(file_path)  # P0-6: unified normalization
 
     # Read the scope from the analyzer's file_scopes. If the scope is
