@@ -7,10 +7,25 @@
 # Output: https://xilleet.github.io/senpy/
 #
 # The site is built with MkDocs Material (same as Ruff, FastAPI, Pydantic,
-# Typer) and published to the gh-pages branch. The branch is force-pushed
-# on every successful build, so it only ever contains the latest site.
+# Typer) and published directly to GitHub Pages via the official
+# actions/upload-pages-artifact + actions/deploy-pages pair.
 #
-# Permissions: contents:write is required for the gh-pages push.
+# Single-job design (0.9.3 hotfix): the original 2-job design (build →
+# upload-artifact → download-artifact → upload-pages-artifact → deploy)
+# failed intermittently with "No artifacts named 'github-pages' were
+# found for this workflow run" — see actions/deploy-pages#305 and the
+# Oct 2026 intermittent-lookup thread. The cross-job artifact dance
+# also required actions/upload-artifact@v7 + actions/download-artifact@v8
+# to be in sync (download-artifact@v8 is not a stable release on
+# github.com — latest stable is v4 as of Oct 2026).
+#
+# Folding build + deploy into one job eliminates both the version
+# mismatch and the cross-job artifact lookup race: the Pages artifact
+# (`github-pages`) is produced and consumed in the same workflow run,
+# same job, with no intermediate `senpy-docs-site` transfer.
+#
+# Permissions: pages:write + id-token:write are required by
+# actions/deploy-pages (the official GitHub Pages deploy action).
 
 name: Build & deploy docs
 
@@ -32,14 +47,17 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read   # read the repo to build docs (no gh-pages branch push — Pages deploys via the API)
+  pages: write     # deploy-pages needs this to publish the Pages site
+  id-token: write  # deploy-pages uses OIDC for authentication
 
 jobs:
-  build:
-    name: Build MkDocs site
+  build-and-deploy:
+    name: Build MkDocs site + deploy to GitHub Pages
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -58,33 +76,20 @@ jobs:
           pip install -r requirements-docs.txt
 
       - name: Build site
+        # --strict aborts on any broken link / missing nav entry / orphan
+        # page. If this step fails, the deploy steps below do not run —
+        # no partial site is ever published.
         run: mkdocs build --strict
 
-      - name: Upload site artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: senpy-docs-site
-          path: site/
-          retention-days: 7
-
-  deploy:
-    name: Deploy to GitHub Pages
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Download site artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: senpy-docs-site
-          path: site/
-
       - name: Configure GitHub Pages
+        # Sets the Pages metadata (page_url output for the environment
+        # url field above). Required before upload-pages-artifact.
         uses: actions/configure-pages@v6
 
       - name: Upload Pages artifact
+        # Bundles site/ into the canonical `github-pages` artifact that
+        # deploy-pages@v5 expects. The artifact lives in the current
+        # workflow run — same job, no cross-job transfer.
         uses: actions/upload-pages-artifact@v5
         with:
           path: site/
