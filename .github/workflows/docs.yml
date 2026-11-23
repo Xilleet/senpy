@@ -109,12 +109,17 @@ jobs:
         # `concurrency: cancel-in-progress: true` aborts a previous run
         # mid-upload, the partial `github-pages` artifact can linger in
         # storage and cause `deploy-pages` to see "Artifact count is 2"
-        # on the next run. This step enumerates artifacts from THIS
-        # workflow (not just this run — listWorkflowRunArtifacts does
-        # not include siblings, but listArtifacts for the repo does)
-        # and deletes any `github-pages` ones that do not belong to the
-        # current run_id. Safe to run before upload: there is nothing
-        # named `github-pages` yet in this run.
+        # on the next run. This step enumerates ALL artifacts in the
+        # repo via `listArtifactsForRepo` and deletes any `github-pages`
+        # ones that do not belong to the current `context.runId`. Safe
+        # to run before upload: there is nothing named `github-pages`
+        # in the current run yet.
+        #
+        # Octokit REST method name: `listArtifactsForRepo` (NOT
+        # `listArtifacts` — that method does not exist; verified
+        # against octokit/plugin-rest-endpoint-methods.js docs and
+        # multiple production workflows e.g. esp-box, actions/upload-
+        # artifact#5).
         uses: actions/github-script@v7
         with:
           script: |
@@ -123,13 +128,13 @@ jobs:
             const currentRunId = context.runId;
 
             // Page through ALL artifacts in the repo (recent first).
-            // listArtifacts for the repo returns artifacts across all
-            // workflow runs — we filter to `github-pages` ones that are
-            // NOT from the current run_id.
+            // listArtifactsForRepo returns artifacts across all workflow
+            // runs — we filter to `github-pages` ones that are NOT from
+            // the current run_id.
             let page = 1;
             let deleted = 0;
             while (true) {
-              const resp = await github.rest.actions.listArtifacts({
+              const resp = await github.rest.actions.listArtifactsForRepo({
                 owner,
                 repo,
                 per_page: 100,
