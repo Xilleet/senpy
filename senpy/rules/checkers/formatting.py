@@ -8,6 +8,7 @@ from senpy.core.constants import (
 from senpy.core.models import Diagnostic
 from senpy.core.scope import ScopeStack
 from senpy.rules.base import BaseChecker
+from senpy.text_utils import strip_string_literals
 
 
 class FormattingChecker(BaseChecker):
@@ -60,7 +61,25 @@ class FormattingChecker(BaseChecker):
                 )
 
         # RPY002: Curly/typographic quotes in code
-        if any(q in clean_line for q in SMART_QUOTES) and (
+        #
+        # String-literal masking: the detection and the
+        # fix must only consider smart quotes that live OUTSIDE string
+        # literals. A line like ``$ greeting = "He said «hello»"`` is
+        # valid Python — the smart quotes are string content, not a
+        # quoting bug. Without masking, RPY002 fired on this line and
+        # ``--fix`` replaced ``«``/``»`` with ``"`` producing
+        # ``$ greeting = "He said "hello""`` — a Python SyntaxError.
+        #
+        # ``masked`` is the line with string-literal contents replaced
+        # by spaces (column positions preserved). Smart quotes inside a
+        # literal are spaces in ``masked`` and so invisible to the
+        # detection check. The fix replacement is built character-by-
+        # character: when a smart quote is at position ``i`` and
+        # ``masked[i]`` is the same character (i.e. the quote is
+        # outside a string literal), it is replaced; otherwise the
+        # original character is kept.
+        masked = strip_string_literals(clean_line)
+        if any(q in masked for q in SMART_QUOTES) and (
             stripped.startswith(("$", "if ", "elif ", "default ", "define "))
             or (
                 scope_stack.current_screen_name() is not None
@@ -69,18 +88,28 @@ class FormattingChecker(BaseChecker):
         ):
             self.analyzer.fixable_count += 1
             if self.analyzer.fix:
-                fixed_l = new_raw_line
-                for sq, aq in SMART_QUOTES.items():
-                    fixed_l = fixed_l.replace(sq, aq)
+                # Build the fixed line character-by-character: replace
+                # smart quotes only where ``masked`` confirms they are
+                # outside a string literal. Smart quotes inside a
+                # literal are spaces in ``masked`` and so survive intact.
+                masked_raw = strip_string_literals(new_raw_line)
+                fixed_chars = []
+                for i, c in enumerate(new_raw_line):
+                    if c in SMART_QUOTES and i < len(masked_raw) and masked_raw[i] == c:
+                        fixed_chars.append(SMART_QUOTES[c])
+                    else:
+                        fixed_chars.append(c)
+                fixed_l = "".join(fixed_chars)
                 lines[idx] = fixed_l
                 new_raw_line = fixed_l
                 file_modified = True
                 self.analyzer.fixed_count += 1
             else:
-                # Replacement is the entire fixed line (smart quotes replaced),
-                # WITHOUT the trailing newline — LSP editors manage line
-                # endings separately, and including `\n` here would create
-                # a spurious empty line after the fix.
+                # Replacement is the entire fixed line (smart quotes
+                # outside string literals replaced), WITHOUT the trailing
+                # newline — LSP editors manage line endings separately,
+                # and including `\n` here would create a spurious empty
+                # line after the fix.
                 # Range must cover the entire line too — otherwise the LSP
                 # handler falls back to lsp_diag.range (typically
                 # `[indent, end_of_line)`) and the indent ends up duplicated:
@@ -88,7 +117,17 @@ class FormattingChecker(BaseChecker):
                 # the range, then prepends the indent included in the
                 # replacement.
                 line_no_newline = new_raw_line.rstrip("\r\n")
-                replacement_line = "".join(SMART_QUOTES.get(c, c) for c in line_no_newline)
+                masked_no_newline = strip_string_literals(line_no_newline)
+                replacement_line = "".join(
+                    SMART_QUOTES.get(c, c)
+                    if (
+                        c in SMART_QUOTES
+                        and i < len(masked_no_newline)
+                        and masked_no_newline[i] == c
+                    )
+                    else c
+                    for i, c in enumerate(line_no_newline)
+                )
                 line_utf16_len = len(line_no_newline.encode("utf-16-le")) // 2
                 self.analyzer._add_diagnostic(
                     Diagnostic(

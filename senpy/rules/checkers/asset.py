@@ -63,11 +63,26 @@ def _split_at_clause(at_clause: str) -> list[str]:
 
     Handles parenthesized expressions (e.g. `at center, ease(1.0, 2.0)`)
     by tracking paren depth — commas inside parens don't split.
+
+    String-literal masking: paren depth is tracked on a
+    masked copy of ``at_clause`` where string-literal contents are
+    replaced with spaces. A ``)`` inside a string literal (e.g.
+    ``at center, ease("test)", 1.0)``) previously closed the paren
+    early, so the comma after the string (inside the ``ease()`` call)
+    wrongly split the clause. With masking, parens inside string
+    literals are invisible to the depth tracker.
+
+    The actual characters appended to ``curr`` come from the original
+    ``at_clause`` (not the masked copy) so string contents survive
+    intact in the returned parts.
     """
+    from senpy.text_utils import strip_string_literals
+
+    masked = strip_string_literals(at_clause)
     parts: list[str] = []
     curr: list[str] = []
     paren_depth = 0
-    for ch in at_clause:
+    for i, ch in enumerate(masked):
         if ch == "(":
             paren_depth += 1
         elif ch == ")":
@@ -76,7 +91,7 @@ def _split_at_clause(at_clause: str) -> list[str]:
             parts.append("".join(curr).strip())
             curr = []
             continue
-        curr.append(ch)
+        curr.append(at_clause[i])
     if curr:
         parts.append("".join(curr).strip())
     return parts

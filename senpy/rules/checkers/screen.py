@@ -303,13 +303,20 @@ class ScreenChecker(BaseChecker):
                 # whole, not just `action myfunc(`. Without this, the LSP
                 # TextEdit replaces only the prefix and leaves `arg1, arg2)`
                 # dangling after the replacement — broken Ren'Py screen code.
+                #
+                # Paren depth is tracked on the masked copy:
+                # a `)` inside a string literal (e.g. `action myfunc(")")`)
+                # previously closed the paren early, so the QuickFix range
+                # ended inside the string and the fix_replacement dropped
+                # the closing args. With masking, parens inside string
+                # literals are invisible to the depth tracker.
                 paren_open_pos = m_act.end() - 1  # index of '(' in stripped
                 depth = 1
                 i = paren_open_pos + 1
-                while i < len(stripped) and depth > 0:
-                    if stripped[i] == "(":
+                while i < len(masked) and depth > 0:
+                    if masked[i] == "(":
                         depth += 1
-                    elif stripped[i] == ")":
+                    elif masked[i] == ")":
                         depth -= 1
                     i += 1
                 if depth == 0:
