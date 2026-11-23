@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Navigation
 
-- **Current (0.9.x)**: [0.9.2](#092) | [0.9.1](#091) | [0.9.0](#090) |
+- **Current (0.9.x)**: [0.9.3](#093) | [0.9.2](#092) | [0.9.1](#091) | [0.9.0](#090) |
 
 - **0.8.x**: [0.8.4](#084) | [0.8.3](#083) | [0.8.2](#082) | [0.8.1](#081) | [0.8.0](#080)
 
@@ -22,6 +22,231 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.5.x**: [0.5.8](#058) | [0.5.7](#057) | [0.5.6](#056) | [0.5.5](#055) | [0.5.4 ⚠️](#054) | [0.5.3](#053) | [0.5.2](#052) | [0.5.1](#051) | [0.5.0](#050)
 
 - **0.4.x**: [0.4.8](#048) | [0.4.7](#047)
+
+---
+
+<a id="093"></a>
+
+## [0.9.3] — Corpus infrastructure finalisation + catch-up
+
+A patch release closing the **corpus FP-pipeline** as a stable,
+contributor-ready surface — and catching up on FIX tasks that landed
+in master after `v0.9.2` (and a few that were already in `v0.9.2` but
+absent from its changelog).
+
+The corpus GREEN-fix work is deferred to
+**1.1.0** — mass rule-editing violates the freeze, and triaging FPs on
+real VN code makes more sense once the rule surface is unlocked.
+
+### Corpus infrastructure
+
+The corpus pipeline that catches false positives / false negatives on
+real OSS VN code is now a self-contained, contributor-ready surface.
+
+- **`scripts/collect_corpus.py`** — shallow-clones 15 OSS VN projects
+  (`tests/_corpus/<slug>/`, gitignored — VN bytes never enter the repo).
+  Catalog in `tests/_corpus_manifest.json` (15 entries, pinned to
+  specific commit SHAs, SPDX license metadata). Idempotent re-clone via
+  `--force`, single-project via `--only <slug>`, plan-only via `--dry-run`.
+  Live git progress via `Popen + select` non-blocking stderr.
+- **`scripts/run_corpus.py`** — runs `SenpyAnalyzer.run()` on each
+  project, writes per-project JSON to `tests/_corpus/<slug>/senpy_results.json`
+  (gitignored), optionally regenerates `tests/_corpus_baseline.json`
+  via `--update-baseline`. Without `--update-baseline`, exits non-zero
+  on any drift from the committed baseline — this is what the weekly CI
+  job catches.
+- **`scripts/triage_corpus.py`** — interactive + CSV triage. Labels each
+  diagnostic as `tp` / `fp` / `maybe_fp` / `skip`, writes anonymised
+  state to `tests/_corpus_triage.json` (committed). `--export-csv` /
+  `--import-csv` for bulk offline labelling in a spreadsheet;
+  `--slug <name>` for per-project interactive prompt with inline source
+  context + `--by-rule` grouping + RULES.md links.
+- **`tests/rules/test_corpus_fp.py`** — RED pytest, auto-discovered from
+  `tests/_corpus_triage.json` (every `status==fp` entry becomes a
+  parametrised case). Skip-if-`tests/_corpus/`-absent — CI machines
+  without the corpus still pass the suite.
+- **`docs/corpus-workflow.md`** — comprehensive end-to-end contributor
+  guide: ten commands from a fresh clone to a closed FP, TP/FP decision
+  guide, per-step architecture diagrams, license hygiene rules.
+- **CONTRIBUTING.md** — added a "Corpus FP pipeline" section linking to
+  `docs/corpus-workflow.md` with the four-command quick start.
+- **`scripts/README.md`** — bilingual (EN/RU) reference for every script
+  in `scripts/`, including the three corpus scripts.
+- **`.github/workflows/corpus-regression.yml`** — weekly cron
+  (Monday 06:00 UTC) + `workflow_dispatch`. Clones the corpus, runs
+  `run_corpus.py` (drift check vs baseline, non-blocking — reported
+  in summary, not gated), runs `tests/rules/test_corpus_fp.py` (RED
+  state expected pre-1.0 — reported, not gated), uploads a summary
+  artifact + JUnit XML with 28-day retention.
+- **Corpus-count badge** — `_build_corpus_badge()` in
+  `scripts/update_badges.py` reads `tests/_corpus_manifest.json` +
+  `tests/_corpus_triage.json`, writes `.github/badges/corpus.json`
+  (pushed to the existing GitHub Gist by `push_badges_to_gist.py`).
+  Color signals pipeline health, not test pass/fail: `red` = no corpus,
+  `yellow` = projects but zero FP labelled (unstaffed), `brightgreen` =
+  at least one FP labelled (pipeline alive). Badge added to README.md +
+  README_ru.md between Speed and CI Status.
+
+### Fixes
+
+- **Formatter** — landed in `b08c594` (part
+  of `v0.9.2`:
+  - `# senpy: format off` / `format on` directives are now
+    matched only in the comment portion of a line via
+    `_find_comment_start` — a dialogue line `"# senpy: format off"`
+    no longer silently skips the rest of the file.
+  - `_OP_PATTERNS` right-boundary admits `-`/`+`/`~`, so
+    `x=-5` normalises to `x = -5`, same for `x=+y`, `x +=-1`, `x=~mask`.
+    Unary ops are still filtered by the left boundary (preceded by
+    another operator, not a word/bracket).
+  - `_split_by_strings` now splits on `#` comments — once
+    a real `#` (outside a string) is reached, the rest of the line is
+    a single preserved segment. Comments no longer get reformatted
+    inside by op/comma/colon/string-consistency rules.
+- **PyInstaller spec fix**  —
+  `senpy.spec` now uses `collect_all('senpy')` so the PyInstaller bundle
+  includes `renpy_api_generated.json` + dynamically-imported submodules
+  (`senpy.plugins.*`, `senpy.formatter.rules.*`). The loader switched to
+  `importlib.resources` to find the JSON inside the frozen binary.
+  Without this, the Windows standalone `senpy.exe` shipped in 0.9.2
+  crashed with `FileNotFoundError` on `renpy_api_generated.json`.
+- **Internal-IDs cleanup** — scrubbed
+  stale task-tracker IDs from user-facing files (docstrings, comments,
+  error messages).
+
+### State / type inference cluster (fixes):
+
+- `bool` arithmetic now recognised as numeric in
+  `_infer_binop` / `_check_binop_incompatible`. `True + 1`, `True * 3`,
+  `bool += int` no longer trigger RPY108 (`bool` is a subtype of `int`).
+- `_check_augassign_type_conflict` previously flagged
+  `dict += dict` and `bool += int` as type conflicts — both are valid
+  (`dict.__iadd__` is `update`, `bool + int == int`). Fixed.
+- `dict.keys()` / `dict.values()` / `dict.items()` no
+  longer typed as `list`. Previously `$ ks = d.keys(); $ ks.append(x)`
+  was considered valid (RPY108 silent) — but `dict_keys` has no
+  `append()`, so it crashes at runtime. Now returns unknown type so
+  RPY108 treats it conservatively.
+- `_check_sub_compat` was an unconditional "incompatible"
+  stub — `bool - bool` and `bool - int` (both valid) gave FP RPY108.
+  After FIX-13 normalises `bool → int`, the stub is correct for
+  numeric pairs.
+- `AnalysisPipeline.analyze_file_only` (the LSP fast-path)
+  was leaking global state — `total_lines`, `fixed_count`,
+  `fixable_count`, `failed_writes` accumulated across keystrokes.
+  Now snapshots + restores them in `try/finally`. The LSP-stale-label
+  edge case is documented with a post-1.0 sub-analyzer TODO.
+
+**Rules cluster:**
+
+- Two independent RPY204 generators (`_check_screen_action_targets`
+  with severity ERROR + fix, `_check_screen_call_targets` with different
+  severity and no fix) unified into one diagnostic-builder.
+- `difflib.get_close_matches` cutoff was hardcoded as `0.6`
+  in 9 places and `0.7` in 1 place. Unified via `SUGGESTION_CUTOFF`
+  constant + `SUGGESTION_CUTOFF_TAGS = 0.7` for RPY502 text-tag matching.
+- RPY303 / RPY309 label-name normalisation diverged across
+  three sites (`strip().lower()` / `lower()` / `lower()` with separate
+  `startswith("_")` check). Single `_normalize_label(name)` helper.
+- `RE_TERMINATOR` docstring listed `StateChecker` as a
+  consumer, but state.py uses `RE_BRANCH_TERMINATOR` via
+  `is_branch_terminator_line`. Docstring corrected.
+- `_check_python_block` had an inline regex
+  `r"\brenpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\s*\("`
+  applied to the full `python:` block body **without** string-literal
+  masking — `$ print("renpy.jump(")` gave a false terminator,
+  suppressing real RPY401. Now masked via `strip_string_literals`.
+- Four screen.py diagnostics hardcoded severity (`ERROR`,
+  `WARNING`, `ERROR`, `ERROR`) instead of going through `RULE_SEVERITY`.
+  Now routed through the lookup so `[tool.senpy.severity]` overrides
+  take effect.
+
+**LSP cluster:**
+
+- `textDocument/references` did not filter occurrences by
+  symbol kind, while `textDocument/rename` did. Find References showed
+  matches in dialogues/comments; Rename left them alone — user saw 12
+  references, hit F2, 7 changed. `_filter_occurrences_by_kind` now
+  applied to references too (with `include_declaration` flag).
+- `_rename_label` used `lbl_content.find(word)` —
+  substring match. In `$ score = score + 1` only the first `score` was
+  renamed. Switched to `re.finditer(rf"\b{re.escape(word)}\b", ...)`.
+- Four LSP handlers (`references`, `rename`,
+  `prepare_rename`, `workspace_symbol`) had triple-quoted strings
+  placed **after** executable statements — they were no-op string
+  expressions, not docstrings (`__doc__` was `None`). Moved to the
+  first statement of each function.
+
+**Config / core / cache cluster:**
+
+- `game/tl/` subtree detection diverged
+  across three sites — `coverage.py:38` took the first `"tl"` in the
+  path (broke on `game/tl/old_backup/tl/russian/file.rpy`),
+  `file_discovery.py:49` treated any `tl` directory anywhere as a
+  translation dir (broke on `mods/tl_old/foo.rpy`),
+  `analysis_pipeline.py:712` had the same bug in the LSP fast-path.
+  Unified via `_find_tl_dir_index()` helper that returns the index of
+  `tl` only when it is a direct child of `game/`.
+- `SenpyConfig` did not validate rule
+  codes in `ignore` / `select` / `extend_select` / `extend_ignore`
+  (a typo `RPY014` was accepted silently) nor severity values in
+  `[tool.senpy.severity]` (`RPY104 = "BLOCKER"` was silent). Added
+  Pydantic `field_validator`s: rule codes get a WARNING if absent
+  from `RULES_DATABASE` (forward-compat for plugin codes), severities
+  must be one of `ERROR` / `WARNING` / `INFO` / `HINT`. `load_config`
+  now logs a WARNING when an explicit `--config /path` is missing
+  (previously silent fallback to defaults).
+- Three silent `except (OSError,
+  UnicodeDecodeError): pass` blocks (in `coverage.py`,
+  `file_collector.py`, `translation.py`) now log at WARNING level —
+  skipped files are observable in `--verbose` output instead of
+  vanishing silently.
+- GitLab Code Quality renderer had a `_SEVERITY_MAP.get(...,
+  "minor")` that silently degraded unknown severities (e.g. lowercase
+  `"error"` from a plugin became `minor`). Now validates explicitly
+  and adds a `critical` mapping for RPY105 / RPY106 (save/rollback
+  corruption is closer to `critical` than `major`).
+- `CacheManager.compute_environment_fingerprint` did not
+  hash `additional_builtins` / `additional_actions` from `senpy.toml`
+  — changing `additional_builtins = ["iap"]` left Tier-2 cache valid,
+  so RPY202 still fired on `iap.foo` from a stale cache. Both fields
+  now folded into the environment hash (same pattern as `enable_plugins`).
+
+**Stability / dev-experience:**
+
+- **`ast.parse` SyntaxWarning suppression** — VN Python
+  strings (dialogue, `$`-blocks) sometimes contain invalid Python
+  syntax that produces `SyntaxWarning` on Python 3.12+. The warning
+  was being printed to stderr in the middle of pytest output.
+  `parse_python_silent` now suppresses `SyntaxWarning` alongside the
+  existing `SyntaxError` catch.
+- **mypy `@overload` for `parse_python_silent`** — adds an
+  `@overload` signature so mypy can narrow `str | None` return type
+  based on the `return_str: bool` argument. Removes a `# type: ignore`
+  in `python_ast.py`.
+- **LSP stale-label edge case documented** — the
+  `analyze_file_only` docstring now explicitly notes the known edge
+  case (a deleted file B leaves ghost labels in the symbol table
+  until the next `did_save` full scan) and records the post-1.0 TODO
+  for a dedicated LSP sub-analyzer instance.
+- **Internal-IDs cleanup follow-up** — corpus docs +
+  whitelist + `red_*.rpy` xfail markers scrubbed of stale internal
+  tracker references.
+
+### Not done (deferred)
+
+- GREEN rule fixes for the 30–60 FP cases the corpus
+  triage is expected to surface — moved to **1.1.0**. Mass rule
+  editing violates feature freeze.
+- `tests/regressions/test_post_090_corpus.py` — moved
+  to 1.1.0 alongside CORPUS-6 (regression tests are meaningless
+  without the fixes).
+- `_split_by_strings` cross-line state for multi-line
+  triple-quoted strings — explicit TODO in code. Targeted for 0.9.5.
+- Python 3.12 compat verification: PEP 695 type
+  parameters, PEP 701 f-string formalisation — verification only,
+  not blocking; Senpy requires Python 3.11+ and `ast.parse` handles
+  the new constructs. Targeted for 0.9.5.
 
 ---
 

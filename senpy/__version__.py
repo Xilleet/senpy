@@ -10,7 +10,7 @@ update it here and everywhere else automatically).
 
 from __future__ import annotations
 
-__version__ = "0.9.2"
+__version__ = "0.9.3"
 
 # Convenient aliases for use in different parts of the codebase
 # (e.g. the LSP server often needs "v0.4.7" with the prefix).

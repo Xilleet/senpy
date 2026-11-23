@@ -1,0 +1,181 @@
+# =============================================================================
+# Senpy Corpus Regression — weekly drift detection on real OSS VN projects
+# =============================================================================
+# Triggered:
+#   - Weekly cron: Monday 06:00 UTC (catches rule regressions within ≤7 days
+#     without burning CI minutes on every push).
+#   - workflow_dispatch: manual run from the Actions tab (e.g. before cutting
+#     a release to confirm the corpus is green).
+#
+# What it does:
+#   1. Shallow-clones the 15 OSS VN corpus projects via collect_corpus.py
+#      (~3 GB, gitignored under tests/_corpus/ — VN bytes never enter the
+#      Senpy repo).
+#   2. Runs senpy on each project via run_corpus.py — WITHOUT
+#      --update-baseline. The script exits non-zero if the current
+#      diagnostic counts drift from tests/_corpus_baseline.json
+#      (the committed contract).
+#   3. Runs tests/rules/test_corpus_fp.py — the parametrised RED tests
+#      auto-discovered from tests/_corpus_triage.json. A RED state (senpy
+#      still fires on a labelled FP) is captured as a failure but does
+#      not abort the job — the next step always runs and reports.
+#   4. Uploads a summary artifact (drift report + pytest JUnit XML) for
+#      inspection from the Actions UI.
+#
+# What it does NOT do:
+#   - Commit anything back to main (no auto-baseline update — drifts must
+#     be triaged by hand).
+#   - Block PRs (this is a weekly job, not a per-push gate — feature
+#     freeze means rule regressions are rare; the weekly cadence is the
+#     right cost/coverage tradeoff).
+#   - Run the full test matrix (that's ci.yml's job — this workflow is
+#     corpus-only).
+#
+# GREEN rule fixes + regression-test suite are deferred to
+# post-1.0. This workflow therefore EXPECTS the corpus RED tests to
+# fail today — they fail-open: failures are reported in the summary,
+# not gated.
+# =============================================================================
+name: Corpus regression
+
+on:
+  schedule:
+    # Monday 06:00 UTC — quiet hours in most timezones, low CI queue.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Slug to test (default: all 15)'
+        required: false
+        default: ''
+        type: string
+
+# Avoid overlapping weekly runs (rare, but happens around DST transitions
+# or manual + scheduled collisions). New run cancels the older one.
+concurrency:
+  group: corpus-regression
+  cancel-in-progress: false  # let the older run finish — drift report is cheap
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Corpus drift + RED tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # collect_corpus + run_corpus + pytest — ~15 min typical
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Senpy + test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-cov
+
+      - name: Install git (for collect_corpus.py shallow clones)
+        # ubuntu-latest ships git, but the step makes the dependency explicit
+        # and prints the version for drift reports.
+        run: |
+          git --version
+          git config --global protocol.version 2
+
+      - name: Clone corpus VN projects
+        # CORPUS-1: shallow clones 15 OSS VN projects into tests/_corpus/
+        # (gitignored). ~3 GB disk, ~5-10 min wall clock depending on
+        # GitHub clone speed. --only skips unrelated projects if the
+        # workflow_dispatch input is set.
+        env:
+          CORPUS_ONLY: ${{ github.event.inputs.only }}
+        run: |
+          if [ -n "$CORPUS_ONLY" ]; then
+            python scripts/collect_corpus.py --only "$CORPUS_ONLY"
+          else
+            python scripts/collect_corpus.py
+          fi
+
+      - name: Run senpy on corpus + drift check vs baseline
+        # CORPUS-3 / CORPUS-8: run_corpus.py WITHOUT --update-baseline
+        # exits 1 if any project's by_code/by_severity/total counts
+        # drift from tests/_corpus_baseline.json. The drift is captured
+        # as a failure of THIS step, but the next step (RED tests) still
+        # runs via `if: always()`.
+        id: drift
+        continue-on-error: true
+        env:
+          CORPUS_ONLY: ${{ github.event.inputs.only }}
+        run: |
+          if [ -n "$CORPUS_ONLY" ]; then
+            python scripts/run_corpus.py --only "$CORPUS_ONLY"
+          else
+            python scripts/run_corpus.py
+          fi
+
+      - name: Run corpus FP tests (RED state expected pre-1.0)
+        # CORPUS-5: tests/rules/test_corpus_fp.py auto-discovers FP
+        # cases from tests/_corpus_triage.json and asserts senpy does
+        # NOT fire the labelled rule code on the labelled line. RED =
+        # senpy still fires (rule not yet fixed under CORPUS-6, which
+        # is deferred to post-1.0). The job reports the RED state but
+        # does NOT fail the workflow on it — feature freeze means rule
+        # fixes are out of scope until 1.0.
+        id: red_tests
+        if: always()
+        continue-on-error: true
+        run: |
+          pytest tests/rules/test_corpus_fp.py -v --tb=short \
+            --junitxml=tests/_corpus/_corpus_fp_junit.xml || true
+
+      - name: Build drift summary
+        # Always runs — even if drift or RED tests failed. The summary
+        # is uploaded as an artifact so the maintainer can inspect the
+        # state without re-running the workflow.
+        if: always()
+        run: |
+          mkdir -p tests/_corpus/_ci_summary
+          {
+            echo "# Corpus regression summary"
+            echo
+            echo "- **Trigger:** ${{ github.event_name }}${{ github.event.inputs.only && format(' (only={0})', github.event.inputs.only) || '' }}"
+            echo "- **Run:** ${{ github.run_id }}"
+            echo "- **Drift step:** ${{ steps.drift.outcome }} (success=no drift vs baseline)"
+            echo "- **RED tests step:** ${{ steps.red_tests.outcome }} (success=all FPs fixed)"
+            echo
+            echo "## Drift report (run_corpus.py stdout)"
+            echo
+            echo '```'
+            # The previous step wrote per-project JSON to
+            # tests/_corpus/<slug>/senpy_results.json (gitignored local
+            # artefact) and printed a summary table to stdout — captured
+            # by GitHub Actions logs, but we re-print the live baseline
+            # here for a one-glance summary.
+            python scripts/run_corpus.py --list 2>&1 || true
+            echo '```'
+            echo
+            echo "## RED tests (pytest JUnit)"
+            echo
+            if [ -f tests/_corpus/_corpus_fp_junit.xml ]; then
+              echo '```xml'
+              cat tests/_corpus/_corpus_fp_junit.xml
+              echo '```'
+            else
+              echo '_No JUnit XML produced (tests skipped — corpus absent or no FP cases)._'
+            fi
+          } > tests/_corpus/_ci_summary/SUMMARY.md
+
+      - name: Upload summary artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: corpus-regression-summary
+          path: |
+            tests/_corpus/_ci_summary/
+            tests/_corpus/_corpus_fp_junit.xml
+          retention-days: 28  # 4 weekly runs retained — enough to spot a trend

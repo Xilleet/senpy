@@ -145,7 +145,7 @@ Whichever channel you chose, the verification is the same:
 
 ```bash
 senpy --version
-# senpy 0.9.2
+# senpy 0.9.3
 
 senpy --rules
 # prints a table of all 53 rules with severity + tags

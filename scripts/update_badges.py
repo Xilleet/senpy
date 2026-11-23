@@ -10,6 +10,7 @@ Badges generated:
   * lsp.json         — LSP handler count (public functions in handlers/)
   * coverage.json    — coverage % from pytest --cov
   * speed.json       — cold/warm analysis speed (generative .rpy benchmark)
+  * corpus.json      — corpus FP-pipeline state (projects / fp / unmarked)
 
 Usage:
     python scripts/update_badges.py            # collect-only tests + static badges
@@ -194,6 +195,61 @@ def _build_lsp_badge() -> dict:
     return _badge("LSP", f"{count} handlers", "purple")
 
 
+def _build_corpus_badge() -> dict:
+    """Build corpus FP-pipeline badge from manifest + triage JSON.
+
+    Reads two committed artefacts (no VN source needed — both are
+    anonymised metadata):
+
+      * ``tests/_corpus_manifest.json`` — catalog of pinned OSS VN projects.
+        Counts non-schema keys (skips ``_comment`` / ``_schema``).
+      * ``tests/_corpus_triage.json`` — per-project TP/FP/maybe-FP/skip/
+        unmarked counts. Sums the ``by_status`` dicts across all slugs.
+
+    Colour policy (signals corpus-pipeline health, not test pass/fail):
+
+      * ``red``         — manifest has 0 projects (corpus not initialised).
+      * ``yellow``      — projects cloned but no FP cases labelled yet
+                         (unmarked > 0 AND fp == 0). Pipeline exists but
+                         is unstaffed.
+      * ``brightgreen`` — at least one FP labelled (pipeline is alive:
+                         someone is triaging). The number may be small —
+                         the signal is "is anyone working on this?" not
+                         "is the corpus fully triaged?".
+    """
+    import json as _json
+
+    manifest_path = REPO_ROOT / "tests" / "_corpus_manifest.json"
+    triage_path = REPO_ROOT / "tests" / "_corpus_triage.json"
+
+    if manifest_path.exists():
+        manifest = _json.loads(manifest_path.read_text(encoding="utf-8"))
+        # Skip the _comment / _schema documentation keys.
+        projects = sum(1 for k in manifest if not k.startswith("_"))
+    else:
+        projects = 0
+
+    fp = 0
+    unmarked = 0
+    if triage_path.exists():
+        triage = _json.loads(triage_path.read_text(encoding="utf-8"))
+        for entry in triage.values():
+            status = entry.get("by_status", {}) if isinstance(entry, dict) else {}
+            fp += status.get("fp", 0)
+            unmarked += status.get("unmarked", 0)
+
+    if projects == 0:
+        color = "red"
+        message = "no corpus"
+    elif fp == 0 and unmarked > 0:
+        color = "yellow"
+        message = f"{projects} VNs, {unmarked} untriaged"
+    else:
+        color = "brightgreen"
+        message = f"{projects} VNs, {fp} FP labelled"
+    return _badge("corpus", message, color)
+
+
 def _build_speed_badge() -> dict:
     """Build speed badge from generative .rpy benchmark.
 
@@ -339,6 +395,7 @@ def main() -> int:
     badges["tests"] = _build_tests_badge(run=do_run)
     badges["rules"] = _build_rules_badge()
     badges["lsp"] = _build_lsp_badge()
+    badges["corpus"] = _build_corpus_badge()
 
     if do_run:
         badges["coverage"] = _build_coverage_badge()
