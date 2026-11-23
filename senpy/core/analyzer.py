@@ -11,6 +11,7 @@ from senpy.core.file_collector import (
     build_noqa_map,
     discover_rpy_files,
     emit_encoding_error,
+    parse_noqa,
     read_file_lines,
 )
 from senpy.core.logging import get_logger
@@ -550,8 +551,6 @@ class SenpyAnalyzer:
         return self._collector._consume_block(lines, start_idx, header_indent)
 
     def _parse_noqa(self, line: str) -> tuple[bool, set[str] | None]:
-        from senpy.core.file_collector import parse_noqa
-
         return parse_noqa(line)
 
     def _scan_python_assets(self, code_lines: list[str] | str) -> None:

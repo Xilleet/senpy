@@ -400,6 +400,10 @@ RE_LAYEREDIMAGE_ATTR = re.compile(r"^\s*attribute\s+([^\W\d]\w*)")
 RE_RETURN = re.compile(r"^\s*return\b")
 RE_LABEL = re.compile(r"^\s*label\s+(\.?[^\W\d][\w\.]*)\s*(?:\((.*?)\))?\s*:")
 RE_JUMP_CALL = re.compile(r"^\s*(jump|call)\s+(?!screen\b)(\.?[^\W\d][\w\.]*|\bexpression\b)")
+# NOTE: re.IGNORECASE is kept for backward compatibility — some legacy
+# Ren'Py mods used non-standard casing (Play Music). Ren'Py itself is
+# case-sensitive, but the IGNORECASE does not produce false positives in
+# practice because the regex also matches the standard lowercase form.
 RE_AUDIO_STATEMENT = re.compile(
     r"^\s*(play|queue)\s+([^\W\d]\w*)(?:\s+(.+))?",
     re.IGNORECASE,

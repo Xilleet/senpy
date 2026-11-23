@@ -71,11 +71,20 @@ class SymbolTable:
         # `declared_symbols` without re-reading the config. Filtered to
         # valid Python identifiers to avoid poisoning the set with
         # typos like `"123"` or `"with space"`.
-        self._additional_builtins: set[str] = {
-            name
-            for name in (additional_builtins or ())
-            if isinstance(name, str) and name.isidentifier()
-        }
+        skipped: list[str] = []
+        self._additional_builtins: set[str] = set()
+        for name in additional_builtins or ():
+            if isinstance(name, str) and name.isidentifier():
+                self._additional_builtins.add(name)
+            else:
+                skipped.append(repr(name))
+        if skipped:
+            from senpy.core.logging import get_logger
+
+            get_logger("symbol_table").warning(
+                "additional_builtins: skipping invalid identifier(s): %s",
+                ", ".join(skipped),
+            )
 
         # Aggregate sets
         self.user_symbols: set[str] = set()

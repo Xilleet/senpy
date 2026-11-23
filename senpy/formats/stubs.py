@@ -82,14 +82,16 @@ def generate_stubs(analyzer: SenpyAnalyzer, out_dir: str = "typings") -> tuple[s
     ]
 
     symbols_count = 0
-    for var in sorted(analyzer.declared_symbols):
+    # Iterate variables directly (0.9.4): previously iterated
+    # declared_symbols which includes labels/screens/transforms/images —
+    # those are not store variables and produced `name: Any` pollution.
+    for var, var_sym in sorted(analyzer.variables.items()):
         if var.startswith("_") or var in ("renpy", "config", "persistent", "gui", "style", "store"):
             continue
         # Skip built-in Python module names
         if var in ("True", "False", "None"):
             continue
 
-        var_sym = analyzer.variables.get(var)
         var_type = var_sym.type_name if var_sym else None
         py_type = type_map.get(var_type or "", "Any")
         store_lines.append(f"{var}: {py_type}")

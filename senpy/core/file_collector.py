@@ -268,7 +268,7 @@ class FileCollector:
             )
 
         inferred_t = infer_expr_type(val_str, known_vars=self.analyzer.variables)
-        is_const = "." not in clean.split("=")[0]
+        is_const = True  # always True here — "." in LHS returned early on line 240
         # is_character: True only for actual Character/DynamicCharacter CALLS
         # (e.g. `define x = Character("Alice")`). Previously this was a loose
         # substring check `"Character" in clean` which matched:
@@ -600,7 +600,7 @@ class FileCollector:
                 name=limg_tag,
                 file_path=file_path,
                 line_number=idx + 1,
-                body="layeredimage",
+                body=clean,
                 is_layered=True,
                 attributes=attrs,
             )

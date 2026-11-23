@@ -211,6 +211,7 @@ def _process_one_match(
         file_path=file_path,
         state=state,
         diagnostics=diagnostics,
+        quote_len=quote_len,
     )
 
     if in_place_replacements:
@@ -237,6 +238,7 @@ def _collect_tag_diagnostics(
     file_path: str,
     state: _TagCheckState,
     diagnostics: list[Diagnostic],
+    quote_len: int = 1,
 ) -> list[tuple[int, int, str]]:
     """Walk all {tag} occurrences in `masked_content`.
 
@@ -288,8 +290,8 @@ def _collect_tag_diagnostics(
             replacement_tag = f"{{/{tag_name}}}"
             in_place_replacements.append((t_start, t_end, replacement_tag))
 
-            raw_tag_start = match.start() + 1 + t_start
-            raw_tag_end = match.start() + 1 + t_end
+            raw_tag_start = match.start() + quote_len + t_start
+            raw_tag_end = match.start() + quote_len + t_end
             start_c = len(raw_line[:raw_tag_start].encode("utf-16-le")) // 2
             end_c = len(raw_line[:raw_tag_end].encode("utf-16-le")) // 2
 

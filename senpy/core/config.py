@@ -69,7 +69,13 @@ class SenpyConfig(BaseModel):
     errors_only: bool = False
     tsundere: bool = False
     unrpyc_path: str | None = None
+    # When None (default), auto-detect from project structure. When True,
+    # suppress RPY504 warnings for intentional image overrides (e.g. mod
+    # assets replacing base game images). When False, always warn.
     allow_image_overrides: bool | None = None
+    # When False, disables both Tier 1 (symbol cache) and Tier 2 (diagnostic
+    # cache). Equivalent to CLI --no-cache, but configurable via TOML.
+    cache: bool = True
     strict: bool = False  # : all rules = ERROR
 
     # Rule filtering

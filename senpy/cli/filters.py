@@ -66,10 +66,12 @@ def load_senpy_ignore(project_path: str) -> set[str]:
                 code = line.strip().upper()
                 if code:
                     codes.add(code)
-    except OSError:
-        # Could not read — silently return an empty set.
-        # DEBUG-level logging is already present in load_config.
-        pass
+    except OSError as e:
+        # Could not read .senpy-ignore — log WARNING so the user knows
+        # their bulk suppression file is not being applied.
+        from senpy.core.logging import get_logger
+
+        get_logger("filters").warning("Cannot read .senpy-ignore: %s", e)
 
     return codes
 

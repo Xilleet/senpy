@@ -256,11 +256,24 @@ class PythonAstChecker:
                     if isinstance(node.target, ast.Name):
                         names[node.target.id] = getattr(node, "lineno", 1)
                 elif (
-                    isinstance(node, ast.Constant)
-                    and isinstance(node.value, str)
-                    and node.value.isidentifier()
+                    isinstance(node, ast.Expr)
+                    and isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Attribute)
+                    and isinstance(node.value.func.value, ast.Name)
+                    and node.value.func.value.id == "renpy"
+                    and node.value.func.attr in ("jump", "call")
+                    and node.value.args
+                    and isinstance(node.value.args[0], ast.Constant)
+                    and isinstance(node.value.args[0].value, str)
+                    and node.value.args[0].value.isidentifier()
                 ):
-                    refs.add(node.value)
+                    # Only collect string constants that are arguments to
+                    # renpy.jump("label") / renpy.call("label") calls —
+                    # not ALL string constants that look like identifiers.
+                    # Without this filter, `$ config.name = "my_game"` would
+                    # add "my_game" to referenced_labels, suppressing RPY303
+                    # for a label named "my_game" that is never jumped to.
+                    refs.add(node.value.args[0].value)
                 # If/For/While/Try/With bodies are conditional — skip.
                 # Their inner assignments are not top-level declarations.
         except SyntaxError as e:

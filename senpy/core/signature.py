@@ -44,7 +44,7 @@ class SignatureInfo:
     """
 
     min_args: int = 0
-    max_args: float = 0.0
+    max_args: int | float = 0  # int for normal cases, float("inf") for varargs
     has_varargs: bool = False
     has_varkwargs: bool = False
     required_names: set[str] = field(default_factory=set)

@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from senpy.cli._console import console
+from senpy.core.constants import IGNORED_DIRS
 from senpy.formatter.core import FormatConfig, Formatter
 
 
@@ -100,7 +101,12 @@ def _collect_rpy_files(paths: list[str]) -> list[Path]:
         if p.is_file() and p.suffix == ".rpy":
             rpy_files.append(p)
         elif p.is_dir():
-            rpy_files.extend(p.rglob("*.rpy"))
+            for f in p.rglob("*.rpy"):
+                # Filter IGNORED_DIRS (0.9.4): without this, .venv/ with
+                # Ren'Py SDK .rpy files, .git/, __pycache__ etc. would be
+                # formatted — inconsistent with file_discovery.py.
+                if not any(part in IGNORED_DIRS for part in f.parts[:-1]):
+                    rpy_files.append(f)
         else:
             console.print(f"[yellow]Skipping (not a .rpy file/dir): {p}[/yellow]")
     return rpy_files

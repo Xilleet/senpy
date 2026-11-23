@@ -68,7 +68,7 @@ def extract_character_names(analyzer: SenpyAnalyzer) -> dict[str, str]:
                         names[var_name] = val_match.group(1)
                         continue
 
-                names[var_name] = raw_target if raw_target.isidentifier() is False else clean_target
+                names[var_name] = clean_target if raw_target.isidentifier() else raw_target
             else:
                 names[var_name] = var_name
     return names

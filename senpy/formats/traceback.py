@@ -117,7 +117,12 @@ def parse_traceback_file(file_path: str) -> CrashReport | None:
 
 
 def find_latest_traceback(project_path: str) -> str | None:
-    """Finds the latest traceback.txt or errors.txt in the project."""
+    """Finds the latest traceback.txt or errors.txt in the project.
+
+    Returns the most recently modified file among existing candidates,
+    not just the first one that exists (0.9.4): a stale traceback.txt
+    would be returned even if game/errors.txt is newer.
+    """
     candidates = [
         os.path.join(project_path, "traceback.txt"),
         os.path.join(project_path, "errors.txt"),
@@ -126,7 +131,7 @@ def find_latest_traceback(project_path: str) -> str | None:
         os.path.join(project_path, "game", "traceback.txt"),
         os.path.join(project_path, "game", "errors.txt"),
     ]
-    for c in candidates:
-        if os.path.isfile(c):
-            return c
-    return None
+    existing = [c for c in candidates if os.path.isfile(c)]
+    if not existing:
+        return None
+    return max(existing, key=lambda c: os.path.getmtime(c))
