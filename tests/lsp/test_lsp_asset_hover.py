@@ -28,6 +28,7 @@ from unittest.mock import MagicMock
 import pytest
 from lsprotocol import types as lsp
 
+import senpy.domain.archive_asset_cache as aac
 import senpy.lsp.server as server_mod
 from senpy.core.analyzer import SenpyAnalyzer
 from senpy.core.file_collector import _extract_string_literal as _extract_string_literal_analyzer
@@ -36,6 +37,7 @@ from senpy.domain.image_size import (
     get_image_size,
     markdown_size_param,
 )
+from senpy.lsp.handlers import asset_hover as asset_hover_mod
 
 # Reuse the mock infra from test_lsp.py
 from tests._helpers.lsp import MockDocument, MockWorkspace, setup_test_workspace
@@ -914,27 +916,33 @@ def _hover_value(uri: str, line: str, col: int) -> str | None:
     return h.contents[0].value if h.contents else None
 
 
-class TestArchiveHoverHint:
-    """RPA-11: archive-only assets get a 'found inside archive' hover."""
+class TestArchiveAssetPreview:
+    """Archive-only assets extract to a sandbox cache and render a
+    REAL preview (inline image / audio link), not just the text hint.
+    The hint survives as the fallback when extraction fails.
 
-    def test_image_in_archive_shows_hint(self, tmp_path: Path) -> None:
+    Each extracting test redirects ``DEFAULT_CACHE_ROOT`` to a tmp dir so the
+    test never writes into the real ``~/.senpy/archive_assets``."""
+
+    def test_image_in_archive_shows_preview(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setattr(aac, "DEFAULT_CACHE_ROOT", str(tmp_path / "cache"))
         _setup_archive_workspace(
             tmp_path,
-            {"game/images/bg.png": b"\x89PNG fake"},
+            {"game/images/bg.png": _make_minimal_png(10, 10)},
             ["scene bg"],
         )
         uri = "file://" + str(tmp_path / "game" / "script.rpy")
         # `scene bg` — "bg" spans cols 6..8; hover inside it.
         value = _hover_value(uri, "scene bg", 6)
         assert value is not None
-        assert "Found inside archive" in value
-        assert "archive.rpa" in value
         assert "**Image**" in value
-        # No broken preview: the hint must NOT try to render the archive.
-        assert "file://" not in value
-        assert "![" not in value
+        assert "![" in value
+        assert "file://" in value
+        # Real preview, not the fallback hint.
+        assert "Found inside archive" not in value
 
-    def test_audio_in_archive_shows_hint(self, tmp_path: Path) -> None:
+    def test_audio_in_archive_shows_preview(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setattr(aac, "DEFAULT_CACHE_ROOT", str(tmp_path / "cache"))
         _setup_archive_workspace(
             tmp_path,
             {"game/audio/bgm.ogg": b"OggS fake"},
@@ -944,41 +952,44 @@ class TestArchiveHoverHint:
         # `play music bgm` — "bgm" spans cols 11..14; hover inside it.
         value = _hover_value(uri, "play music bgm", 12)
         assert value is not None
-        assert "Found inside archive" in value
-        assert "archive.rpa" in value
         assert "**Audio**" in value
-        assert "file://" not in value
+        assert "Play audio" in value
+        assert "file://" in value
+        assert "Found inside archive" not in value
 
-    def test_image_in_archive_by_full_path_ref(self, tmp_path: Path) -> None:
+    def test_image_in_archive_by_full_path_ref(self, tmp_path: Path, monkeypatch) -> None:
         """A path-style reference `scene images/bg.png` resolves via the
         game/-stripped candidate (no extension guessing needed)."""
+        monkeypatch.setattr(aac, "DEFAULT_CACHE_ROOT", str(tmp_path / "cache"))
         _setup_archive_workspace(
             tmp_path,
-            {"game/images/bg.png": b"\x89PNG fake"},
+            {"game/images/bg.png": _make_minimal_png(10, 10)},
             ["scene images/bg.png"],
         )
         uri = "file://" + str(tmp_path / "game" / "script.rpy")
         # "images/bg.png" starts at col 6.
         value = _hover_value(uri, "scene images/bg.png", 10)
         assert value is not None
-        assert "Found inside archive" in value
+        assert "![" in value
 
-    def test_image_in_archive_with_underscore_stem(self, tmp_path: Path) -> None:
+    def test_image_in_archive_with_underscore_stem(self, tmp_path: Path, monkeypatch) -> None:
         """`show blue_sky` finds `game/images/blue_sky.png` via the .png
-        extension guess (basename scan)."""
+        extension guess (basename scan), extracts it, and previews."""
+        monkeypatch.setattr(aac, "DEFAULT_CACHE_ROOT", str(tmp_path / "cache"))
         _setup_archive_workspace(
             tmp_path,
-            {"game/images/blue_sky.png": b"\x89PNG fake"},
+            {"game/images/blue_sky.png": _make_minimal_png(10, 10)},
             ["show blue_sky"],
         )
         uri = "file://" + str(tmp_path / "game" / "script.rpy")
         value = _hover_value(uri, "show blue_sky", 8)
         assert value is not None
-        assert "Found inside archive" in value
+        assert "![" in value
 
     def test_disk_image_still_previews_not_hint(self, tmp_path: Path) -> None:
         """Regression guard: an image that IS on disk gets the normal inline
-        preview, not the archive hint (even if an archive also exists)."""
+        preview (from the disk path), not the archive cache path or hint
+        (even if an archive also exists)."""
         _setup_asset_workspace(
             tmp_path,
             images={"images/bg.png": _make_minimal_png(10, 10)},
@@ -997,11 +1008,12 @@ class TestArchiveHoverHint:
         assert "file://" in value
         assert "Found inside archive" not in value
 
-    def test_reference_not_anywhere_returns_none(self, tmp_path: Path) -> None:
+    def test_reference_not_anywhere_returns_none(self, tmp_path: Path, monkeypatch) -> None:
         """An asset that is neither on disk nor in an archive → no hover."""
+        monkeypatch.setattr(aac, "DEFAULT_CACHE_ROOT", str(tmp_path / "cache"))
         _setup_archive_workspace(
             tmp_path,
-            {"game/images/bg.png": b"\x89PNG fake"},
+            {"game/images/bg.png": _make_minimal_png(10, 10)},
             ["scene missing"],
         )
         uri = "file://" + str(tmp_path / "game" / "script.rpy")
@@ -1014,13 +1026,16 @@ class TestArchiveHoverHint:
         uri = "file://" + str(tmp_path / "game" / "script.rpy")
         assert _hover_value(uri, "scene bg", 6) is None
 
-    def test_hint_when_archive_also_has_unrelated_files(self, tmp_path: Path) -> None:
-        """The hint fires for the referenced asset even when the archive also
-        contains .rpyc / other files (resolve is generic by basename)."""
+    def test_preview_when_archive_also_has_unrelated_files(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """The preview fires for the referenced asset even when the archive
+        also contains .rpyc / other files (resolve is generic by basename)."""
+        monkeypatch.setattr(aac, "DEFAULT_CACHE_ROOT", str(tmp_path / "cache"))
         _setup_archive_workspace(
             tmp_path,
             {
-                "game/images/bg.png": b"\x89PNG fake",
+                "game/images/bg.png": _make_minimal_png(10, 10),
                 "game/script.rpyc": b"rpyc bytes",
                 "game/audio/bgm.ogg": b"OggS fake",
             },
@@ -1029,4 +1044,48 @@ class TestArchiveHoverHint:
         uri = "file://" + str(tmp_path / "game" / "script.rpy")
         value = _hover_value(uri, "scene bg", 6)
         assert value is not None
+        assert "![" in value
+
+    def test_hint_on_extraction_failure(self, tmp_path: Path, monkeypatch) -> None:
+        """When extraction fails, the hover falls back to the RPA-11 'found
+        inside archive' hint instead of a preview."""
+        _setup_archive_workspace(
+            tmp_path,
+            {"game/images/bg.png": _make_minimal_png(10, 10)},
+            ["scene bg"],
+        )
+        # Force extract_asset_to_cache to fail as the hover sees it.
+        monkeypatch.setattr(
+            asset_hover_mod, "extract_asset_to_cache", lambda entry, cache_root=None: None
+        )
+        uri = "file://" + str(tmp_path / "game" / "script.rpy")
+        value = _hover_value(uri, "scene bg", 6)
+        assert value is not None
         assert "Found inside archive" in value
+        assert "archive.rpa" in value
+        assert "extraction failed" in value
+        assert "![" not in value
+        assert "file://" not in value
+
+    def test_real_extraction_writes_to_cache(self, tmp_path: Path, monkeypatch) -> None:
+        """End-to-end: hovering an archive-only image extracts it to the
+        sandbox cache; the cache file exists under the cache root (NOT under
+        the project) and its bytes match the archive's."""
+        cache_root = tmp_path / "cache"
+        monkeypatch.setattr(aac, "DEFAULT_CACHE_ROOT", str(cache_root))
+        png_bytes = _make_minimal_png(10, 10)
+        _setup_archive_workspace(
+            tmp_path,
+            {"game/images/bg.png": png_bytes},
+            ["scene bg"],
+        )
+        uri = "file://" + str(tmp_path / "game" / "script.rpy")
+        value = _hover_value(uri, "scene bg", 6)
+        assert value is not None
+        assert "![" in value
+        # The cache file exists under the cache root, not the project.
+        cached = list(cache_root.rglob("bg.png"))
+        assert len(cached) == 1, f"expected one cached bg.png, got {cached}"
+        assert cached[0].read_bytes() == png_bytes
+        # And it is NOT inside the project tree.
+        assert tmp_path / "game" not in cached[0].parents

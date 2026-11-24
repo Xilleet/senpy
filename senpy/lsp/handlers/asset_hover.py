@@ -41,7 +41,9 @@ import re
 from lsprotocol import types as lsp
 
 from senpy.core.constants import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS
+from senpy.domain.archive_asset_cache import extract_asset_to_cache
 from senpy.domain.image_size import markdown_size_param
+from senpy.domain.rpa import RpaEntry
 
 # Triggers: `show NAME attrs`, `scene NAME attrs`. We do not include `hide`
 # in the image-hover trigger list because renpy-magic's own regex omits it
@@ -91,16 +93,16 @@ def _get_active_analyzer():
     return _get_server_mod()._lsp_server.active_analyzer
 
 
-def _resolve_asset_in_archive(
-    name: str, extensions: set[str]
-) -> tuple[str, int, int, bytes] | None:
-    """Resolve a reference to an asset that lives inside an RPA archive.
+def _resolve_asset_in_archive(name: str, extensions: set[str]) -> RpaEntry | None:
+    """Resolve a reference to an archive-only asset's full :class:`RpaEntry`.
 
     Fallback for hover: when ``resolve_image_path`` / ``resolve_audio_path``
     return None (the asset is not on disk), this asks
-    ``AssetManager.resolve_asset_in_archive`` whether the asset is inside a
-    parsed archive. Returns the decoded ``(archive_path, offset, length,
-    prefix)`` tuple, or None.
+    ``AssetManager.find_asset_entry_in_archive`` whether the asset is inside
+    a parsed archive. Returns the entry (every segment + ``archive_path``)
+    so the caller can either render the hint (``entry.archive_path``)
+    or extract the full bytes for a real preview (RPA-9,
+    ``extract_asset_to_cache``).
 
     Tries the reference as-given first (covers path-style refs that already
     carry an extension, e.g. ``"images/bg.png"`` or ``"audio/bgm.ogg"``).
@@ -114,33 +116,36 @@ def _resolve_asset_in_archive(
     if analyzer is None:
         return None
     am = analyzer.assets
-    hit = am.resolve_asset_in_archive(name)
-    if hit is not None:
-        return hit
+    entry = am.find_asset_entry_in_archive(name)
+    if entry is not None:
+        return entry
     # Bare stem (no extension): guess common extensions. splitext lets a
     # dotted path like "audio/bgm_calm" through (no extension → stem == name).
     if os.path.splitext(name)[0] == name:
         for ext in sorted(extensions):
-            hit = am.resolve_asset_in_archive(f"{name}{ext}")
-            if hit is not None:
-                return hit
+            entry = am.find_asset_entry_in_archive(f"{name}{ext}")
+            if entry is not None:
+                return entry
     return None
 
 
-def _build_archive_hint_hover(name: str, hit: tuple[str, int, int, bytes], kind: str) -> lsp.Hover:
-    """Render the "found inside archive" hover for an archive-only asset.
+def _build_archive_hint_hover(name: str, entry: RpaEntry, kind: str) -> lsp.Hover:
+    """Render the "found inside archive" hover for an archive-only asset whose
+    extraction to the sandbox cache failed.
 
-    No inline preview: VS Code's image viewer / audio player can't decode a
-    byte range inside an archive, and extracting to a sandbox cache is RPA-9
-    (not yet done). The hint tells the user the asset exists and where, so a
-    reference that previously produced no hover at all now gets a useful
-    "this lives in archive X" message instead of silence.
+    This is the fallback, now reached only when
+    ``extract_asset_to_cache`` returns None (cache dir unwritable,
+    path-traversal entry, unreadable archive). When extraction succeeds the
+    hover renders a real inline preview instead (``_render_image_hover`` /
+    ``_render_audio_hover``). The hint tells the user the asset exists and
+    where it lives, so a reference that previously produced no hover at all
+    still gets a useful "this lives in archive X" message instead of silence.
     """
-    archive_basename = os.path.basename(hit[0])
+    archive_basename = os.path.basename(entry.archive_path)
     content = (
         f"**{kind}** — `{name}`\n\n"
         f"*Found inside archive `{archive_basename}` "
-        f"(not extracted — no preview available)*"
+        f"(extraction failed — no preview available)*"
     )
     return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
 
@@ -206,6 +211,53 @@ def _resolve_relative_to_game(rel: str, project_path: str) -> str | None:
     return None
 
 
+def _render_image_hover(image_name: str, path: str) -> lsp.Hover:
+    """Render the inline-image (or video) hover for a resolved file path.
+
+    Factored out of ``build_image_hover`` so the disk path and the
+    sandbox-cache extraction path share one renderer: both produce the same
+    ``![name](file://...|width=W)`` inline preview, or the "Play in default
+    app" command link when the extension is a video format VS Code's image
+    viewer cannot decode.
+    """
+    file_uri = _path_to_file_uri(path)
+    analyzer = _get_active_analyzer()
+
+    if analyzer is not None and analyzer.assets.is_video_file(path):
+        return _build_video_hover(image_name, path, file_uri)
+
+    size_param = markdown_size_param(path)
+    size_suffix = f" {size_param}" if size_param else ""
+    basename = os.path.basename(path)
+    try:
+        size_bytes = os.path.getsize(path)
+        meta_line = f"*{basename} · {_format_bytes(size_bytes)}*\n\n"
+    except OSError:
+        meta_line = f"*{basename}*\n\n"
+
+    content = f"**Image** — `{image_name}`\n\n{meta_line}![{image_name}]({file_uri}{size_suffix})"
+    return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
+
+
+def _render_audio_hover(audio_name: str, path: str) -> lsp.Hover:
+    """Render the audio hover for a resolved file path (disk or RPA-9 cache).
+
+    Factored out of ``build_audio_hover`` so the disk path and the
+    sandbox-cache extraction path share one renderer: both produce the same
+    ``▶ [Play audio](file://...)`` link.
+    """
+    file_uri = _path_to_file_uri(path)
+    basename = os.path.basename(path)
+    try:
+        size_bytes = os.path.getsize(path)
+        meta_line = f"*{basename} · {_format_bytes(size_bytes)}*\n\n"
+    except OSError:
+        meta_line = f"*{basename}*\n\n"
+
+    content = f"**Audio** — `{audio_name}`\n\n{meta_line}▶ [Play audio]({file_uri})"
+    return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
+
+
 def build_image_hover(line: str, col: int) -> lsp.Hover | None:
     """Build an image-preview hover for a `show`/`scene` line.
 
@@ -226,36 +278,20 @@ def build_image_hover(line: str, col: int) -> lsp.Hover | None:
         return None
 
     disk_path = _resolve_image_disk_path(image_name)
-    if disk_path is None:
-        # Asset not on disk — maybe it lives inside an archive.
-        archive_hit = _resolve_asset_in_archive(image_name, IMAGE_EXTENSIONS)
-        if archive_hit is not None:
-            return _build_archive_hint_hover(image_name, archive_hit, "Image")
+    if disk_path is not None:
+        return _render_image_hover(image_name, disk_path)
+
+    # Asset not on disk — maybe it lives inside an archive. Extract
+    # to the sandbox cache and render a real preview; fall back to the
+    # RPA-11 "found inside archive" hint when extraction fails (cache dir
+    # unwritable, path-traversal entry, unreadable archive).
+    entry = _resolve_asset_in_archive(image_name, IMAGE_EXTENSIONS)
+    if entry is None:
         return None
-
-    file_uri = _path_to_file_uri(disk_path)
-    server_mod = _get_server_mod()
-    # state access via _lsp_server.active_analyzer property
-    # (delegates to module global _active_analyzer).
-    analyzer = server_mod._lsp_server.active_analyzer
-
-    # Video: VS Code's image viewer cannot decode WebM/MP4. Render a
-    # command URI that opens the file in the OS default app.
-    if analyzer is not None and analyzer.assets.is_video_file(disk_path):
-        return _build_video_hover(image_name, disk_path, file_uri)
-
-    # Image: inline markdown preview with sizing.
-    size_param = markdown_size_param(disk_path)
-    size_suffix = f" {size_param}" if size_param else ""
-    basename = os.path.basename(disk_path)
-    try:
-        size_bytes = os.path.getsize(disk_path)
-        meta_line = f"*{basename} · {_format_bytes(size_bytes)}*\n\n"
-    except OSError:
-        meta_line = f"*{basename}*\n\n"
-
-    content = f"**Image** — `{image_name}`\n\n{meta_line}![{image_name}]({file_uri}{size_suffix})"
-    return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
+    cache_path = extract_asset_to_cache(entry)
+    if cache_path is not None:
+        return _render_image_hover(image_name, cache_path)
+    return _build_archive_hint_hover(image_name, entry, "Image")
 
 
 def _build_video_hover(name: str, disk_path: str, file_uri: str) -> lsp.Hover:
@@ -320,20 +356,16 @@ def build_audio_hover(line: str, col: int) -> lsp.Hover | None:
         return None
 
     disk_path = analyzer.assets.resolve_audio_path(audio_name)
-    if disk_path is None:
-        # Audio not on disk — maybe it lives inside an archive.
-        archive_hit = _resolve_asset_in_archive(audio_name, AUDIO_EXTENSIONS)
-        if archive_hit is not None:
-            return _build_archive_hint_hover(audio_name, archive_hit, "Audio")
+    if disk_path is not None:
+        return _render_audio_hover(audio_name, disk_path)
+
+    # Audio not on disk — maybe it lives inside an archive. Extract
+    # to the sandbox cache and render a real preview; fall back to the
+    # hint on extraction failure.
+    entry = _resolve_asset_in_archive(audio_name, AUDIO_EXTENSIONS)
+    if entry is None:
         return None
-
-    file_uri = _path_to_file_uri(disk_path)
-    basename = os.path.basename(disk_path)
-    try:
-        size_bytes = os.path.getsize(disk_path)
-        meta_line = f"*{basename} · {_format_bytes(size_bytes)}*\n\n"
-    except OSError:
-        meta_line = f"*{basename}*\n\n"
-
-    content = f"**Audio** — `{audio_name}`\n\n{meta_line}▶ [Play audio]({file_uri})"
-    return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
+    cache_path = extract_asset_to_cache(entry)
+    if cache_path is not None:
+        return _render_audio_hover(audio_name, cache_path)
+    return _build_archive_hint_hover(audio_name, entry, "Audio")

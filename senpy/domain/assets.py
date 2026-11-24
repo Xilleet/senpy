@@ -14,7 +14,7 @@ from senpy.core.constants import (
 )
 from senpy.core.logging import get_logger
 from senpy.core.models import Diagnostic
-from senpy.domain.rpa import RpaArchiveIndex, parse_rpa_archive
+from senpy.domain.rpa import RpaArchiveIndex, RpaEntry, parse_rpa_archive
 
 _logger = get_logger("domain.assets")
 
@@ -327,6 +327,60 @@ class AssetManager:
             return hit
         return None
 
+    def find_asset_entry_in_archive(self, name: str) -> RpaEntry | None:
+        """Return the full :class:`RpaEntry` for *name* inside any parsed
+        archive, or ``None``.
+
+        This is the lookup primitive (RPA-9): the entry carries every segment
+        (so a consumer can read the full file via ``read_rpa_segment``) plus
+        ``archive_path``. ``resolve_asset_in_archive`` delegates here and
+        returns only the first segment's tuple for callers that just need to
+        locate the asset (e.g. the RPA-11 hint).
+
+        Name matching mirrors ``resolve_image_path`` so a reference which
+        resolves on disk also resolves inside an archive: tries the name
+        as-given (lowercased, forward-slashed), its ``game/``-prefixed and
+        ``game/``-stripped forms, underscore↔space variants, and finally a
+        basename scan (so ``"bg.png"`` or an image name matches
+        ``game/images/bg.png``). Lookups are case-insensitive — the cache
+        keys entries by lowercased filename.
+        """
+        if not name:
+            return None
+        raw = name.replace("\\", "/")
+        lower = raw.lower()
+        # Full-path candidate keys for the O(1) dict lookup on cache entries
+        # (which are keyed by lowercased, forward-slashed filename).
+        full_candidates: list[str] = []
+
+        def _add(c: str) -> None:
+            if c and c not in full_candidates:
+                full_candidates.append(c)
+
+        _add(lower)
+        if lower.startswith("game/"):
+            _add(lower.removeprefix("game/"))
+        else:
+            _add(f"game/{lower}")
+        _add(lower.replace(" ", "_"))
+        _add(lower.replace("_", " "))
+
+        base = os.path.basename(lower)
+        for idx in self.rpa_index_cache.values():
+            for key in full_candidates:
+                entry = idx.entries.get(key)
+                if entry is not None:
+                    return entry
+            # Basename fallback: a reference like "bg.png" or an image name
+            # matches an entry whose basename equals it. Only runs when the
+            # full-path lookup missed (O(n) per archive, acceptable since
+            # archive entry counts are modest).
+            if base:
+                for entry in idx.entries.values():
+                    if os.path.basename(entry.filename).lower() == base:
+                        return entry
+        return None
+
     def resolve_asset_in_archive(self, name: str) -> tuple[str, int, int, bytes] | None:
         """Resolve an asset name to its location inside a parsed RPA archive.
 
@@ -367,46 +421,16 @@ class AssetManager:
         method returns only the FIRST segment's tuple, which is enough to
         locate the asset for the hover hint. A consumer that needs the full
         file contents (e.g. RPA-9 sandbox extraction) should read every
-        segment via the ``RpaEntry`` reachable from ``rpa_index_cache``
-        rather than this tuple.
+        segment via the ``RpaEntry`` returned by
+        ``find_asset_entry_in_archive`` rather than this tuple.
         """
         if not name:
             return None
-        raw = name.replace("\\", "/")
-        lower = raw.lower()
-        # Full-path candidate keys for the O(1) dict lookup on cache entries
-        # (which are keyed by lowercased, forward-slashed filename).
-        full_candidates: list[str] = []
-
-        def _add(c: str) -> None:
-            if c and c not in full_candidates:
-                full_candidates.append(c)
-
-        _add(lower)
-        if lower.startswith("game/"):
-            _add(lower.removeprefix("game/"))
-        else:
-            _add(f"game/{lower}")
-        _add(lower.replace(" ", "_"))
-        _add(lower.replace("_", " "))
-
-        base = os.path.basename(lower)
-        for idx in self.rpa_index_cache.values():
-            for key in full_candidates:
-                entry = idx.entries.get(key)
-                if entry is not None:
-                    seg = entry.segments[0]
-                    return (entry.archive_path, seg.offset, seg.length, seg.prefix)
-            # Basename fallback: a reference like "bg.png" or an image name
-            # matches an entry whose basename equals it. Only runs when the
-            # full-path lookup missed (O(n) per archive, acceptable since
-            # archive entry counts are modest).
-            if base:
-                for entry in idx.entries.values():
-                    if os.path.basename(entry.filename).lower() == base:
-                        seg = entry.segments[0]
-                        return (entry.archive_path, seg.offset, seg.length, seg.prefix)
-        return None
+        entry = self.find_asset_entry_in_archive(name)
+        if entry is None:
+            return None
+        seg = entry.segments[0]
+        return (entry.archive_path, seg.offset, seg.length, seg.prefix)
 
     def is_video_file(self, path: str) -> bool:
         """Return True if *path* has a video extension. Used by hover to
