@@ -285,15 +285,29 @@ def extract_scripts_from_rpa(rpa_path: str, dest_dir: str) -> list[str]:
                     extracted.append(dest)
                     continue
 
-                # Read every segment of this entry via the shared DRY reader
-                # . read_rpa_segment preserves the RPA-4 semantics:
-                # prefix is prepended AFTER reading segment.length data bytes
-                # (prefix is NOT subtracted from length).
-                file_bytes = b"".join(read_rpa_segment(f, seg) for seg in entry.segments)
-
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, "wb") as out:
-                    out.write(file_bytes)
+                # Read every segment of this entry via the shared DRY reader.
+                # read_rpa_segment preserves the semantics (prefix is
+                # prepended AFTER reading segment.length data bytes; prefix
+                # is NOT subtracted from length) and, since RPA-5, raises
+                # ValueError on a short read (truncated segment / offset
+                # beyond EOF / index claiming more bytes than the data region
+                # holds). Per-entry try: a single corrupt entry is skipped
+                # (warn) without aborting extraction of the rest of the
+                # archive — previously one bad segment silently produced a
+                # truncated .rpy and the outer try then lost every later entry.
+                try:
+                    file_bytes = b"".join(read_rpa_segment(f, seg) for seg in entry.segments)
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    with open(dest, "wb") as out:
+                        out.write(file_bytes)
+                except (ValueError, OSError) as exc:
+                    _logger.warning(
+                        "skipping truncated/corrupt RPA entry %r in %s: %s",
+                        entry.filename,
+                        rpa_path,
+                        exc,
+                    )
+                    continue
                 extracted.append(dest)
     except (OSError, ValueError, TypeError, zlib.error, pickle.PickleError) as e:
         # log debug instead of silent suppress. RPA extraction failure

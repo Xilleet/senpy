@@ -279,14 +279,25 @@ def read_rpa_segment(f: BinaryIO, segment: RpaSegment) -> bytes:
     (RPA-4): ``length`` counts only in-archive data; prefix is prepended
     after the read.
 
-    This is the single DRY'ed segment reader — used by code
-    extraction (``extract_scripts_from_rpa``) and, in later 0.9.4 tasks, by
-    asset extraction and hover preview.
-    Length-integrity validation (compare ``len(read_data)`` to
-    ``segment.length`` and warn + skip on mismatch) is deliberately NOT
-    performed here, a separate task with its own WARNING-and-
-    skip semantics; folding it in now would change ``extract_scripts_from_rpa``
-    behaviour for archives that currently extract short data silently.
+    This is the single DRY'ed segment reader — used by code extraction
+    (``extract_scripts_from_rpa``) and by asset extraction / hover preview
+    (``extract_asset_to_cache``).
+
+    Length-integrity validation: after the read, ``len(data)`` is
+    compared to ``segment.length``. A short read — a truncated archive, a
+    segment offset beyond EOF, or an index that claims more bytes than the
+    data region holds — raises ``ValueError`` instead of silently returning a
+    partial segment. Callers that catch ``ValueError``
+    (``extract_scripts_from_rpa``, ``extract_asset_to_cache``) skip the
+    affected entry, so a corrupt archive no longer produces silently
+    truncated output files or a broken-preview hover. A zero-length segment
+    (``length == 0``, prefix-only) reads zero bytes and is valid.
     """
     f.seek(segment.offset)
-    return segment.prefix + f.read(segment.length)
+    data = f.read(segment.length)
+    if len(data) != segment.length:
+        raise ValueError(
+            f"RPA segment truncated at offset {segment.offset}: "
+            f"expected {segment.length} bytes, read {len(data)}"
+        )
+    return segment.prefix + data

@@ -53,12 +53,16 @@ def _cache_dir_for(archive_path: str, cache_root: str) -> str:
 def extract_asset_to_cache(entry: RpaEntry, cache_root: str | None = None) -> str | None:
     """Extract *entry*'s full bytes to the sandbox cache; return the absolute
     cache path, or ``None`` on failure (archive unreadable, path-traversal
-    entry, IO error).
+    entry, truncated segment, IO error).
 
     Reads every segment via :func:`read_rpa_segment` and concatenates (prefix
-    is prepended per segment, RPA-4 semantics preserved). Idempotent: a cache
-    file whose mtime is >= the archive's mtime is returned without re-reading
-    bytes, so repeated hovers of the same asset are cheap.
+    is prepended per segment, semantics preserved). Since,
+    ``read_rpa_segment`` raises ``ValueError`` on a short read (truncated
+    segment / offset beyond EOF); that propagates as ``None`` here so the
+    hover falls back to the "found inside archive" hint rather than caching a
+    partial file. Idempotent: a cache file whose mtime is >= the archive's
+    mtime is returned without re-reading bytes, so repeated hovers of the
+    same asset are cheap.
     """
     root = cache_root or DEFAULT_CACHE_ROOT
     if not entry.archive_path or not entry.segments:
