@@ -208,9 +208,16 @@ class TestResolveAssetInArchiveMisses:
 
 
 class TestResolveAssetInArchiveMultiArchive:
-    def test_first_archive_wins(self, tmp_path: Path) -> None:
-        """When two archives contain the same asset, the first-indexed wins
-        (rpa_index_cache preserves insertion order)."""
+    def test_asset_in_multiple_archives_resolves(self, tmp_path: Path) -> None:
+        """When an asset lives in two archives, resolve still finds it —
+        returns one of the containing archives with a readable segment.
+
+        Which archive is returned follows ``rpa_index_cache`` insertion
+        order, which mirrors the filesystem walk (``os.walk`` / ``readdir``)
+        order — that is stable for a given directory state but is NOT
+        alphabetically guaranteed across environments. So we assert the
+        result is one of the two archives and that its segment decodes to
+        one of the two payloads, not which archive "wins"."""
         game = tmp_path / "game"
         game.mkdir()
         rpa1 = game / "a.rpa"
@@ -221,7 +228,12 @@ class TestResolveAssetInArchiveMultiArchive:
         am.index()
         hit = am.resolve_asset_in_archive("game/images/bg.png")
         assert hit is not None
-        assert hit[0] == str(rpa1)  # a.rpa indexed before b.rpa (os.walk order)
+        archive_path, offset, length, prefix = hit
+        assert archive_path in {str(rpa1), str(rpa2)}
+        seg = RpaSegment(offset, length, prefix)
+        with open(archive_path, "rb") as f:
+            data = read_rpa_segment(f, seg)
+        assert data in {b"from-archive-1", b"from-archive-2"}
 
     def test_asset_in_second_archive_found(self, tmp_path: Path) -> None:
         """An asset that lives only in the second archive is still resolved."""

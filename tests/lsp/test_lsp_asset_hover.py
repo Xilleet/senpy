@@ -829,3 +829,204 @@ class TestResolveRelativeToGameSecurity:
                 outside.unlink()
             except OSError:
                 pass
+
+
+# =============================================================================
+# "found inside archive" hover for archive-only assets
+# =============================================================================
+#
+# When an image/audio reference resolves to no disk file but the asset lives
+# inside a parsed .rpa archive, the hover now renders a "Found inside archive
+# `X.rpa`" hint instead of silence. No inline preview — extracting to a
+# sandbox cache is RPA-9 (not yet done); VS Code's viewer can't decode a byte
+# range inside an archive. These tests build a project with an archive (no
+# disk image/audio files), index it, and assert the hover content.
+
+
+def _make_rpa_archive(
+    path: Path, files: dict[str, tuple[bytes, bytes] | bytes], *, key: int = 0
+) -> None:
+    """Write a minimal single-segment RPA-3.0 archive to *path*.
+
+    Each entry is ``filename -> (data, prefix)`` or ``filename -> data``
+    (prefix defaults to ``b""``). Segments are stored XOR'd with *key*:
+    ``(data_offset ^ key, len(data) ^ key, prefix)``. Canonical 16-hex offset
+    + 8-hex key + trailing-space header.
+    """
+    import pickle
+    import zlib
+
+    norm: dict[str, tuple[bytes, bytes]] = {}
+    for name, val in files.items():
+        if isinstance(val, tuple):
+            data, prefix = val
+        else:
+            data, prefix = val, b""
+        norm[name] = (data, prefix)
+
+    version = "RPA-3.0"
+    header_len = len(version) + 1 + 16 + 1 + 8 + 1 + 1  # +space, +trailing, +\n
+
+    payload = b""
+    index: dict[str, list[tuple[int, int, bytes]]] = {}
+    pos = 0
+    for name, (data, prefix) in norm.items():
+        data_offset = header_len + pos
+        index[name] = [(data_offset ^ key, len(data) ^ key, prefix)]
+        payload += data
+        pos += len(data)
+
+    index_bytes = zlib.compress(pickle.dumps(index))
+    index_offset = header_len + len(payload)
+    header_line = f"{version} {index_offset:016x} {key:08x} \n".encode("ascii")
+    assert len(header_line) == header_len
+    with open(path, "wb") as f:
+        f.write(header_line)
+        f.write(payload)
+        f.write(index_bytes)
+
+
+def _setup_archive_workspace(tmp_path: Path, archive_files: dict, script_lines: list[str]):
+    """Create a project whose only copy of the referenced assets is inside
+    ``game/archive.rpa`` (no disk image/audio files), then index it."""
+    game_dir = tmp_path / "game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+    _make_rpa_archive(game_dir / "archive.rpa", archive_files)
+    full_lines = list(script_lines) + ["label start:", "    return"]
+    (game_dir / "script.rpy").write_text("\n".join(full_lines) + "\n", encoding="utf-8")
+    analyzer = SenpyAnalyzer(str(tmp_path))
+    analyzer.run(quiet=True)
+    server_mod._lsp_server.active_analyzer = analyzer
+    server_mod._lsp_server.is_initialized = True
+    server_mod._refresh_symbol_snapshot()
+    # Sanity: the archive must have been parsed into the cache.
+    assert analyzer.assets.rpa_index_cache, "archive was not indexed"
+    return analyzer
+
+
+def _hover_value(uri: str, line: str, col: int) -> str | None:
+    """Return the hover Markdown text (or None) for a synthetic line."""
+    h = _do_hover(uri, line, col)
+    if h is None:
+        return None
+    if isinstance(h.contents, lsp.MarkupContent):
+        return h.contents.value
+    return h.contents[0].value if h.contents else None
+
+
+class TestArchiveHoverHint:
+    """RPA-11: archive-only assets get a 'found inside archive' hover."""
+
+    def test_image_in_archive_shows_hint(self, tmp_path: Path) -> None:
+        _setup_archive_workspace(
+            tmp_path,
+            {"game/images/bg.png": b"\x89PNG fake"},
+            ["scene bg"],
+        )
+        uri = "file://" + str(tmp_path / "game" / "script.rpy")
+        # `scene bg` — "bg" spans cols 6..8; hover inside it.
+        value = _hover_value(uri, "scene bg", 6)
+        assert value is not None
+        assert "Found inside archive" in value
+        assert "archive.rpa" in value
+        assert "**Image**" in value
+        # No broken preview: the hint must NOT try to render the archive.
+        assert "file://" not in value
+        assert "![" not in value
+
+    def test_audio_in_archive_shows_hint(self, tmp_path: Path) -> None:
+        _setup_archive_workspace(
+            tmp_path,
+            {"game/audio/bgm.ogg": b"OggS fake"},
+            ["play music bgm"],
+        )
+        uri = "file://" + str(tmp_path / "game" / "script.rpy")
+        # `play music bgm` — "bgm" spans cols 11..14; hover inside it.
+        value = _hover_value(uri, "play music bgm", 12)
+        assert value is not None
+        assert "Found inside archive" in value
+        assert "archive.rpa" in value
+        assert "**Audio**" in value
+        assert "file://" not in value
+
+    def test_image_in_archive_by_full_path_ref(self, tmp_path: Path) -> None:
+        """A path-style reference `scene images/bg.png` resolves via the
+        game/-stripped candidate (no extension guessing needed)."""
+        _setup_archive_workspace(
+            tmp_path,
+            {"game/images/bg.png": b"\x89PNG fake"},
+            ["scene images/bg.png"],
+        )
+        uri = "file://" + str(tmp_path / "game" / "script.rpy")
+        # "images/bg.png" starts at col 6.
+        value = _hover_value(uri, "scene images/bg.png", 10)
+        assert value is not None
+        assert "Found inside archive" in value
+
+    def test_image_in_archive_with_underscore_stem(self, tmp_path: Path) -> None:
+        """`show blue_sky` finds `game/images/blue_sky.png` via the .png
+        extension guess (basename scan)."""
+        _setup_archive_workspace(
+            tmp_path,
+            {"game/images/blue_sky.png": b"\x89PNG fake"},
+            ["show blue_sky"],
+        )
+        uri = "file://" + str(tmp_path / "game" / "script.rpy")
+        value = _hover_value(uri, "show blue_sky", 8)
+        assert value is not None
+        assert "Found inside archive" in value
+
+    def test_disk_image_still_previews_not_hint(self, tmp_path: Path) -> None:
+        """Regression guard: an image that IS on disk gets the normal inline
+        preview, not the archive hint (even if an archive also exists)."""
+        _setup_asset_workspace(
+            tmp_path,
+            images={"images/bg.png": _make_minimal_png(10, 10)},
+        )
+        # Also drop an archive (unrelated) to ensure the disk path wins.
+        _make_rpa_archive(tmp_path / "game" / "archive.rpa", {"game/images/other.png": b"\x89PNG"})
+        analyzer = SenpyAnalyzer(str(tmp_path))
+        analyzer.run(quiet=True)
+        server_mod._lsp_server.active_analyzer = analyzer
+        server_mod._refresh_symbol_snapshot()
+        uri = "file://" + str(tmp_path / "game" / "script.rpy")
+        value = _hover_value(uri, "scene bg", 6)
+        assert value is not None
+        # Disk preview renders an inline image, not the archive hint.
+        assert "![" in value
+        assert "file://" in value
+        assert "Found inside archive" not in value
+
+    def test_reference_not_anywhere_returns_none(self, tmp_path: Path) -> None:
+        """An asset that is neither on disk nor in an archive → no hover."""
+        _setup_archive_workspace(
+            tmp_path,
+            {"game/images/bg.png": b"\x89PNG fake"},
+            ["scene missing"],
+        )
+        uri = "file://" + str(tmp_path / "game" / "script.rpy")
+        assert _hover_value(uri, "scene missing", 8) is None
+
+    def test_no_archive_no_disk_returns_none(self, tmp_path: Path) -> None:
+        """Project with no .rpa and no matching disk file → None (no crash,
+        empty rpa_index_cache handled)."""
+        _setup_asset_workspace(tmp_path, images={})  # no assets at all
+        uri = "file://" + str(tmp_path / "game" / "script.rpy")
+        assert _hover_value(uri, "scene bg", 6) is None
+
+    def test_hint_when_archive_also_has_unrelated_files(self, tmp_path: Path) -> None:
+        """The hint fires for the referenced asset even when the archive also
+        contains .rpyc / other files (resolve is generic by basename)."""
+        _setup_archive_workspace(
+            tmp_path,
+            {
+                "game/images/bg.png": b"\x89PNG fake",
+                "game/script.rpyc": b"rpyc bytes",
+                "game/audio/bgm.ogg": b"OggS fake",
+            },
+            ["scene bg"],
+        )
+        uri = "file://" + str(tmp_path / "game" / "script.rpy")
+        value = _hover_value(uri, "scene bg", 6)
+        assert value is not None
+        assert "Found inside archive" in value

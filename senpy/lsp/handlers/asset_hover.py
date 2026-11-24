@@ -40,6 +40,7 @@ import re
 
 from lsprotocol import types as lsp
 
+from senpy.core.constants import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS
 from senpy.domain.image_size import markdown_size_param
 
 # Triggers: `show NAME attrs`, `scene NAME attrs`. We do not include `hide`
@@ -79,6 +80,69 @@ def _format_bytes(size: int) -> str:
             return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
         n /= 1024
     return f"{n:.1f} GB"
+
+
+def _get_active_analyzer():
+    """Return the LSP server's active analyzer, or None.
+
+    Centralises the ``server_mod._lsp_server.active_analyzer`` access so the
+    archive-fallback path doesn't repeat the lazy-import dance.
+    """
+    return _get_server_mod()._lsp_server.active_analyzer
+
+
+def _resolve_asset_in_archive(
+    name: str, extensions: set[str]
+) -> tuple[str, int, int, bytes] | None:
+    """Resolve a reference to an asset that lives inside an RPA archive.
+
+    Fallback for hover: when ``resolve_image_path`` / ``resolve_audio_path``
+    return None (the asset is not on disk), this asks
+    ``AssetManager.resolve_asset_in_archive`` whether the asset is inside a
+    parsed archive. Returns the decoded ``(archive_path, offset, length,
+    prefix)`` tuple, or None.
+
+    Tries the reference as-given first (covers path-style refs that already
+    carry an extension, e.g. ``"images/bg.png"`` or ``"audio/bgm.ogg"``).
+    If that misses and the reference is a bare stem (image name like
+    ``"eileen happy"`` or audio stem like ``"bgm_calm"`` — no extension),
+    appends each extension in *extensions* so ``show bg`` finds
+    ``game/images/bg.png`` inside an archive, mirroring how the on-disk
+    resolver matches basenames.
+    """
+    analyzer = _get_active_analyzer()
+    if analyzer is None:
+        return None
+    am = analyzer.assets
+    hit = am.resolve_asset_in_archive(name)
+    if hit is not None:
+        return hit
+    # Bare stem (no extension): guess common extensions. splitext lets a
+    # dotted path like "audio/bgm_calm" through (no extension → stem == name).
+    if os.path.splitext(name)[0] == name:
+        for ext in sorted(extensions):
+            hit = am.resolve_asset_in_archive(f"{name}{ext}")
+            if hit is not None:
+                return hit
+    return None
+
+
+def _build_archive_hint_hover(name: str, hit: tuple[str, int, int, bytes], kind: str) -> lsp.Hover:
+    """Render the "found inside archive" hover for an archive-only asset.
+
+    No inline preview: VS Code's image viewer / audio player can't decode a
+    byte range inside an archive, and extracting to a sandbox cache is RPA-9
+    (not yet done). The hint tells the user the asset exists and where, so a
+    reference that previously produced no hover at all now gets a useful
+    "this lives in archive X" message instead of silence.
+    """
+    archive_basename = os.path.basename(hit[0])
+    content = (
+        f"**{kind}** — `{name}`\n\n"
+        f"*Found inside archive `{archive_basename}` "
+        f"(not extracted — no preview available)*"
+    )
+    return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=content))
 
 
 def _resolve_image_disk_path(image_name: str) -> str | None:
@@ -163,6 +227,10 @@ def build_image_hover(line: str, col: int) -> lsp.Hover | None:
 
     disk_path = _resolve_image_disk_path(image_name)
     if disk_path is None:
+        # Asset not on disk — maybe it lives inside an archive.
+        archive_hit = _resolve_asset_in_archive(image_name, IMAGE_EXTENSIONS)
+        if archive_hit is not None:
+            return _build_archive_hint_hover(image_name, archive_hit, "Image")
         return None
 
     file_uri = _path_to_file_uri(disk_path)
@@ -253,6 +321,10 @@ def build_audio_hover(line: str, col: int) -> lsp.Hover | None:
 
     disk_path = analyzer.assets.resolve_audio_path(audio_name)
     if disk_path is None:
+        # Audio not on disk — maybe it lives inside an archive.
+        archive_hit = _resolve_asset_in_archive(audio_name, AUDIO_EXTENSIONS)
+        if archive_hit is not None:
+            return _build_archive_hint_hover(audio_name, archive_hit, "Audio")
         return None
 
     file_uri = _path_to_file_uri(disk_path)
