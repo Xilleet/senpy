@@ -163,7 +163,7 @@ def _find_comment_start(line: str) -> int:
 def _strip_comment_safe(line: str) -> str:
     """Strip # comment, but respect quotes (so # inside "..." is not a comment).
 
-    Simplified version — full implementation is in analyzer._strip_comment.
+    Simplified version — full implementation is in analyzer.strip_comment.
     For formatter we don't need full accuracy; comment detection is only
     used to find # senpy: format off/on directives.
     """

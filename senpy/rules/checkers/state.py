@@ -36,12 +36,44 @@ class StateChecker(BaseChecker):
 
     def __init__(self, analyzer: DiagnosticSinkAndSymbolsAndFlow):
         super().__init__(analyzer)
-        self.branch_uninitialized: dict[str, MissingMetadata] = {}
+        # Encapsulated: external callers (including analyzer shims like
+        # _check_cfg_interpolations / _clear_safe_cfg_vars) read this via
+        # the ``branch_uninitialized`` property, not directly. Mutation
+        # goes through ``add_uninit_vars`` / ``clear_uninit`` so the
+        # shape of the dict (keys: str, values: MissingMetadata) stays
+        # controlled — without encapsulation, a cross-checker could
+        # accidentally write the wrong shape and break consumer sites.
+        self._branch_uninitialized: dict[str, MissingMetadata] = {}
         self.guaranteed_vars: set[str] = set()
         self.if_stack: list[IfBlockContext] = []
 
+    @property
+    def branch_uninitialized(self) -> dict[str, MissingMetadata]:
+        """Read-only view of the MAYBE_SET variable metadata.
+
+        External callers (analyzer shims for ``_check_cfg_interpolations``,
+        ``_check_cfg_condition``, ``_clear_safe_cfg_vars``) receive this
+        dict by reference. They may READ from it and (for
+        ``_clear_safe_cfg_vars``) DELETE keys, but should not ADD keys
+        — that's the checker's job via ``add_uninit_vars``.
+
+        The property returns the backing dict directly (not a copy)
+        because the analyzer shims need O(1) key lookup and deletion
+        during analysis. A copy would break the live-mutation contract
+        of ``_clear_safe_cfg_vars``.
+        """
+        return self._branch_uninitialized
+
+    def add_uninit_vars(self, vars: dict[str, MissingMetadata]) -> None:
+        """Merge MAYBE_SET variables from a merged if/menu block."""
+        self._branch_uninitialized.update(vars)
+
+    def clear_uninit(self) -> None:
+        """Clear all MAYBE_SET variables (e.g. on jump to another label)."""
+        self._branch_uninitialized.clear()
+
     def reset(self) -> None:
-        self.branch_uninitialized.clear()
+        self.clear_uninit()
         self.guaranteed_vars.clear()
         self.if_stack.clear()
 
@@ -60,7 +92,7 @@ class StateChecker(BaseChecker):
             already_guaranteed=self.guaranteed_vars,
         )
 
-        self.branch_uninitialized.update(uninit_vars)
+        self.add_uninit_vars(uninit_vars)
 
         if self.if_stack:
             self.if_stack[-1].current_branch.defined_vars.update(guaranteed_in_if)
@@ -212,7 +244,7 @@ class StateChecker(BaseChecker):
                 already_guaranteed=self.guaranteed_vars,
             )
         )
-        self.branch_uninitialized.update(uninit_vars)
+        self.add_uninit_vars(uninit_vars)
 
         # Pass menu's guaranteed variables to current if-branch
         if self.if_stack:

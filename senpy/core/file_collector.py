@@ -60,10 +60,10 @@ from senpy.core.symbols import (
 from senpy.rules.python_ast import infer_expr_type
 from senpy.text_utils import (
     _get_logical_line,
-    _strip_comment,
     dedent_python,
     extract_for_targets,
     parse_python_silent,
+    strip_comment,
     strip_string_literals,
 )
 
@@ -442,7 +442,7 @@ class FileCollector:
         # = B (the last non-blank line before B is the screen body, which
         # is not a terminator), making B appear reachable from A.
         if lines is not None and previous_label is not None and previous_label in scope.labels:
-            from senpy.text_utils import _strip_comment
+            from senpy.text_utils import strip_comment
 
             prev_label_line = scope.labels[previous_label].line_number - 1  # 0-indexed
 
@@ -468,7 +468,7 @@ class FileCollector:
                     stripped_line = line_text.lstrip(" ")
                     indent = len(line_text) - len(stripped_line)
                     if indent == 0:
-                        clean_at_zero = _strip_comment(stripped_line).strip()
+                        clean_at_zero = strip_comment(stripped_line).strip()
                         if clean_at_zero and clean_at_zero.startswith(
                             (
                                 "label ",
@@ -491,7 +491,7 @@ class FileCollector:
 
                 if not has_intervening_top_level:
                     # Step 3: check the last non-blank line for terminator.
-                    prev_clean = _strip_comment(lines[last_nb_idx]).strip()
+                    prev_clean = strip_comment(lines[last_nb_idx]).strip()
                     # A line terminates the label's control flow if it matches
                     # RE_TERMINATOR (jump/return/call/$ renpy.quit()/
                     # renpy.full_restart()/etc.) OR ends with `:` (block-
@@ -591,7 +591,7 @@ class FileCollector:
 
             attrs: set[str] = set()
             for bl in block_lines:
-                clean_bl = _strip_comment(bl).strip()
+                clean_bl = strip_comment(bl).strip()
                 m_attr = RE_LAYEREDIMAGE_ATTR.match(clean_bl)
                 if m_attr:
                     attrs.add(m_attr.group(1).strip())

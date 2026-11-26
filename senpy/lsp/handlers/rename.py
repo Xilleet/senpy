@@ -23,6 +23,7 @@ from senpy.lsp.handlers._shared import (
     _filter_occurrences_by_kind,
     _find_text_occurrences_in_project,
     _get_server_mod,
+    _read_file_lines,
     _word_at_position,
 )
 
@@ -103,55 +104,62 @@ def _rename_label(server_mod, word: str, new_name: str) -> lsp.WorkspaceEdit | N
 
     Uses the jump_sources reverse index from the analyzer — more precise than
     text search (does not catch false positives in strings/comments).
+
+    Reads file content via ``_read_file_lines`` (in-memory first, then disk)
+    so line indices from the symbol snapshot (which reflect IN-MEMORY
+    content) match the lines we read. Without this, rename would apply
+    TextEdits at stale DISK positions when the user has unsaved buffer
+    changes — silent file corruption (Task 74).
+
+    Batches reads by file: a label with N references in the same file
+    triggers ONE read of that file, not N reads (the previous code opened
+    the file once per reference).
     """
     # Phase 3.3c-e: state via _lsp_server.<attr>.
     lsp_server = server_mod._lsp_server
     changes: dict[str, list[lsp.TextEdit]] = {}
 
+    # Collect (file_path, line_1based) for declaration + all refs.
+    # Group by file to amortise reads (1 read per file, not per ref).
+    targets: list[tuple[str, int]] = []
+
     # 1. Declaration (label X:)
     lbl = lsp_server.symbol_snapshot["labels"][word]
-    lbl_uri = server_mod._path_to_uri(lbl.file_path)
-    lbl_line = max(0, lbl.line_number - 1)  # 0-based
-
-    # Read the line to find the exact position of the word
-    try:
-        with open(lbl.file_path, encoding="utf-8") as f:
-            file_lines = f.readlines()
-        if lbl_line < len(file_lines):
-            lbl_content = file_lines[lbl_line]
-            # Replace EVERY whole-word occurrence on the line (not just
-            # the first ``str.find`` hit) — the declaration line of a
-            # label does not normally repeat the name, but using the
-            # helper keeps the two paths consistent and protects
-            # against pathological ``label gold gold:`` input.
-            changes.setdefault(lbl_uri, []).extend(
-                _word_edits_on_line(lbl_content, lbl_line, word, new_name)
-            )
-    except OSError:
-        pass
+    targets.append((lbl.file_path, lbl.line_number))
 
     # 2. All jump/call references (from jump_sources)
     # UX: also from the snapshot, to get references from all files.
     for ref_path, ref_line in lsp_server.symbol_snapshot["jump_sources"].get(word, []):
-        ref_uri = server_mod._path_to_uri(ref_path)
-        ref_line_0 = max(0, ref_line - 1)  # 0-based
+        targets.append((ref_path, ref_line))
 
-        # Read the line to find the exact position of the word
-        try:
-            with open(ref_path, encoding="utf-8") as f:
-                ref_lines = f.readlines()
-            if ref_line_0 < len(ref_lines):
-                ref_content = ref_lines[ref_line_0]
-                # Replace EVERY whole-word occurrence on the line — the
-                # old ``str.find(word)`` returned only the first hit, so
-                # ``$ gold = gold + 1`` became ``$ silver = gold + 1``
-                # (silent corruption: the second reference was left
-                # untouched). The word-boundary regex finds all of them.
-                changes.setdefault(ref_uri, []).extend(
-                    _word_edits_on_line(ref_content, ref_line_0, word, new_name)
-                )
-        except OSError:
-            pass
+    # Group by file path → list of 1-based line numbers.
+    by_file: dict[str, list[int]] = {}
+    for fpath, line_1 in targets:
+        by_file.setdefault(fpath, []).append(line_1)
+
+    for fpath, line_1s in by_file.items():
+        # Read via _read_file_lines: in-memory (unsaved) content first,
+        # then disk. The snapshot's line numbers reflect IN-MEMORY
+        # content (set by analyze_file_only from in_memory_files) —
+        # reading DISK here would index the wrong line (Task 74).
+        lines = _read_file_lines(server_mod, fpath)
+        if lines is None:
+            continue
+        uri = server_mod._path_to_uri(fpath)
+        for line_1 in line_1s:
+            line_0 = max(0, line_1 - 1)  # 0-based
+            if line_0 >= len(lines):
+                continue
+            content = lines[line_0]
+            # Replace EVERY whole-word occurrence on the line (not just
+            # the first ``str.find`` hit) — the declaration line of a
+            # label does not normally repeat the name, but using the
+            # helper keeps the two paths consistent and protects
+            # against pathological ``label gold gold:`` input. For
+            # references, ``$ gold = gold + 1`` would otherwise become
+            # ``$ silver = gold + 1`` (silent corruption: the second
+            # reference left untouched).
+            changes.setdefault(uri, []).extend(_word_edits_on_line(content, line_0, word, new_name))
 
     if not changes:
         return None

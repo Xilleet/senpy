@@ -33,12 +33,12 @@ from senpy.rules.flow import StoryFlowAnalyzer
 from senpy.rules.missing_kind import MissingMetadata
 from senpy.rules.python_ast import PythonAstChecker
 
-# Phase 1.3 (0.5.3): _strip_comment was moved to senpy/text_utils.py to break
+# Strip_comment was moved to senpy/text_utils.py to break
 # the circular dependency checkers/flow → analyzer. Re-exported for backward compat.
 from senpy.text_utils import (  # noqa: E402, F401
     _count_bracket_delta,
     _get_logical_line,
-    _strip_comment,
+    strip_comment,
 )
 
 _logger = get_logger("analyzer")

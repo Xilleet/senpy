@@ -447,7 +447,7 @@ class StoryFlowAnalyzer:
         variables. See ``_analyze_choice_body`` docstring for the full
         rationale.
         """
-        from senpy.text_utils import _strip_comment
+        from senpy.text_utils import strip_comment
 
         idx = start_idx
         choices: list[FlowBranch] = []
@@ -458,7 +458,7 @@ class StoryFlowAnalyzer:
 
         while idx < len(lines):
             raw_line = lines[idx]
-            stripped = _strip_comment(raw_line).strip()
+            stripped = strip_comment(raw_line).strip()
             line_indent = len(raw_line) - len(raw_line.lstrip(" "))
 
             if not stripped:
@@ -486,7 +486,7 @@ class StoryFlowAnalyzer:
                     # source coordinates. Trailing comments and whitespace
                     # (including newline) are stripped; leading indent and
                     # the choice text are preserved.
-                    raw=_strip_comment(raw_line).rstrip(),
+                    raw=strip_comment(raw_line).rstrip(),
                 )
                 statement_counts[id(current_choice)] = 0
                 idx += 1

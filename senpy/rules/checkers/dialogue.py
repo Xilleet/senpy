@@ -101,7 +101,7 @@ class DialogueChecker(BaseChecker):
     ) -> None:
         """RPY308: Check if label is preceded by fallthrough (no return/jump)."""
         from senpy.core.constants import is_terminator_line
-        from senpy.text_utils import _strip_comment
+        from senpy.text_utils import strip_comment
 
         if not self.in_label_context or idx <= 0:
             return
@@ -112,7 +112,7 @@ class DialogueChecker(BaseChecker):
         if prev_idx < 0:
             return
 
-        prev_clean = _strip_comment(lines[prev_idx]).strip()
+        prev_clean = strip_comment(lines[prev_idx]).strip()
         # A line terminates the label's control flow if it matches
         # RE_TERMINATOR (jump/return/call/$ renpy.quit()/renpy.full_restart()/
         # etc.) OR ends with `:` (block-opening statement like `if`, `menu`,

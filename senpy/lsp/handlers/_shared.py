@@ -29,6 +29,47 @@ def _get_server_mod():
     return server
 
 
+def _read_file_lines(server_mod, fpath: str) -> list[str] | None:
+    """Read file lines, preferring in-memory (unsaved) content over disk.
+
+    Mirrors ``senpy.core.file_discovery.read_file_lines`` so line indices
+    match what the analyzer used to compute ``symbol.line_number`` and
+    ``jump_sources`` entries. Without this, rename/references read DISK
+    while the snapshot's line numbers reflect IN-MEMORY content —
+    causing silent file corruption when the user has unsaved buffer
+    changes (rename applies TextEdits at stale line positions, possibly
+    on unrelated lines that happen to contain the same textual token).
+
+    Delegates to ``read_file_lines`` so the encoding handling
+    (``utf-8-sig`` to strip BOM, ``newline=""`` to preserve CRLF) is
+    byte-identical with how the analyzer reads files — without this,
+    a BOM or CRLF file would have an off-by-one between the analyzer's
+    view and the handler's view even without unsaved changes.
+
+    Returns:
+        list[str] with ``keepends=True`` (matching ``read_file_lines``),
+        or ``None`` on OSError / UnicodeDecodeError (caller handles
+        gracefully — typically by skipping that file or keeping
+        previously-found occurrences conservatively).
+    """
+    from senpy.core.file_discovery import read_file_lines as _read_file_lines_core
+
+    lsp_server = server_mod._lsp_server
+    analyzer = lsp_server.active_analyzer
+    if analyzer is None:
+        # No analyzer yet (early LSP init) — fall back to direct disk read
+        # preserving the old behaviour. Rename/references bail out early
+        # when active_analyzer is None, so this branch is defensive only.
+        try:
+            with open(fpath, encoding="utf-8-sig", newline="") as f:
+                return f.readlines()
+        except (OSError, UnicodeDecodeError):
+            return None
+    # Pass an empty stage1_lines — the LSP never populates it (only the
+    # full-project analysis path does). We just want in-memory-first-then-disk.
+    return _read_file_lines_core(fpath, analyzer.in_memory_files, {})
+
+
 def _word_at_position(line: str, col: int) -> str | None:
     r"""Return the dotted-identifier at the given column (regex `[^\W\d][\w\.]*`).
 
@@ -102,10 +143,12 @@ def _find_text_occurrences_in_project(server_mod, word: str) -> list[tuple[str, 
             if not fname.endswith(".rpy"):
                 continue
             fpath = os.path.join(root, fname)
-            try:
-                with open(fpath, encoding="utf-8", errors="replace") as f:
-                    lines = f.readlines()
-            except OSError:
+            # Read via _read_file_lines: in-memory (unsaved) content first,
+            # then disk. Without this, occurrences carry DISK line indices
+            # while the symbol snapshot carries IN-MEMORY line indices —
+            # rename would apply TextEdits at stale positions (Task 74).
+            lines = _read_file_lines(server_mod, fpath)
+            if lines is None:
                 continue
 
             for line_idx, line in enumerate(lines):
@@ -371,11 +414,18 @@ def _filter_occurrences_by_kind(
         return occurrences
 
     kept: list[tuple[str, int, int]] = []
+    # Read via _read_file_lines: in-memory (unsaved) content first, then
+    # disk. The occurrences were found with the same helper (in
+    # _find_text_occurrences_in_project), so reading the same way here
+    # keeps line indices consistent — without this, the filter would
+    # re-read DISK while the occurrences carry IN-MEMORY line indices
+    # (Task 74: would either IndexError past disk length or apply the
+    # predicate to the wrong line, dropping real references or keeping
+    # false positives).
+    server_mod = _get_server_mod()
     for fpath, items in by_file.items():
-        try:
-            with open(fpath, encoding="utf-8", errors="replace") as f:
-                lines = f.readlines()
-        except OSError:
+        lines = _read_file_lines(server_mod, fpath)
+        if lines is None:
             # Cannot read — keep all occurrences conservatively.
             for line_idx, col_utf16 in items:
                 kept.append((fpath, line_idx, col_utf16))

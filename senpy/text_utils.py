@@ -2,24 +2,24 @@
 
 Extracted into a separate module in Phase 1.3 (0.5.3) to break the circular
 dependencies:
-    - checkers.py → analyzer._strip_comment
-    - flow.py → analyzer._strip_comment
+    - checkers.py → analyzer.strip_comment
+    - flow.py → analyzer.strip_comment
 
-Previously _strip_comment lived in analyzer.py, and checkers/flow did a lazy
-import `from senpy.core.analyzer import _strip_comment` inside their methods. This
+Previously strip_comment lived in analyzer.py, and checkers/flow did a lazy
+import `from senpy.core.analyzer import strip_comment` inside their methods. This
 created a cycle (although through a runtime import, not a top-level one).
 
-Now _strip_comment is in this module (senpy/text_utils.py), everyone depends
+Now strip_comment is in this module (senpy/text_utils.py), everyone depends
 on it one-directionally:
     analyzer.py → senpy.text_utils
     checkers.py → senpy.text_utils
     flow.py → senpy.text_utils
 
-For backward compatibility _strip_comment is re-exported from analyzer.py
-(the old import `from senpy.core.analyzer import _strip_comment` keeps working).
+For backward compatibility strip_comment is re-exported from analyzer.py
+(the old import `from senpy.core.analyzer import strip_comment` keeps working).
 
 Public API:
-    _strip_comment(line: str) -> str
+    strip_comment(line: str) -> str
     strip_string_literals(line: str) -> str
     suggest_similar(target, candidates, cutoff) -> str
 """
@@ -122,7 +122,7 @@ def dedent_python(code: str) -> str:
     return textwrap.dedent(code.replace("\r\n", "\n").replace("\r", "\n"))
 
 
-def _strip_comment(line: str) -> str:
+def strip_comment(line: str) -> str:
     """Strips a comment (#) without breaking hex colors, escaped quotes (\\") and triple quotes.
 
     Algorithm:
@@ -181,6 +181,24 @@ def _strip_comment(line: str) -> str:
             return line[:i]
         i += 1
     return line
+
+
+# Backward-compat alias: ``_strip_comment`` was the canonical name until
+# the public-API audit flagged the leading-underscore prefix as misleading
+# (the function is part of the public API, re-exported from analyzer.py,
+# listed in the module docstring). New code should use ``strip_comment``.
+# The alias emits a DeprecationWarning on each access so downstream
+# consumers notice and migrate; the alias will be removed in 1.0.
+def _strip_comment(line: str) -> str:  # noqa: D401 — thin deprecated wrapper
+    """Deprecated alias for ``strip_comment`` — will be removed in 1.0."""
+    warnings.warn(
+        "'_strip_comment' is deprecated, use 'strip_comment' instead "
+        "(the leading underscore was misleading — this function is part "
+        "of the public API). The alias will be removed in 1.0.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return strip_comment(line)
 
 
 def strip_string_literals(line: str) -> str:
@@ -423,7 +441,7 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     Fault-tolerant: prevents cascading file swallowing on unclosed brackets.
     """
     first_raw = lines[idx]
-    first_clean = _strip_comment(first_raw)
+    first_clean = strip_comment(first_raw)
     stripped = first_clean.strip()
 
     bracket_depth = _count_bracket_delta(first_clean)
@@ -476,7 +494,7 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
             break
 
         peek_raw = lines[curr_idx + 1]
-        peek_clean = _strip_comment(peek_raw).strip()
+        peek_clean = strip_comment(peek_raw).strip()
 
         # Block boundary: if there is no explicit backslash '\', we are NOT
         # inside a multi-line string, and the next line is a new top-level
@@ -508,7 +526,7 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
 
         curr_idx += 1
         next_raw = lines[curr_idx]
-        next_clean = _strip_comment(next_raw)
+        next_clean = strip_comment(next_raw)
 
         raw_parts.append(next_raw)
         clean_parts.append(next_clean)

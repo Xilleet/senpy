@@ -4,7 +4,7 @@ import re
 
 from senpy.core.models import Diagnostic
 from senpy.domain.text_tags import get_utf16_range
-from senpy.text_utils import _strip_comment
+from senpy.text_utils import strip_comment
 
 # Dictionary of deprecated APIs:
 # Function name -> (Advice/explanation, 1-to-1 replacement for autofix or None)
@@ -229,7 +229,7 @@ class DeprecationChecker:
             return []
 
         # 3. Determine the inline-comment boundary (if any).
-        # ``_strip_comment`` returns the code portion of the line with the
+        # ``strip_comment`` returns the code portion of the line with the
         # comment removed (string-literal-aware: ``#`` inside ``"..."`` is
         # preserved). A deprecated-API match in the comment portion must
         # NOT produce a diagnostic — otherwise a line like
@@ -237,13 +237,13 @@ class DeprecationChecker:
         # (one for the real call, one for the word "LiveComposite" in the
         # comment). Both match'ed at the same col (the first occurrence)
         # which is even more confusing.
-        code_only = _strip_comment(line)
+        code_only = strip_comment(line)
         comment_start = len(code_only)
-        # If ``_strip_comment`` did not strip anything, ``code_only`` equals
+        # If ``strip_comment`` did not strip anything, ``code_only`` equals
         # ``line`` (modulo trailing whitespace) and ``comment_start`` is
         # past the end — every match is in code. If it stripped something,
         # ``comment_start`` is the index in ``line`` where the ``#``
-        # begins (approximate — ``_strip_comment`` may rstrip whitespace,
+        # begins (approximate — ``strip_comment`` may rstrip whitespace,
         # but the ``#`` is always at or after ``comment_start``).
 
         diagnostics: list[Diagnostic] = []

@@ -192,7 +192,7 @@ def is_terminator_line(line: str) -> bool:
 
     Convenience wrapper around RE_TERMINATOR for callers that prefer a
     boolean predicate over a regex match object. The line should already
-    have comments stripped (via text_utils._strip_comment) — the regex
+    have comments stripped (via text_utils.strip_comment) — the regex
     does not handle inline comments.
     """
     return bool(RE_TERMINATOR.match(line))
@@ -241,7 +241,7 @@ def is_branch_terminator_line(line: str) -> bool:
     Used by ``state.py:_manage_if_elif_else_stack`` and
     ``flow.py:_analyze_choice_body`` to mark branches as terminating.
     The line should already have comments stripped (via
-    ``text_utils._strip_comment``).
+    ``text_utils.strip_comment``).
     """
     return bool(RE_BRANCH_TERMINATOR.match(line))
 
