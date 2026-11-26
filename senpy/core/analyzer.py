@@ -660,7 +660,7 @@ class SenpyAnalyzer:
         file_path: str = "",
         noqa_map: dict | None = None,
         already_guaranteed: set[str] | None = None,
-    ) -> tuple[int, dict[str, tuple[str, ...]], set[str], bool]:
+    ) -> tuple[int, dict[str, MissingMetadata], set[str], bool]:
         return self.flow.analyze_menu_flow(
             lines,
             start_idx,
