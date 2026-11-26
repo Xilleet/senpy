@@ -545,6 +545,18 @@ class PythonAstChecker:
             )
             return
 
+        # A plain ``$ X = value`` inside a screen block
+        # where ``X`` is NOT a known global creates a screen-local variable
+        # (Ren'Py screen language has its own scope). Treating this as a
+        # global mutation is a false positive — the assignment doesn't reach
+        # the global store. Only compound assignments (``$ X += 1``,
+        # ``$ X -= 1``) are real mutations, because they read-then-write and
+        # require ``X`` to pre-exist. ``bad_state_mutation.rpy`` uses
+        # ``$ player_gold -= 10`` (AugAssign) → bypasses this guard → RPY201
+        # still fires correctly.
+        if isinstance(node, ast.Assign) and target_name not in self.analyzer.user_symbols:
+            return
+
         self._emit_rpy201(
             target_name=target_name,
             screen_name=screen_name,
@@ -1769,8 +1781,23 @@ class PythonAstChecker:
         still each get their own diagnostic.
         """
         seen: set[str] = set()
+        # CORPUS-6 / RPY202 FP: ``if X():`` where ``X`` is a function call
+        # (parens) — the callee Name is a call expression, NOT a variable
+        # access. ``ast.walk`` yields ``Name('CurrentScreenName', Load)`` as
+        # ``Call.func``; without this guard, RPY202/RPY103 fire on the
+        # callee name. We collect ``id()`` of Name nodes that are
+        # ``Call.func`` and skip them. Using object identity (``id()``)
+        # rather than the name string avoids over-suppression when the
+        # same name appears as both a call and a variable on one line.
+        call_func_node_ids: set[int] = {
+            id(n.func)
+            for n in ast.walk(cond_tree)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        }
         for node in ast.walk(cond_tree):
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                if id(node) in call_func_node_ids:
+                    continue
                 var_name = node.id
                 if var_name.startswith("_") or var_name in SCREEN_LOCAL_IGNORE:
                     continue

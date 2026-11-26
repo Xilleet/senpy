@@ -278,6 +278,17 @@ class AssetChecker(BaseChecker):
         if img_tokens and img_tokens[0] == "layer" and m_show.group(1) == "show":
             return None
 
+        # "show text <string>" / "scene text <string>"
+        # creates a Text displayable, NOT an image reference. The ``text``
+        # keyword after ``show`` is a Ren'Py built-in displayable constructor
+        # (see https://www.renpy.org/doc/html/displayables.html), same
+        # syntactic category as ``show expression`` / ``show screen`` which
+        # are already excluded by the RE_SHOW_SCENE negative lookahead.
+        # Without this guard, RPY502 fires thinking ``text`` is an undefined
+        # image name. Symmetric with the ``layer`` guard above.
+        if img_tokens and img_tokens[0] == "text":
+            return None
+
         if not img_tokens:
             return None
 

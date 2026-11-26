@@ -1,9 +1,9 @@
 # Multi-line dialogue: Ren'Py supports strings spanning multiple physical
 # lines. The opening " is on one line, closing " is on a later line.
-# RPY305 currently fires on each line containing a " — FP.
+# RPY305 must NOT fire on multi-line dialogue strings (CORPUS-6 fix:
+# DialogueChecker tracks _in_multiline_dialogue state — a line with odd
+# " count toggles the state, and while inside, RPY305 is skipped).
 # Pattern from aqua_guardians/game/red_route.rpy (lines 29-33).
-#
-# When fixed, RPY305 should NOT fire on multi-line dialogue strings.
 label start:
     e "He plans to
     implement sustainable practices and efficient crop

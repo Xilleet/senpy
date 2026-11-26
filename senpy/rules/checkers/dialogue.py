@@ -35,10 +35,19 @@ class DialogueChecker(BaseChecker):
         super().__init__(analyzer)
         self.in_label_context = False
         self.current_global_label: str | None = None
+        # Ren'Py supports dialogue strings that span
+        # multiple physical lines (opening ``"`` on one line, closing ``"``
+        # on a later line). Without tracking this state, RPY305 fires on
+        # every line that has an odd count of ``"`` (the open/close of a
+        # multi-line string looks like an unescaped quote). The toggle is
+        # flipped when a line has an odd ``"`` count: on → inside a
+        # multi-line string, off → string closed.
+        self._in_multiline_dialogue = False
 
     def reset(self) -> None:
         self.in_label_context = False
         self.current_global_label = None
+        self._in_multiline_dialogue = False
 
     def check_line(
         self,
@@ -371,11 +380,36 @@ class DialogueChecker(BaseChecker):
             return
 
         unescaped_quotes = re.findall(r'(?<!\\)"', stripped)
-        is_odd_quotes = len(unescaped_quotes) % 2 != 0
+        quote_count = len(unescaped_quotes)
+        is_odd_quotes = quote_count % 2 != 0
+
+        # Multi-line dialogue strings. Ren'Py supports
+        # dialogue strings that span multiple physical lines (opening ``"`` on
+        # one line, closing ``"`` on a later line). Without tracking this
+        # state, RPY305 fires on every line with an odd ``"`` count (the
+        # open/close of a multi-line string looks like an unescaped quote).
+        # Toggle: a line with odd ``"`` count either opens or closes a
+        # multi-line string. While inside, skip RPY305 entirely.
+        # ``bad_unescaped_quotes.rpy`` has 4 quotes on one line (even count)
+        # → never enters multiline state → RPY305 still fires via
+        # ``has_inner_quotes``. ``good_escaped_quotes.rpy`` has 2 quotes
+        # (even) → never enters multiline → no FP.
+        if self._in_multiline_dialogue:
+            if is_odd_quotes:
+                # Closing ``"`` of the multi-line string — exit state.
+                self._in_multiline_dialogue = False
+            return
+        if is_odd_quotes:
+            # Opening ``"`` of a multi-line string — enter state and skip
+            # RPY305 for this line (the odd ``"`` is the opener, not an
+            # unescaped inner quote).
+            self._in_multiline_dialogue = True
+            return
+
         has_inner_quotes = bool(
             re.search(r'(?<!\\)"[^"\\]*(?<!\\)"\s+[^\s"\'#]+.*(?<!\\)"', stripped)
         )
-        if is_odd_quotes or has_inner_quotes:
+        if has_inner_quotes:
             self.analyzer._add_diagnostic(
                 Diagnostic(
                     file_path=file_path,

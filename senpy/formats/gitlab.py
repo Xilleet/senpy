@@ -148,7 +148,7 @@ def _fingerprint(diag: Diagnostic, rel_path: str, ordinal: int) -> str:
 
     Payload: ``f"{code}|{rel_path}|{message}|{ordinal}"``
 
-    Why ``line_number`` is NOT in the payload (FIX-57):
+    Why ``line_number`` is NOT in the payload:
 
       GitLab deduplicates findings across MR commits by fingerprint.
       Including ``line_number`` means inserting N lines at the top of a
