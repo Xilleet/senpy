@@ -446,6 +446,15 @@ class AnalysisPipeline:
             file_path, idx, next_idx, raw_line, clean, state.scope_stack, noqa_map, lines
         )
         # 4. DialogueChecker (RPY302, RPY305, RPY306, RPY308)
+        # Pass ``state.st_checker.clear_uninit`` (bound method) as the
+        # ``on_jump_clear_uninit`` callback — DialogueChecker invokes it
+        # when a ``jump`` is detected, asking StateChecker to clear
+        # MAYBE_SET state for the now-terminated branch. Previously we
+        # passed the live ``branch_uninitialized`` dict by reference and
+        # DialogueChecker called ``.clear()`` on it (cross-checker
+        # mutation). The callback keeps DialogueChecker decoupled from
+        # StateChecker while preserving identical behaviour: jump →
+        # clear MAYBE_SET before StateChecker.check_line sees the line.
         state.dialogue.check_line(
             file_path,
             idx,
@@ -455,7 +464,7 @@ class AnalysisPipeline:
             state.scope_stack,
             noqa_map,
             lines,
-            state.st_checker.branch_uninitialized,
+            state.st_checker.clear_uninit,
         )
         # 5. Quoted strings check (RPY101, RPY301, RPY304)
         if not stripped.startswith(("$", "python")):

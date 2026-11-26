@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import re
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from senpy.core.constants import (
@@ -59,8 +60,23 @@ class DialogueChecker(BaseChecker):
         scope_stack: ScopeStack,
         noqa_map: dict[int, set[str] | None],
         lines: list[str],
-        branch_uninitialized: dict | None = None,
+        on_jump_clear_uninit: Callable[[], None] | None = None,
     ) -> tuple[int, bool]:
+        """Line-by-line dialogue/jump/call/quote checks.
+
+        ``on_jump_clear_uninit`` (replaces the old ``branch_uninitialized: dict``
+        param): a zero-arg callback the caller (typically
+        ``StateChecker.clear_uninit`` bound method) provides so that when a
+        ``jump`` is detected, DialogueChecker can ask the owner to clear
+        MAYBE_SET state for the now-terminated branch. Previously
+        DialogueChecker received the live ``StateChecker._branch_uninitialized``
+        dict by reference and called ``.clear()`` on it — a cross-checker
+        mutation that broke the encapsulation Task 97 introduced. The
+        callback keeps DialogueChecker fully decoupled from StateChecker
+        (no import, no Protocol member) while preserving the same
+        behaviour: jump → clear MAYBE_SET before StateChecker.check_line
+        sees the same line.
+        """
         stripped = clean_line.strip()
         line_indent = len(raw_line) - len(raw_line.lstrip(" "))
         is_in_screen = scope_stack.current_screen_name() is not None
@@ -79,7 +95,7 @@ class DialogueChecker(BaseChecker):
 
         # RPY302, RPY306, RPY310: jump/call targets
         self._check_jump_call_targets(
-            file_path, idx, raw_line, stripped, branch_uninitialized, noqa_map
+            file_path, idx, raw_line, stripped, on_jump_clear_uninit, noqa_map
         )
 
         # RPY302: Jump/Call via UI Actions and Python (renpy.jump, renpy.call)
@@ -146,7 +162,7 @@ class DialogueChecker(BaseChecker):
         idx: int,
         raw_line: str,
         stripped: str,
-        branch_uninitialized: dict | None,
+        on_jump_clear_uninit: Callable[[], None] | None,
         noqa_map: dict[int, set[str] | None],
     ) -> None:
         """RPY302, RPY306, RPY310: Check jump/call targets for non-existent labels,
@@ -189,7 +205,7 @@ class DialogueChecker(BaseChecker):
             )
 
         if cmd_type == "jump":
-            self._check_jump_target(target_label, branch_uninitialized)
+            self._check_jump_target(target_label, on_jump_clear_uninit)
         elif cmd_type == "call":
             self._check_call_target(
                 target_label=target_label,
@@ -240,13 +256,21 @@ class DialogueChecker(BaseChecker):
     def _check_jump_target(
         self,
         target_label: str,
-        branch_uninitialized: dict | None,
+        on_jump_clear_uninit: Callable[[], None] | None,
     ) -> None:
         """Jump-specific post-checks: a jump terminates the current branch,
         so any MAYBE_SET vars from an unfinished menu choice are no longer relevant.
+
+        Invokes the ``on_jump_clear_uninit`` callback (typically
+        ``StateChecker.clear_uninit`` bound method) instead of mutating
+        ``StateChecker._branch_uninitialized`` directly. The callback
+        approach keeps DialogueChecker decoupled from StateChecker — no
+        import, no Protocol member, no dict-by-reference leak. The
+        behaviour is identical: jump → owner clears MAYBE_SET state
+        before StateChecker.check_line processes the same line.
         """
-        if branch_uninitialized is not None:
-            branch_uninitialized.clear()
+        if on_jump_clear_uninit is not None:
+            on_jump_clear_uninit()
 
     def _check_call_target(
         self,
