@@ -16,6 +16,11 @@ Required fields per finding:
     location.path   (str)  — repo-relative path with forward slashes
     location.lines.begin (int) — 1-based line number
 
+Optional fields (emitted when available):
+
+    location.positions.begin.line   (int) — 1-based line (mirrors lines.begin)
+    location.positions.begin.column (int) — 1-based column (when diag.col set)
+
 Field mapping (Senpy → GitLab):
 
     Diagnostic.code         → check_name
@@ -24,11 +29,25 @@ Field mapping (Senpy → GitLab):
                               HINT/INFO→info)
     Diagnostic.file_path    → location.path (repo-relative)
     Diagnostic.line_number  → location.lines.begin (1-based)
-    md5(code|path|line|msg) → fingerprint
+    Diagnostic.col          → location.positions.begin.column (1-based, when > 0)
+    md5(code|path|msg|ord)  → fingerprint
 
-The fingerprint algorithm is pinned by tests/test_gitlab.py — change
-it and every GitLab finding would re-open. Use the helper if you
-need to regenerate.
+Fingerprint algorithm:
+
+    payload = f"{code}|{rel_path}|{message}|{ordinal}"
+
+where ``ordinal`` is the 0-based index of this finding within its
+``(code, rel_path, message)`` group. Line number is INTENTIONALLY
+excluded — inserting 5 lines at the top of a file shifts every
+finding's line_number by 5, which would produce new fingerprints and
+cause GitLab to close all old MR discussions as "fixed" and open new
+ones for the same findings. The ordinal distinguishes two genuinely-
+distinct findings with the same (code, path, message) — without it,
+GitLab would dedup them and hide one from MR review.
+
+The fingerprint algorithm is pinned by tests/formats/test_gitlab.py
+and tests/formats/test_fix_57_58_gitlab.py — change it and every
+GitLab finding would re-open.
 """
 
 from __future__ import annotations
@@ -121,21 +140,42 @@ def _relpath(file_path: str, project_path: str) -> str:
     return rel.replace("\\", "/")
 
 
-def _fingerprint(diag: Diagnostic, rel_path: str) -> str:
+def _fingerprint(diag: Diagnostic, rel_path: str, ordinal: int) -> str:
     """Stable hash for deduplication across runs.
 
     The fingerprint must be stable across runs (same input → same
-    output) and distinct for logically distinct findings. We hash
-    ``code|path|line|message`` — this means re-running on the same
-    file produces the same fingerprint, but a new line or a changed
-    message produces a new one (so GitLab will treat it as a new
-    finding, which is the desired behaviour).
+    output) and distinct for logically distinct findings.
+
+    Payload: ``f"{code}|{rel_path}|{message}|{ordinal}"``
+
+    Why ``line_number`` is NOT in the payload (FIX-57):
+
+      GitLab deduplicates findings across MR commits by fingerprint.
+      Including ``line_number`` means inserting N lines at the top of a
+      file shifts every finding's line_number by N → every finding gets
+      a new fingerprint → GitLab closes all old MR discussions as
+      "fixed" and opens new ones for the same findings. The MR history
+      becomes noise: "you fixed everything and re-broke it in the same
+      commit."
+
+    Why ``ordinal`` IS in the payload:
+
+      Without it, two genuinely-distinct findings with the same
+      (code, path, message) — e.g. RPY104 emitted on two different
+      lines with the same message — would collide on fingerprint and
+      GitLab would dedup them, hiding one from MR review.
+
+      The ordinal is the 0-based index of this finding within its
+      (code, rel_path, message) group, computed by ``generate_gitlab_json``
+      as it walks the input list. As long as the analyzer emits
+      diagnostics in a deterministic order (by file, then by line),
+      the ordinals are stable across runs.
 
     MD5 is used because GitLab's example implementations use it and
     it is sufficient for non-cryptographic deduplication. A future
     migration to BLAKE2b/3 is tracked separately in the worklog.
     """
-    payload = f"{diag.code}|{rel_path}|{diag.line_number}|{diag.message}"
+    payload = f"{diag.code}|{rel_path}|{diag.message}|{ordinal}"
     # ``usedforsecurity=False`` is required for non-cryptographic hashing on
     # FIPS-enabled systems (RHEL/Fedora, corporate images). Without it,
     # ``hashlib.md5()`` raises ``ValueError: [digital envelope routines]
@@ -156,19 +196,46 @@ def generate_gitlab_json(diagnostics: list[Diagnostic], project_path: str) -> st
     if not diagnostics:
         return "[]"
 
+    # Group by (code, rel_path, message) and assign ordinals so two
+    # genuinely-distinct findings with the same triple get different
+    # fingerprints (without the ordinal, GitLab would dedup them).
+    # See _fingerprint docstring for the full rationale.
+    group_ordinals: dict[tuple[str, str, str], int] = {}
+
     findings: list[dict[str, Any]] = []
     for diag in diagnostics:
         rel_path = _relpath(diag.file_path, project_path)
+        key = (diag.code, rel_path, diag.message)
+        ordinal = group_ordinals.get(key, 0)
+        group_ordinals[key] = ordinal + 1
+
+        location: dict[str, Any] = {
+            "path": rel_path,
+            "lines": {"begin": max(1, diag.line_number)},
+        }
+        # GitLab Code Quality schema supports ``positions.begin``
+        # (object with line + column) alongside the simpler ``lines.begin``
+        # (integer). We emit ``positions.begin`` only when ``diag.col`` is
+        # set (>0) so the MR widget can point at the offending token and
+        # two findings on the same line are visually distinguishable.
+        # ``lines.begin`` is always present for backward compat with
+        # consumers that only read the simpler form.
+        # ``diag.col`` is 0-based; GitLab columns are 1-based.
+        if diag.col > 0:
+            location["positions"] = {
+                "begin": {
+                    "line": max(1, diag.line_number),
+                    "column": diag.col + 1,
+                }
+            }
+
         findings.append(
             {
                 "description": diag.message,
                 "check_name": diag.code,
-                "fingerprint": _fingerprint(diag, rel_path),
+                "fingerprint": _fingerprint(diag, rel_path, ordinal),
                 "severity": _map_severity(diag),
-                "location": {
-                    "path": rel_path,
-                    "lines": {"begin": max(1, diag.line_number)},
-                },
+                "location": location,
             }
         )
 

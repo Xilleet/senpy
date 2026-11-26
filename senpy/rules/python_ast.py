@@ -765,6 +765,43 @@ class PythonAstChecker:
                 else "from random import ..."
             )
             start_c, end_c = get_utf16_range(raw_l, "random")
+
+            # Build fix_replacement for single-name imports so users
+            # get a one-click QuickFix in their editor — same as _visit_import
+            # already does for ``import random``. Without this, ``import random``
+            # has a QuickFix but ``from random import X`` doesn't, asymmetric.
+            #
+            # Mapping:
+            #   from random import random         → from renpy import random
+            #   from random import random as rng  → from renpy import random as rng
+            #   from random import randint        → from renpy import random as randint
+            #   from random import randint as ri  → from renpy import random as ri
+            #   from random import randint, choice → (no fix_replacement — multi-name
+            #                                         requires renaming call sites
+            #                                         for BOTH names, too complex for
+            #                                         a single-line text replacement)
+            #
+            # Note: for ``from random import randint``, the fix changes the local
+            # name ``randint`` from a function (random.randint) to a module
+            # (renpy.random). Existing calls ``randint(1, 10)`` will fail at
+            # runtime — the user must update them to ``randint.randint(1, 10)``.
+            # The fix_replacement is a starting point, not a complete migration.
+            fix_title: str | None = None
+            fix_replacement: str | None = None
+            if len(node.names) == 1:
+                alias = node.names[0]
+                local_name = alias.asname or alias.name
+                if alias.name == "random" and alias.asname is None:
+                    # ``from random import random`` → ``from renpy import random``
+                    # (no ``as`` needed — local name matches module name).
+                    fix_replacement = "from renpy import random"
+                else:
+                    # ``from random import X [as Y]`` → ``from renpy import random as <local_name>``
+                    # Preserve the local name binding so existing references to
+                    # ``Y`` (or ``X`` if no alias) continue to resolve.
+                    fix_replacement = f"from renpy import random as {local_name}"
+                fix_title = "Replace with 'from renpy import random'"
+
             self.analyzer._add_diagnostic(
                 Diagnostic(
                     file_path=file_path,
@@ -774,6 +811,8 @@ class PythonAstChecker:
                     message="Standard 'random' used during gameplay. Rollback and saves may become non-deterministic; prefer 'renpy.random'.",
                     col=start_c,
                     end_col=end_c,
+                    fix_title=fix_title,
+                    fix_replacement=fix_replacement,
                 ),
                 noqa_map,
             )

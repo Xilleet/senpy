@@ -171,16 +171,23 @@ def test_gitlab_fingerprint_differs_for_different_lines():
     assert data[0]["fingerprint"] != data[1]["fingerprint"]
 
 
-def test_gitlab_fingerprint_uses_md5_of_code_path_line_message():
-    """Document the fingerprint algorithm: md5(f"{code}|{path}|{line}|{msg}").
+def test_gitlab_fingerprint_uses_md5_of_code_path_message_ordinal():
+    """Document the fingerprint algorithm: md5(f"{code}|{path}|{msg}|{ordinal}").
 
     Pinning the algorithm in a test makes accidental changes visible
     (a fingerprint change would re-open every GitLab finding).
+
+    Note (FIX-57): ``line_number`` is INTENTIONALLY excluded from the
+    payload — including it made the fingerprint unstable under line
+    shifts (inserting N lines at the top of a file re-opened every
+    GitLab MR discussion). The ordinal distinguishes two findings with
+    the same (code, path, message) — see
+    ``test_fix_57_58_gitlab.py::TestFingerprintAlgorithmPinned``.
     """
     diag = _diag(code="RPY104", file="/repo/game/script.rpy", line=7, message="msg")
     out = generate_gitlab_json([diag], "/repo")
     fp = json.loads(out)[0]["fingerprint"]
-    expected = hashlib.md5(b"RPY104|game/script.rpy|7|msg").hexdigest()
+    expected = hashlib.md5(b"RPY104|game/script.rpy|msg|0").hexdigest()
     assert fp == expected
 
 

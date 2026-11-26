@@ -101,7 +101,15 @@ def discover_rpy_files(project_path: str) -> tuple[list[str], list[str]]:
     main_files: list[str] = []
     tl_files: list[str] = []
     for root, dirs, filenames in os.walk(project_path, followlinks=False):
-        dirs[:] = sorted([d for d in dirs if d not in IGNORED_DIRS])
+        # ``key=str.lower`` makes the traversal order case-insensitive
+        # so the analyzer produces the same output on Linux (case-sensitive FS)
+        # and Windows (case-insensitive FS). Without it, ``Assets/`` and ``audio/``
+        # sort differently across platforms → non-deterministic traversal order
+        # → CI failures on Windows that don't reproduce on Linux.
+        dirs[:] = sorted(
+            [d for d in dirs if d not in IGNORED_DIRS],
+            key=str.lower,
+        )
         rel_parts = os.path.relpath(root, project_path).replace("\\", "/").split("/")
         # Use the canonical tl-detection helper: ``"tl" in rel_parts``
         # matched a ``tl`` directory anywhere in the path, mis-routing
@@ -110,14 +118,18 @@ def discover_rpy_files(project_path: str) -> tuple[list[str], list[str]]:
         # first ``tl`` when there is no ``game`` wrapper).
         is_tl_dir = _find_tl_dir_index(rel_parts) is not None
 
-        for f in sorted(filenames):
+        # Same case-insensitive sort for filenames within a dir.
+        for f in sorted(filenames, key=str.lower):
             if f.endswith((".rpy", "_ren.py")):
                 full_p = os.path.join(root, f)
                 if is_tl_dir:
                     tl_files.append(full_p)
                 else:
                     main_files.append(full_p)
-    return sorted(main_files), sorted(tl_files)
+    # Case-insensitive sort on the final list too — otherwise
+    # ``Banana/B_script.rpy`` would still sort before ``apple/a_script.rpy``
+    # by full-path codepoint order (B < a), undoing the per-dir sort above.
+    return sorted(main_files, key=str.lower), sorted(tl_files, key=str.lower)
 
 
 def parse_noqa(line: str) -> tuple[bool, set[str] | None]:

@@ -344,7 +344,16 @@ def infer_default_value(
     if t == "dict":
         return "{}"
     if t == "set":
-        return "[]"
+        # Was ``return "[]"`` — silently changed the type to list,
+        # after which ``.add()`` calls on the variable tripped RPY108 (list
+        # has no ``.add()`` method). The chain was: RPY106 warns about set
+        # → ``--defaults`` generator writes ``default x = []`` → user's
+        # existing ``$ x.add(...)`` code triggers RPY108. The proper default
+        # is ``renpy.revertable_set()`` — Ren'Py's rollback-compatible set
+        # type (has ``.add()``, ``.discard()``, ``.remove()`` like the
+        # built-in set, and reverts correctly during rollback). This is
+        # exactly what RPY106 suggests as the safe alternative.
+        return "renpy.revertable_set()"
     if t == "None":
         return "None"
     return "False"

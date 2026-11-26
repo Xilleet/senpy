@@ -294,15 +294,17 @@ def handle_export_html(
     if not args.export_html:
         return None
 
+    from senpy.cli.filters import filter_diagnostics
     from senpy.formats.html_report import generate_html_report
 
-    active_diagnostics = [
-        e
-        for e in result.diagnostics
-        if e.code not in ignored_codes
-        and (not args.errors_only or e.severity == "ERROR")
-        and (args.info or e.severity != "INFO")
-    ]
+    # Delegate to filter_diagnostics() instead of inline-filtering
+    # only on ignored_codes/errors_only/info. The previous inline filter
+    # silently dropped --select and --tag filters, so
+    # ``senpy --select RPY104 --export-html report.html`` produced a report
+    # with ALL diagnostics (not just RPY104). filter_diagnostics() applies
+    # the same filter set used by the terminal renderer, so HTML output
+    # stays consistent with what the user sees in stdout.
+    active_diagnostics, _hidden_info_count = filter_diagnostics(result, args, ignored_codes)
     generate_html_report(
         diagnostics=active_diagnostics,
         graph_mermaid=analyzer.export_graph(),

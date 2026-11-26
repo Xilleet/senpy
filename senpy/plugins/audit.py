@@ -130,6 +130,17 @@ _DANGEROUS_MODULE_ATTRS: dict[str, dict[str, str]] = {
     "importlib": _IMPORTLIB_ATTRS,
 }
 
+# Characters that indicate write capability when present in the
+# ``mode`` argument of ``open(path, mode)``. ``"w"`` truncates+writes,
+# ``"a"`` appends, ``"x"`` exclusive-creates, ``"+"`` upgrades any mode
+# to read+write. ``"r"`` alone is read-only (safe). ``"b"`` / ``"t"`` are
+# binary/text modifiers (irrelevant to write capability).
+#
+# Best-effort: we only flag calls where ``mode`` is a string literal.
+# Variable modes (``open(path, mode_var)``) can't be analyzed statically
+# — we don't flag them (may have false negatives, as the docstring warns).
+_WRITE_MODE_CHARS: frozenset[str] = frozenset({"w", "a", "x", "+"})
+
 
 class _DangerousCodeVisitor(ast.NodeVisitor):
     """Walk an AST module and collect dangerous-pattern warnings."""
@@ -186,7 +197,58 @@ class _DangerousCodeVisitor(ast.NodeVisitor):
                 real_module, _ = self._aliases.get(obj_name, (obj_name, None))
                 self._check_attr(real_module, attr)
 
+        # ``open(path, mode)`` with write/append/exclusive-create/
+        # read+write mode. The module docstring promised this check but it
+        # was missing — a plugin doing ``open("/etc/passwd", "w").write(...)``
+        # got zero warnings. Best-effort: only flag string-literal modes;
+        # variable modes (``open(path, mode_var)``) can't be analyzed
+        # statically.
+        self._check_open_write_mode(node)
+
         self.generic_visit(node)
+
+    def _check_open_write_mode(self, node: ast.Call) -> None:
+        """Flag ``open(path, mode)`` calls where ``mode`` is a string literal
+        containing any of ``w``/``a``/``x``/``+`` (write/append/exclusive-
+        create/read+write).
+
+        Read mode (``"r"`` or no mode arg) is safe — not flagged. Binary/
+        text modifiers (``"b"``/``"t"``) are irrelevant to write capability.
+        """
+        # Match ``open(...)`` — either bare ``open`` (ast.Name) or
+        # ``builtins.open`` (ast.Attribute). We don't flag ``io.open`` or
+        # ``pathlib.Path.write_text`` here — those are separate APIs that
+        # would need their own checks (out of scope for the docstring promise).
+        func = node.func
+        is_open = (isinstance(func, ast.Name) and func.id == "open") or (
+            isinstance(func, ast.Attribute)
+            and func.attr == "open"
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "builtins"
+        )
+        if not is_open:
+            return
+
+        # ``open(path)`` defaults to read mode — safe.
+        # ``open(path, mode)`` — check mode if it's a string literal.
+        if len(node.args) < 2:
+            return
+
+        mode_arg = node.args[1]
+        if not isinstance(mode_arg, ast.Constant) or not isinstance(mode_arg.value, str):
+            # Variable mode or non-string — can't analyze statically.
+            return
+
+        mode_str = mode_arg.value
+        if any(ch in _WRITE_MODE_CHARS for ch in mode_str):
+            # Build a descriptive message that mentions the specific mode
+            # so the user can see exactly what triggered the warning.
+            # The docstring promises "best-effort — may have false positives";
+            # we accept FPs on ``"r+"`` (read+write) since the file IS opened
+            # with write capability.
+            self._add(
+                f"Plugin calls open() with write mode {mode_str!r} — can modify or create files."
+            )
 
 
 # =============================================================================
