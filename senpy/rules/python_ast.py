@@ -18,6 +18,7 @@ from senpy.core.type_inference import (
     infer_expr_type,  # noqa: F401
 )
 from senpy.domain.text_tags import get_utf16_range, suggest_similar_symbol
+from senpy.rules.missing_kind import MissingMetadata, format_maybe_set_reason
 from senpy.text_utils import dedent_python, parse_python_silent
 
 if TYPE_CHECKING:
@@ -1512,6 +1513,52 @@ class PythonAstChecker:
         raw_line: str = "",
         val_node: ast.AST | None = None,
     ) -> None:
+        """Check + register an assignment target.
+
+        This method is a thin dispatcher that calls the pure
+        diagnostic check (``_check_assign_target``) and the explicit
+        mutation (``_register_declared``) in sequence. The split makes
+        the side-effect visible at the call site — callers can choose to
+        check-only (e.g. for read-only analysis passes) or check+register
+        (the default for the main analysis pipeline).
+
+        Previously the mutation (``declared_symbols.add`` and
+        ``missing_defaults[var] = ...``) was buried inside the diagnostic
+        emission, making it easy to call ``_verify_assign_target`` by
+        accident from a read-only context and silently mutate analyzer
+        state. The split also makes the "ordinal dependency" behaviour
+        (two identical unregistered assignments → one RPY104, because the
+        first call adds the var to ``declared_symbols``) explicit and
+        easy to change in the future.
+        """
+        self._check_assign_target(var_name, file_path, line_idx, noqa_map, raw_line=raw_line)
+        self._register_declared(var_name, val_node)
+
+    def _check_assign_target(
+        self,
+        var_name: str,
+        file_path: str,
+        line_idx: int,
+        noqa_map: dict,
+        raw_line: str = "",
+    ) -> None:
+        """Pure diagnostic check for an assignment target — emits RPY105/RPY104.
+
+        No mutation of ``declared_symbols`` or ``missing_defaults``. The
+        ``_register_declared`` companion method handles the mutation
+        explicitly. Split out from ``_verify_assign_target`` so the
+        side-effect is visible at the call site.
+
+        Note: because this method does NOT add ``var_name`` to
+        ``declared_symbols``, every unregistered assignment emits its own
+        RPY104 — the "ordinal dependency" (second assignment suppressed by
+        the first's ``.add()``) is preserved at the dispatcher level
+        (``_verify_assign_target`` calls ``_register_declared`` which does
+        the ``.add()``), NOT at the diagnostic level. Callers that want
+        dedup behaviour must call ``_verify_assign_target`` (check+register);
+        callers that want every occurrence flagged must call
+        ``_check_assign_target`` only.
+        """
         var_sym = self.analyzer.variables.get(var_name)
         if (
             var_name.startswith("_")
@@ -1557,7 +1604,46 @@ class PythonAstChecker:
                 ),
                 noqa_map,
             )
-            self.analyzer.declared_symbols.add(var_name)
+
+    def _register_declared(
+        self,
+        var_name: str,
+        val_node: ast.AST | None = None,
+    ) -> None:
+        """Register an assignment target in analyzer state — pure mutation.
+
+        Adds ``var_name`` to ``declared_symbols`` (so subsequent
+        assignments to the same var don't re-emit RPY104 — the
+        "ordinal dependency" dedup) and records the inferred default
+        value in ``missing_defaults`` (first-encounter-wins, used by
+        ``--defaults`` generator).
+
+        Split out from ``_verify_assign_target`` so the
+        side-effect is visible at the call site. The mutation is gated
+        by ``if var_name not in ...`` checks to be idempotent — calling
+        this method twice for the same var is a no-op on the second call.
+
+        Note: ``declared_symbols.add()`` here is the dedup backstop for
+        variables missed by ``file_collector.py`` (e.g. ``init python hide:``
+        blocks not matched by ``RE_INIT_PYTHON_START``). Without it, every
+        unregistered assignment would emit RPY104 — which may be the
+        desired behaviour in a future "strict" mode, but is a breaking
+        change today (fixture ``bad_dynamic_assignment.json`` would need
+        regeneration). The split makes it easy to flip this behaviour
+        later by having callers skip ``_register_declared``.
+        """
+        # Skip the same early-return guards as _check_assign_target —
+        # _-prefixed names, character vars, and system namespaces should
+        # not be registered as user-declared.
+        var_sym = self.analyzer.variables.get(var_name)
+        if (
+            var_name.startswith("_")
+            or (var_sym and var_sym.is_character)
+            or var_name in SYSTEM_MUTABLE_NAMESPACES
+        ):
+            return
+
+        self.analyzer.declared_symbols.add(var_name)
         if var_name not in self.analyzer.missing_defaults:
             self.analyzer.missing_defaults[var_name] = infer_default_value(val_node)
 
@@ -1850,7 +1936,7 @@ class PythonAstChecker:
         line_idx: int,
         line_content: str,
         expr: str,
-        branch_uninitialized: dict,
+        branch_uninitialized: dict[str, MissingMetadata],
         noqa_map: dict,
     ) -> None:
         """RPY404: Checks an if/elif condition for a variable in MAYBE_SET status."""
@@ -1862,15 +1948,9 @@ class PythonAstChecker:
                     and isinstance(node.ctx, ast.Load)
                     and node.id in branch_uninitialized
                 ):
-                    info = branch_uninitialized[node.id]
-                    missing_choice = info[0]
-                    menu_line = info[2] if len(info) > 2 else "earlier"
+                    meta = branch_uninitialized[node.id]
+                    reason = format_maybe_set_reason(meta)
                     start_c, end_c = get_utf16_range(line_content, node.id)
-                    reason = (
-                        missing_choice
-                        if ("branch" in missing_choice or "condition" in missing_choice)
-                        else f"player took choice '{missing_choice}'"
-                    )
                     self.analyzer._add_diagnostic(
                         Diagnostic(
                             file_path=file_path,
@@ -1879,7 +1959,7 @@ class PythonAstChecker:
                             code="RPY404",
                             message=(
                                 f"Variable '{node.id}' may be uninitialized (MAYBE_SET) if "
-                                f"{reason} on line {menu_line}. Condition will crash with NameError."
+                                f"{reason} on line {meta.missing_line}. Condition will crash with NameError."
                             ),
                             col=start_c,
                             end_col=end_c,

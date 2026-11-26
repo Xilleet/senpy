@@ -28,6 +28,7 @@ from pathlib import Path
 import pytest
 
 from senpy.rules.flow import FlowBranch, merge_flow_branches
+from senpy.rules.missing_kind import MissingKind
 
 
 def _branch(
@@ -283,10 +284,14 @@ class TestMetadataTuple:
             already_guaranteed=set(),
         )
         assert "x" in uninit
-        missing_desc, defined_desc, missing_line = uninit["x"]
-        assert "Choice B" in missing_desc  # missing branch name
-        assert "Choice A" in defined_desc  # defined branch name
-        assert missing_line == "15"  # missing branch line as string
+        meta = uninit["x"]
+        # MissingMetadata dataclass replaces the old
+        # (missing_desc, defined_desc, str(missing_line)) tuple. The
+        # ``defined_desc`` field was built but never read by any consumer —
+        # removed. Dispatch is now via MissingKind enum, not substring grep.
+        assert meta.kind == MissingKind.CHOICE_TAKEN
+        assert meta.choice_name == "Choice B"  # missing branch name
+        assert meta.missing_line == 15  # missing branch line as int
 
     def test_if_with_else_metadata(self) -> None:
         """if/else metadata: missing_desc mentions the missing branch kind."""
@@ -303,9 +308,10 @@ class TestMetadataTuple:
             already_guaranteed=set(),
         )
         assert "x" in uninit
-        missing_desc, defined_desc, missing_line = uninit["x"]
-        assert "else" in missing_desc.lower()
-        assert "if" in defined_desc.lower()
+        meta = uninit["x"]
+        assert meta.kind == MissingKind.BRANCH_TAKEN
+        assert meta.branch_kind == "else"
+        assert meta.missing_line == 8
 
     def test_if_without_else_metadata(self) -> None:
         """if without else: missing_desc = "condition is False (no else branch)"."""
@@ -321,9 +327,9 @@ class TestMetadataTuple:
             already_guaranteed=set(),
         )
         assert "x" in uninit
-        missing_desc, _, missing_line = uninit["x"]
-        assert "False" in missing_desc or "no else" in missing_desc.lower()
-        assert missing_line == "1"  # block_line as string
+        meta = uninit["x"]
+        assert meta.kind == MissingKind.CONDITION_FALSE_NO_ELSE
+        assert meta.missing_line == 1  # block_line as int
 
 
 # ---------------------------------------------------------------------------

@@ -23,13 +23,20 @@ if TYPE_CHECKING:
 
 
 class IfBlockContext:
-    """Context of an active if/elif/else block in control flow analysis."""
+    """Context of an active if/elif/else block in control flow analysis.
 
-    def __init__(self, indent: int, line: int):
+    ``current_branch`` is non-Optional: an IfBlockContext is always created
+    with an initial ``if`` branch (the elif/else cases mutate ``current_branch``
+    on an already-existing context, never create a context without one).
+    This removes the need for ``# type: ignore[union-attr]`` markers at
+    8 ``current_branch`` access sites in ``state.py``.
+    """
+
+    def __init__(self, indent: int, line: int, initial_branch: FlowBranch):
         self.indent = indent
         self.line = line
-        self.branches: list[FlowBranch] = []
-        self.current_branch: FlowBranch | None = None
+        self.branches: list[FlowBranch] = [initial_branch]
+        self.current_branch: FlowBranch = initial_branch
 
 
 class BaseChecker:

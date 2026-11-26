@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 from senpy.rules.base import BaseChecker, IfBlockContext
 from senpy.rules.flow import FlowBranch, merge_flow_branches
+from senpy.rules.missing_kind import MissingMetadata
 from senpy.rules.python_ast import extract_assigned_names
 
 
@@ -35,7 +36,7 @@ class StateChecker(BaseChecker):
 
     def __init__(self, analyzer: DiagnosticSinkAndSymbolsAndFlow):
         super().__init__(analyzer)
-        self.branch_uninitialized: dict[str, tuple[str, ...]] = {}
+        self.branch_uninitialized: dict[str, MissingMetadata] = {}
         self.guaranteed_vars: set[str] = set()
         self.if_stack: list[IfBlockContext] = []
 
@@ -62,9 +63,9 @@ class StateChecker(BaseChecker):
         self.branch_uninitialized.update(uninit_vars)
 
         if self.if_stack:
-            self.if_stack[-1].current_branch.defined_vars.update(guaranteed_in_if)  # type: ignore[union-attr]
+            self.if_stack[-1].current_branch.defined_vars.update(guaranteed_in_if)
             if all_terminates:
-                self.if_stack[-1].current_branch.terminates = True  # type: ignore[union-attr]
+                self.if_stack[-1].current_branch.terminates = True
         else:
             self.guaranteed_vars.update(guaranteed_in_if)
 
@@ -162,14 +163,15 @@ class StateChecker(BaseChecker):
 
         # Open new if-block
         elif is_if:
-            new_ctx = IfBlockContext(indent=line_indent, line=idx + 1)
             new_branch = FlowBranch(
                 kind="if",
                 name="if branch",
                 line=idx + 1,
             )
-            new_ctx.branches.append(new_branch)
-            new_ctx.current_branch = new_branch
+            # IfBlockContext.__init__ takes initial_branch and sets both
+            # branches[0] and current_branch — no separate .append/.assign
+            # needed (current_branch is non-Optional).
+            new_ctx = IfBlockContext(indent=line_indent, line=idx + 1, initial_branch=new_branch)
             self.if_stack.append(new_ctx)
 
         # Detect jump, return, and terminating renpy.* calls — mark this
@@ -181,7 +183,7 @@ class StateChecker(BaseChecker):
         # the calling branch and does not terminate it. See
         # core/constants.py:RE_BRANCH_TERMINATOR docstring.
         if self.if_stack and is_branch_terminator_line(stripped):
-            self.if_stack[-1].current_branch.terminates = True  # type: ignore[union-attr]
+            self.if_stack[-1].current_branch.terminates = True
 
     def _check_menu_block(
         self,
@@ -214,9 +216,9 @@ class StateChecker(BaseChecker):
 
         # Pass menu's guaranteed variables to current if-branch
         if self.if_stack:
-            self.if_stack[-1].current_branch.defined_vars.update(guaranteed_vars)  # type: ignore[union-attr]
+            self.if_stack[-1].current_branch.defined_vars.update(guaranteed_vars)
             if all_terminates:
-                self.if_stack[-1].current_branch.terminates = True  # type: ignore[union-attr]
+                self.if_stack[-1].current_branch.terminates = True
         else:
             self.guaranteed_vars.update(guaranteed_vars)
 
@@ -267,7 +269,7 @@ class StateChecker(BaseChecker):
             self.analyzer._clear_safe_cfg_vars(py_code, self.branch_uninitialized)
             assigned_names = extract_assigned_names(py_code)
             if self.if_stack:
-                self.if_stack[-1].current_branch.defined_vars.update(assigned_names)  # type: ignore[union-attr]
+                self.if_stack[-1].current_branch.defined_vars.update(assigned_names)
             else:
                 self.guaranteed_vars.update(assigned_names)
         return next_idx, False
@@ -327,7 +329,7 @@ class StateChecker(BaseChecker):
                 self.analyzer._clear_safe_cfg_vars(code, self.branch_uninitialized)
                 assigned_names = extract_assigned_names(code)
                 if self.if_stack:
-                    self.if_stack[-1].current_branch.defined_vars.update(assigned_names)  # type: ignore[union-attr]
+                    self.if_stack[-1].current_branch.defined_vars.update(assigned_names)
                     # mask string-literal
                     # contents before scanning ``code`` for terminator
                     # calls. Without masking, a string literal such as
@@ -352,7 +354,7 @@ class StateChecker(BaseChecker):
                         r"\brenpy\.(?:quit|full_restart|utter_restart|jump|jump_out_of_context)\s*\(",
                         masked_code,
                     ):
-                        self.if_stack[-1].current_branch.terminates = True  # type: ignore[union-attr]
+                        self.if_stack[-1].current_branch.terminates = True
                 else:
                     self.guaranteed_vars.update(assigned_names)
         return consumed_idx, False

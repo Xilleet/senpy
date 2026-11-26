@@ -53,6 +53,7 @@ if TYPE_CHECKING:
         VariableSymbol,
     )
     from senpy.rules.deprecated import DeprecationChecker
+    from senpy.rules.missing_kind import MissingMetadata
 
 
 @runtime_checkable
@@ -198,7 +199,7 @@ class FlowProvider(Protocol):
         file_path: str = "",
         noqa_map: dict | None = None,
         already_guaranteed: set[str] | None = None,
-    ) -> tuple[int, dict[str, tuple[str, ...]], set[str], bool]: ...
+    ) -> tuple[int, dict[str, MissingMetadata], set[str], bool]: ...
 
     def _can_reach_return(self, label_name: str, visited: set[str] | None = None) -> bool: ...
 
@@ -208,7 +209,7 @@ class FlowProvider(Protocol):
         line_idx: int,
         line_content: str,
         expr: str,
-        branch_uninitialized: dict,
+        branch_uninitialized: dict[str, MissingMetadata],
         noqa_map: dict,
     ) -> None: ...
 
@@ -217,7 +218,7 @@ class FlowProvider(Protocol):
         file_path: str,
         line_idx: int,
         line_content: str,
-        branch_uninitialized: dict[str, tuple[str, ...]],
+        branch_uninitialized: dict[str, MissingMetadata],
         noqa_map: dict,
     ) -> None: ...
 

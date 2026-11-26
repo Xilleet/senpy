@@ -30,6 +30,7 @@ from senpy.domain.assets import AssetManager, find_orphaned_rpyc
 from senpy.domain.text_tags import get_utf16_range
 from senpy.rules.deprecated import DeprecationChecker
 from senpy.rules.flow import StoryFlowAnalyzer
+from senpy.rules.missing_kind import MissingMetadata
 from senpy.rules.python_ast import PythonAstChecker
 
 # Phase 1.3 (0.5.3): _strip_comment was moved to senpy/text_utils.py to break
@@ -682,7 +683,7 @@ class SenpyAnalyzer:
         line_idx: int,
         line_content: str,
         expr: str,
-        branch_uninitialized: dict,
+        branch_uninitialized: dict[str, MissingMetadata],
         noqa_map: dict,
     ) -> None:
         self.python_ast.check_cfg_condition(
@@ -694,7 +695,7 @@ class SenpyAnalyzer:
         file_path: str,
         line_idx: int,
         line_content: str,
-        branch_uninitialized: dict[str, tuple[str, ...]],
+        branch_uninitialized: dict[str, MissingMetadata],
         noqa_map: dict,
     ) -> None:
         self.flow.check_cfg_interpolations(

@@ -16,6 +16,7 @@ from senpy.core.constants import (
 )
 from senpy.core.models import Diagnostic
 from senpy.domain.text_tags import get_utf16_range
+from senpy.rules.missing_kind import MissingKind, MissingMetadata, format_maybe_set_reason
 from senpy.rules.python_ast import extract_assigned_names
 
 if TYPE_CHECKING:
@@ -84,7 +85,7 @@ def merge_flow_branches(
     has_else: bool,
     known_symbols: set[str],
     already_guaranteed: set[str],
-) -> tuple[set[str], dict[str, tuple[str, ...]], bool]:
+) -> tuple[set[str], dict[str, MissingMetadata], bool]:
     """
     Unified merge of parallel branches (if/elif/else or menu:).
     Returns:
@@ -136,7 +137,7 @@ def _compute_uninitialized(
     has_else: bool,
     known_symbols: set[str],
     already_guaranteed: set[str],
-) -> dict[str, tuple[str, ...]]:
+) -> dict[str, MissingMetadata]:
     """Compute the MAYBE_SET variables with metadata about the missing branch.
 
     A variable is MAYBE_SET when it is defined in at least one branch
@@ -147,54 +148,69 @@ def _compute_uninitialized(
     all_defined = set().union(*(b.defined_vars for b in branches))
     maybe_set = all_defined - guaranteed
 
-    uninitialized: dict[str, tuple[str, ...]] = {}
+    uninitialized: dict[str, MissingMetadata] = {}
     for var in sorted(maybe_set):
         if var in known_symbols or var in already_guaranteed:
             continue
 
         missing_b = next((b for b in branches if var not in b.defined_vars), None)
-        defined_b = next((b for b in branches if var in b.defined_vars), None)
+        # defined_b is no longer tracked — the old ``defined_desc`` field
+        # was built but never read by any consumer
+        _defined_b = next((b for b in branches if var in b.defined_vars), None)
 
-        missing_desc, defined_desc, missing_line = _build_metadata(
-            missing_b, defined_b, block_kind, block_line, has_else
-        )
-        uninitialized[var] = (missing_desc, defined_desc, str(missing_line))
+        uninitialized[var] = _build_metadata(missing_b, block_kind, block_line, has_else)
 
     return uninitialized
 
 
 def _build_metadata(
     missing_b: FlowBranch | None,
-    defined_b: FlowBranch | None,
     block_kind: str,
     block_line: int,
     has_else: bool,
-) -> tuple[str, str, int]:
-    """Build the (missing_desc, defined_desc, missing_line) metadata tuple
-    for a MAYBE_SET variable.
+) -> MissingMetadata:
+    """Build the ``MissingMetadata`` for a MAYBE_SET variable.
 
-    For ``if`` blocks without else: missing_desc = "condition is False
-    (no else branch)", missing_line = block_line.
-    For ``if`` blocks with else or for ``menu`` blocks: missing_desc
-    names the missing branch, missing_line is the missing branch's line.
+    Replaces the old ``tuple[str, str, int]`` shape with a typed
+    dataclass + enum, so consumers dispatch on ``MissingKind`` instead of
+    grepping English substrings ("branch" in s, "condition" in s).
+
+    For ``if`` blocks without else: ``CONDITION_FALSE_NO_ELSE``,
+    ``missing_line = block_line``.
+    For ``if`` blocks with else: ``BRANCH_TAKEN`` (if missing_b known) or
+    ``ALTERNATE_BRANCH`` (fallback), ``missing_line`` = missing_b.line or
+    block_line.
+    For ``menu`` blocks: ``CHOICE_TAKEN`` (if missing_b known) or
+    ``ALTERNATE_CHOICE`` (fallback), ``missing_line`` = missing_b.line or
+    block_line.
     """
     if block_kind == "if":
         if not has_else:
-            missing_desc = "condition is False (no else branch)"
-            missing_line = block_line
-        elif missing_b:
-            missing_desc = f"{missing_b.kind} branch was taken"
-            missing_line = missing_b.line
-        else:
-            missing_desc = "alternate branch was taken"
-            missing_line = block_line
-        defined_desc = f"{defined_b.kind} branch" if defined_b else "if branch"
-    else:  # block_kind == "menu"
-        missing_desc = missing_b.name if missing_b else "alternate choice"
-        defined_desc = defined_b.name if defined_b else "menu choice"
-        missing_line = missing_b.line if missing_b else block_line
-
-    return missing_desc, defined_desc, missing_line
+            return MissingMetadata(
+                kind=MissingKind.CONDITION_FALSE_NO_ELSE,
+                missing_line=block_line,
+            )
+        if missing_b:
+            return MissingMetadata(
+                kind=MissingKind.BRANCH_TAKEN,
+                missing_line=missing_b.line,
+                branch_kind=missing_b.kind,
+            )
+        return MissingMetadata(
+            kind=MissingKind.ALTERNATE_BRANCH,
+            missing_line=block_line,
+        )
+    # block_kind == "menu"
+    if missing_b:
+        return MissingMetadata(
+            kind=MissingKind.CHOICE_TAKEN,
+            missing_line=missing_b.line,
+            choice_name=missing_b.name,
+        )
+    return MissingMetadata(
+        kind=MissingKind.ALTERNATE_CHOICE,
+        missing_line=block_line,
+    )
 
 
 class StoryFlowAnalyzer:
@@ -380,7 +396,7 @@ class StoryFlowAnalyzer:
         file_path: str,
         line_idx: int,
         line_content: str,
-        branch_uninitialized: dict[str, tuple[str, ...]],
+        branch_uninitialized: dict[str, MissingMetadata],
         noqa_map: dict,
     ) -> None:
         """RPY404: Checks [var] in text after a menu with variables in MAYBE_SET status."""
@@ -390,14 +406,8 @@ class StoryFlowAnalyzer:
             s = match.group(0)
             for var in RE_INTERPOLATION.findall(s):
                 if var in branch_uninitialized:
-                    info = branch_uninitialized[var]
-                    missing_choice = info[0]
-                    menu_line = info[2] if len(info) > 2 else "earlier"
-                    reason = (
-                        missing_choice
-                        if ("branch" in missing_choice or "condition" in missing_choice)
-                        else f"player took choice '{missing_choice}'"
-                    )
+                    meta = branch_uninitialized[var]
+                    reason = format_maybe_set_reason(meta)
                     self.analyzer._add_diagnostic(
                         Diagnostic(
                             file_path=file_path,
@@ -406,7 +416,7 @@ class StoryFlowAnalyzer:
                             code="RPY404",
                             message=(
                                 f"Variable '[{var}]' may be uninitialized (MAYBE_SET) if "
-                                f"{reason} on line {menu_line}. Will cause KeyError or save crash."
+                                f"{reason} on line {meta.missing_line}. Will cause KeyError or save crash."
                             ),
                         ),
                         noqa_map,
@@ -425,7 +435,7 @@ class StoryFlowAnalyzer:
         file_path: str,
         noqa_map: dict,
         already_guaranteed: set[str] | None = None,
-    ) -> tuple[int, list[FlowBranch], dict[str, tuple[str, ...]]]:
+    ) -> tuple[int, list[FlowBranch], dict[str, MissingMetadata]]:
         """Parses choices from a menu block. Returns (idx, choices, uninitialized_vars).
 
         Extracted from analyze_menu_flow in Phase 4 Step 2 (0.5.7).
@@ -444,7 +454,7 @@ class StoryFlowAnalyzer:
         current_choice: FlowBranch | None = None
         choice_indent: int | None = None
         statement_counts: dict[int, int] = {}
-        uninitialized_vars: dict[str, tuple[str, ...]] = {}
+        uninitialized_vars: dict[str, MissingMetadata] = {}
 
         while idx < len(lines):
             raw_line = lines[idx]
@@ -556,11 +566,11 @@ class StoryFlowAnalyzer:
         stripped: str,
         raw_line: str,
         current_choice: FlowBranch,
-        uninitialized_vars: dict[str, tuple[str, ...]],
+        uninitialized_vars: dict[str, MissingMetadata],
         file_path: str,
         noqa_map: dict,
         already_guaranteed: set[str] | None = None,
-    ) -> tuple[int, FlowBranch, dict[str, tuple[str, ...]]]:
+    ) -> tuple[int, FlowBranch, dict[str, MissingMetadata]]:
         """Analyzes a choice body (nested menu, jump, $). Returns (idx, choice, uninit).
 
         Extracted from analyze_menu_flow in Phase 4 Step 2 (0.5.7).
@@ -626,7 +636,7 @@ class StoryFlowAnalyzer:
         file_path: str,
         noqa_map: dict,
         already_guaranteed: set[str] | None = None,
-    ) -> tuple[set[str], dict[str, tuple[str, ...]], bool]:
+    ) -> tuple[set[str], dict[str, MissingMetadata], bool]:
         """Merge menu branches + RPY401 diagnostics. Returns (guaranteed, uninit, all_terminates).
 
         Extracted from analyze_menu_flow in Phase 4 Step 2 (0.5.7).
@@ -721,7 +731,7 @@ class StoryFlowAnalyzer:
         file_path: str = "",
         noqa_map: dict | None = None,
         already_guaranteed: set[str] | None = None,
-    ) -> tuple[int, dict[str, tuple[str, ...]], set[str], bool]:
+    ) -> tuple[int, dict[str, MissingMetadata], set[str], bool]:
         """Analyzes a menu block: parses choices, analyzes bodies, merges branches.
 
         Phase 4 Step 2 (0.5.7): split from 152 lines into 3 methods + dispatcher.
