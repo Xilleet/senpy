@@ -18,11 +18,17 @@ the moment a sprite appears or a song starts" class of bug.
 Senpy scans the project's `game/` directory and `image` / `define audio.X`
 declarations to build a complete asset inventory. For `.rpa` archives
 (RPA-2.0/3.0 only), Senpy reads the **file-name index** of each archive
-— it does **not** extract or validate archive contents (CRC32, segment
-lengths, byte-level integrity). RPA-1.0 archives are not supported.
+and validates asset existence by reading segment headers — the segment
+length is checked when a segment is actually read (for script extraction
+or LSP hover preview); a short read raises `ValueError` and the entry is
+skipped with a `WARNING` log. Asset content can be optionally extracted
+to a cache (`~/.senpy/archive_assets/<sha1(archive_path)[:16]>/...`)
+for hover preview in VS Code — keyed by archive mtime so unchanged
+archives reuse the cached extraction.
+
+CRC32 verification and RPA-1.0 archive support are not yet implemented.
 See [Ren'Py linter — `.rpa` coverage](../renpy-linter.md#does-senpy-support-rpa-archives)
-for the exact contract and the roadmap for the planned full content
-resolution work.
+for the exact contract and the roadmap for the remaining work.
 
 Rules check that every reference in your scripts points to a file that
 exists on disk, in the `audio/` / `images/` directories, in the file-name

@@ -36,6 +36,33 @@ SUGGESTION_CUTOFF = 0.6
 # (asset.py:365); now an explicit, documented constant.
 SUGGESTION_CUTOFF_TAGS = 0.7
 
+# Maximum recursion depth for type inference (``infer_ast_type`` in
+# ``senpy/core/type_inference.py``). Deeply nested expressions like
+# ``(((a + b) * c) - d) + e * f / g`` previously hit the hardcoded
+# ``depth > 8`` guard and silently returned None, causing RPY108 (type
+# taint) false negatives on legitimate deeply-nested code. 32 is
+# comfortably above any realistic hand-written expression while still
+# bounding recursion (Python's own recursion limit remains the hard
+# ceiling).
+#
+# Tunable: callers that need a different limit can monkey-patch the
+# constant at import time. A future ``SenpyConfig`` field can expose
+# this for user configuration if a real-world project needs more.
+TYPE_INFERENCE_MAX_DEPTH = 32
+
+# Maximum number of physical lines that ``_get_logical_line`` in
+# ``senpy/text_utils.py`` will join into a single logical line. Protects
+# against runaway line swallowing when a bracket is never closed or a
+# triple-quoted string is unterminated. Without this cap, a single
+# malformed construct at the top of a 1000-line file would cause the
+# joiner to consume the rest of the file.
+#
+# 50 is generous: real Ren'Py multi-line constructs rarely exceed 5–10
+# lines. Auto-generated files (e.g. ``renpy_api_generated.py``) may have
+# longer constructs, but those go through ``ast.parse`` directly, not
+# the line-based joiner.
+MAX_LOGICAL_LINE_LOOKAHEAD = 50
+
 
 def _normalize_label(name: str) -> str:
     """Canonical label-name normalisation for cross-call comparison.

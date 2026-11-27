@@ -13,7 +13,10 @@ import ast
 
 import pytest
 
+from senpy.core.constants import TYPE_INFERENCE_MAX_DEPTH
 from senpy.core.type_inference import (
+    KNOWN_TYPE_METHODS,
+    METHOD_SUGGESTIONS,
     SYSTEM_MUTABLE_NAMESPACES,
     _check_add_compat,
     _check_binop_incompatible,
@@ -32,12 +35,28 @@ class TestInferAstType:
         assert infer_ast_type(None) is None
 
     def test_depth_limit(self):
-        """Depth > 8 returns None (recursion guard)."""
-        # Build a deeply nested expression: 1 + 1 + 1 + ... (9 levels)
-        expr = "1" + " + 1" * 9
+        """Depth > TYPE_INFERENCE_MAX_DEPTH returns None (recursion guard).
+
+        Previously the limit was hardcoded to 8 — too low for legitimate
+        nested expressions (e.g. ``(((a + b) * c) - d) + e * f / g``
+        already needs depth 5). Now routed through the named constant
+        (default 32), so deeply nested code does not silently lose type
+        inference and produce RPY108 false negatives.
+        """
+        # Build a deeply nested expression: 1 + 1 + 1 + ... (TYPE_INFERENCE_MAX_DEPTH + 1 levels)
+        expr = "1" + " + 1" * (TYPE_INFERENCE_MAX_DEPTH + 1)
         node = ast.parse(expr, mode="eval").body
-        result = infer_ast_type(node, depth=8)
+        result = infer_ast_type(node, depth=TYPE_INFERENCE_MAX_DEPTH)
         assert result is None  # depth limit hit
+
+    def test_depth_limit_not_hit_for_normal_expressions(self):
+        """Reasonable nested expressions should NOT trip the depth guard."""
+        # 5 levels of nesting — well below TYPE_INFERENCE_MAX_DEPTH (32).
+        expr = "1 + 2 * 3 - 4 / 5 + 6"
+        node = ast.parse(expr, mode="eval").body
+        result = infer_ast_type(node)
+        # int arithmetic → int (well, with / it's float, but result must not be None)
+        assert result is not None
 
     def test_int_constant(self):
         node = ast.parse("42", mode="eval").body
@@ -238,6 +257,105 @@ class TestBinopCompatChecks:
         assert _check_binop_incompatible(node, known_vars=None) is None
 
 
+class TestModCompatChecks:
+    """Coverage for the ``%`` operator compat check.
+
+    Previously ``_check_binop_incompatible`` unconditionally returned
+    ``None`` for any ``Mod`` (``%``) — silent pass for ``list % int``,
+    ``dict % str``, etc. The fix restricts the silent pass to ``str % any``
+    (string formatting) and flags everything else as incompatible so
+    RPY108 can surface real type errors.
+    """
+
+    def test_mod_str_and_int_compatible(self):
+        """``"%d" % 5`` — string formatting, valid."""
+        node = ast.parse('"%d" % 5', mode="eval").body
+        assert _check_binop_incompatible(node) is None
+
+    def test_mod_str_and_tuple_compatible(self):
+        """``"%s %s" % (a, b)`` — string formatting with tuple args, valid."""
+        node = ast.parse('"%s %s" % (1, 2)', mode="eval").body
+        assert _check_binop_incompatible(node) is None
+
+    def test_mod_int_and_int_compatible(self):
+        """``7 % 3`` — numeric modulo, valid (handled by numeric guard)."""
+        node = ast.parse("7 % 3", mode="eval").body
+        assert _check_binop_incompatible(node) is None
+
+    def test_mod_list_and_int_incompatible(self):
+        """``[1,2] % 3`` — TypeError at runtime, must be flagged."""
+        node = ast.parse("[1, 2] % 3", mode="eval").body
+        result = _check_binop_incompatible(node)
+        assert result is not None
+        assert result[0] == "list"
+        assert result[1] == "int"
+        assert result[2] == "%"
+
+    def test_mod_dict_and_str_incompatible(self):
+        """``{} % "x"`` — TypeError at runtime, must be flagged."""
+        node = ast.parse('{} % "x"', mode="eval").body
+        result = _check_binop_incompatible(node)
+        assert result is not None
+        assert result[2] == "%"
+
+    def test_mod_int_and_str_incompatible(self):
+        """``5 % "x"`` — TypeError at runtime (right operand must be numeric
+        when left is numeric, not a format string). Must be flagged."""
+        node = ast.parse('5 % "x"', mode="eval").body
+        result = _check_binop_incompatible(node)
+        assert result is not None
+        assert result[2] == "%"
+
+
+class TestKnownTypeMethods:
+    """Coverage for the KNOWN_TYPE_METHODS registry, including the
+    newly-added ``tuple`` entry (was missing — caused potential RPY108
+    false positives on ``$ x = (1, 2).count(1)``)."""
+
+    def test_tuple_entry_exists(self):
+        """``tuple`` must be a key in KNOWN_TYPE_METHODS."""
+        assert "tuple" in KNOWN_TYPE_METHODS
+
+    def test_tuple_has_count(self):
+        """``tuple.count`` is a standard non-mutating method."""
+        assert "count" in KNOWN_TYPE_METHODS["tuple"]
+
+    def test_tuple_has_index(self):
+        """``tuple.index`` is a standard non-mutating method."""
+        assert "index" in KNOWN_TYPE_METHODS["tuple"]
+
+    def test_tuple_has_no_mutating_methods(self):
+        """Tuples are immutable — no append/extend/remove/etc."""
+        tuple_methods = KNOWN_TYPE_METHODS["tuple"]
+        for forbidden in ("append", "extend", "remove", "pop", "clear", "sort"):
+            assert (
+                forbidden not in tuple_methods
+            ), f"tuple must not expose mutating method {forbidden!r}"
+
+
+class TestMethodSuggestions:
+    """Coverage for the expanded METHOD_SUGGESTIONS map."""
+
+    def test_list_add_suggests_append(self):
+        assert METHOD_SUGGESTIONS[("list", "add")] == ".append()"
+
+    def test_list_discard_suggests_remove(self):
+        """``discard`` is a set method (no-op if absent); on list the
+        equivalent is ``.remove()`` (raises if absent)."""
+        assert METHOD_SUGGESTIONS[("list", "discard")] == ".remove()"
+
+    def test_dict_discard_suggests_pop(self):
+        """``discard`` on dict has no direct equivalent — ``.pop(key, None)``
+        is the closest (returns the value, no-op if absent)."""
+        assert METHOD_SUGGESTIONS[("dict", "discard")] == ".pop(key, None)"
+
+    def test_tuple_append_suggests_conversion(self):
+        """Tuples are immutable — any mutating method is a typo for a list
+        operation. Suggest conversion rather than a phantom method."""
+        assert ("tuple", "append") in METHOD_SUGGESTIONS
+        assert ("tuple", "remove") in METHOD_SUGGESTIONS
+
+
 class TestSystemMutableNamespaces:
     """Verify the SYSTEM_MUTABLE_NAMESPACES constant."""
 
@@ -252,3 +370,45 @@ class TestSystemMutableNamespaces:
 
     def test_is_set(self):
         assert isinstance(SYSTEM_MUTABLE_NAMESPACES, set)
+
+    def test_audio_intentionally_excluded(self):
+        """``audio`` is a Ren'Py system namespace (per BUILTIN_SYMBOLS)
+        but is intentionally NOT in SYSTEM_MUTABLE_NAMESPACES.
+
+        Mutations of ``audio`` itself (``$ audio.foo = bar``) are rare
+        and almost always indicate a bug — the intended pattern is to
+        register channels via ``renpy.music.register_channel()`` or use
+        ``define audio.bgm = "track.ogg"`` for aliases. If a project
+        does need to mutate ``audio`` at runtime, the resulting RPY105
+        is a useful prompt to add an explicit ``default audio.foo``
+        declaration. This test pins the exclusion so a future
+        contributor does not silently add ``audio`` without
+        re-evaluating the false-positive risk.
+        """
+        assert "audio" not in SYSTEM_MUTABLE_NAMESPACES
+
+
+class TestInferExprTypeLogging:
+    """Coverage for the debug-log-on-parse-failure behaviour.
+
+    Previously ``infer_expr_type`` silently swallowed
+    ``SyntaxError`` / ``ValueError`` / ``TypeError`` and returned
+    ``None`` — invisible in normal runs, hiding pipeline regressions.
+    Now it logs at DEBUG level (visible with ``--verbose``).
+    """
+
+    def test_syntax_error_returns_none(self, caplog):
+        """Parse failure still returns None (no crash)."""
+        result = infer_expr_type("def broken(:")
+        assert result is None
+
+    def test_syntax_error_logs_debug(self, caplog):
+        """Parse failure logs a DEBUG message with the failing expression."""
+        import logging
+
+        with caplog.at_level(logging.DEBUG, logger="senpy.core.type_inference"):
+            infer_expr_type("def broken(:")
+        # At least one DEBUG record from our logger mentioning the failure.
+        debug_records = [r for r in caplog.records if r.levelno == logging.DEBUG]
+        assert debug_records, "expected at least one DEBUG log record"
+        assert any("type inference failed" in r.getMessage().lower() for r in debug_records)

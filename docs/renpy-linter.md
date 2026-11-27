@@ -230,31 +230,62 @@ sandbox is in a temporary directory that is cleaned up after analysis.
 
 ### Does Senpy support `.rpa` archives?
 
-Partially. Senpy can read the **file-name index** of `.rpa` archives
+Yes — Senpy reads the **file-name index** of `.rpa` archives
 (RPA-2.0 and RPA-3.0 only) via `safe_load_rpa_index()` in
-`senpy/domain/rpa.py` — this lets RPY501/RPY503 know that a file named
+`senpy/domain/rpa.py`. This lets RPY501/RPY503 know that a file named
 `bgm/track.ogg` exists inside `game/archive.rpa` even when it is not
 present on disk. Index reads use a sandboxed pickle decoder with opcode
 allowlisting and decompression-bomb protection.
 
+What Senpy **does** with `.rpa` archives (as of 0.9.4+):
+
+- **Index parsing** — the file-name index (list of `(filename, offset,
+  length, prefix)` tuples) is parsed lazily. Indexing reads only the
+  archive header + the compressed index, NOT the segment payloads — so
+  a 1+ GB archive indexes in O(header + index_size), independent of the
+  total payload size.
+- **Segment-length validation** — when a segment is actually read
+  (for script extraction or asset hover preview), `read_rpa_segment`
+  compares the actual bytes read against the declared `length`. A short
+  read raises `ValueError`; the caller logs a `WARNING` and skips that
+  entry instead of crashing. See `test_rpa_segment_integrity.py` for
+  the coverage of truncated-offset, extends-past-EOF, and
+  skip-bad-continue-good cases.
+- **Segment prefix handling** — the legacy `prefix + f.read(seg_len -
+  len(prefix))` formula (which truncated data by `len(prefix)` bytes)
+  was fixed in 0.9.4 to `prefix + f.read(seg_len)`. Regression test:
+  `test_rpa_prefix_bug.py`.
+- **Content extraction for hover preview** — when you hover over
+  `play music "bgm/intro.ogg"` in VS Code and the file is not on disk
+  but IS in a `.rpa` archive, Senpy extracts the asset to a cache
+  (`~/.senpy/archive_assets/<sha1(archive_path)[:16]>/<filename>`) and
+  renders a real inline preview (image thumbnail or play-audio link)
+  with the basename and byte size. The cache is keyed by archive mtime
+  — if the archive has not changed, the cached extraction is reused.
+- **LSP hover on `.rpa` assets** — `build_image_hover` and
+  `build_audio_hover` fall back to `find_asset_entry_in_archive` on a
+  disk miss, extract the asset to cache, and render the preview. If
+  extraction fails (corrupt segment), a text-only hint
+  (`Found inside archive X.rpa (extraction failed — no preview
+  available)`) is shown.
+
 What Senpy does **not** do today (as of 0.9.x):
 
-- **Content extraction** — Senpy does not unpack archive bytes to verify
-  that the indexed file is actually a valid OGG/PNG/etc. A corrupted
-  archive whose index lists `bgm/track.ogg` but whose payload is zero
-  bytes will not be flagged.
-- **CRC32 / segment-length validation** — segment prefix handling and
-  CRC32 verification are not implemented. Malformed segments that would
-  crash Ren'Py at load time are not detected.
-- **RPA-1.0 archives** — the legacy RPA-1.0 format is not supported;
-  such archives are silently skipped.
+- **CRC32 verification** — segment length is validated (see above), but
+  CRC32 integrity checks are not implemented. The `RpaArchiveIndex`
+  retains the per-archive `key` for future CRC work, but no consumer
+  uses it for CRC today.
+- **RPA-1.0 archives** — the legacy RPA-1.0 format (`RPA-1.0 <offset>
+  <key>\n` + plaintext index) is not supported; such archives are
+  silently skipped. RPA-1.0 was used in old DDLC mods and Katawa Shoujo.
 - **Archive-name heuristic** — only archives whose base name matches a
   small heuristic (`script`, `archive`, `data`, `game`, `code`) are
   scanned for embedded `.rpy`/`.rpyc` files. Asset-only archives are
-  always scanned by name.
+  always scanned by name. (Planned for removal — see roadmap task 89.)
 
-Full content resolution, CRC32 verification, RPA-1.0 support, and a
-public `senpy unpack` CLI/API are scheduled for the 0.9.4 patch release and the post-1.0 - `1.6.0` minor release.
+CRC32 verification, RPA-1.0 support, the archive-name heuristic removal,
+and a public `senpy unpack` CLI/API are scheduled for the post-1.0
+`1.6.0` minor release.
 
 ### How fast is Senpy?
 

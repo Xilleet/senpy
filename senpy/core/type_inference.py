@@ -24,12 +24,16 @@ Used by:
 from __future__ import annotations
 
 import ast
+import logging
 from typing import TYPE_CHECKING, Any
 
+from senpy.core.constants import TYPE_INFERENCE_MAX_DEPTH
 from senpy.text_utils import parse_python_silent
 
 if TYPE_CHECKING:
     pass  # no type-only imports needed yet
+
+_logger = logging.getLogger(__name__)
 
 
 def infer_ast_type(
@@ -53,7 +57,7 @@ def infer_ast_type(
     TODO(future): Replace with Type Lattice (TypeHint.join()) for
     automatic union types after if/else. Currently returns str|None.
     """
-    if val_node is None or depth > 8:
+    if val_node is None or depth > TYPE_INFERENCE_MAX_DEPTH:
         return None
 
     if isinstance(val_node, ast.Constant):
@@ -95,11 +99,15 @@ def _infer_constant(node: ast.Constant) -> str | None:
 
 
 def _infer_name(node: ast.Name, known_vars: dict | None) -> str | None:
-    """Infer type from a variable name reference."""
-    if node.id in ("True", "False"):
-        return "bool"
-    if node.id == "None":
-        return "None"
+    """Infer type from a variable name reference.
+
+    In Python 3, ``True`` / ``False`` / ``None`` are keywords, not
+    identifiers — ``ast.parse("True")`` returns ``ast.Constant``, not
+    ``ast.Name``. The previous special-case branches for ``node.id in
+    ("True", "False")`` and ``node.id == "None"`` were therefore dead
+    code (unreachable since the Python 2 → 3 migration) and have been
+    removed. Boolean/None literals are handled by ``_infer_constant``.
+    """
     if known_vars and node.id in known_vars:
         var_sym = known_vars[node.id]
         return getattr(var_sym, "type_name", None) or (
@@ -200,7 +208,24 @@ def _check_binop_incompatible(
     if isinstance(op, ast.Mult):
         return _check_mult_compat(lt, rt)
     if isinstance(op, ast.Mod):
-        return None  # str % any OK (formatting), numeric handled above
+        # ``%`` has two distinct semantics in Python:
+        #   1. String formatting: ``"%d" % 5``, ``"%s" % (a, b)``, ``"%(x)s" % {"x": 1}``
+        #      — left operand is a format string, right operand can be anything.
+        #   2. Numeric modulo: ``7 % 3`` — both operands numeric.
+        # Numeric ``%`` is already handled by the ``{lt, rt} <= {"int", "float", "bool"}``
+        # guard above (returns None = compatible). If we reach this branch, at least
+        # one operand is non-numeric. ``str % any`` is valid (formatting); any other
+        # non-numeric combination (``list % int``, ``dict % str``, ``set % int``,
+        # ``int % str``) is a TypeError at runtime — flag as incompatible so RPY108
+        # can surface it.
+        #
+        # Previously this branch unconditionally returned ``None`` (silent pass),
+        # which meant RPY108 never fired on ``$ x = [1,2] % 3`` or similar clearly
+        # invalid code. Restricting the pass to ``lt == "str"`` matches
+        # ``_check_mult_compat``'s pattern (only specific type pairs are OK).
+        if lt == "str":
+            return None
+        return (lt, rt, "%")
     if isinstance(op, (ast.FloorDiv, ast.Pow)):
         return (lt, rt, "//" if isinstance(op, ast.FloorDiv) else "**")
     return None
@@ -321,7 +346,15 @@ def infer_expr_type(
     try:
         tree = parse_python_silent(expr_str.strip(), mode="eval")
         return infer_ast_type(tree.body, known_vars=known_vars)
-    except (SyntaxError, ValueError, TypeError):
+    except (SyntaxError, ValueError, TypeError) as e:
+        # Match the logging discipline of ``signature.parse_signature`` —
+        # silent ``return None`` on parse failure hides bugs in the
+        # inference pipeline (a regression in ``parse_python_silent`` or
+        # a new unhandled node type would manifest as a silent type-None
+        # and produce RPY108 false negatives). DEBUG-level so it does
+        # not spam normal runs; visible with ``--verbose`` / ``--log-level
+        # senpy.core.type_inference=DEBUG``.
+        _logger.debug("type inference failed for %r: %s", expr_str, e)
         return None
 
 
@@ -359,7 +392,23 @@ def infer_default_value(
     return "False"
 
 
-# Ren'Py system namespaces whose mutation is allowed during the game
+# Ren'Py system namespaces whose mutation is allowed during the game.
+# Assigning to ``persistent.foo``, ``config.bar``, ``store.baz``,
+# ``gui.qux``, ``style.quux`` is normal Ren'Py initialization — these
+# namespaces are designed to be mutated at runtime (config flags,
+# persistent save data, gui/theme overrides, style properties).
+#
+# ``audio`` is intentionally NOT in this set, even though it is a Ren'Py
+# system namespace (see ``BUILTIN_SYMBOLS`` in ``senpy/core/renpy_builtins.py``).
+# Mutations of ``audio`` itself (``$ audio.foo = bar``) are rare and
+# almost always indicate a bug — the intended pattern is to register
+# channels via ``renpy.music.register_channel()`` and reference them by
+# name, or use ``define audio.bgm = "track.ogg"`` for aliases (which
+# goes through the ``define`` machinery, not runtime assignment). If a
+# project does need to mutate ``audio`` at runtime, the resulting
+# RPY105 is a useful prompt to add an explicit ``default audio.foo``
+# declaration. Re-evaluate if a real-world project surfaces this as a
+# false positive.
 SYSTEM_MUTABLE_NAMESPACES = {"persistent", "config", "store", "gui", "style"}
 
 MUTATING_METHODS = {
@@ -479,11 +528,36 @@ KNOWN_TYPE_METHODS: dict[str, set[str]] = {
         "upper",
         "zfill",
     },
+    # Tuples expose only two non-mutating methods (``count`` and ``index``) —
+    # the same two that ``list`` inherits from ``Sequence``. Without this
+    # entry, ``$ x = (1, 2).count(1)`` would route to the "unknown method"
+    # path and could produce a false RPY108 (type taint) on valid tuple
+    # introspection. Tuples are immutable, so no mutating methods are listed.
+    "tuple": {
+        "count",
+        "index",
+    },
 }
 
-# Hints for common cross-type mistakes (e.g., .add() instead of .append() on a list)
+# Hints for common cross-type mistakes (e.g., .add() instead of .append() on a list).
+# Keys are ``(type_name, method_name)`` pairs where the method exists on a *different*
+# built-in type and the user likely confused the two. The value is the correct method
+# (or operation) on the actual type — surfaced as ``" (did you mean '...' ?)"`` in the
+# RPY108 diagnostic. When a pair is NOT in this map, the caller falls back to
+# ``difflib.get_close_matches`` against the type's actual method list.
 METHOD_SUGGESTIONS: dict[tuple[str, str], str] = {
+    # Existing entries — list/dict/set confusion on add/append.
     ("list", "add"): ".append()",
     ("dict", "append"): ".update()",
     ("set", "append"): ".add()",
+    # ``discard`` is a set method (no-op if key absent); on list the
+    # equivalent is ``.remove()`` (raises if absent) — flag the typo.
+    ("list", "discard"): ".remove()",
+    # ``discard`` on dict has no direct equivalent — ``.pop(key, None)``
+    # is the closest (returns the value, no-op if absent).
+    ("dict", "discard"): ".pop(key, None)",
+    # Tuples are immutable — any mutating method is a typo for a list operation.
+    # Suggest conversion rather than a phantom method.
+    ("tuple", "append"): "(convert to list first)",
+    ("tuple", "remove"): "(convert to list first)",
 }

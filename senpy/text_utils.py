@@ -32,7 +32,7 @@ import textwrap
 import warnings
 from typing import Literal, overload
 
-from senpy.core.constants import SUGGESTION_CUTOFF
+from senpy.core.constants import MAX_LOGICAL_LINE_LOOKAHEAD, SUGGESTION_CUTOFF
 
 
 @overload
@@ -303,9 +303,13 @@ def suggest_similar(
 ) -> str:
     """Return a "did you mean '...'?" hint string, or "" if no close match.
 
-    Uses ``difflib.get_close_matches`` with ``n=1``. The cutoff threshold
-    defaults to ``SUGGESTION_CUTOFF`` (0.6), but callers that need a stricter
-    match (e.g. base-tag suggestion at 0.7) can pass their own.
+    Thin formatter over :func:`suggest_match` — the matching logic
+    (``difflib.get_close_matches`` with ``n=1``) lives in exactly one
+    place. Previously both functions called ``difflib`` independently
+    with identical arguments; any future change to the matching
+    algorithm (custom key function, ``n>1``, normalization) would have
+    to be applied in two places. Now ``suggest_similar`` just wraps
+    ``suggest_match`` and formats the result.
 
     This replaces the old ``suggest_similar_symbol`` in ``text_tags.py``,
     which was hardcoded to 0.6 and only accepted ``set[str]``. The
@@ -319,10 +323,8 @@ def suggest_similar(
     Returns:
         ``" (did you mean 'foo' ?)"`` if a match was found, ``""`` otherwise.
     """
-    matches = difflib.get_close_matches(target, list(candidates), n=1, cutoff=cutoff)
-    if matches:
-        return f" (did you mean '{matches[0]}' ?)"
-    return ""
+    match = suggest_match(target, candidates, cutoff=cutoff)
+    return f" (did you mean '{match}' ?)" if match else ""
 
 
 def suggest_match(
@@ -476,7 +478,7 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
     # closes (cumulative tracking in the loop body).
     inside_string = _has_unclosed_string(first_clean)
 
-    max_lookahead = 50  # Protection against infinite line swallowing
+    max_lookahead = MAX_LOGICAL_LINE_LOOKAHEAD  # Protection against infinite line swallowing
     lookahead_count = 0
 
     while curr_idx + 1 < len(lines):
@@ -554,7 +556,19 @@ def _get_logical_line(lines: list[str], idx: int) -> tuple[int, str, str]:
 
     indent = len(clean_parts[0]) - len(clean_parts[0].lstrip())
     joined_clean = (" " * indent) + " ".join(cleaned_tokens)
-    return curr_idx + 1, "".join(raw_parts), joined_clean
+    # Join raw_parts with the SAME separator as joined_clean (single space).
+    # Previously raw_parts were joined with "" (no separator), which produced
+    # garbage line_content in diagnostics for multi-line constructs:
+    #   - bracket-continuation ``$ x = (1 +<newline>2)`` → raw ``$ x = (1 +2)``
+    #     (lost space between ``+`` and ``2`` — misleading in a diagnostic).
+    #   - backslash-continuation ``$ x = 1 \<newline>+ 2`` → raw ``$ x = 1 \+ 2``
+    #     (literal ``\`` preserved mid-line, no separator).
+    # The clean-side join uses ``" "`` between stripped tokens; the raw-side
+    # join now matches, so diagnostics show a readable approximation of the
+    # joined source. The raw line is for display only — column offsets in
+    # diagnostics are computed from the per-line original via the analyzer's
+    # noqa_map and the line index, never from this joined string.
+    return curr_idx + 1, " ".join(raw_parts), joined_clean
 
 
 # =============================================================================
