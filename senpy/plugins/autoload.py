@@ -68,6 +68,11 @@ def autoload_plugins(
         force: If True, re-run the discovery+load pipeline even if it
             was already run earlier in this process. Mainly useful for
             tests that mock `_get_entry_points` and need a fresh load.
+            When ``force=True``, the lint rule registry is cleared BEFORE
+            the re-load so plugin rules from the previous load do not
+            accumulate as duplicates. (Without this, two consecutive
+            ``autoload_plugins(force=True)`` calls with the same plugin
+            set would double-register every rule.)
             Production code should leave this as False (default).
         trust_callback: Optional callable(name: str) -> bool passed
             through to `load_all_plugins()`. If None (default), uses
@@ -86,11 +91,47 @@ def autoload_plugins(
         if _PLUGINS_LOADED and not force:
             return
 
+        # ``force=True`` re-runs discovery+load — but the registry still
+        # holds rules from the previous load. Without clearing, each
+        # ``force=True`` call appends a second copy of every plugin rule
+        # to ``_REGISTERED_LINT_RULES``, producing duplicate diagnostics
+        # during ``analyzer.run()``. ``reset_autoload_state()`` does this
+        # clean-up for tests that call it explicitly, but ``force=True``
+        # was advertised (docstring) as self-sufficient "fresh load" —
+        # so the registry is cleared here to match the contract.
+        if force:
+            from senpy.plugins.registry import clear_registered_lint_rules
+
+            clear_registered_lint_rules()
+
         try:
             # Import locally so this module has no top-level dependency on
             # loader.py — keeps import cycles impossible and lets tests mock
             # internals without triggering real plugin discovery at import time.
-            from senpy.plugins.loader import load_all_plugins, register_loaded_plugins
+            from senpy.plugins.loader import (
+                discover_plugins,
+                load_all_plugins,
+                register_loaded_plugins,
+            )
+
+            # Prune stale ``audit_warnings`` entries for plugins that are no
+            # longer installed. ``load_plugin`` writes audit warnings BEFORE
+            # the trust prompt (R-P0-1 contract) — if the user declined trust
+            # and later uninstalled the plugin, the warnings stayed forever.
+            # Now that we've discovered the currently-installed plugins, we
+            # can safely remove warnings for anything not in that set.
+            # Done BEFORE ``load_all_plugins`` so that the load process sees
+            # a clean trust store (no stale entries to confuse the audit
+            # skip-if-trusted optimisation).
+            try:
+                from senpy.plugins.security import prune_stale_audit_warnings
+
+                current_eps = discover_plugins()
+                known_names = {getattr(ep, "name", "") for ep in current_eps}
+                known_names.discard("")  # drop any unnamed entry points
+                prune_stale_audit_warnings(known_names)
+            except Exception as e:  # noqa: BLE001 — pruning is best-effort
+                _logger.debug("prune_stale_audit_warnings failed: %s", e)
 
             loaded = load_all_plugins(trust_callback=trust_callback)
             if loaded:

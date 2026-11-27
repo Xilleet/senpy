@@ -22,6 +22,7 @@ with a warning. Other plugins continue to load.
 
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -46,6 +47,13 @@ _PLUGIN_ENTRY_POINT_GROUP = "senpy.plugins"
 
 # Trust callback signature: takes plugin name, returns True (trust) or False (decline)
 TrustCallback = Callable[[str], bool]
+
+# Regex detecting ``--lsp`` / ``--lsp=foo`` in ``sys.argv`` so the default
+# trust callback can decline untrusted plugins without an interactive prompt
+# (which would hang the LSP server's JSON-RPC transport on stdin). Module-level
+# compilation — previously recompiled inside ``_default_trust_callback`` on
+# every plugin (per-plugin-load = 1 regex compile).
+_RE_LSP_FLAG = re.compile(r"--lsp(?:=|$)")
 
 
 # =============================================================================
@@ -313,7 +321,7 @@ def load_plugin(entry_point, trust_callback: TrustCallback | None = None):
     return _LoadedEntryPoint(name=plugin_name, rule_cls=rule_cls)
 
 
-def load_all_plugins(trust_callback: TrustCallback | None = None) -> list:
+def load_all_plugins(trust_callback: TrustCallback | None = None) -> list[_LoadedEntryPoint]:
     """Discover and load all installed Senpy plugins with security checks.
 
     Args:
@@ -370,12 +378,11 @@ def _default_trust_callback(plugin_name: str) -> bool:
 
     # Step 2: If running as LSP server, never prompt — input() would
     # hang the process (LSP communicates via stdio, not interactive TTY).
-    # use regex instead of substring check. `"--lsp" in sys.argv`
-    # missed `--lsp=foo` and matched `--no-lsp` (hypothetical).
-    # The regex matches `--lsp` as a standalone argument or with `=value`.
-    import re as _re
-
-    if any(_re.match(r"--lsp(?:=|$)", arg) for arg in sys.argv):
+    # The ``_RE_LSP_FLAG`` regex (module-level) matches ``--lsp`` as a
+    # standalone argument or with ``=value``. Substring check (``"--lsp"
+    # in sys.argv``) missed ``--lsp=foo`` and matched ``--no-lsp``
+    # (hypothetical).
+    if any(_RE_LSP_FLAG.match(arg) for arg in sys.argv):
         _logger.warning(
             "Plugin %r is not trusted. In LSP mode, untrusted plugins are "
             "skipped (no interactive prompt). Use 'senpy --trust-plugin %r' "
@@ -396,12 +403,10 @@ def _default_trust_callback(plugin_name: str) -> bool:
 
     audit_warnings = get_audit_warnings(plugin_name)
     if audit_warnings:
-        import sys as _sys
-
-        print(f"\n[senpy] Audit warnings for plugin '{plugin_name}':", file=_sys.stderr)
+        print(f"\n[senpy] Audit warnings for plugin '{plugin_name}':", file=sys.stderr)
         for w in audit_warnings:
-            print(f"  \u26a0 {w}", file=_sys.stderr)
-        print(file=_sys.stderr)
+            print(f"  \u26a0 {w}", file=sys.stderr)
+        print(file=sys.stderr)
 
     try:
         answer = (
@@ -448,10 +453,16 @@ def register_loaded_plugins(loaded: list[_LoadedEntryPoint]) -> None:
           use this range, so plugin authors can pick any ``RPY9xx``
           code without fear of collision with a future built-in.
 
+    Registration is delegated to ``registry._register_rule_cls`` so the
+    validation rules (code format, ``Rule`` subclass, ``meta.code``
+    consistency, duplicate detection) are shared with the
+    ``@register_rule`` decorator path. The built-in-collision check
+    (against ``RULES_DATABASE``) is specific to plugins and stays here.
+
     Args:
         loaded: List of _LoadedEntryPoint (from load_all_plugins()).
     """
-    from senpy.plugins.registry import _REGISTERED_LINT_RULES
+    from senpy.plugins.registry import _register_rule_cls
     from senpy.rules.rules_info import RULES_DATABASE
 
     for entry in loaded:
@@ -476,5 +487,12 @@ def register_loaded_plugins(loaded: list[_LoadedEntryPoint]) -> None:
                 code,
             )
             continue
-        # Register (same as @register_rule decorator does)
-        _REGISTERED_LINT_RULES.append((code, rule_cls))
+        # Delegate the remaining validation + append to the shared
+        # primitive. ``_register_rule_cls`` already handles code-format,
+        # subclass, meta-code-consistency, and duplicate detection.
+        # The duplicate check there is what prevents two plugins with the
+        # same ``RPY9xx`` code from both ending up in the registry.
+        if not _register_rule_cls(code, rule_cls):
+            # Validation failed — warning already logged inside
+            # ``_register_rule_cls``. Just skip.
+            continue

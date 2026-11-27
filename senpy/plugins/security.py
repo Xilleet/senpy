@@ -150,6 +150,32 @@ def check_api_version(plugin_api_version: str, *, raise_on_mismatch: bool = Fals
 _TRUST_STORE_FILENAME = "trusted_plugins.json"
 _TRUST_STORE_VERSION = 2
 
+# In-memory cache of the parsed trust store. Populated by ``_read_trust_store``
+# on first access, invalidated by ``_modify_trust_store`` after every write.
+# ``None`` means "cache cold — next read goes to disk". A dict value means
+# "this is the current parsed state" — callers may read from it freely, but
+# MUST NOT mutate it in place (use ``_modify_trust_store`` to persist changes).
+#
+# The cache also stores the path it was read from (``_TRUST_STORE_CACHE_PATH``).
+# If ``get_trust_store_path()`` changes between calls (e.g. a test sets a new
+# ``SENPY_HOME`` via ``monkeypatch.setenv``), the cache is automatically
+# invalidated — otherwise a stale cache from one tmp_path would leak into a
+# test using a different tmp_path, hiding corrupt-JSON / missing-file
+# scenarios that the test was supposed to verify.
+#
+# Threading: the cache is process-wide (module global). ``_modify_trust_store``
+# holds the cross-process lock (``_with_trust_store_lock``) during the RMW
+# cycle, so a concurrent reader cannot observe a half-written cache. The
+# cross-process lock does NOT prevent two threads in the SAME process from
+# racing on the cache — but ``autoload_plugins`` runs under
+# ``_PLUGINS_LOADED_LOCK`` (in ``autoload.py``), so concurrent plugin loads
+# do not happen in practice. If a future caller does parallel plugin loads,
+# the cache access here is still safe: the worst case is two threads both
+# read from disk and one overwrites the other's cache entry with an
+# identical dict (no data loss, just a wasted read).
+_TRUST_STORE_CACHE: dict | None = None
+_TRUST_STORE_CACHE_PATH: str | None = None
+
 
 def get_trust_store_path() -> str:
     """Returns path to trust store JSON file.
@@ -232,19 +258,57 @@ def _read_trust_store() -> dict:
     Never raises — corrupt JSON is treated as empty (fail-safe).
     Migrates older schema versions (v1) to the current version (v2) on
     read, additively — trusted plugins are preserved.
+
+    Caching: the parsed trust store is memoised in ``_TRUST_STORE_CACHE``
+    until the next mutation (``_modify_trust_store`` invalidates the
+    cache) OR until ``get_trust_store_path()`` returns a different path
+    (e.g. a test changed ``SENPY_HOME``). This avoids re-reading +
+    re-parsing the JSON on every ``is_plugin_trusted`` /
+    ``get_audit_warnings`` call — a single ``load_plugin`` invocation
+    previously triggered 3-4 disk reads of the same file (one in
+    ``is_plugin_trusted``, one in ``_default_trust_callback``'s second
+    ``is_plugin_trusted`` call, one in ``get_audit_warnings``). With N
+    plugins, that scaled to 3N-4N disk reads per ``autoload_plugins``
+    run; now it's 1 read per process (or per mutation).
     """
-    path = get_trust_store_path()
-    if not os.path.exists(path):
-        return _empty_trust_store()
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, dict):
-            return _empty_trust_store()
-        return _migrate_trust_store(data)
-    except (json.JSONDecodeError, OSError, ValueError):
-        # Corrupt JSON → treat as empty
-        return _empty_trust_store()
+    current_path = get_trust_store_path()
+    # Path-change detection: if SENPY_HOME changed (e.g. test isolation),
+    # the cached store belongs to a different file — invalidate.
+    if _TRUST_STORE_CACHE is not None and current_path == _TRUST_STORE_CACHE_PATH:
+        return _TRUST_STORE_CACHE
+
+    if not os.path.exists(current_path):
+        store = _empty_trust_store()
+    else:
+        try:
+            with open(current_path, encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                store = _empty_trust_store()
+            else:
+                store = _migrate_trust_store(data)
+        except (json.JSONDecodeError, OSError, ValueError):
+            # Corrupt JSON → treat as empty
+            store = _empty_trust_store()
+
+    # Cache the parsed result + the path it was read from.
+    # ``_modify_trust_store`` clears the cache after writing, so the next
+    # read re-parses the freshly written file.
+    globals()["_TRUST_STORE_CACHE"] = store
+    globals()["_TRUST_STORE_CACHE_PATH"] = current_path
+    return store
+
+
+def _invalidate_trust_store_cache() -> None:
+    """Clear the in-memory trust store cache.
+
+    Called by ``_modify_trust_store`` after a successful write so the
+    next ``_read_trust_store`` re-reads from disk. Also safe to call
+    from tests that manipulate the trust store file directly (e.g.
+    via ``monkeypatch.setattr`` on ``get_trust_store_path``).
+    """
+    globals()["_TRUST_STORE_CACHE"] = None
+    globals()["_TRUST_STORE_CACHE_PATH"] = None
 
 
 def _write_trust_store(data: dict) -> None:
@@ -404,11 +468,19 @@ def _modify_trust_store(mutator):
     This is the canonical entry point for any trust store mutation —
     ``trust_plugin`` / ``untrust_plugin`` / ``store_audit_warnings`` all
     delegate to it.
+
+    After the write succeeds, the in-memory cache (``_TRUST_STORE_CACHE``)
+    is invalidated so the next ``_read_trust_store`` re-reads from disk.
     """
     with _with_trust_store_lock():
         store = _read_trust_store()
         mutator(store)
         _write_trust_store(store)
+    # Invalidate cache outside the lock — the next reader will re-read
+    # the freshly written file. Doing this inside the lock would hold
+    # the cross-process lock longer than necessary (cache invalidation
+    # is a process-local operation, no IPC concern).
+    _invalidate_trust_store_cache()
 
 
 def is_plugin_trusted(plugin_name: str) -> bool:
@@ -512,3 +584,60 @@ def get_audit_warnings(plugin_name: str) -> list[str]:
     """
     store = _read_trust_store()
     return store.get("audit_warnings", {}).get(plugin_name, [])
+
+
+def prune_stale_audit_warnings(known_plugin_names: set[str]) -> int:
+    """Remove ``audit_warnings`` entries for plugins that no longer exist.
+
+    Audit warnings are stored BEFORE the trust prompt (R-P0-1 contract):
+    when ``load_plugin`` runs the AST audit on an untrusted plugin, the
+    warnings are written to the trust store so the user can see them at
+    the ``[y/N]`` prompt. If the user declines, the warnings stay —
+    which is correct for the immediate flow (the user may re-run
+    ``senpy --trust-plugin NAME`` later and needs the warnings then).
+
+    The problem: if the plugin is later uninstalled (``pip uninstall``),
+    its ``audit_warnings`` entry stays in the trust store forever.
+    ``untrust_plugin`` only cleans up plugins that WERE trusted — a
+    declined-never-trusted plugin has no trust entry to remove, so
+    ``untrust_plugin`` is a no-op for it and the warnings accumulate.
+
+    This function closes that gap. Call it with the set of currently
+    installed plugin names (typically obtained from
+    ``discover_plugins()`` in ``loader.py``) — any ``audit_warnings``
+    entry whose key is NOT in the set is removed. Returns the number
+    of entries pruned.
+
+    NOT called automatically from ``_read_trust_store`` — pruning
+    there would break the R-P0-1 contract for a plugin that is
+    temporarily undiscoverable (e.g. its package is being upgraded
+    mid-flight) but whose warnings the user still needs to see on the
+    next ``senpy --trust-plugin NAME`` call. The caller (typically
+    ``autoload_plugins`` after ``load_all_plugins``) decides when
+    pruning is safe — i.e. after discovery has settled.
+
+    Args:
+        known_plugin_names: Set of plugin names that currently exist
+            (entry-point names). Entries not in this set are pruned.
+
+    Returns:
+        Number of ``audit_warnings`` entries removed.
+    """
+    pruned = 0
+
+    def _mutator(store: dict) -> None:
+        nonlocal pruned
+        audit_warnings = store.get("audit_warnings", {})
+        # Collect keys to remove (cannot mutate dict during iteration).
+        stale = [name for name in audit_warnings if name not in known_plugin_names]
+        for name in stale:
+            audit_warnings.pop(name, None)
+            _logger.info(
+                "Pruned stale audit_warnings for plugin %r — plugin is no "
+                "longer installed (not in entry points).",
+                name,
+            )
+        pruned = len(stale)
+
+    _modify_trust_store(_mutator)
+    return pruned
