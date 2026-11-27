@@ -469,18 +469,28 @@ def _modify_trust_store(mutator):
     ``trust_plugin`` / ``untrust_plugin`` / ``store_audit_warnings`` all
     delegate to it.
 
-    After the write succeeds, the in-memory cache (``_TRUST_STORE_CACHE``)
-    is invalidated so the next ``_read_trust_store`` re-reads from disk.
+    After the write attempt (success OR failure), the in-memory cache
+    (``_TRUST_STORE_CACHE``) is invalidated. On success, the next read
+    re-reads the freshly written file. On failure (e.g. ``os.replace``
+    raised mid-write), the cache is STALE — it holds the mutated dict
+    that never made it to disk — so invalidating forces the next read
+    to go back to disk and pick up the original (untouched) content.
+    Without this, a failed write would leave the cache returning the
+    would-be-new state (e.g. ``trust_plugin("new")`` that raised) as
+    if the trust had been granted.
     """
-    with _with_trust_store_lock():
-        store = _read_trust_store()
-        mutator(store)
-        _write_trust_store(store)
-    # Invalidate cache outside the lock — the next reader will re-read
-    # the freshly written file. Doing this inside the lock would hold
-    # the cross-process lock longer than necessary (cache invalidation
-    # is a process-local operation, no IPC concern).
-    _invalidate_trust_store_cache()
+    try:
+        with _with_trust_store_lock():
+            store = _read_trust_store()
+            mutator(store)
+            _write_trust_store(store)
+    finally:
+        # Always invalidate — on success the on-disk content matches the
+        # mutated dict, but re-reading is cheap and keeps the invariant
+        # simple ("cache never holds a value that differs from disk").
+        # On failure the cache holds a value that disk does NOT reflect
+        # — invalidating is mandatory to avoid serving stale state.
+        _invalidate_trust_store_cache()
 
 
 def is_plugin_trusted(plugin_name: str) -> bool:
